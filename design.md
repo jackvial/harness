@@ -708,6 +708,11 @@ Milestone 5: Agent Operator Parity (Wake, Query, Interact)
   - terminal control-sequence pass-through test coverage (alternate screen, cursor, bracketed paste, mouse mode, color sequences)
 - Single-session attach/detach/reconnect baseline is implemented via `src/pty/session-broker.ts` with cursor-based replay for reattached clients.
 - Latency benchmark gate is implemented and runnable via `npm run benchmark:latency`, reporting direct-framed vs harness overhead at p50/p95/p99 with configurable thresholds.
+- Codex milestone-2 skeleton is implemented with:
+  - adapter transport/request skeleton in `src/adapters/codex-adapter.ts`
+  - provider/meta normalized mapping in `src/adapters/codex-event-mapper.ts`
+  - canonical event envelope in `src/events/normalized-events.ts`
+  - transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads)
 
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/
