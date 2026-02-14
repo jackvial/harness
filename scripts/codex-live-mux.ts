@@ -1,7 +1,6 @@
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import { renderSnapshotAnsiRow, type TerminalSnapshotFrame } from '../src/terminal/snapshot-oracle.ts';
@@ -13,6 +12,7 @@ import {
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import {
   EventPaneViewport,
+  classifyPaneAt,
   computeDualPaneLayout,
   diffRenderedRows,
   padOrTrimDisplay,
@@ -440,7 +440,7 @@ function buildRenderRows(
   leftFrame: TerminalSnapshotFrame,
   events: EventPaneViewport,
   conversationId: string,
-  selectionMode: boolean
+  selectionActive: boolean
 ): string[] {
   const rightView = events.view(layout.rightCols, layout.paneRows);
 
@@ -457,9 +457,9 @@ function buildRenderRows(
   const leftMode = leftFrame.viewport.followOutput
     ? 'pty=live'
     : `pty=scroll(${String(leftFrame.viewport.top + 1)}/${String(leftFrame.viewport.totalRows)})`;
-  const selection = selectionMode ? 'select=custom' : 'select=app-input';
+  const selection = selectionActive ? 'select=drag' : 'select=idle';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} ctrl-\\ select y copy esc clear ctrl-] quit`,
+    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} alt-drag copy ctrl-] quit`,
     layout.cols
   );
   rows.push(status);
@@ -524,6 +524,10 @@ function isWheelMouseCode(code: number): boolean {
 
 function isMotionMouseCode(code: number): boolean {
   return (code & 0b0010_0000) !== 0;
+}
+
+function hasAltModifier(code: number): boolean {
+  return (code & 0b0000_1000) !== 0;
 }
 
 function isLeftButtonPress(code: number, final: 'M' | 'm'): boolean {
@@ -620,20 +624,13 @@ function writeTextToClipboard(value: string): boolean {
     return false;
   }
 
-  if (process.platform === 'darwin') {
-    const result = spawnSync('pbcopy', [], { input: value, encoding: 'utf8' });
-    return result.status === 0;
-  }
-  if (process.platform === 'win32') {
-    const result = spawnSync('clip', [], { input: value, encoding: 'utf8' });
-    return result.status === 0;
-  }
-  const xclip = spawnSync('xclip', ['-selection', 'clipboard'], { input: value, encoding: 'utf8' });
-  if (xclip.status === 0) {
+  try {
+    const encoded = Buffer.from(value, 'utf8').toString('base64');
+    process.stdout.write(`\u001b]52;c;${encoded}\u0007`);
     return true;
+  } catch {
+    return false;
   }
-  const xsel = spawnSync('xsel', ['--clipboard', '--input'], { input: value, encoding: 'utf8' });
-  return xsel.status === 0;
 }
 
 async function main(): Promise<number> {
@@ -686,7 +683,6 @@ async function main(): Promise<number> {
   let renderedCursorStyle: RenderCursorStyle | null = null;
   let renderedBracketedPaste: boolean | null = null;
   let renderScheduled = false;
-  let selectionMode = false;
   let selection: PaneSelection | null = null;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
@@ -840,25 +836,13 @@ async function main(): Promise<number> {
     markDirty();
   };
 
-  const setSelectionMode = (enabled: boolean): void => {
-    selectionMode = enabled;
-    if (!enabled) {
-      selection = null;
-    }
-    appendDebugRecord(debugPath, {
-      kind: 'selection-mode-toggle',
-      enabled
-    });
-    markDirty();
-  };
-
   const render = (): void => {
     if (!dirty) {
       return;
     }
 
     const leftFrame = liveSession.snapshot();
-    const rows = buildRenderRows(layout, leftFrame, events, options.conversationId, selectionMode);
+    const rows = buildRenderRows(layout, leftFrame, events, options.conversationId, selection !== null);
     const diff = diffRenderedRows(rows, previousRows);
 
     let output = '';
@@ -871,7 +855,7 @@ async function main(): Promise<number> {
     }
     output += diff.output;
 
-    const shouldEnableBracketedPaste = leftFrame.modes.bracketedPaste && !selectionMode;
+    const shouldEnableBracketedPaste = leftFrame.modes.bracketedPaste;
     if (renderedBracketedPaste !== shouldEnableBracketedPaste) {
       output += shouldEnableBracketedPaste ? '\u001b[?2004h' : '\u001b[?2004l';
       renderedBracketedPaste = shouldEnableBracketedPaste;
@@ -885,7 +869,6 @@ async function main(): Promise<number> {
     output += renderSelectionOverlay(leftFrame, selection);
 
     const shouldShowCursor =
-      !selectionMode &&
       leftFrame.viewport.followOutput &&
       leftFrame.cursor.visible &&
       leftFrame.cursor.row >= 0 &&
@@ -946,14 +929,18 @@ async function main(): Promise<number> {
   });
 
   const onInput = (chunk: Buffer): void => {
-    if (chunk.length === 1 && chunk[0] === 0x1c) {
-      setSelectionMode(!selectionMode);
-      return;
-    }
-
     if (chunk.length === 1 && chunk[0] === 0x1d) {
       stop = true;
       liveSession.close();
+      return;
+    }
+
+    if (selection !== null && chunk.length === 1 && chunk[0] === 0x1b) {
+      selection = null;
+      appendDebugRecord(debugPath, {
+        kind: 'selection-clear-escape'
+      });
+      markDirty();
       return;
     }
 
@@ -979,80 +966,70 @@ async function main(): Promise<number> {
     const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
 
-    if (selectionMode) {
-      const text = focusExtraction.sanitized.toString('utf8');
-      if (text.includes('\u001b')) {
-        selection = null;
-        markDirty();
-        appendDebugRecord(debugPath, {
-          kind: 'selection-clear-escape'
-        });
+    const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
+    for (const token of parsed.tokens) {
+      if (token.kind !== 'mouse') {
+        routedTokens.push(token);
+        continue;
       }
-      if (text === 'y' || text === 'Y' || text === '\r') {
+
+      const target = classifyPaneAt(layout, token.event.col, token.event.row);
+      const isLeftTarget = target === 'left';
+      const point = pointFromMouseEvent(layout, token.event);
+      const startSelection = isLeftTarget && isLeftButtonPress(token.event.code, token.event.final) && hasAltModifier(token.event.code);
+      const updateSelection =
+        selection !== null &&
+        isLeftTarget &&
+        isSelectionDrag(token.event.code, token.event.final) &&
+        hasAltModifier(token.event.code);
+      const releaseSelection = selection !== null && isMouseRelease(token.event.final);
+
+      if (startSelection) {
+        selection = {
+          anchor: point,
+          focus: point
+        };
+        appendDebugRecord(debugPath, {
+          kind: 'selection-start',
+          row: point.row,
+          col: point.col
+        });
+        markDirty();
+        continue;
+      }
+
+      if (updateSelection && selection !== null) {
+        selection = {
+          anchor: selection.anchor,
+          focus: point
+        };
+        markDirty();
+        continue;
+      }
+
+      if (releaseSelection && selection !== null) {
+        selection = {
+          anchor: selection.anchor,
+          focus: point
+        };
         const selectedFrame = liveSession.snapshot();
         const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
         appendEventLine(`${new Date().toISOString()} selection ${copied ? 'copied' : 'copy-failed'}`);
-        if (copied) {
-          setSelectionMode(false);
-        }
-      }
-
-      const routed = routeMuxInputTokens(parsed.tokens, layout);
-      if (routed.leftPaneScrollRows !== 0) {
-        liveSession.scrollViewport(routed.leftPaneScrollRows);
+        appendDebugRecord(debugPath, {
+          kind: 'selection-release',
+          row: point.row,
+          col: point.col,
+          copied
+        });
+        selection = null;
         markDirty();
-      }
-      if (routed.rightPaneScrollRows !== 0) {
-        events.scrollBy(routed.rightPaneScrollRows, layout.rightCols, layout.paneRows);
-        markDirty();
+        continue;
       }
 
-      for (const token of parsed.tokens) {
-        if (token.kind !== 'mouse') {
-          continue;
-        }
-        if (isWheelMouseCode(token.event.code)) {
-          continue;
-        }
-
-        const point = pointFromMouseEvent(layout, token.event);
-        if (isLeftButtonPress(token.event.code, token.event.final)) {
-          selection = {
-            anchor: point,
-            focus: point
-          };
-          markDirty();
-          continue;
-        }
-        if (selection !== null && isSelectionDrag(token.event.code, token.event.final)) {
-          selection = {
-            anchor: selection.anchor,
-            focus: point
-          };
-          markDirty();
-          continue;
-        }
-        if (selection !== null && isMouseRelease(token.event.final)) {
-          selection = {
-            anchor: selection.anchor,
-            focus: point
-          };
-          markDirty();
-        }
-      }
-
-      appendDebugRecord(debugPath, {
-        kind: 'input-selection-mode',
-        rawBytesHex: chunk.toString('hex'),
-        sanitizedBytesHex: focusExtraction.sanitized.toString('hex'),
-        tokenCount: parsed.tokens.length,
-        remainderLength: inputRemainder.length,
-        hasSelection: selection !== null
-      });
-      return;
+      routedTokens.push(token);
     }
 
-    const routed = routeMuxInputTokens(parsed.tokens, layout);
+    const routed = routeMuxInputTokens(routedTokens, layout);
     if (routed.leftPaneScrollRows !== 0) {
       liveSession.scrollViewport(routed.leftPaneScrollRows);
       markDirty();
@@ -1073,6 +1050,7 @@ async function main(): Promise<number> {
       focusInCount: focusExtraction.focusInCount,
       focusOutCount: focusExtraction.focusOutCount,
       tokenCount: parsed.tokens.length,
+      routedTokenCount: routedTokens.length,
       remainderLength: inputRemainder.length,
       routedForwardCount: routed.forwardToSession.length,
       leftPaneScrollRows: routed.leftPaneScrollRows,
