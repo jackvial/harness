@@ -1,0 +1,52 @@
+import { appendFileSync } from 'node:fs';
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function parsePayload(input: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(input);
+    const objectValue = asObject(parsed);
+    if (objectValue === null) {
+      return {
+        type: 'unknown',
+        raw: input
+      };
+    }
+    return objectValue;
+  } catch {
+    return {
+      type: 'unknown',
+      raw: input
+    };
+  }
+}
+
+function main(): number {
+  const outputPath = process.argv[2];
+  const payloadRaw = process.argv[3];
+
+  if (typeof outputPath !== 'string' || outputPath.length === 0) {
+    process.stderr.write('codex-notify-relay: missing output path\n');
+    return 2;
+  }
+
+  if (typeof payloadRaw !== 'string' || payloadRaw.length === 0) {
+    process.stderr.write('codex-notify-relay: missing notify payload\n');
+    return 2;
+  }
+
+  const record = {
+    ts: new Date().toISOString(),
+    payload: parsePayload(payloadRaw)
+  };
+
+  appendFileSync(outputPath, `${JSON.stringify(record)}\n`, 'utf8');
+  return 0;
+}
+
+process.exitCode = main();

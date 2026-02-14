@@ -11,6 +11,7 @@ Terminal-first multi-agent harness focused on low-latency human control, with ag
 - Single-session attach/detach/reconnect broker.
 - Latency benchmark gate with p50/p95/p99 overhead checks.
 - Codex structured sidecar baseline (`codex app-server` transport + normalized event mapping + SQLite event persistence).
+- Codex live-session checkpoint: PTY-hosted `codex` with notify-hook event ingestion and persisted normalized stream output.
 
 ## Priority Direction
 - Primary: self-hosted live-steered Codex PTY session.
@@ -21,6 +22,7 @@ Terminal-first multi-agent harness focused on low-latency human control, with ag
 - `npm run verify`
 - `npm run vim:passthrough`
 - `npm run benchmark:latency`
+- `npm run codex:live -- <codex-args>`
 - `npm run codex:events -- "<prompt>"`
 
 ## License

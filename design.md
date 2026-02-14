@@ -246,6 +246,9 @@ Primary live-session capabilities:
 - human steering in-session (`prompt`, interrupt, continue, context edits) with PTY parity
 - event stream derived from live session + notify hook emissions + optional structured sidecar
 
+Notify hook payload shape validated locally:
+- Codex invokes notify command with a JSON payload argument (for example `agent-turn-complete` including `thread-id`, `turn-id`, `cwd`, and message fields).
+
 Structured sidecar capabilities validated locally:
 - transport: `stdio://` and `ws://`
 - required handshake: `initialize` -> client `initialized`
@@ -736,6 +739,10 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads)
   - runnable Codex event smoke path (`npm run codex:events -- "<prompt>"`) that emits normalized JSONL and persists event history
 - Primary Milestone 2 work (live-steered PTY-hosted Codex session with notify-driven event enrichment) is intentionally next and not yet complete.
+- Milestone 2 first checkpoint is implemented:
+  - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
+  - `scripts/codex-notify-relay.ts` captures Codex notify hook payloads into a local JSONL stream.
+  - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events.
 
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/
