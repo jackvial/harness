@@ -731,6 +731,9 @@ Milestone 1 execution plan:
 - Step 4: Snapshot oracle and deterministic replay.
   - Deliverable: `terminal.snapshot.get` with text/JSON frame output and frame hashing.
   - Verification: integration/e2e tests assert frame hashes on Codex and Vim scripted checkpoints.
+- Step 4a: Parity scene matrix (Codex first, Vim next).
+  - Deliverable: machine-readable parity scene contract and runner producing pass/fail + frame hashes for codex/vim/core profiles.
+  - Verification: `terminal:parity` gate passes in CI and emits deterministic scene-level results for regression triage.
 - Step 5: Single-session harness path.
   - Deliverable: one session managed end-to-end by daemon + stream client with attach/detach and reconnect.
   - Verification: e2e test that restarts client while preserving live PTY session continuity and snapshot parity.
@@ -830,13 +833,16 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - Transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads).
 - Milestone 2 live-steered checkpoint is implemented:
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
-  - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output.
+  - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output, including DEC scroll-region/origin handling required for pinned-footer UIs.
+  - Supported terminal semantics now include `DECSTBM` (`CSI t;b r`), `DECOM` (`CSI ? 6 h/l`), `IND`/`NEL`/`RI`, and region-scoped `IL`/`DL` behavior.
+  - `src/terminal/parity-suite.ts` defines codex/vim/core parity scenes and a deterministic matrix runner with scene-level failures and frame-hash output.
   - `scripts/codex-notify-relay.ts` captures Codex notify hook payloads into a local JSONL stream.
   - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events, including raw `meta-notify-observed`.
   - `scripts/codex-live.ts` enforces terminal stream isolation: PTY output remains on stdout while events persist to SQLite (no event JSON mixed into terminal output).
   - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time, including notify-discovery mode (`--only-notify`).
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
-  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed).
+  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed) with display-width-safe wrapping/padding.
+  - `scripts/terminal-parity.ts` exposes the parity matrix gate (`npm run terminal:parity`).
 
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/

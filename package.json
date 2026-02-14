@@ -9,6 +9,7 @@
     "codex:live:mux": "node --experimental-strip-types scripts/codex-live-mux.ts",
     "codex:live:tail": "node --experimental-strip-types scripts/codex-live-tail.ts",
     "codex:live:snapshot": "node --experimental-strip-types scripts/codex-live-snapshot.ts",
+    "terminal:parity": "node --experimental-strip-types scripts/terminal-parity.ts",
     "previm:passthrough": "npm run build:ptyd",
     "vim:passthrough": "node --experimental-strip-types scripts/vim-passthrough.ts",
     "prebenchmark:latency": "npm run build:ptyd",

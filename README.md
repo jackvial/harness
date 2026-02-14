@@ -13,6 +13,8 @@ Terminal-first multi-agent harness focused on low-latency human control, with ag
 - Codex live-session checkpoint: PTY-hosted `codex` with notify-hook event ingestion and persisted normalized stream output.
 - Stream isolation checkpoint: PTY bytes stay in the terminal stream; events are out-of-band in SQLite/event views.
 - Deterministic pseudo-snapshot oracle for integration/e2e (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`).
+- Scroll-region/origin-mode terminal correctness for pinned-footer UIs (`DECSTBM`, `DECOM`, `IND`/`NEL`/`RI`, `IL`/`DL`).
+- Programmatic parity matrix runner for codex/vim/core scenes (`npm run terminal:parity`).
 
 ## Priority Direction
 - Primary: self-hosted live-steered Codex PTY session.
@@ -27,6 +29,7 @@ Terminal-first multi-agent harness focused on low-latency human control, with ag
 - `npm run codex:live:mux -- <codex-args>` (first-party split: live session + event feed)
 - `npm run codex:live:tail -- --conversation-id <id> [--from-now] [--only-notify] [--include-text-deltas]`
 - `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
+- `npm run terminal:parity [-- --json]`
 
 ## License
 - `UNLICENSE`

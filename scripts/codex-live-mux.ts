@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
-import { renderSnapshotAnsiRow, wrapTextForColumns } from '../src/terminal/snapshot-oracle.ts';
+import { measureDisplayWidth, renderSnapshotAnsiRow, wrapTextForColumns } from '../src/terminal/snapshot-oracle.ts';
 import {
   createNormalizedEvent,
   type EventScope,
@@ -157,13 +157,26 @@ function terminalSize(): { cols: number; rows: number } {
 }
 
 function padOrTrim(text: string, width: number): string {
-  if (text.length === width) {
-    return text;
+  if (width <= 0) {
+    return '';
   }
-  if (text.length > width) {
-    return text.slice(0, width);
+
+  let output = '';
+  let outputWidth = 0;
+  for (const char of text) {
+    const charWidth = Math.max(1, measureDisplayWidth(char));
+    if (outputWidth + charWidth > width) {
+      break;
+    }
+    output += char;
+    outputWidth += charWidth;
   }
-  return `${text}${' '.repeat(width - text.length)}`;
+
+  if (outputWidth < width) {
+    output += ' '.repeat(width - outputWidth);
+  }
+
+  return output;
 }
 
 function parseArgs(argv: string[]): MuxOptions {
@@ -244,23 +257,20 @@ async function main(): Promise<number> {
     const rightStart = Math.max(0, wrappedRightLines.length - paneRows);
     const rightRendered = wrappedRightLines.slice(rightStart);
 
-    const frame: string[] = [];
-    frame.push('\u001b[?25l');
-    frame.push('\u001b[H\u001b[2J');
-
+    const frame: string[] = ['\u001b[?25l', '\u001b[H\u001b[2J'];
     for (let row = 0; row < paneRows; row += 1) {
       const left = renderSnapshotAnsiRow(leftFrame, row, leftCols);
       const right = padOrTrim(rightRendered[row] ?? '', rightCols);
-      frame.push(`${left}\u001b[0m│${right}`);
+      frame.push(`\u001b[${String(row + 1)};1H${left}\u001b[0m│${right}`);
     }
 
     const status = padOrTrim(
       `[mux] conversation=${options.conversationId} ctrl-] quit`,
       size.cols
     );
-    frame.push(status);
+    frame.push(`\u001b[${String(paneRows + 1)};1H${status}`);
 
-    process.stdout.write(frame.join('\n'));
+    process.stdout.write(frame.join(''));
     dirty = false;
   };
 

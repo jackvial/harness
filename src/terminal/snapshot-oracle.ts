@@ -196,6 +196,8 @@ class ScreenBuffer {
   private scrollback: InternalLine[] = [];
   private followOutput = true;
   private viewportTop = 0;
+  private scrollRegionTop = 0;
+  private scrollRegionBottom: number;
 
   constructor(cols: number, rows: number, includeScrollback: boolean, scrollbackLimit: number) {
     this.cols = cols;
@@ -203,6 +205,7 @@ class ScreenBuffer {
     this.includeScrollback = includeScrollback;
     this.scrollbackLimit = scrollbackLimit;
     this.lines = Array.from({ length: rows }, () => createLine(cols, defaultCellStyle()));
+    this.scrollRegionBottom = Math.max(0, rows - 1);
   }
 
   resize(cols: number, rows: number, fillStyle: TerminalCellStyle): void {
@@ -221,6 +224,18 @@ class ScreenBuffer {
     this.cols = cols;
     this.rows = rows;
     this.lines = nextLines;
+    if (
+      this.scrollRegionTop < 0 ||
+      this.scrollRegionTop >= rows ||
+      this.scrollRegionBottom < 0 ||
+      this.scrollRegionBottom >= rows ||
+      this.scrollRegionTop >= this.scrollRegionBottom
+    ) {
+      this.resetScrollRegion();
+    } else {
+      this.scrollRegionTop = Math.max(0, Math.min(this.scrollRegionTop, rows - 1));
+      this.scrollRegionBottom = Math.max(0, Math.min(this.scrollRegionBottom, rows - 1));
+    }
     this.ensureViewportInRange();
   }
 
@@ -228,6 +243,29 @@ class ScreenBuffer {
     this.lines = Array.from({ length: this.rows }, () => createLine(this.cols, fillStyle));
     this.scrollback = [];
     this.recomputeViewport();
+  }
+
+  resetScrollRegion(): void {
+    this.scrollRegionTop = 0;
+    this.scrollRegionBottom = Math.max(0, this.rows - 1);
+  }
+
+  setScrollRegion(topOneBased: number, bottomOneBased: number): boolean {
+    const top = Math.max(1, Math.min(this.rows, topOneBased)) - 1;
+    const bottom = Math.max(1, Math.min(this.rows, bottomOneBased)) - 1;
+    if (top >= bottom) {
+      return false;
+    }
+    this.scrollRegionTop = top;
+    this.scrollRegionBottom = bottom;
+    return true;
+  }
+
+  scrollRegion(): { top: number; bottom: number } {
+    return {
+      top: this.scrollRegionTop,
+      bottom: this.scrollRegionBottom
+    };
   }
 
   setFollowOutput(followOutput: boolean): void {
@@ -271,6 +309,22 @@ class ScreenBuffer {
     if (cursor.col >= this.cols) {
       this.advanceLine(cursor, true, style);
     }
+  }
+
+  lineFeed(cursor: ScreenCursor, fillStyle: TerminalCellStyle): void {
+    if (cursor.row === this.scrollRegionBottom) {
+      this.scrollUp(1, fillStyle, this.scrollRegionTop, this.scrollRegionBottom);
+      return;
+    }
+    cursor.row = Math.min(this.rows - 1, cursor.row + 1);
+  }
+
+  reverseLineFeed(cursor: ScreenCursor, fillStyle: TerminalCellStyle): void {
+    if (cursor.row === this.scrollRegionTop) {
+      this.scrollDown(1, fillStyle, this.scrollRegionTop, this.scrollRegionBottom);
+      return;
+    }
+    cursor.row = Math.max(0, cursor.row - 1);
   }
 
   appendCombining(cursor: ScreenCursor, combiningChar: string): void {
@@ -332,28 +386,69 @@ class ScreenBuffer {
     }
   }
 
-  scrollUp(lines: number, fillStyle: TerminalCellStyle): void {
+  scrollUp(lines: number, fillStyle: TerminalCellStyle, top = 0, bottom = this.rows - 1): void {
+    const clampedTop = Math.max(0, Math.min(this.rows - 1, top));
+    const clampedBottom = Math.max(0, Math.min(this.rows - 1, bottom));
+    if (clampedTop >= clampedBottom) {
+      return;
+    }
     const count = Math.max(1, lines);
     for (let idx = 0; idx < count; idx += 1) {
-      const shifted = this.lines.shift();
-      if (shifted !== undefined && this.includeScrollback) {
+      const shifted = this.lines.splice(clampedTop, 1)[0];
+      if (
+        shifted !== undefined &&
+        this.includeScrollback &&
+        clampedTop === 0 &&
+        clampedBottom === this.rows - 1
+      ) {
         this.scrollback.push(shifted);
         while (this.scrollback.length > this.scrollbackLimit) {
           this.scrollback.shift();
         }
       }
-      this.lines.push(createLine(this.cols, fillStyle));
+      this.lines.splice(clampedBottom, 0, createLine(this.cols, fillStyle));
     }
     this.recomputeViewport();
   }
 
-  scrollDown(lines: number, fillStyle: TerminalCellStyle): void {
+  scrollDown(lines: number, fillStyle: TerminalCellStyle, top = 0, bottom = this.rows - 1): void {
+    const clampedTop = Math.max(0, Math.min(this.rows - 1, top));
+    const clampedBottom = Math.max(0, Math.min(this.rows - 1, bottom));
+    if (clampedTop >= clampedBottom) {
+      return;
+    }
     const count = Math.max(1, lines);
     for (let idx = 0; idx < count; idx += 1) {
-      this.lines.pop();
-      this.lines.unshift(createLine(this.cols, fillStyle));
+      this.lines.splice(clampedBottom, 1);
+      this.lines.splice(clampedTop, 0, createLine(this.cols, fillStyle));
     }
     this.recomputeViewport();
+  }
+
+  insertLines(cursor: ScreenCursor, lines: number, fillStyle: TerminalCellStyle): void {
+    if (cursor.row < this.scrollRegionTop || cursor.row > this.scrollRegionBottom) {
+      return;
+    }
+
+    const maxCount = this.scrollRegionBottom - cursor.row + 1;
+    const count = Math.max(1, Math.min(lines, maxCount));
+    for (let idx = 0; idx < count; idx += 1) {
+      this.lines.splice(this.scrollRegionBottom, 1);
+      this.lines.splice(cursor.row, 0, createLine(this.cols, fillStyle));
+    }
+  }
+
+  deleteLines(cursor: ScreenCursor, lines: number, fillStyle: TerminalCellStyle): void {
+    if (cursor.row < this.scrollRegionTop || cursor.row > this.scrollRegionBottom) {
+      return;
+    }
+
+    const maxCount = this.scrollRegionBottom - cursor.row + 1;
+    const count = Math.max(1, Math.min(lines, maxCount));
+    for (let idx = 0; idx < count; idx += 1) {
+      this.lines.splice(cursor.row, 1);
+      this.lines.splice(this.scrollRegionBottom, 0, createLine(this.cols, fillStyle));
+    }
   }
 
   snapshot(cursor: ScreenCursor, cursorVisible: boolean, activeScreen: ActiveScreen): TerminalSnapshotFrame {
@@ -408,11 +503,7 @@ class ScreenBuffer {
 
   private advanceLine(cursor: ScreenCursor, wrapped: boolean, fillStyle: TerminalCellStyle): void {
     cursor.col = 0;
-    cursor.row += 1;
-    if (cursor.row >= this.rows) {
-      this.scrollUp(1, fillStyle);
-      cursor.row = this.rows - 1;
-    }
+    this.lineFeed(cursor, fillStyle);
     if (cursor.row >= 0 && cursor.row < this.rows) {
       this.lines[cursor.row]!.wrapped = wrapped;
     }
@@ -694,6 +785,7 @@ export class TerminalSnapshotOracle {
   private csiBuffer = '';
   private cursorVisible = true;
   private style: TerminalCellStyle = defaultCellStyle();
+  private originMode = false;
 
   constructor(cols: number, rows: number, scrollbackLimit = 5000) {
     this.primary = new ScreenBuffer(cols, rows, true, scrollbackLimit);
@@ -764,11 +856,7 @@ export class TerminalSnapshotOracle {
       return;
     }
     if (char === '\n') {
-      this.cursor.row += 1;
-      if (this.cursor.row >= this.currentScreen().rows) {
-        this.currentScreen().scrollUp(1, this.style);
-        this.cursor.row = this.currentScreen().rows - 1;
-      }
+      this.currentScreen().lineFeed(this.cursor, this.style);
       return;
     }
     if (char === '\b') {
@@ -807,6 +895,22 @@ export class TerminalSnapshotOracle {
       if (this.savedCursor !== null) {
         this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
       }
+      this.mode = 'normal';
+      return;
+    }
+    if (char === 'D') {
+      this.currentScreen().lineFeed(this.cursor, this.style);
+      this.mode = 'normal';
+      return;
+    }
+    if (char === 'E') {
+      this.cursor.col = 0;
+      this.currentScreen().lineFeed(this.cursor, this.style);
+      this.mode = 'normal';
+      return;
+    }
+    if (char === 'M') {
+      this.currentScreen().reverseLineFeed(this.cursor, this.style);
       this.mode = 'normal';
       return;
     }
@@ -873,11 +977,13 @@ export class TerminalSnapshotOracle {
     }
 
     if (finalByte === 'A') {
-      this.cursor.row = Math.max(0, this.cursor.row - first);
+      const bounds = this.activeRowBounds();
+      this.cursor.row = Math.max(bounds.top, this.cursor.row - first);
       return;
     }
     if (finalByte === 'B') {
-      this.cursor.row = Math.min(this.currentScreen().rows - 1, this.cursor.row + first);
+      const bounds = this.activeRowBounds();
+      this.cursor.row = Math.min(bounds.bottom, this.cursor.row + first);
       return;
     }
     if (finalByte === 'C') {
@@ -895,7 +1001,9 @@ export class TerminalSnapshotOracle {
     if (finalByte === 'H' || finalByte === 'f') {
       const row = Number.isFinite(params[0]) ? (params[0] as number) : 1;
       const col = Number.isFinite(params[1]) ? (params[1] as number) : 1;
-      this.cursor.row = Math.max(0, Math.min(this.currentScreen().rows - 1, row - 1));
+      const bounds = this.activeRowBounds();
+      const targetRow = this.originMode ? bounds.top + row - 1 : row - 1;
+      this.cursor.row = Math.max(bounds.top, Math.min(bounds.bottom, targetRow));
       this.cursor.col = Math.max(0, Math.min(this.currentScreen().cols - 1, col - 1));
       return;
     }
@@ -910,11 +1018,29 @@ export class TerminalSnapshotOracle {
       return;
     }
     if (finalByte === 'S') {
-      this.currentScreen().scrollUp(first, this.style);
+      const region = this.currentScreen().scrollRegion();
+      this.currentScreen().scrollUp(first, this.style, region.top, region.bottom);
       return;
     }
     if (finalByte === 'T') {
-      this.currentScreen().scrollDown(first, this.style);
+      const region = this.currentScreen().scrollRegion();
+      this.currentScreen().scrollDown(first, this.style, region.top, region.bottom);
+      return;
+    }
+    if (finalByte === 'L') {
+      this.currentScreen().insertLines(this.cursor, first, this.style);
+      return;
+    }
+    if (finalByte === 'M') {
+      this.currentScreen().deleteLines(this.cursor, first, this.style);
+      return;
+    }
+    if (finalByte === 'r') {
+      const top = Number.isFinite(params[0]) ? (params[0] as number) : 1;
+      const bottom = Number.isFinite(params[1]) ? (params[1] as number) : this.currentScreen().rows;
+      if (this.currentScreen().setScrollRegion(top, bottom)) {
+        this.homeCursor();
+      }
       return;
     }
     if (finalByte === 's') {
@@ -940,7 +1066,9 @@ export class TerminalSnapshotOracle {
       if (value === 1047) {
         this.activeScreen = enabled ? 'alternate' : 'primary';
         if (enabled) {
+          this.originMode = false;
           this.alternate.clear(this.style);
+          this.alternate.resetScrollRegion();
           this.cursor = { row: 0, col: 0 };
         }
         continue;
@@ -958,8 +1086,10 @@ export class TerminalSnapshotOracle {
       if (value === 1049) {
         if (enabled) {
           this.savedCursor = { row: this.cursor.row, col: this.cursor.col };
+          this.originMode = false;
           this.activeScreen = 'alternate';
           this.alternate.clear(this.style);
+          this.alternate.resetScrollRegion();
           this.cursor = { row: 0, col: 0 };
         } else {
           this.activeScreen = 'primary';
@@ -967,8 +1097,30 @@ export class TerminalSnapshotOracle {
             this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
           }
         }
+        continue;
+      }
+
+      if (value === 6) {
+        this.originMode = enabled;
+        this.homeCursor();
       }
     }
+  }
+
+  private activeRowBounds(): { top: number; bottom: number } {
+    if (!this.originMode) {
+      return {
+        top: 0,
+        bottom: this.currentScreen().rows - 1
+      };
+    }
+    return this.currentScreen().scrollRegion();
+  }
+
+  private homeCursor(): void {
+    const bounds = this.activeRowBounds();
+    this.cursor.row = bounds.top;
+    this.cursor.col = 0;
   }
 }
 

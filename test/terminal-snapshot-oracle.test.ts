@@ -313,3 +313,87 @@ void test('snapshot oracle branch coverage on edge cases', () => {
   const diff = diffTerminalFrames(frame, changedCells);
   assert.equal(diff.reasons.some((reason) => reason.includes('-missing')), true);
 });
+
+void test('snapshot oracle supports scroll regions, origin mode, and insert/delete line controls', () => {
+  const oracle = new TerminalSnapshotOracle(16, 8, 4);
+
+  oracle.ingest('\u001b[1;6r');
+  oracle.ingest('\u001b[7;1H> chat');
+  oracle.ingest('\u001b[8;1H? status');
+  oracle.ingest('\u001b[6;1Hone\ntwo\nthree\nfour\nfive\nsix');
+
+  let frame = oracle.snapshot();
+  assert.equal(frame.lines[6]!.includes('> chat'), true);
+  assert.equal(frame.lines[7]!.includes('? status'), true);
+
+  oracle.ingest('\u001b[2;5r');
+  oracle.ingest('\u001b[?6h');
+  oracle.ingest('\u001b[1;1H');
+  oracle.ingest('\u001b[48;2;1;2;3mX');
+  oracle.ingest('\u001b[?6l');
+  oracle.ingest('\u001b[1;1HY');
+  frame = oracle.snapshot();
+  assert.equal(frame.richLines[1]!.cells[0]!.glyph, 'X');
+  assert.deepEqual(frame.richLines[1]!.cells[0]!.style.bg, { kind: 'rgb', r: 1, g: 2, b: 3 });
+  assert.equal(frame.richLines[0]!.cells[0]!.glyph, 'Y');
+
+  oracle.ingest('\u001b[3;1Halpha');
+  oracle.ingest('\u001b[3;1H\u001b[1L');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[2]!.trim(), '');
+  oracle.ingest('\u001b[3;1H\u001b[1M');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[2]!.includes('alpha'), true);
+
+  oracle.ingest('\u001b[6;2r');
+  oracle.ingest('\u001b[2;1H\u001bD');
+  oracle.ingest('\u001bE');
+  oracle.ingest('\u001bM');
+  oracle.ingest('\u001b[4;4r');
+  oracle.resize(16, 3);
+  frame = oracle.snapshot();
+  assert.equal(frame.rows, 3);
+});
+
+void test('snapshot oracle covers control-flow guards for scroll region operations', () => {
+  const singleRow = new TerminalSnapshotOracle(5, 1);
+  singleRow.ingest('\n');
+  singleRow.ingest('\u001bM');
+  const singleRowFrame = singleRow.snapshot();
+  assert.equal(singleRowFrame.rows, 1);
+
+  const multiRow = new TerminalSnapshotOracle(5, 3);
+  multiRow.ingest('\n');
+  multiRow.ingest('\u001bM');
+  const multiRowFrame = multiRow.snapshot();
+  assert.equal(multiRowFrame.cursor.row, 0);
+
+  const oracle = new TerminalSnapshotOracle(10, 4, 2);
+  oracle.ingest('A');
+  oracle.ingest('\u001bD');
+  oracle.ingest('B');
+  oracle.ingest('\u001bE');
+  oracle.ingest('C');
+  oracle.ingest('\u001b[2;3r');
+  oracle.ingest('\u001b[r');
+  oracle.ingest('\u001b[2r');
+  oracle.ingest('\u001b[1;1H\u001b[1L');
+  oracle.ingest('\u001b[1;1H\u001b[1M');
+  oracle.ingest('\u001b[2;1Hrow2');
+  oracle.ingest('\u001b[2;1H\u001b[1M');
+  oracle.ingest('\u001b[3;3r');
+  oracle.resize(10, 2);
+  const frame = oracle.snapshot();
+  assert.equal(frame.rows, 2);
+  assert.equal(frame.lines[0]!.includes('A'), true);
+});
+
+void test('snapshot oracle tolerates restore sequences without prior saved cursor state', () => {
+  const oracle = new TerminalSnapshotOracle(6, 3);
+  oracle.ingest('\u001b[?1048l');
+  oracle.ingest('\u001b[u');
+  oracle.ingest('\u001b[?1049l');
+  const frame = oracle.snapshot();
+  assert.equal(frame.activeScreen, 'primary');
+  assert.equal(frame.cursor.row, 0);
+});
