@@ -459,7 +459,7 @@ function buildRenderRows(
     : `pty=scroll(${String(leftFrame.viewport.top + 1)}/${String(leftFrame.viewport.totalRows)})`;
   const selection = selectionActive ? 'select=drag' : 'select=idle';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} alt-drag copy ctrl-] quit`,
+    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} drag copy alt-pass ctrl-] quit`,
     layout.cols
   );
   rows.push(status);
@@ -976,12 +976,12 @@ async function main(): Promise<number> {
       const target = classifyPaneAt(layout, token.event.col, token.event.row);
       const isLeftTarget = target === 'left';
       const point = pointFromMouseEvent(layout, token.event);
-      const startSelection = isLeftTarget && isLeftButtonPress(token.event.code, token.event.final) && hasAltModifier(token.event.code);
+      const startSelection = isLeftTarget && isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code);
       const updateSelection =
         selection !== null &&
         isLeftTarget &&
         isSelectionDrag(token.event.code, token.event.final) &&
-        hasAltModifier(token.event.code);
+        !hasAltModifier(token.event.code);
       const releaseSelection = selection !== null && isMouseRelease(token.event.final);
 
       if (startSelection) {
