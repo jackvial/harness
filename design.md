@@ -890,6 +890,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - pane-local event viewport state (`live` vs `scroll`) with independent right-pane scrollback
     - SGR mouse wheel routing for right-pane scrollback without leaking events into the live Codex PTY stream
     - VTE-driven cursor parity (position, visibility, and DECSCUSR shape/blink style)
+    - VTE-driven bracketed paste mode parity (`?2004`) mirrored to host terminal mode
+    - first-party in-pane selection mode with visual highlight and clipboard copy
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, event viewport state, and row-diff rendering.
   - `test/mux-dual-pane-core.test.ts` deterministically verifies mux layout, mouse routing, viewport follow/pin transitions, and row-diff behavior.
   - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.

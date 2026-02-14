@@ -42,6 +42,9 @@ export interface TerminalSnapshotFrame {
   rows: number;
   cols: number;
   activeScreen: ActiveScreen;
+  modes: {
+    bracketedPaste: boolean;
+  };
   cursor: {
     row: number;
     col: number;
@@ -516,7 +519,8 @@ class ScreenBuffer {
     cursor: ScreenCursor,
     cursorVisible: boolean,
     cursorStyle: TerminalCursorStyle,
-    activeScreen: ActiveScreen
+    activeScreen: ActiveScreen,
+    bracketedPasteMode: boolean
   ): TerminalSnapshotFrame {
     const combined = [...this.scrollback, ...this.lines];
     const totalRows = combined.length;
@@ -545,6 +549,9 @@ class ScreenBuffer {
       rows: this.rows,
       cols: this.cols,
       activeScreen,
+      modes: {
+        bracketedPaste: bracketedPasteMode
+      },
       cursor: {
         row: cursor.row,
         col: cursor.col,
@@ -852,6 +859,7 @@ export class TerminalSnapshotOracle {
   private csiBuffer = '';
   private cursorVisible = true;
   private cursorStyle: TerminalCursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
+  private bracketedPasteMode = false;
   private style: TerminalCellStyle = defaultCellStyle();
   private originMode = false;
   private pendingWrap = false;
@@ -893,7 +901,13 @@ export class TerminalSnapshotOracle {
   }
 
   snapshot(): TerminalSnapshotFrame {
-    return this.currentScreen().snapshot(this.cursor, this.cursorVisible, this.cursorStyle, this.activeScreen);
+    return this.currentScreen().snapshot(
+      this.cursor,
+      this.cursorVisible,
+      this.cursorStyle,
+      this.activeScreen,
+      this.bracketedPasteMode
+    );
   }
 
   private currentScreen(): ScreenBuffer {
@@ -1206,6 +1220,10 @@ export class TerminalSnapshotOracle {
         this.cursorVisible = enabled;
         continue;
       }
+      if (value === 2004) {
+        this.bracketedPasteMode = enabled;
+        continue;
+      }
 
       if (value === 1047) {
         this.activeScreen = enabled ? 'alternate' : 'primary';
@@ -1306,6 +1324,7 @@ export class TerminalSnapshotOracle {
     this.savedCursor = null;
     this.cursorVisible = true;
     this.cursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
+    this.bracketedPasteMode = false;
     this.style = style;
     this.originMode = false;
     this.pendingWrap = false;
@@ -1445,6 +1464,10 @@ export function diffTerminalFrames(expected: TerminalSnapshotFrame, actual: Term
 
   if (expected.activeScreen !== actual.activeScreen) {
     reasons.push('active-screen-mismatch');
+  }
+
+  if (expected.modes.bracketedPaste !== actual.modes.bracketedPaste) {
+    reasons.push('bracketed-paste-mode-mismatch');
   }
 
   if (expected.cursor.row !== actual.cursor.row || expected.cursor.col !== actual.cursor.col) {

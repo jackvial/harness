@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import { renderSnapshotAnsiRow, type TerminalSnapshotFrame } from '../src/terminal/snapshot-oracle.ts';
@@ -43,8 +44,18 @@ interface RenderCursorStyle {
   readonly blinking: boolean;
 }
 
+interface SelectionPoint {
+  readonly row: number;
+  readonly col: number;
+}
+
+interface PaneSelection {
+  readonly anchor: SelectionPoint;
+  readonly focus: SelectionPoint;
+}
+
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
-const DISABLE_INPUT_MODES = '\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
+const DISABLE_INPUT_MODES = '\u001b[?2004l\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
 
@@ -446,9 +457,9 @@ function buildRenderRows(
   const leftMode = leftFrame.viewport.followOutput
     ? 'pty=live'
     : `pty=scroll(${String(leftFrame.viewport.top + 1)}/${String(leftFrame.viewport.totalRows)})`;
-  const selection = selectionMode ? 'select=host-copy' : 'select=app-input';
+  const selection = selectionMode ? 'select=custom' : 'select=app-input';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} ctrl-\\ toggle-copy ctrl-] quit`,
+    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} ctrl-\\ select y copy esc clear ctrl-] quit`,
     layout.cols
   );
   rows.push(status);
@@ -471,6 +482,158 @@ function cursorStyleEqual(left: RenderCursorStyle | null, right: RenderCursorSty
     return false;
   }
   return left.shape === right.shape && left.blinking === right.blinking;
+}
+
+function compareSelectionPoints(left: SelectionPoint, right: SelectionPoint): number {
+  if (left.row !== right.row) {
+    return left.row - right.row;
+  }
+  return left.col - right.col;
+}
+
+function normalizeSelection(selection: PaneSelection): { start: SelectionPoint; end: SelectionPoint } {
+  if (compareSelectionPoints(selection.anchor, selection.focus) <= 0) {
+    return {
+      start: selection.anchor,
+      end: selection.focus
+    };
+  }
+  return {
+    start: selection.focus,
+    end: selection.anchor
+  };
+}
+
+function clampPanePoint(layout: ReturnType<typeof computeDualPaneLayout>, row: number, col: number): SelectionPoint {
+  return {
+    row: Math.max(0, Math.min(layout.paneRows - 1, row)),
+    col: Math.max(0, Math.min(layout.leftCols - 1, col))
+  };
+}
+
+function pointFromMouseEvent(
+  layout: ReturnType<typeof computeDualPaneLayout>,
+  event: { col: number; row: number }
+): SelectionPoint {
+  return clampPanePoint(layout, event.row - 1, event.col - 1);
+}
+
+function isWheelMouseCode(code: number): boolean {
+  return (code & 0b0100_0000) !== 0;
+}
+
+function isMotionMouseCode(code: number): boolean {
+  return (code & 0b0010_0000) !== 0;
+}
+
+function isLeftButtonPress(code: number, final: 'M' | 'm'): boolean {
+  if (final !== 'M') {
+    return false;
+  }
+  if (isWheelMouseCode(code) || isMotionMouseCode(code)) {
+    return false;
+  }
+  return (code & 0b0000_0011) === 0;
+}
+
+function isMouseRelease(final: 'M' | 'm'): boolean {
+  return final === 'm';
+}
+
+function isSelectionDrag(code: number, final: 'M' | 'm'): boolean {
+  return final === 'M' && isMotionMouseCode(code);
+}
+
+function cellGlyphForOverlay(frame: TerminalSnapshotFrame, row: number, col: number): string {
+  const line = frame.richLines[row];
+  if (line === undefined) {
+    return ' ';
+  }
+  const cell = line.cells[col];
+  if (cell === undefined) {
+    return ' ';
+  }
+  if (cell.continued) {
+    return ' ';
+  }
+  return cell.glyph.length > 0 ? cell.glyph : ' ';
+}
+
+function renderSelectionOverlay(
+  frame: TerminalSnapshotFrame,
+  selection: PaneSelection | null
+): string {
+  if (selection === null) {
+    return '';
+  }
+
+  const { start, end } = normalizeSelection(selection);
+  let output = '';
+  for (let row = start.row; row <= end.row; row += 1) {
+    const rowStartCol = row === start.row ? start.col : 0;
+    const rowEndCol = row === end.row ? end.col : frame.cols - 1;
+    if (rowEndCol < rowStartCol) {
+      continue;
+    }
+
+    output += `\u001b[${String(row + 1)};${String(rowStartCol + 1)}H\u001b[7m`;
+    for (let col = rowStartCol; col <= rowEndCol; col += 1) {
+      output += cellGlyphForOverlay(frame, row, col);
+    }
+    output += '\u001b[0m';
+  }
+
+  return output;
+}
+
+function selectionText(frame: TerminalSnapshotFrame, selection: PaneSelection | null): string {
+  if (selection === null) {
+    return '';
+  }
+
+  const { start, end } = normalizeSelection(selection);
+  const rows: string[] = [];
+  for (let row = start.row; row <= end.row; row += 1) {
+    const rowStartCol = row === start.row ? start.col : 0;
+    const rowEndCol = row === end.row ? end.col : frame.cols - 1;
+    if (rowEndCol < rowStartCol) {
+      rows.push('');
+      continue;
+    }
+
+    let line = '';
+    for (let col = rowStartCol; col <= rowEndCol; col += 1) {
+      const lineRef = frame.richLines[row];
+      const cell = lineRef?.cells[col];
+      if (cell === undefined || cell.continued) {
+        continue;
+      }
+      line += cell.glyph;
+    }
+    rows.push(line);
+  }
+  return rows.join('\n');
+}
+
+function writeTextToClipboard(value: string): boolean {
+  if (value.length === 0) {
+    return false;
+  }
+
+  if (process.platform === 'darwin') {
+    const result = spawnSync('pbcopy', [], { input: value, encoding: 'utf8' });
+    return result.status === 0;
+  }
+  if (process.platform === 'win32') {
+    const result = spawnSync('clip', [], { input: value, encoding: 'utf8' });
+    return result.status === 0;
+  }
+  const xclip = spawnSync('xclip', ['-selection', 'clipboard'], { input: value, encoding: 'utf8' });
+  if (xclip.status === 0) {
+    return true;
+  }
+  const xsel = spawnSync('xsel', ['--clipboard', '--input'], { input: value, encoding: 'utf8' });
+  return xsel.status === 0;
 }
 
 async function main(): Promise<number> {
@@ -521,8 +684,10 @@ async function main(): Promise<number> {
   let forceFullClear = true;
   let renderedCursorVisible: boolean | null = null;
   let renderedCursorStyle: RenderCursorStyle | null = null;
+  let renderedBracketedPaste: boolean | null = null;
   let renderScheduled = false;
   let selectionMode = false;
+  let selection: PaneSelection | null = null;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -675,6 +840,18 @@ async function main(): Promise<number> {
     markDirty();
   };
 
+  const setSelectionMode = (enabled: boolean): void => {
+    selectionMode = enabled;
+    if (!enabled) {
+      selection = null;
+    }
+    appendDebugRecord(debugPath, {
+      kind: 'selection-mode-toggle',
+      enabled
+    });
+    markDirty();
+  };
+
   const render = (): void => {
     if (!dirty) {
       return;
@@ -690,15 +867,25 @@ async function main(): Promise<number> {
       forceFullClear = false;
       renderedCursorVisible = false;
       renderedCursorStyle = null;
+      renderedBracketedPaste = null;
     }
     output += diff.output;
+
+    const shouldEnableBracketedPaste = leftFrame.modes.bracketedPaste && !selectionMode;
+    if (renderedBracketedPaste !== shouldEnableBracketedPaste) {
+      output += shouldEnableBracketedPaste ? '\u001b[?2004h' : '\u001b[?2004l';
+      renderedBracketedPaste = shouldEnableBracketedPaste;
+    }
 
     if (!cursorStyleEqual(renderedCursorStyle, leftFrame.cursor.style)) {
       output += cursorStyleToDecscusr(leftFrame.cursor.style);
       renderedCursorStyle = leftFrame.cursor.style;
     }
 
+    output += renderSelectionOverlay(leftFrame, selection);
+
     const shouldShowCursor =
+      !selectionMode &&
       leftFrame.viewport.followOutput &&
       leftFrame.cursor.visible &&
       leftFrame.cursor.row >= 0 &&
@@ -760,27 +947,13 @@ async function main(): Promise<number> {
 
   const onInput = (chunk: Buffer): void => {
     if (chunk.length === 1 && chunk[0] === 0x1c) {
-      selectionMode = !selectionMode;
-      process.stdout.write(selectionMode ? DISABLE_INPUT_MODES : ENABLE_INPUT_MODES);
-      appendDebugRecord(debugPath, {
-        kind: 'selection-mode-toggle',
-        enabled: selectionMode
-      });
-      markDirty();
+      setSelectionMode(!selectionMode);
       return;
     }
 
     if (chunk.length === 1 && chunk[0] === 0x1d) {
       stop = true;
       liveSession.close();
-      return;
-    }
-
-    if (selectionMode) {
-      appendDebugRecord(debugPath, {
-        kind: 'input-swallowed-selection-mode',
-        rawBytesHex: chunk.toString('hex')
-      });
       return;
     }
 
@@ -805,6 +978,79 @@ async function main(): Promise<number> {
 
     const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
+
+    if (selectionMode) {
+      const text = focusExtraction.sanitized.toString('utf8');
+      if (text.includes('\u001b')) {
+        selection = null;
+        markDirty();
+        appendDebugRecord(debugPath, {
+          kind: 'selection-clear-escape'
+        });
+      }
+      if (text === 'y' || text === 'Y' || text === '\r') {
+        const selectedFrame = liveSession.snapshot();
+        const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
+        appendEventLine(`${new Date().toISOString()} selection ${copied ? 'copied' : 'copy-failed'}`);
+        if (copied) {
+          setSelectionMode(false);
+        }
+      }
+
+      const routed = routeMuxInputTokens(parsed.tokens, layout);
+      if (routed.leftPaneScrollRows !== 0) {
+        liveSession.scrollViewport(routed.leftPaneScrollRows);
+        markDirty();
+      }
+      if (routed.rightPaneScrollRows !== 0) {
+        events.scrollBy(routed.rightPaneScrollRows, layout.rightCols, layout.paneRows);
+        markDirty();
+      }
+
+      for (const token of parsed.tokens) {
+        if (token.kind !== 'mouse') {
+          continue;
+        }
+        if (isWheelMouseCode(token.event.code)) {
+          continue;
+        }
+
+        const point = pointFromMouseEvent(layout, token.event);
+        if (isLeftButtonPress(token.event.code, token.event.final)) {
+          selection = {
+            anchor: point,
+            focus: point
+          };
+          markDirty();
+          continue;
+        }
+        if (selection !== null && isSelectionDrag(token.event.code, token.event.final)) {
+          selection = {
+            anchor: selection.anchor,
+            focus: point
+          };
+          markDirty();
+          continue;
+        }
+        if (selection !== null && isMouseRelease(token.event.final)) {
+          selection = {
+            anchor: selection.anchor,
+            focus: point
+          };
+          markDirty();
+        }
+      }
+
+      appendDebugRecord(debugPath, {
+        kind: 'input-selection-mode',
+        rawBytesHex: chunk.toString('hex'),
+        sanitizedBytesHex: focusExtraction.sanitized.toString('hex'),
+        tokenCount: parsed.tokens.length,
+        remainderLength: inputRemainder.length,
+        hasSelection: selection !== null
+      });
+      return;
+    }
 
     const routed = routeMuxInputTokens(parsed.tokens, layout);
     if (routed.leftPaneScrollRows !== 0) {

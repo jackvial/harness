@@ -225,6 +225,10 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
     ...last,
     cols: last.cols + 1,
     activeScreen: 'alternate',
+    modes: {
+      ...last.modes,
+      bracketedPaste: !last.modes.bracketedPaste
+    },
     cursor: {
       ...last.cursor,
       col: last.cursor.col + 1,
@@ -242,6 +246,7 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
   assert.equal(diff.equal, false);
   assert.equal(diff.reasons.includes('dimensions-mismatch'), true);
   assert.equal(diff.reasons.includes('active-screen-mismatch'), true);
+  assert.equal(diff.reasons.includes('bracketed-paste-mode-mismatch'), true);
   assert.equal(diff.reasons.includes('cursor-position-mismatch'), true);
   assert.equal(diff.reasons.includes('cursor-visibility-mismatch'), true);
   assert.equal(diff.reasons.includes('cursor-style-mismatch'), true);
@@ -551,6 +556,28 @@ void test('snapshot oracle applies cursor style controls and resets on RIS', () 
   assert.equal(frame.cursor.visible, true);
   assert.equal(frame.activeScreen, 'primary');
   assert.equal(frame.lines[0], '');
+});
+
+void test('snapshot oracle tracks bracketed paste mode through DEC private mode and reset', () => {
+  const oracle = new TerminalSnapshotOracle(8, 2);
+  let frame = oracle.snapshot();
+  assert.equal(frame.modes.bracketedPaste, false);
+
+  oracle.ingest('\u001b[?2004h');
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.bracketedPaste, true);
+
+  oracle.ingest('\u001b[?2004l');
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.bracketedPaste, false);
+
+  oracle.ingest('\u001b[?2004h');
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.bracketedPaste, true);
+
+  oracle.ingest('\u001bc');
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.bracketedPaste, false);
 });
 
 void test('snapshot oracle clears pending-wrap state when resized off right margin', () => {
