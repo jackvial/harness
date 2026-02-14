@@ -166,6 +166,10 @@ void test('codex live session emits terminal and notify-derived events', () => {
   broker.emitData(3, Buffer.from('hello', 'utf8'));
   broker.emitExit({ code: 0, signal: null });
 
+  const firstSnapshot = session.snapshot();
+  assert.equal(firstSnapshot.lines[0], 'hello');
+  assert.equal(firstSnapshot.activeScreen, 'primary');
+
   notifyContent = [
     JSON.stringify({
       ts: '2026-02-14T04:00:00.000Z',
@@ -236,6 +240,9 @@ void test('codex live session emits terminal and notify-derived events', () => {
   assert.equal(session.latestCursorValue(), 7);
   session.write('abc');
   session.resize(100, 40);
+  const resizedSnapshot = session.snapshot();
+  assert.equal(resizedSnapshot.cols, 100);
+  assert.equal(resizedSnapshot.rows, 40);
   assert.equal(broker.writes.length, 1);
   assert.deepEqual(broker.resizeCalls, [{ cols: 100, rows: 40 }]);
 
@@ -386,7 +393,9 @@ void test('codex live session supports custom base args without notify hook', ()
   const session = startCodexLiveSession(
     {
       baseArgs: ['--no-alt-screen', '--search'],
-      useNotifyHook: false
+      useNotifyHook: false,
+      initialCols: 120,
+      initialRows: 35
     },
     {
       startBroker: (options) => {
@@ -404,5 +413,8 @@ void test('codex live session supports custom base args without notify hook', ()
   );
 
   assert.deepEqual(startOptions?.commandArgs, ['--no-alt-screen', '--search']);
+  const snapshot = session.snapshot();
+  assert.equal(snapshot.cols, 120);
+  assert.equal(snapshot.rows, 35);
   session.close();
 });

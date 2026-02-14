@@ -7,6 +7,7 @@ import {
   type BrokerDataEvent
 } from '../pty/session-broker.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
+import { TerminalSnapshotOracle, type TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 
 interface StartPtySessionOptions {
   command?: string;
@@ -42,6 +43,8 @@ interface StartCodexLiveSessionOptions {
   notifyPollMs?: number;
   relayScriptPath?: string;
   maxBacklogBytes?: number;
+  initialCols?: number;
+  initialRows?: number;
 }
 
 type CodexLiveEvent =
@@ -144,6 +147,7 @@ class CodexLiveSession {
   private readonly clearIntervalFn: (handle: NodeJS.Timeout) => void;
   private readonly notifyFilePath: string;
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
+  private readonly snapshotOracle: TerminalSnapshotOracle;
   private readonly brokerAttachmentId: string;
   private readonly notifyTimer: NodeJS.Timeout | null;
   private notifyOffset = 0;
@@ -154,6 +158,10 @@ class CodexLiveSession {
     options: StartCodexLiveSessionOptions = {},
     dependencies: LiveSessionDependencies = {}
   ) {
+    const initialCols = options.initialCols ?? 80;
+    const initialRows = options.initialRows ?? 24;
+    this.snapshotOracle = new TerminalSnapshotOracle(initialCols, initialRows);
+
     const command = options.command ?? DEFAULT_COMMAND;
     const useNotifyHook = options.useNotifyHook ?? true;
     const notifyPollMs = options.notifyPollMs ?? DEFAULT_NOTIFY_POLL_MS;
@@ -191,6 +199,7 @@ class CodexLiveSession {
 
     this.brokerAttachmentId = this.broker.attach({
       onData: (event: BrokerDataEvent) => {
+        this.snapshotOracle.ingest(event.chunk);
         this.emit({
           type: 'terminal-output',
           cursor: event.cursor,
@@ -239,6 +248,11 @@ class CodexLiveSession {
 
   resize(cols: number, rows: number): void {
     this.broker.resize(cols, rows);
+    this.snapshotOracle.resize(cols, rows);
+  }
+
+  snapshot(): TerminalSnapshotFrame {
+    return this.snapshotOracle.snapshot();
   }
 
   close(): void {

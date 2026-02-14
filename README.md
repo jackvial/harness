@@ -11,6 +11,8 @@ Terminal-first multi-agent harness focused on low-latency human control, with ag
 - Single-session attach/detach/reconnect broker.
 - Latency benchmark gate with p50/p95/p99 overhead checks.
 - Codex live-session checkpoint: PTY-hosted `codex` with notify-hook event ingestion and persisted normalized stream output.
+- Stream isolation checkpoint: PTY bytes stay in the terminal stream; events are out-of-band in SQLite/event views.
+- Deterministic pseudo-snapshot oracle for integration/e2e (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`).
 
 ## Priority Direction
 - Primary: self-hosted live-steered Codex PTY session.

@@ -830,11 +830,13 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - Transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads).
 - Milestone 2 live-steered checkpoint is implemented:
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
+  - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output.
   - `scripts/codex-notify-relay.ts` captures Codex notify hook payloads into a local JSONL stream.
   - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events, including raw `meta-notify-observed`.
+  - `scripts/codex-live.ts` enforces terminal stream isolation: PTY output remains on stdout while events persist to SQLite (no event JSON mixed into terminal output).
   - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time, including notify-discovery mode (`--only-notify`).
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
-  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session, right: event feed).
+  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed).
 
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/
