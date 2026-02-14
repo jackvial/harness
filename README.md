@@ -51,13 +51,18 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - `npm run benchmark:latency`
 - `npm run codex:live -- <codex-args>`
 - `npm run codex:live:mux -- <codex-args>`
+- `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
+- `npm run codex:live:mux:client -- -- <codex-args>`
 - `npm run codex:live:tail -- --conversation-id <id> [--from-now] [--only-notify] [--include-text-deltas]`
 - `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
 - `npm run terminal:parity [-- --json]`
 
 ## Human Breakpoints
 - Mux paint correctness:
-  - run `npm run codex:live:mux --`
+  - embedded mode: run `npm run codex:live:mux --`
+  - client/server mode:
+    - terminal 1: `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
+    - terminal 2: `npm run codex:live:mux:client -- -- <codex-args>`
   - confirm left pane remains interactive while right pane updates event feed
   - scroll wheel in left pane should switch status from `pty=live` to `pty=scroll(...)`
   - confirm right pane scroll wheel enters `events=scroll(...)` mode in status and does not type into Codex

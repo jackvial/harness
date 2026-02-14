@@ -33,6 +33,8 @@ interface MuxOptions {
   storePath: string;
   conversationId: string;
   turnId: string;
+  controlPlaneHost: string | null;
+  controlPlanePort: number | null;
   scope: EventScope;
 }
 
@@ -445,14 +447,58 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProb
 }
 
 function parseArgs(argv: string[]): MuxOptions {
+  const codexArgs: string[] = [];
+  let controlPlaneHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? null;
+  let controlPlanePortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? null;
+
+  for (let idx = 0; idx < argv.length; idx += 1) {
+    const arg = argv[idx]!;
+    if (arg === '--harness-server-host') {
+      const value = argv[idx + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --harness-server-host');
+      }
+      controlPlaneHost = value;
+      idx += 1;
+      continue;
+    }
+
+    if (arg === '--harness-server-port') {
+      const value = argv[idx + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --harness-server-port');
+      }
+      controlPlanePortRaw = value;
+      idx += 1;
+      continue;
+    }
+
+    codexArgs.push(arg);
+  }
+
+  let controlPlanePort: number | null = null;
+  if (controlPlanePortRaw !== null) {
+    const parsed = Number.parseInt(controlPlanePortRaw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 65535) {
+      throw new Error(`invalid --harness-server-port value: ${controlPlanePortRaw}`);
+    }
+    controlPlanePort = parsed;
+  }
+
+  if ((controlPlaneHost === null) !== (controlPlanePort === null)) {
+    throw new Error('both control-plane host and port must be set together');
+  }
+
   const conversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
   const turnId = process.env.HARNESS_TURN_ID ?? `turn-${randomUUID()}`;
 
   return {
-    codexArgs: argv,
+    codexArgs,
     storePath: process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite',
     conversationId,
     turnId,
+    controlPlaneHost,
+    controlPlanePort,
     scope: {
       tenantId: process.env.HARNESS_TENANT_ID ?? 'tenant-local',
       userId: process.env.HARNESS_USER_ID ?? 'user-local',
@@ -773,20 +819,26 @@ async function main(): Promise<number> {
   process.stdin.resume();
 
   const probedPalette = await probeTerminalPalette();
-  const streamServer = await startControlPlaneStreamServer({
-    startSession: (input) =>
-      startCodexLiveSession({
-        args: input.args,
-        env: input.env,
-        initialCols: input.initialCols,
-        initialRows: input.initialRows,
-        terminalForegroundHex: input.terminalForegroundHex,
-        terminalBackgroundHex: input.terminalBackgroundHex
-      })
-  });
+  let streamServer: Awaited<ReturnType<typeof startControlPlaneStreamServer>> | null = null;
+  if (options.controlPlaneHost === null || options.controlPlanePort === null) {
+    streamServer = await startControlPlaneStreamServer({
+      startSession: (input) =>
+        startCodexLiveSession({
+          args: input.args,
+          env: input.env,
+          initialCols: input.initialCols,
+          initialRows: input.initialRows,
+          terminalForegroundHex: input.terminalForegroundHex,
+          terminalBackgroundHex: input.terminalBackgroundHex
+        })
+    });
+  }
+
+  const controlPlaneHost = options.controlPlaneHost ?? '127.0.0.1';
+  const controlPlanePort = options.controlPlanePort ?? streamServer!.address().port;
   const streamClient = await connectControlPlaneStreamClient({
-    host: '127.0.0.1',
-    port: streamServer.address().port
+    host: controlPlaneHost,
+    port: controlPlanePort
   });
 
   const terminalSnapshotOracle = new TerminalSnapshotOracle(layout.leftCols, layout.paneRows);
@@ -1386,7 +1438,9 @@ async function main(): Promise<number> {
       // Best-effort shutdown only.
     }
     streamClient.close();
-    await streamServer.close();
+    if (streamServer !== null) {
+      await streamServer.close();
+    }
     store.close();
     restoreTerminalState(true);
   }
