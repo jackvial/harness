@@ -57,6 +57,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Recording file paths are resolved from the command invocation directory (`INIT_CWD` when launched via `npm run`), not the repo root.
 - GIF export toolchain remains available (`scripts/terminal-recording-gif-lib.ts`, `scripts/terminal-recording-to-gif.ts`) for offline conversion.
 - Optional mux debug trace: set `HARNESS_MUX_DEBUG_PATH=/tmp/harness-mux-debug.jsonl` to capture input/routing/render cursor records.
+- Optional ANSI integrity validator for mux frames: set `HARNESS_MUX_VALIDATE_ANSI=1` to emit one-shot diagnostics if any rendered row contains malformed escape sequences.
 - Mux core is now deterministic and directly tested (`test/mux-dual-pane-core.test.ts`).
 - Footer background persistence parity scene added for Codex-like pinned input/status rows.
 - Strict verification gate: lint + typecheck + deadcode + 100% unit/integration/e2e coverage.
@@ -98,6 +99,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - mux shortcuts are global and remain captured even when terminal keyboard protocols (`CSI u`, `modifyOtherKeys`) are active
   - conversation rail order is stable (creation order); switching only changes selection, not row order
   - by default, `Ctrl+C` terminates all live mux conversations and exits the mux process (`HARNESS_MUX_CTRL_C_EXITS=0` disables this)
+  - optional corruption guard: run with `HARNESS_MUX_VALIDATE_ANSI=1` and confirm no `ansi-integrity-failed` diagnostics are emitted
   - recording workflow:
     - run `npm run codex:live:mux -- --record-output .harness/mux-recording.gif`
     - reproduce a session, then exit mux to finalize export

@@ -35,6 +35,7 @@ import {
   cycleConversationId,
   type ConversationRailSessionSummary
 } from '../src/mux/conversation-rail.ts';
+import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import {
   renderWorkspaceRailAnsiRows
 } from '../src/mux/workspace-rail.ts';
@@ -915,7 +916,7 @@ function buildRenderRows(
 ): string[] {
   const rows: string[] = [];
   for (let row = 0; row < layout.paneRows; row += 1) {
-    const left = padOrTrimDisplay(railRows[row] ?? '', layout.leftCols);
+    const left = railRows[row] ?? ' '.repeat(layout.leftCols);
     const right = renderSnapshotAnsiRow(rightFrame, row, layout.rightCols);
     rows.push(`${left}\u001b[0m│${right}`);
   }
@@ -1231,6 +1232,7 @@ async function main(): Promise<number> {
     DEFAULT_PTY_RESIZE_SETTLE_MS
   );
   const ctrlCExits = parseBooleanEnv(process.env.HARNESS_MUX_CTRL_C_EXITS, true);
+  const validateAnsi = parseBooleanEnv(process.env.HARNESS_MUX_VALIDATE_ANSI, false);
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
@@ -1396,6 +1398,7 @@ async function main(): Promise<number> {
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
+  let ansiValidationReported = false;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -1728,6 +1731,13 @@ async function main(): Promise<number> {
       renderSelection !== null,
       ctrlCExits
     );
+    if (validateAnsi) {
+      const issues = findAnsiIntegrityIssues(rows);
+      if (issues.length > 0 && !ansiValidationReported) {
+        ansiValidationReported = true;
+        process.stderr.write(`[mux] ansi-integrity-failed ${issues.join(' | ')}\n`);
+      }
+    }
     const diff = diffRenderedRows(rows, previousRows);
     const overlayResetRows = mergeUniqueRows(previousSelectionRows, selectionRows);
 
