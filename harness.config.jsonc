@@ -13,8 +13,21 @@
       // "mux.conversation.delete": ["alt+d"]
     }
   },
-  "perf": {
-    "enabled": false,
-    "filePath": ".harness/perf.jsonl"
+  "debug": {
+    // Global debug/instrumentation gate.
+    "enabled": true,
+    // Overwrite debug/perf artifacts on startup to keep each run clean.
+    "overwriteArtifactsOnStart": true,
+    "perf": {
+      "enabled": true,
+      "filePath": ".harness/perf-startup.jsonl"
+    },
+    "mux": {
+      "debugPath": ".harness/mux-debug.jsonl",
+      "validateAnsi": false,
+      "resizeMinIntervalMs": 33,
+      "ptyResizeSettleMs": 75,
+      "startupSettleQuietMs": 300
+    }
   }
 }

@@ -987,11 +987,14 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
     - startup performance spans/events for startup and conversation launch (`mux.startup.*`, `mux.conversation.start`) through `perf-core`
     - explicit startup trace points for active-session process startup, first PTY output, and first visible paint (`mux.startup.active-start-command`, `mux.startup.active-first-output`, `mux.startup.active-first-visible-paint`)
+    - startup settle trace point based on terminal-buffer quiet period (`mux.startup.active-settled`)
     - eager background start of persisted non-active conversations on boot to remove first-select cold-start behavior
     - archive/delete controls wired through the same control-plane path used by human and automation clients
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
   - `scripts/perf-mux-startup-report.ts` provides a deterministic startup timeline report over captured `perf-core` JSONL traces.
+  - `scripts/perf-codex-startup-loop.ts` provides repeatable startup-loop measurement (first output, first visible paint, settled) using the same PTY/VTE model path.
+  - runtime debug/perf behavior is config-governed in `harness.config.jsonc` under `debug.*`, with overwrite-on-start artifact control for deterministic runs.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.
   - `src/mux/workspace-rail-model.ts` separates left-rail data/view modeling from terminal rendering so future UI technologies can reuse the same model pipeline.

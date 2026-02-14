@@ -12,9 +12,24 @@ interface HarnessPerfConfig {
   readonly filePath: string;
 }
 
+interface HarnessDebugMuxConfig {
+  readonly debugPath: string | null;
+  readonly validateAnsi: boolean;
+  readonly resizeMinIntervalMs: number;
+  readonly ptyResizeSettleMs: number;
+  readonly startupSettleQuietMs: number;
+}
+
+interface HarnessDebugConfig {
+  readonly enabled: boolean;
+  readonly overwriteArtifactsOnStart: boolean;
+  readonly perf: HarnessPerfConfig;
+  readonly mux: HarnessDebugMuxConfig;
+}
+
 interface HarnessConfig {
   readonly mux: HarnessMuxConfig;
-  readonly perf: HarnessPerfConfig;
+  readonly debug: HarnessDebugConfig;
 }
 
 interface LoadedHarnessConfig {
@@ -28,9 +43,20 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
   mux: {
     keybindings: {}
   },
-  perf: {
-    enabled: false,
-    filePath: '.harness/perf.jsonl'
+  debug: {
+    enabled: true,
+    overwriteArtifactsOnStart: true,
+    perf: {
+      enabled: true,
+      filePath: '.harness/perf-startup.jsonl'
+    },
+    mux: {
+      debugPath: '.harness/mux-debug.jsonl',
+      validateAnsi: false,
+      resizeMinIntervalMs: 33,
+      ptyResizeSettleMs: 75,
+      startupSettleQuietMs: 300
+    }
   }
 };
 
@@ -194,19 +220,89 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function normalizePerfConfig(input: unknown): HarnessPerfConfig {
   const record = asRecord(input);
   if (record === null) {
-    return DEFAULT_HARNESS_CONFIG.perf;
+    return DEFAULT_HARNESS_CONFIG.debug.perf;
   }
   const enabled =
     typeof record['enabled'] === 'boolean'
       ? record['enabled']
-      : DEFAULT_HARNESS_CONFIG.perf.enabled;
+      : DEFAULT_HARNESS_CONFIG.debug.perf.enabled;
   const filePath =
     typeof record['filePath'] === 'string' && record['filePath'].trim().length > 0
       ? record['filePath'].trim()
-      : DEFAULT_HARNESS_CONFIG.perf.filePath;
+      : DEFAULT_HARNESS_CONFIG.debug.perf.filePath;
   return {
     enabled,
     filePath
+  };
+}
+
+function normalizeNonNegativeInt(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  const normalized = Math.floor(value);
+  if (normalized < 0) {
+    return fallback;
+  }
+  return normalized;
+}
+
+function normalizeDebugMuxConfig(input: unknown): HarnessDebugMuxConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.debug.mux;
+  }
+  const debugPathRaw = record['debugPath'];
+  const debugPath =
+    typeof debugPathRaw === 'string' && debugPathRaw.trim().length > 0
+      ? debugPathRaw.trim()
+      : DEFAULT_HARNESS_CONFIG.debug.mux.debugPath;
+  const validateAnsi =
+    typeof record['validateAnsi'] === 'boolean'
+      ? record['validateAnsi']
+      : DEFAULT_HARNESS_CONFIG.debug.mux.validateAnsi;
+  const resizeMinIntervalMs = normalizeNonNegativeInt(
+    record['resizeMinIntervalMs'],
+    DEFAULT_HARNESS_CONFIG.debug.mux.resizeMinIntervalMs
+  );
+  const ptyResizeSettleMs = normalizeNonNegativeInt(
+    record['ptyResizeSettleMs'],
+    DEFAULT_HARNESS_CONFIG.debug.mux.ptyResizeSettleMs
+  );
+  const startupSettleQuietMs = normalizeNonNegativeInt(
+    record['startupSettleQuietMs'],
+    DEFAULT_HARNESS_CONFIG.debug.mux.startupSettleQuietMs
+  );
+  return {
+    debugPath,
+    validateAnsi,
+    resizeMinIntervalMs,
+    ptyResizeSettleMs,
+    startupSettleQuietMs
+  };
+}
+
+function normalizeDebugConfig(input: unknown, legacyPerf: HarnessPerfConfig): HarnessDebugConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return {
+      ...DEFAULT_HARNESS_CONFIG.debug,
+      perf: legacyPerf
+    };
+  }
+  const enabled =
+    typeof record['enabled'] === 'boolean' ? record['enabled'] : DEFAULT_HARNESS_CONFIG.debug.enabled;
+  const overwriteArtifactsOnStart =
+    typeof record['overwriteArtifactsOnStart'] === 'boolean'
+      ? record['overwriteArtifactsOnStart']
+      : DEFAULT_HARNESS_CONFIG.debug.overwriteArtifactsOnStart;
+  const perf = normalizePerfConfig(record['perf']);
+  const mux = normalizeDebugMuxConfig(record['mux']);
+  return {
+    enabled,
+    overwriteArtifactsOnStart,
+    perf,
+    mux
   };
 }
 
@@ -219,13 +315,14 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   }
 
   const mux = asRecord(root['mux']);
-  const perf = normalizePerfConfig(root['perf']);
+  const legacyPerf = normalizePerfConfig(root['perf']);
+  const debug = normalizeDebugConfig(root['debug'], legacyPerf);
 
   return {
     mux: {
       keybindings: mux === null ? {} : normalizeKeybindings(mux['keybindings'])
     },
-    perf
+    debug
   };
 }
 

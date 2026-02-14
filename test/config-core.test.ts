@@ -30,8 +30,9 @@ void test('parseHarnessConfigText supports jsonc comments and trailing commas', 
     'mux.conversation.previous': ['ctrl+k', 'ctrl+p'],
     'bad.value': ['alt+n']
   });
-  assert.equal(parsed.perf.enabled, false);
-  assert.equal(parsed.perf.filePath, '.harness/perf.jsonl');
+  assert.equal(parsed.debug.enabled, true);
+  assert.equal(parsed.debug.perf.enabled, true);
+  assert.equal(parsed.debug.perf.filePath, '.harness/perf-startup.jsonl');
 });
 
 void test('parseHarnessConfigText preserves escaped strings and ignores inline/block comment markers in strings', () => {
@@ -61,8 +62,9 @@ void test('parseHarnessConfigText preserves escaped strings and ignores inline/b
     'mux.app.interrupt-all': ['ctrl+"c"'],
     'mux.literal': ['text /* not a comment */ tail']
   });
-  assert.equal(parsed.perf.enabled, false);
-  assert.equal(parsed.perf.filePath, '.harness/perf.jsonl');
+  assert.equal(parsed.debug.enabled, true);
+  assert.equal(parsed.debug.perf.enabled, true);
+  assert.equal(parsed.debug.perf.filePath, '.harness/perf-startup.jsonl');
 });
 
 void test('parseHarnessConfigText falls back for invalid root shapes', () => {
@@ -72,9 +74,20 @@ void test('parseHarnessConfigText falls back for invalid root shapes', () => {
     mux: {
       keybindings: {}
     },
-    perf: {
-      enabled: false,
-      filePath: '.harness/perf.jsonl'
+    debug: {
+      enabled: true,
+      overwriteArtifactsOnStart: true,
+      perf: {
+        enabled: true,
+        filePath: '.harness/perf-startup.jsonl'
+      },
+      mux: {
+        debugPath: '.harness/mux-debug.jsonl',
+        validateAnsi: false,
+        resizeMinIntervalMs: 33,
+        ptyResizeSettleMs: 75,
+        startupSettleQuietMs: 300
+      }
     }
   });
 });
@@ -118,9 +131,20 @@ void test('loadHarnessConfig reads valid config file', () => {
         'mux.app.quit': ['ctrl+]']
       }
     },
-    perf: {
-      enabled: false,
-      filePath: '.harness/perf.jsonl'
+    debug: {
+      enabled: true,
+      overwriteArtifactsOnStart: true,
+      perf: {
+        enabled: true,
+        filePath: '.harness/perf-startup.jsonl'
+      },
+      mux: {
+        debugPath: '.harness/mux-debug.jsonl',
+        validateAnsi: false,
+        resizeMinIntervalMs: 33,
+        ptyResizeSettleMs: 75,
+        startupSettleQuietMs: 300
+      }
     }
   });
   assert.equal(loaded.fromLastKnownGood, false);
@@ -140,9 +164,20 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
           'mux.conversation.new': ['ctrl+t']
         }
       },
-      perf: {
+      debug: {
         enabled: false,
-        filePath: '.harness/perf.jsonl'
+        overwriteArtifactsOnStart: false,
+        perf: {
+          enabled: false,
+          filePath: '.harness/perf.jsonl'
+        },
+        mux: {
+          debugPath: null,
+          validateAnsi: true,
+          resizeMinIntervalMs: 1,
+          ptyResizeSettleMs: 2,
+          startupSettleQuietMs: 3
+        }
       }
     }
   });
@@ -152,9 +187,20 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         'mux.conversation.new': ['ctrl+t']
       }
     },
-    perf: {
+    debug: {
       enabled: false,
-      filePath: '.harness/perf.jsonl'
+      overwriteArtifactsOnStart: false,
+      perf: {
+        enabled: false,
+        filePath: '.harness/perf.jsonl'
+      },
+      mux: {
+        debugPath: null,
+        validateAnsi: true,
+        resizeMinIntervalMs: 1,
+        ptyResizeSettleMs: 2,
+        startupSettleQuietMs: 3
+      }
     }
   });
   assert.equal(loaded.fromLastKnownGood, true);
@@ -177,9 +223,20 @@ void test('loadHarnessConfig supports explicit file path override', () => {
         'mux.app.quit': ['ctrl+q']
       }
     },
-    perf: {
-      enabled: false,
-      filePath: '.harness/perf.jsonl'
+    debug: {
+      enabled: true,
+      overwriteArtifactsOnStart: true,
+      perf: {
+        enabled: true,
+        filePath: '.harness/perf-startup.jsonl'
+      },
+      mux: {
+        debugPath: '.harness/mux-debug.jsonl',
+        validateAnsi: false,
+        resizeMinIntervalMs: 33,
+        ptyResizeSettleMs: 75,
+        startupSettleQuietMs: 300
+      }
     }
   });
   assert.equal(loaded.fromLastKnownGood, false);
@@ -202,9 +259,20 @@ void test('loadHarnessConfig resolves defaults from process cwd when options are
           'mux.conversation.next': ['ctrl+j']
         }
       },
-      perf: {
-        enabled: false,
-        filePath: '.harness/perf.jsonl'
+      debug: {
+        enabled: true,
+        overwriteArtifactsOnStart: true,
+        perf: {
+          enabled: true,
+          filePath: '.harness/perf-startup.jsonl'
+        },
+        mux: {
+          debugPath: '.harness/mux-debug.jsonl',
+          validateAnsi: false,
+          resizeMinIntervalMs: 33,
+          ptyResizeSettleMs: 75,
+          startupSettleQuietMs: 300
+        }
       }
     });
   } finally {
@@ -212,42 +280,152 @@ void test('loadHarnessConfig resolves defaults from process cwd when options are
   }
 });
 
-void test('parseHarnessConfigText parses perf toggles and file path', () => {
+void test('parseHarnessConfigText parses debug perf and mux toggles', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "debug": {
+        "enabled": false,
+        "overwriteArtifactsOnStart": false,
+        "perf": {
+          "enabled": false,
+          "filePath": " .harness/custom-perf.jsonl "
+        },
+        "mux": {
+          "debugPath": " .harness/custom-mux.jsonl ",
+          "validateAnsi": true,
+          "resizeMinIntervalMs": 12,
+          "ptyResizeSettleMs": 34,
+          "startupSettleQuietMs": 56
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.debug, {
+    enabled: false,
+    overwriteArtifactsOnStart: false,
+    perf: {
+      enabled: false,
+      filePath: '.harness/custom-perf.jsonl'
+    },
+    mux: {
+      debugPath: '.harness/custom-mux.jsonl',
+      validateAnsi: true,
+      resizeMinIntervalMs: 12,
+      ptyResizeSettleMs: 34,
+      startupSettleQuietMs: 56
+    }
+  });
+});
+
+void test('parseHarnessConfigText supports legacy top-level perf shape', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "perf": {
+        "enabled": false,
+        "filePath": " .harness/legacy-perf.jsonl "
+      }
+    }
+  `);
+  assert.deepEqual(parsed.debug.perf, {
+    enabled: false,
+    filePath: '.harness/legacy-perf.jsonl'
+  });
+});
+
+void test('parseHarnessConfigText falls back for invalid debug shapes and values', () => {
+  const parsedFromArray = parseHarnessConfigText(`
+    {
+      "debug": []
+    }
+  `);
+  assert.deepEqual(parsedFromArray.debug, {
+    enabled: true,
+    overwriteArtifactsOnStart: true,
+    perf: {
+      enabled: true,
+      filePath: '.harness/perf-startup.jsonl'
+    },
+    mux: {
+      debugPath: '.harness/mux-debug.jsonl',
+      validateAnsi: false,
+      resizeMinIntervalMs: 33,
+      ptyResizeSettleMs: 75,
+      startupSettleQuietMs: 300
+    }
+  });
+
+  const parsedFromInvalidValues = parseHarnessConfigText(`
+    {
+      "debug": {
+        "enabled": "yes",
+        "overwriteArtifactsOnStart": "no",
+        "perf": {
+          "enabled": "yes",
+          "filePath": "   "
+        },
+        "mux": {
+          "debugPath": "   ",
+          "validateAnsi": "no",
+          "resizeMinIntervalMs": -1,
+          "ptyResizeSettleMs": -2,
+          "startupSettleQuietMs": -3
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsedFromInvalidValues.debug, {
+    enabled: true,
+    overwriteArtifactsOnStart: true,
+    perf: {
+      enabled: true,
+      filePath: '.harness/perf-startup.jsonl'
+    },
+    mux: {
+      debugPath: '.harness/mux-debug.jsonl',
+      validateAnsi: false,
+      resizeMinIntervalMs: 33,
+      ptyResizeSettleMs: 75,
+      startupSettleQuietMs: 300
+    }
+  });
+});
+
+void test('parseHarnessConfigText normalizes null mux debug path and falls back for non-finite numbers', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "debug": {
+        "mux": {
+          "debugPath": null,
+          "resizeMinIntervalMs": 1.8,
+          "ptyResizeSettleMs": null,
+          "startupSettleQuietMs": "x"
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.debug.mux, {
+    debugPath: '.harness/mux-debug.jsonl',
+    validateAnsi: false,
+    resizeMinIntervalMs: 1,
+    ptyResizeSettleMs: 75,
+    startupSettleQuietMs: 300
+  });
+});
+
+void test('parseHarnessConfigText prefers explicit debug section over legacy top-level perf', () => {
   const parsed = parseHarnessConfigText(`
     {
       "perf": {
         "enabled": true,
         "filePath": " .harness/custom-perf.jsonl "
+      },
+      "debug": {
+        "enabled": true
       }
     }
   `);
-  assert.deepEqual(parsed.perf, {
+  assert.deepEqual(parsed.debug.perf, {
     enabled: true,
-    filePath: '.harness/custom-perf.jsonl'
-  });
-});
-
-void test('parseHarnessConfigText falls back for invalid perf shapes and values', () => {
-  const parsedFromArray = parseHarnessConfigText(`
-    {
-      "perf": []
-    }
-  `);
-  assert.deepEqual(parsedFromArray.perf, {
-    enabled: false,
-    filePath: '.harness/perf.jsonl'
-  });
-
-  const parsedFromInvalidValues = parseHarnessConfigText(`
-    {
-      "perf": {
-        "enabled": "yes",
-        "filePath": "   "
-      }
-    }
-  `);
-  assert.deepEqual(parsedFromInvalidValues.perf, {
-    enabled: false,
-    filePath: '.harness/perf.jsonl'
+    filePath: '.harness/perf-startup.jsonl'
   });
 });

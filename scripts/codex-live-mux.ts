@@ -1,6 +1,6 @@
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, truncateSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { openCodexControlPlaneClient } from '../src/control-plane/codex-session-stream.ts';
@@ -173,6 +173,7 @@ interface GitSummary {
 
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
+const DEFAULT_STARTUP_SETTLE_QUIET_MS = 300;
 function restoreTerminalState(
   newline: boolean,
   restoreInputModes: (() => void) | null = null
@@ -241,6 +242,23 @@ function appendDebugRecord(debugPath: string | null, record: Record<string, unkn
   } catch {
     // Debug tracing must never break the live session loop.
   }
+}
+
+function prepareArtifactPath(path: string, overwriteOnStart: boolean): string {
+  const resolvedPath = resolve(path);
+  mkdirSync(dirname(resolvedPath), { recursive: true });
+  if (overwriteOnStart) {
+    try {
+      truncateSync(resolvedPath, 0);
+    } catch (error: unknown) {
+      const code = (error as { code?: unknown }).code;
+      if (code !== 'ENOENT') {
+        throw error;
+      }
+      appendFileSync(resolvedPath, '', 'utf8');
+    }
+  }
+  return resolvedPath;
 }
 
 function asString(value: unknown, fallback: string): string {
@@ -347,6 +365,13 @@ function isSessionNotFoundError(error: unknown): boolean {
     return false;
   }
   return /session not found/i.test(error.message);
+}
+
+function isSessionNotLiveError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /session is not live/i.test(error.message);
 }
 
 function mapTerminalOutputToNormalizedEvent(
@@ -1403,11 +1428,15 @@ async function main(): Promise<number> {
   const loadedConfig = loadHarnessConfig({
     cwd: options.invocationDirectory
   });
-  const perfEnabled = parseBooleanEnv(process.env.HARNESS_PERF_ENABLED, loadedConfig.config.perf.enabled);
-  const perfFilePath = process.env.HARNESS_PERF_FILE ?? loadedConfig.config.perf.filePath;
+  const debugConfig = loadedConfig.config.debug;
+  const perfEnabled = debugConfig.enabled && debugConfig.perf.enabled;
+  const perfFilePath = resolve(options.invocationDirectory, debugConfig.perf.filePath);
+  if (perfEnabled) {
+    prepareArtifactPath(perfFilePath, debugConfig.overwriteArtifactsOnStart);
+  }
   configurePerfCore({
     enabled: perfEnabled,
-    filePath: resolve(options.invocationDirectory, perfFilePath)
+    filePath: perfFilePath
   });
   const startupSpan = startPerfSpan('mux.startup.total', {
     invocationDirectory: options.invocationDirectory,
@@ -1419,20 +1448,27 @@ async function main(): Promise<number> {
   }
   const shortcutBindings = resolveMuxShortcutBindings(loadedConfig.config.mux.keybindings);
   const store = new SqliteEventStore(options.storePath);
-  const debugPath = process.env.HARNESS_MUX_DEBUG_PATH ?? null;
+  const debugPath =
+    debugConfig.enabled && debugConfig.mux.debugPath !== null
+      ? prepareArtifactPath(
+          resolve(options.invocationDirectory, debugConfig.mux.debugPath),
+          debugConfig.overwriteArtifactsOnStart
+        )
+      : null;
 
   let size = terminalSize();
   let layout = computeDualPaneLayout(size.cols, size.rows);
-  const resizeMinIntervalMs = parsePositiveInt(
-    process.env.HARNESS_MUX_RESIZE_MIN_INTERVAL_MS,
-    DEFAULT_RESIZE_MIN_INTERVAL_MS
-  );
-  const ptyResizeSettleMs = parsePositiveInt(
-    process.env.HARNESS_MUX_PTY_RESIZE_SETTLE_MS,
-    DEFAULT_PTY_RESIZE_SETTLE_MS
-  );
+  const resizeMinIntervalMs = debugConfig.enabled
+    ? debugConfig.mux.resizeMinIntervalMs
+    : DEFAULT_RESIZE_MIN_INTERVAL_MS;
+  const ptyResizeSettleMs = debugConfig.enabled
+    ? debugConfig.mux.ptyResizeSettleMs
+    : DEFAULT_PTY_RESIZE_SETTLE_MS;
+  const startupSettleQuietMs = debugConfig.enabled
+    ? debugConfig.mux.startupSettleQuietMs
+    : DEFAULT_STARTUP_SETTLE_QUIET_MS;
   const ctrlCExits = parseBooleanEnv(process.env.HARNESS_MUX_CTRL_C_EXITS, true);
-  const validateAnsi = parseBooleanEnv(process.env.HARNESS_MUX_VALIDATE_ANSI, false);
+  const validateAnsi = debugConfig.enabled ? debugConfig.mux.validateAnsi : false;
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
@@ -1520,8 +1556,11 @@ async function main(): Promise<number> {
   let startupActiveStartCommandSpan: ReturnType<typeof startPerfSpan> | null = null;
   let startupActiveFirstOutputSpan: ReturnType<typeof startPerfSpan> | null = null;
   let startupActiveFirstPaintSpan: ReturnType<typeof startPerfSpan> | null = null;
+  let startupActiveSettledSpan: ReturnType<typeof startPerfSpan> | null = null;
   let startupActiveFirstOutputObserved = false;
   let startupActiveFirstPaintObserved = false;
+  let startupActiveSettledObserved = false;
+  let startupActiveSettledTimer: NodeJS.Timeout | null = null;
 
   const endStartupActiveStartCommandSpan = (attrs: Record<string, boolean | number | string>): void => {
     if (startupActiveStartCommandSpan === null) {
@@ -1545,6 +1584,68 @@ async function main(): Promise<number> {
     }
     startupActiveFirstPaintSpan.end(attrs);
     startupActiveFirstPaintSpan = null;
+  };
+
+  const endStartupActiveSettledSpan = (attrs: Record<string, boolean | number | string>): void => {
+    if (startupActiveSettledSpan === null) {
+      return;
+    }
+    startupActiveSettledSpan.end(attrs);
+    startupActiveSettledSpan = null;
+  };
+
+  const clearStartupSettledTimer = (): void => {
+    if (startupActiveSettledTimer === null) {
+      return;
+    }
+    clearTimeout(startupActiveSettledTimer);
+    startupActiveSettledTimer = null;
+  };
+
+  const visibleGlyphCellCount = (conversation: ConversationState): number => {
+    const frame = conversation.oracle.snapshot();
+    let count = 0;
+    for (const line of frame.richLines) {
+      for (const cell of line.cells) {
+        if (!cell.continued && cell.glyph.trim().length > 0) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  };
+
+  const scheduleStartupSettledProbe = (sessionId: string): void => {
+    if (
+      startupFirstPaintTargetSessionId !== sessionId ||
+      !startupActiveFirstOutputObserved ||
+      startupActiveSettledObserved
+    ) {
+      return;
+    }
+    clearStartupSettledTimer();
+    startupActiveSettledTimer = setTimeout(() => {
+      startupActiveSettledTimer = null;
+      if (startupFirstPaintTargetSessionId !== sessionId || startupActiveSettledObserved) {
+        return;
+      }
+      const conversation = conversations.get(sessionId);
+      if (conversation === undefined) {
+        return;
+      }
+      const glyphCells = visibleGlyphCellCount(conversation);
+      startupActiveSettledObserved = true;
+      recordPerfEvent('mux.startup.active-settled', {
+        sessionId,
+        quietMs: startupSettleQuietMs,
+        glyphCells
+      });
+      endStartupActiveSettledSpan({
+        observed: true,
+        quietMs: startupSettleQuietMs,
+        glyphCells
+      });
+    }, startupSettleQuietMs);
   };
 
   const ensureConversation = (
@@ -1637,6 +1738,10 @@ async function main(): Promise<number> {
         userId: options.scope.userId,
         workspaceId: options.scope.workspaceId,
         worktreeId: options.scope.worktreeId
+      });
+      ptySizeByConversationId.set(sessionId, {
+        cols: layout.rightCols,
+        rows: layout.paneRows
       });
       if (startupFirstPaintTargetSessionId === sessionId) {
         endStartupActiveStartCommandSpan({
@@ -1809,7 +1914,7 @@ async function main(): Promise<number> {
   let lastResizeApplyAtMs = 0;
   let ptyResizeTimer: NodeJS.Timeout | null = null;
   let pendingPtySize: { cols: number; rows: number } | null = null;
-  let currentPtySize: { cols: number; rows: number } | null = null;
+  const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
   const requestStop = (): void => {
     if (stop) {
@@ -1876,15 +1981,15 @@ async function main(): Promise<number> {
   }, 1500);
 
   const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
-    if (
-      currentPtySize !== null &&
-      currentPtySize.cols === ptySize.cols &&
-      currentPtySize.rows === ptySize.rows
-    ) {
+    const conversation = activeConversation();
+    const currentPtySize = ptySizeByConversationId.get(conversation.sessionId);
+    if (currentPtySize !== undefined && currentPtySize.cols === ptySize.cols && currentPtySize.rows === ptySize.rows) {
       return;
     }
-    currentPtySize = ptySize;
-    const conversation = activeConversation();
+    ptySizeByConversationId.set(conversation.sessionId, {
+      cols: ptySize.cols,
+      rows: ptySize.rows
+    });
     conversation.oracle.resize(ptySize.cols, ptySize.rows);
     streamClient.sendResize(conversation.sessionId, ptySize.cols, ptySize.rows);
     appendDebugRecord(debugPath, {
@@ -2067,7 +2172,6 @@ async function main(): Promise<number> {
     activeConversationId = sessionId;
     forceFullClear = true;
     previousRows = [];
-    currentPtySize = null;
     const targetConversation = conversations.get(sessionId);
     if (targetConversation !== undefined && !targetConversation.live) {
       await startConversation(sessionId);
@@ -2075,7 +2179,7 @@ async function main(): Promise<number> {
     try {
       await attachConversation(sessionId);
     } catch (error: unknown) {
-      if (!isSessionNotFoundError(error)) {
+      if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
         throw error;
       }
       if (targetConversation !== undefined) {
@@ -2153,6 +2257,7 @@ async function main(): Promise<number> {
 
     removedConversationIds.add(sessionId);
     conversations.delete(sessionId);
+    ptySizeByConversationId.delete(sessionId);
     processUsageBySessionId.delete(sessionId);
 
     if (activeConversationId === sessionId) {
@@ -2374,6 +2479,12 @@ async function main(): Promise<number> {
         });
       }
       conversation.oracle.ingest(chunk);
+      if (
+        startupFirstPaintTargetSessionId !== null &&
+        envelope.sessionId === startupFirstPaintTargetSessionId
+      ) {
+        scheduleStartupSettledProbe(envelope.sessionId);
+      }
 
       const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
       store.appendEvents([normalized]);
@@ -2420,6 +2531,7 @@ async function main(): Promise<number> {
         conversation.lastExit = envelope.event.exit;
         conversation.exitedAt = new Date().toISOString();
         conversation.attached = false;
+        ptySizeByConversationId.delete(envelope.sessionId);
         if (activeConversationId === envelope.sessionId) {
           const fallback = conversationOrder(conversations).find((sessionId) => {
             const candidate = conversations.get(sessionId);
@@ -2448,6 +2560,7 @@ async function main(): Promise<number> {
         conversation.lastExit = envelope.exit;
         conversation.exitedAt = new Date().toISOString();
         conversation.attached = false;
+        ptySizeByConversationId.delete(envelope.sessionId);
         if (activeConversationId === envelope.sessionId) {
           const fallback = conversationOrder(conversations).find((sessionId) => {
             const candidate = conversations.get(sessionId);
@@ -2478,6 +2591,10 @@ async function main(): Promise<number> {
     });
     startupActiveFirstPaintSpan = startPerfSpan('mux.startup.active-first-visible-paint', {
       sessionId: initialActiveId
+    });
+    startupActiveSettledSpan = startPerfSpan('mux.startup.active-settled', {
+      sessionId: initialActiveId,
+      quietMs: startupSettleQuietMs
     });
     const initialActivateSpan = startPerfSpan('mux.startup.activate-initial', {
       initialActiveId
@@ -2881,6 +2998,10 @@ async function main(): Promise<number> {
     });
     endStartupActiveFirstPaintSpan({
       observed: startupActiveFirstPaintObserved
+    });
+    clearStartupSettledTimer();
+    endStartupActiveSettledSpan({
+      observed: startupActiveSettledObserved
     });
     shutdownPerfCore();
   }

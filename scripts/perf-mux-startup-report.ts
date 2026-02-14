@@ -87,7 +87,7 @@ function formatMs(ns: bigint): string {
 }
 
 function parseArgs(argv: readonly string[]): string {
-  let filePath = process.env.HARNESS_PERF_FILE ?? '.harness/perf.jsonl';
+  let filePath = '.harness/perf-startup.jsonl';
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx]!;
     if (arg === '--file') {

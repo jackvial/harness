@@ -33,6 +33,7 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Keep one protocol path for both human UI and API clients through the control-plane stream.
 - Expose stream subscriptions with scoped replay for automation clients monitoring live session state/output.
 - Record terminal frames and export deterministic GIF artifacts.
+- Measure startup repeatably with loop tooling (`perf:codex:startup:loop`) and mux startup traces (`perf:mux:startup`).
 
 ## Technical Strategy
 
@@ -41,6 +42,7 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Stream protocol as the primary interface for control and observability.
 - SQLite append-only events store for persistent, tenanted state.
 - One config system (`harness.config.jsonc`), one logger, one perf instrumentation surface.
+- Debug/perf knobs live in `harness.config.jsonc` (`debug.*`) with overwrite-on-start artifact control.
 - Verification gates are mandatory: lint, typecheck, dead-code checks, and full coverage.
 
 ## Spirit
