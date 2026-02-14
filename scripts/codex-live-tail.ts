@@ -8,7 +8,9 @@ interface TailOptions {
   dbPath: string;
   pollMs: number;
   json: boolean;
+  includeTextDeltas: boolean;
   exitOnSessionEnd: boolean;
+  fromNow: boolean;
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
@@ -36,7 +38,9 @@ function parseArgs(argv: string[]): TailOptions {
   let dbPath = envDbPath;
   let pollMs = envPollMs;
   let json = false;
+  let includeTextDeltas = false;
   let exitOnSessionEnd = envExitOnSessionEnd;
+  let fromNow = false;
 
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx];
@@ -69,6 +73,22 @@ function parseArgs(argv: string[]): TailOptions {
       json = true;
       continue;
     }
+    if (arg === '--include-text-deltas') {
+      includeTextDeltas = true;
+      continue;
+    }
+    if (arg === '--no-text-deltas') {
+      includeTextDeltas = false;
+      continue;
+    }
+    if (arg === '--from-now') {
+      fromNow = true;
+      continue;
+    }
+    if (arg === '--from-start') {
+      fromNow = false;
+      continue;
+    }
     if (arg === '--no-exit-on-session-end') {
       exitOnSessionEnd = false;
       continue;
@@ -80,7 +100,9 @@ function parseArgs(argv: string[]): TailOptions {
   }
 
   if (typeof conversationId !== 'string' || conversationId.length === 0) {
-    process.stderr.write('usage: npm run codex:live:tail -- --conversation-id <id> [--json]\n');
+    process.stderr.write(
+      'usage: npm run codex:live:tail -- --conversation-id <id> [--json] [--include-text-deltas] [--from-now|--from-start]\n'
+    );
     process.exitCode = 2;
     process.exit(2);
   }
@@ -92,8 +114,31 @@ function parseArgs(argv: string[]): TailOptions {
     dbPath,
     pollMs,
     json,
-    exitOnSessionEnd
+    includeTextDeltas,
+    exitOnSessionEnd,
+    fromNow
   };
+}
+
+function escapeControls(value: string): string {
+  let escaped = '';
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if (code === 0x0a) {
+      escaped += '\\n';
+      continue;
+    }
+    if (code === 0x09) {
+      escaped += '\\t';
+      continue;
+    }
+    if (code >= 0x20 && code <= 0x7e) {
+      escaped += char;
+      continue;
+    }
+    escaped += `\\x${code.toString(16).padStart(2, '0')}`;
+  }
+  return escaped;
 }
 
 function summarizeEvent(event: NormalizedEventEnvelope): string {
@@ -102,7 +147,7 @@ function summarizeEvent(event: NormalizedEventEnvelope): string {
 
   if (event.type === 'provider-text-delta' && payload.kind === 'text-delta') {
     const delta = String(payload.delta ?? '');
-    const preview = delta.replaceAll('\n', '\\n').slice(0, 80);
+    const preview = escapeControls(delta).slice(0, 80);
     return `${event.ts} ${event.type} turn=${turnId} delta="${preview}"`;
   }
 
@@ -111,6 +156,13 @@ function summarizeEvent(event: NormalizedEventEnvelope): string {
   }
 
   return `${event.ts} ${event.type} turn=${turnId}`;
+}
+
+function shouldEmitEvent(event: NormalizedEventEnvelope, options: TailOptions): boolean {
+  if (options.includeTextDeltas) {
+    return true;
+  }
+  return event.type !== 'provider-text-delta';
 }
 
 function isSessionExitEvent(event: NormalizedEventEnvelope): boolean {
@@ -137,8 +189,21 @@ async function main(): Promise<number> {
   process.once('SIGTERM', requestStop);
 
   try {
+    if (options.fromNow) {
+      const baseline = store.listEvents({
+        tenantId: options.tenantId,
+        userId: options.userId,
+        conversationId: options.conversationId,
+        afterRowId: 0,
+        limit: 1_000_000
+      });
+      if (baseline.length > 0) {
+        lastRowId = baseline[baseline.length - 1]!.rowId;
+      }
+    }
+
     process.stderr.write(
-      `[tail] conversation=${options.conversationId} tenant=${options.tenantId} user=${options.userId} db=${options.dbPath}\n`
+      `[tail] conversation=${options.conversationId} tenant=${options.tenantId} user=${options.userId} db=${options.dbPath} fromNow=${String(options.fromNow)}\n`
     );
 
     while (!stop) {
@@ -152,6 +217,9 @@ async function main(): Promise<number> {
 
       for (const row of rows) {
         lastRowId = row.rowId;
+        if (!shouldEmitEvent(row.event, options)) {
+          continue;
+        }
         if (options.json) {
           process.stdout.write(`${JSON.stringify({ rowId: row.rowId, event: row.event })}\n`);
         } else {

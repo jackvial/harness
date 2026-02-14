@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 interface DualOptions {
@@ -12,6 +13,8 @@ interface DualOptions {
   worktreeId: string;
   dbPath: string;
   sessionName: string;
+  debug: boolean;
+  captureDir: string | null;
 }
 
 function shellQuote(value: string): string {
@@ -42,6 +45,8 @@ function parseArgs(argv: string[]): DualOptions {
   const dbPath = process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite';
   const suffix = conversationId.slice(-8).replaceAll(/[^a-zA-Z0-9]/g, 'x');
   const sessionName = process.env.HARNESS_TMUX_SESSION_NAME ?? `harness-codex-${suffix}`;
+  const debug = process.env.HARNESS_TMUX_DEBUG === '1';
+  const captureDir = process.env.HARNESS_TMUX_CAPTURE_DIR ?? (debug ? '.harness/tmux-capture' : null);
 
   return {
     codexArgs: argv,
@@ -52,7 +57,9 @@ function parseArgs(argv: string[]): DualOptions {
     workspaceId,
     worktreeId,
     dbPath,
-    sessionName
+    sessionName,
+    debug,
+    captureDir
   };
 }
 
@@ -92,7 +99,9 @@ function buildTailCommand(options: DualOptions): string {
     '--experimental-strip-types',
     shellQuote(tailScriptPath),
     '--conversation-id',
-    shellQuote(options.conversationId)
+    shellQuote(options.conversationId),
+    '--from-now',
+    '--no-exit-on-session-end'
   ];
   return `${envPrefix} ${commandParts.join(' ')}`;
 }
@@ -109,21 +118,70 @@ function runDualTmux(options: DualOptions): number {
   process.stderr.write(
     `[dual] conversation=${options.conversationId} turn=${options.turnId} session=${options.sessionName}\n`
   );
+  if (options.debug) {
+    process.stderr.write(`[dual] live-command: ${liveCommand}\n`);
+    process.stderr.write(`[dual] tail-command: ${tailCommand}\n`);
+  }
 
   const insideTmux = typeof process.env.TMUX === 'string' && process.env.TMUX.length > 0;
+  if (options.debug) {
+    process.stderr.write(`[dual] inside-tmux=${String(insideTmux)}\n`);
+  }
 
   if (insideTmux) {
     const windowName = `codex-${options.conversationId.slice(-6)}`;
     runTmux(['new-window', '-n', windowName, liveCommand]);
+    runTmux(['set-window-option', '-t', windowName, 'remain-on-exit', 'on']);
     runTmux(['split-window', '-h', '-t', windowName, tailCommand]);
     runTmux(['select-layout', '-t', windowName, 'even-horizontal']);
+    runTmux(['select-pane', '-t', `${windowName}.0`, '-T', 'codex-live']);
+    runTmux(['select-pane', '-t', `${windowName}.1`, '-T', 'event-tail']);
+    if (options.captureDir !== null) {
+      const captureDirPath = resolve(process.cwd(), options.captureDir);
+      mkdirSync(captureDirPath, { recursive: true });
+      const liveCapture = resolve(captureDirPath, `${options.conversationId}-live-pane.log`);
+      const tailCapture = resolve(captureDirPath, `${options.conversationId}-tail-pane.log`);
+      runTmux(['pipe-pane', '-o', '-t', `${windowName}.0`, `cat >> ${shellQuote(liveCapture)}`]);
+      runTmux(['pipe-pane', '-o', '-t', `${windowName}.1`, `cat >> ${shellQuote(tailCapture)}`]);
+      if (options.debug) {
+        process.stderr.write(`[dual] capture-live=${liveCapture}\n`);
+        process.stderr.write(`[dual] capture-tail=${tailCapture}\n`);
+      }
+    }
     runTmux(['select-pane', '-t', `${windowName}.0`]);
     return 0;
   }
 
   runTmux(['new-session', '-d', '-s', options.sessionName, liveCommand]);
+  runTmux(['set-window-option', '-t', `${options.sessionName}:0`, 'remain-on-exit', 'on']);
   runTmux(['split-window', '-h', '-t', `${options.sessionName}:0`, tailCommand]);
   runTmux(['select-layout', '-t', `${options.sessionName}:0`, 'even-horizontal']);
+  runTmux(['select-pane', '-t', `${options.sessionName}:0.0`, '-T', 'codex-live']);
+  runTmux(['select-pane', '-t', `${options.sessionName}:0.1`, '-T', 'event-tail']);
+  if (options.captureDir !== null) {
+    const captureDirPath = resolve(process.cwd(), options.captureDir);
+    mkdirSync(captureDirPath, { recursive: true });
+    const liveCapture = resolve(captureDirPath, `${options.conversationId}-live-pane.log`);
+    const tailCapture = resolve(captureDirPath, `${options.conversationId}-tail-pane.log`);
+    runTmux([
+      'pipe-pane',
+      '-o',
+      '-t',
+      `${options.sessionName}:0.0`,
+      `cat >> ${shellQuote(liveCapture)}`
+    ]);
+    runTmux([
+      'pipe-pane',
+      '-o',
+      '-t',
+      `${options.sessionName}:0.1`,
+      `cat >> ${shellQuote(tailCapture)}`
+    ]);
+    if (options.debug) {
+      process.stderr.write(`[dual] capture-live=${liveCapture}\n`);
+      process.stderr.write(`[dual] capture-tail=${tailCapture}\n`);
+    }
+  }
   runTmux(['select-pane', '-t', `${options.sessionName}:0.0`]);
   runTmux(['attach-session', '-t', options.sessionName]);
   return 0;
