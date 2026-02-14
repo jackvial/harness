@@ -9,15 +9,16 @@ const OPCODE_CLOSE = 0x03;
 
 const DEFAULT_COMMAND = '/bin/sh';
 const DEFAULT_COMMAND_ARGS = ['-i'];
-const DEFAULT_PYTHON_PATH = 'python3';
-
-const bridgePath = join(dirname(fileURLToPath(import.meta.url)), 'pty_bridge.py');
+const DEFAULT_HELPER_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../bin/ptyd'
+);
 
 export interface StartPtySessionOptions {
   command?: string;
   commandArgs?: string[];
   env?: NodeJS.ProcessEnv;
-  pythonPath?: string;
+  helperPath?: string;
 }
 
 export interface PtyExit {
@@ -72,11 +73,11 @@ export function startPtySession(options: StartPtySessionOptions = {}): PtySessio
   const command = options.command ?? DEFAULT_COMMAND;
   const commandArgs = options.commandArgs ?? DEFAULT_COMMAND_ARGS;
   const env = options.env ?? process.env;
-  const pythonPath = options.pythonPath ?? DEFAULT_PYTHON_PATH;
+  const helperPath = options.helperPath ?? DEFAULT_HELPER_PATH;
 
   const child = spawn(
-    pythonPath,
-    [bridgePath, command, ...commandArgs],
+    helperPath,
+    [command, ...commandArgs],
     {
       env,
       stdio: ['pipe', 'pipe', 'pipe']

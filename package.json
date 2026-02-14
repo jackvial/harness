@@ -4,8 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:ptyd": "mkdir -p bin && cc -std=c11 -O2 -Wall -Wextra -pedantic src/pty/ptyd.c -o bin/ptyd",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build:ptyd",
+    "pretest:coverage": "npm run build:ptyd",
     "test": "node --experimental-strip-types --test \"test/**/*.test.ts\"",
     "test:coverage": "node --experimental-strip-types --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100 --test-coverage-include=src/**/*.ts \"test/**/*.test.ts\"",
     "verify": "npm run lint && npm run typecheck && npm run test:coverage"

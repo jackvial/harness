@@ -135,7 +135,7 @@ void test('pty-host close command exits default interactive shell session', asyn
 
 void test('pty-host emits error when helper executable cannot be launched', async () => {
   const session = startPtySession({
-    pythonPath: '/path/that/does/not/exist'
+    helperPath: '/path/that/does/not/exist'
   });
 
   const error = await new Promise<Error>((resolve) => {
