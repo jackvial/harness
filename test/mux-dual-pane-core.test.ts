@@ -102,8 +102,8 @@ void test('parseMuxInputChunk tokenizes SGR mouse sequences and keeps partial ta
 
 void test('wheelDeltaRowsFromCode returns expected per-notch scroll deltas', () => {
   assert.equal(wheelDeltaRowsFromCode(0), null);
-  assert.equal(wheelDeltaRowsFromCode(64), -3);
-  assert.equal(wheelDeltaRowsFromCode(65), 3);
+  assert.equal(wheelDeltaRowsFromCode(64), -1);
+  assert.equal(wheelDeltaRowsFromCode(65), 1);
 });
 
 void test('routeMuxInputTokens forwards left-pane input and consumes right-pane wheel', () => {
@@ -165,8 +165,8 @@ void test('routeMuxInputTokens forwards left-pane input and consumes right-pane 
   ] as const;
 
   const routed = routeMuxInputTokens(tokens, layout);
-  assert.equal(routed.leftPaneScrollRows, 3);
-  assert.equal(routed.rightPaneScrollRows, -3);
+  assert.equal(routed.leftPaneScrollRows, 1);
+  assert.equal(routed.rightPaneScrollRows, -1);
   assert.equal(routed.forwardToSession.length, 2);
   assert.equal(routed.forwardToSession[0]?.toString('utf8'), 'hello');
   assert.equal(routed.forwardToSession[1]?.toString('utf8'), '\u001b[<0;2;2M');

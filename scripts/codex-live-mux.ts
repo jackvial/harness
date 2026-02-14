@@ -32,6 +32,38 @@ interface TerminalPaletteProbe {
   backgroundHex?: string;
 }
 
+interface FocusEventExtraction {
+  readonly sanitized: Buffer;
+  readonly focusInCount: number;
+  readonly focusOutCount: number;
+}
+
+const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
+const DISABLE_INPUT_MODES = '\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
+
+function extractFocusEvents(chunk: Buffer): FocusEventExtraction {
+  const text = chunk.toString('utf8');
+  const focusInMatches = text.match(/\u001b\[I/g);
+  const focusOutMatches = text.match(/\u001b\[O/g);
+  const focusInCount = focusInMatches?.length ?? 0;
+  const focusOutCount = focusOutMatches?.length ?? 0;
+
+  if (focusInCount === 0 && focusOutCount === 0) {
+    return {
+      sanitized: chunk,
+      focusInCount: 0,
+      focusOutCount: 0
+    };
+  }
+
+  const sanitizedText = text.replaceAll('\u001b[I', '').replaceAll('\u001b[O', '');
+  return {
+    sanitized: Buffer.from(sanitizedText, 'utf8'),
+    focusInCount,
+    focusOutCount
+  };
+}
+
 function appendDebugRecord(debugPath: string | null, record: Record<string, unknown>): void {
   if (debugPath === null) {
     return;
@@ -455,8 +487,11 @@ async function main(): Promise<number> {
     output += diff.output;
 
     const now = Date.now();
+    const promptBandTop = Math.max(0, layout.paneRows - 3);
+    const cursorInPromptBand = leftFrame.cursor.row >= promptBandTop;
     const cursorSuppressedWhileStreaming =
       leftFrame.viewport.followOutput &&
+      !cursorInPromptBand &&
       lastOutputAt > lastInputAt &&
       now - lastOutputAt < 250;
     if (
@@ -520,7 +555,26 @@ async function main(): Promise<number> {
       return;
     }
 
-    const parsed = parseMuxInputChunk(inputRemainder, chunk);
+    const focusExtraction = extractFocusEvents(chunk);
+    if (focusExtraction.focusInCount > 0) {
+      process.stdout.write(ENABLE_INPUT_MODES);
+      dirty = true;
+    }
+    if (focusExtraction.focusOutCount > 0) {
+      dirty = true;
+    }
+
+    if (focusExtraction.sanitized.length === 0) {
+      appendDebugRecord(debugPath, {
+        kind: 'input-focus-only',
+        rawBytesHex: chunk.toString('hex'),
+        focusInCount: focusExtraction.focusInCount,
+        focusOutCount: focusExtraction.focusOutCount
+      });
+      return;
+    }
+
+    const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
 
     const routed = routeMuxInputTokens(parsed.tokens, layout);
@@ -543,6 +597,9 @@ async function main(): Promise<number> {
     appendDebugRecord(debugPath, {
       kind: 'input',
       rawBytesHex: chunk.toString('hex'),
+      sanitizedBytesHex: focusExtraction.sanitized.toString('hex'),
+      focusInCount: focusExtraction.focusInCount,
+      focusOutCount: focusExtraction.focusOutCount,
       tokenCount: parsed.tokens.length,
       remainderLength: inputRemainder.length,
       routedForwardCount: routed.forwardToSession.length,
@@ -558,7 +615,7 @@ async function main(): Promise<number> {
   process.stdin.on('data', onInput);
   process.stdout.on('resize', onResize);
 
-  process.stdout.write('\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1006h');
+  process.stdout.write(ENABLE_INPUT_MODES);
   recalcLayout();
 
   const renderTimer = setInterval(() => {
@@ -579,7 +636,7 @@ async function main(): Promise<number> {
     process.stdin.setRawMode(false);
     liveSession.close();
     store.close();
-    process.stdout.write('\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[<u\u001b[?25h\u001b[0m\n');
+    process.stdout.write(`${DISABLE_INPUT_MODES}\u001b[?25h\u001b[0m\n`);
   }
 
   if (exit === null) {

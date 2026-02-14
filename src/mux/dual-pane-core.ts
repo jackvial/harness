@@ -3,7 +3,7 @@ import { measureDisplayWidth, wrapTextForColumns } from '../terminal/snapshot-or
 const MIN_PANE_COLS = 20;
 const LEFT_RATIO_NUMERATOR = 68;
 const LEFT_RATIO_DENOMINATOR = 100;
-const SCROLL_STEP_ROWS = 3;
+const SCROLL_STEP_ROWS = 1;
 
 interface DualPaneLayout {
   readonly cols: number;

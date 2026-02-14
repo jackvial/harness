@@ -156,6 +156,9 @@ void test('snapshot oracle handles terminal controls, alternate screen, and view
   oracle.scrollViewport(-1);
   const scrolledFrame = oracle.snapshot();
   assert.equal(scrolledFrame.viewport.followOutput, false);
+  oracle.scrollViewport(1);
+  const repinnedByScroll = oracle.snapshot();
+  assert.equal(repinnedByScroll.viewport.followOutput, true);
 
   oracle.setFollowOutput(true);
   const repinned = oracle.snapshot();
