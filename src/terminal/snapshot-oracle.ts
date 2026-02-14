@@ -4,135 +4,32 @@ import { StringDecoder } from 'node:string_decoder';
 type ParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc';
 type ActiveScreen = 'primary' | 'alternate';
 
-interface ScreenCursor {
-  row: number;
-  col: number;
+type TerminalColor =
+  | { kind: 'default' }
+  | { kind: 'indexed'; index: number }
+  | { kind: 'rgb'; r: number; g: number; b: number };
+
+interface TerminalCellStyle {
+  bold: boolean;
+  dim: boolean;
+  italic: boolean;
+  underline: boolean;
+  inverse: boolean;
+  fg: TerminalColor;
+  bg: TerminalColor;
 }
 
-class ScreenBuffer {
-  cols: number;
-  rows: number;
-  private cells: string[][];
+interface TerminalCell {
+  glyph: string;
+  width: number;
+  continued: boolean;
+  style: TerminalCellStyle;
+}
 
-  constructor(cols: number, rows: number) {
-    this.cols = cols;
-    this.rows = rows;
-    this.cells = Array.from({ length: rows }, () => ScreenBuffer.blankLine(cols));
-  }
-
-  resize(cols: number, rows: number): void {
-    const nextCells = Array.from({ length: rows }, (_, rowIdx) => {
-      const line = ScreenBuffer.blankLine(cols);
-      if (rowIdx < this.cells.length) {
-        const previous = this.cells[rowIdx]!;
-        for (let colIdx = 0; colIdx < Math.min(cols, previous.length); colIdx += 1) {
-          line[colIdx] = previous[colIdx]!;
-        }
-      }
-      return line;
-    });
-    this.cols = cols;
-    this.rows = rows;
-    this.cells = nextCells;
-  }
-
-  clear(): void {
-    this.cells = Array.from({ length: this.rows }, () => ScreenBuffer.blankLine(this.cols));
-  }
-
-  putChar(cursor: ScreenCursor, char: string): void {
-    this.cells[cursor.row]![cursor.col] = char;
-    cursor.col += 1;
-    if (cursor.col >= this.cols) {
-      cursor.col = 0;
-      cursor.row += 1;
-      if (cursor.row >= this.rows) {
-        this.scrollUp(1);
-        cursor.row = this.rows - 1;
-      }
-    }
-  }
-
-  clearScreen(cursor: ScreenCursor, mode: number): void {
-    if (mode === 2) {
-      this.clear();
-      cursor.row = 0;
-      cursor.col = 0;
-      return;
-    }
-
-    if (mode === 3) {
-      this.clear();
-      cursor.row = 0;
-      cursor.col = 0;
-      return;
-    }
-
-    if (mode === 1) {
-      for (let row = 0; row <= cursor.row; row += 1) {
-        const end = row === cursor.row ? cursor.col : this.cols;
-        for (let col = 0; col < end; col += 1) {
-          this.cells[row]![col] = ' ';
-        }
-      }
-      return;
-    }
-
-    for (let row = cursor.row; row < this.rows; row += 1) {
-      const start = row === cursor.row ? cursor.col : 0;
-      for (let col = start; col < this.cols; col += 1) {
-        this.cells[row]![col] = ' ';
-      }
-    }
-  }
-
-  clearLine(cursor: ScreenCursor, mode: number): void {
-    if (mode === 2) {
-      this.cells[cursor.row] = ScreenBuffer.blankLine(this.cols);
-      return;
-    }
-
-    if (mode === 1) {
-      for (let col = 0; col <= cursor.col; col += 1) {
-        this.cells[cursor.row]![col] = ' ';
-      }
-      return;
-    }
-
-    for (let col = cursor.col; col < this.cols; col += 1) {
-      this.cells[cursor.row]![col] = ' ';
-    }
-  }
-
-  scrollUp(lines: number): void {
-    for (let idx = 0; idx < lines; idx += 1) {
-      this.cells.shift();
-      this.cells.push(ScreenBuffer.blankLine(this.cols));
-    }
-  }
-
-  scrollDown(lines: number): void {
-    for (let idx = 0; idx < lines; idx += 1) {
-      this.cells.pop();
-      this.cells.unshift(ScreenBuffer.blankLine(this.cols));
-    }
-  }
-
-  lines(): string[] {
-    return this.cells.map((line) => ScreenBuffer.trimRight(line.join('')));
-  }
-
-  private static blankLine(cols: number): string[] {
-    return Array.from({ length: cols }, () => ' ');
-  }
-
-  private static trimRight(value: string): string {
-    let end = value.length;
-    while (end > 0 && value.charCodeAt(end - 1) === 32) {
-      end -= 1;
-    }
-    return value.slice(0, end);
-  }
+interface TerminalSnapshotLine {
+  wrapped: boolean;
+  text: string;
+  cells: TerminalCell[];
 }
 
 export interface TerminalSnapshotFrame {
@@ -144,24 +41,663 @@ export interface TerminalSnapshotFrame {
     col: number;
     visible: boolean;
   };
+  viewport: {
+    top: number;
+    totalRows: number;
+    followOutput: boolean;
+  };
   lines: string[];
+  richLines: TerminalSnapshotLine[];
   frameHash: string;
+}
+
+interface ScreenCursor {
+  row: number;
+  col: number;
+}
+
+interface InternalLine {
+  wrapped: boolean;
+  cells: TerminalCell[];
+}
+
+const DEFAULT_COLOR: TerminalColor = { kind: 'default' };
+
+function cloneColor(color: TerminalColor): TerminalColor {
+  if (color.kind === 'default') {
+    return DEFAULT_COLOR;
+  }
+  if (color.kind === 'indexed') {
+    return {
+      kind: 'indexed',
+      index: color.index
+    };
+  }
+  return {
+    kind: 'rgb',
+    r: color.r,
+    g: color.g,
+    b: color.b
+  };
+}
+
+function defaultCellStyle(): TerminalCellStyle {
+  return {
+    bold: false,
+    dim: false,
+    italic: false,
+    underline: false,
+    inverse: false,
+    fg: DEFAULT_COLOR,
+    bg: DEFAULT_COLOR
+  };
+}
+
+function cloneStyle(style: TerminalCellStyle): TerminalCellStyle {
+  return {
+    bold: style.bold,
+    dim: style.dim,
+    italic: style.italic,
+    underline: style.underline,
+    inverse: style.inverse,
+    fg: cloneColor(style.fg),
+    bg: cloneColor(style.bg)
+  };
+}
+
+function styleEqual(left: TerminalCellStyle, right: TerminalCellStyle): boolean {
+  return (
+    left.bold === right.bold &&
+    left.dim === right.dim &&
+    left.italic === right.italic &&
+    left.underline === right.underline &&
+    left.inverse === right.inverse &&
+    colorEqual(left.fg, right.fg) &&
+    colorEqual(left.bg, right.bg)
+  );
+}
+
+function colorEqual(left: TerminalColor, right: TerminalColor): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  switch (left.kind) {
+    case 'default':
+      return true;
+    case 'indexed':
+      return left.index === (right as Extract<TerminalColor, { kind: 'indexed' }>).index;
+    case 'rgb': {
+      const typedRight = right as Extract<TerminalColor, { kind: 'rgb' }>;
+      return left.r === typedRight.r && left.g === typedRight.g && left.b === typedRight.b;
+    }
+  }
+}
+
+function blankCell(style: TerminalCellStyle): TerminalCell {
+  return {
+    glyph: ' ',
+    width: 1,
+    continued: false,
+    style: cloneStyle(style)
+  };
+}
+
+function continuationCell(style: TerminalCellStyle): TerminalCell {
+  return {
+    glyph: '',
+    width: 0,
+    continued: true,
+    style: cloneStyle(style)
+  };
+}
+
+function trimRightCells(cells: readonly TerminalCell[]): readonly TerminalCell[] {
+  let end = cells.length;
+  while (end > 0) {
+    const cell = cells[end - 1]!;
+    if (cell.continued) {
+      end -= 1;
+      continue;
+    }
+    if (cell.glyph === ' ' && styleEqual(cell.style, defaultCellStyle())) {
+      end -= 1;
+      continue;
+    }
+    break;
+  }
+  return cells.slice(0, end);
+}
+
+function cellsToText(cells: readonly TerminalCell[]): string {
+  let value = '';
+  for (const cell of cells) {
+    if (cell.continued) {
+      continue;
+    }
+    value += cell.glyph;
+  }
+  return value;
+}
+
+function createLine(cols: number, style: TerminalCellStyle): InternalLine {
+  return {
+    wrapped: false,
+    cells: Array.from({ length: cols }, () => blankCell(style))
+  };
+}
+
+class ScreenBuffer {
+  cols: number;
+  rows: number;
+  private readonly includeScrollback: boolean;
+  private readonly scrollbackLimit: number;
+  private lines: InternalLine[];
+  private scrollback: InternalLine[] = [];
+  private followOutput = true;
+  private viewportTop = 0;
+
+  constructor(cols: number, rows: number, includeScrollback: boolean, scrollbackLimit: number) {
+    this.cols = cols;
+    this.rows = rows;
+    this.includeScrollback = includeScrollback;
+    this.scrollbackLimit = scrollbackLimit;
+    this.lines = Array.from({ length: rows }, () => createLine(cols, defaultCellStyle()));
+  }
+
+  resize(cols: number, rows: number, fillStyle: TerminalCellStyle): void {
+    const nextLines = Array.from({ length: rows }, (_, rowIdx) => {
+      const nextLine = createLine(cols, fillStyle);
+      if (rowIdx < this.lines.length) {
+        const previousLine = this.lines[rowIdx]!;
+        nextLine.wrapped = previousLine.wrapped;
+        for (let colIdx = 0; colIdx < Math.min(cols, previousLine.cells.length); colIdx += 1) {
+          nextLine.cells[colIdx] = previousLine.cells[colIdx]!;
+        }
+      }
+      return nextLine;
+    });
+
+    this.cols = cols;
+    this.rows = rows;
+    this.lines = nextLines;
+    this.ensureViewportInRange();
+  }
+
+  clear(fillStyle: TerminalCellStyle): void {
+    this.lines = Array.from({ length: this.rows }, () => createLine(this.cols, fillStyle));
+    this.scrollback = [];
+    this.recomputeViewport();
+  }
+
+  setFollowOutput(followOutput: boolean): void {
+    this.followOutput = followOutput;
+    this.recomputeViewport();
+  }
+
+  scrollViewport(deltaRows: number): void {
+    if (deltaRows === 0) {
+      return;
+    }
+
+    const maxTop = this.maxViewportTop();
+    this.followOutput = false;
+    this.viewportTop = Math.max(0, Math.min(maxTop, this.viewportTop + deltaRows));
+  }
+
+  putGlyph(cursor: ScreenCursor, glyph: string, width: number, style: TerminalCellStyle): void {
+    const normalizedWidth = Math.max(1, Math.min(2, width));
+
+    if (this.currentLine(cursor).cells[cursor.col]?.continued === true && cursor.col > 0) {
+      this.currentLine(cursor).cells[cursor.col - 1] = blankCell(defaultCellStyle());
+    }
+
+    if (normalizedWidth === 2 && cursor.col === this.cols - 1) {
+      this.advanceLine(cursor, true, style);
+    }
+
+    this.currentLine(cursor).cells[cursor.col] = {
+      glyph,
+      width: normalizedWidth,
+      continued: false,
+      style: cloneStyle(style)
+    };
+
+    if (normalizedWidth === 2 && cursor.col + 1 < this.cols) {
+      this.currentLine(cursor).cells[cursor.col + 1] = continuationCell(style);
+    }
+
+    cursor.col += normalizedWidth;
+    if (cursor.col >= this.cols) {
+      this.advanceLine(cursor, true, style);
+    }
+  }
+
+  appendCombining(cursor: ScreenCursor, combiningChar: string): void {
+    const targetCol = cursor.col > 0 ? cursor.col - 1 : 0;
+    const targetCell = this.currentLine(cursor).cells[targetCol];
+    if (targetCell === undefined || targetCell.continued) {
+      return;
+    }
+    targetCell.glyph += combiningChar;
+  }
+
+  clearScreen(cursor: ScreenCursor, mode: number, fillStyle: TerminalCellStyle): void {
+    if (mode === 2 || mode === 3) {
+      this.lines = Array.from({ length: this.rows }, () => createLine(this.cols, fillStyle));
+      if (mode === 3) {
+        this.scrollback = [];
+      }
+      cursor.row = 0;
+      cursor.col = 0;
+      this.recomputeViewport();
+      return;
+    }
+
+    if (mode === 1) {
+      for (let row = 0; row <= cursor.row; row += 1) {
+        const end = row === cursor.row ? cursor.col : this.cols;
+        for (let col = 0; col < end; col += 1) {
+          this.lines[row]!.cells[col] = blankCell(fillStyle);
+        }
+      }
+      this.recomputeViewport();
+      return;
+    }
+
+    for (let row = cursor.row; row < this.rows; row += 1) {
+      const start = row === cursor.row ? cursor.col : 0;
+      for (let col = start; col < this.cols; col += 1) {
+        this.lines[row]!.cells[col] = blankCell(fillStyle);
+      }
+    }
+    this.recomputeViewport();
+  }
+
+  clearLine(cursor: ScreenCursor, mode: number, fillStyle: TerminalCellStyle): void {
+    if (mode === 2) {
+      this.lines[cursor.row] = createLine(this.cols, fillStyle);
+      return;
+    }
+
+    if (mode === 1) {
+      for (let col = 0; col <= cursor.col; col += 1) {
+        this.lines[cursor.row]!.cells[col] = blankCell(fillStyle);
+      }
+      return;
+    }
+
+    for (let col = cursor.col; col < this.cols; col += 1) {
+      this.lines[cursor.row]!.cells[col] = blankCell(fillStyle);
+    }
+  }
+
+  scrollUp(lines: number, fillStyle: TerminalCellStyle): void {
+    const count = Math.max(1, lines);
+    for (let idx = 0; idx < count; idx += 1) {
+      const shifted = this.lines.shift();
+      if (shifted !== undefined && this.includeScrollback) {
+        this.scrollback.push(shifted);
+        while (this.scrollback.length > this.scrollbackLimit) {
+          this.scrollback.shift();
+        }
+      }
+      this.lines.push(createLine(this.cols, fillStyle));
+    }
+    this.recomputeViewport();
+  }
+
+  scrollDown(lines: number, fillStyle: TerminalCellStyle): void {
+    const count = Math.max(1, lines);
+    for (let idx = 0; idx < count; idx += 1) {
+      this.lines.pop();
+      this.lines.unshift(createLine(this.cols, fillStyle));
+    }
+    this.recomputeViewport();
+  }
+
+  snapshot(cursor: ScreenCursor, cursorVisible: boolean, activeScreen: ActiveScreen): TerminalSnapshotFrame {
+    const combined = [...this.scrollback, ...this.lines];
+    const totalRows = combined.length;
+    const viewportTop = Math.max(0, Math.min(this.viewportTop, Math.max(0, totalRows - this.rows)));
+    const visible = combined.slice(viewportTop, viewportTop + this.rows);
+
+    const richLines = Array.from({ length: this.rows }, (_, rowIdx) => {
+      const line = visible[rowIdx]!;
+      const cells = line.cells.map((cell) => ({
+        glyph: cell.glyph,
+        width: cell.width,
+        continued: cell.continued,
+        style: cloneStyle(cell.style)
+      }));
+      const trimmedText = cellsToText(trimRightCells(cells));
+      return {
+        wrapped: line.wrapped,
+        text: trimmedText,
+        cells
+      };
+    });
+
+    const simpleLines = richLines.map((line) => line.text);
+
+    const frameWithoutHash = {
+      rows: this.rows,
+      cols: this.cols,
+      activeScreen,
+      cursor: {
+        row: cursor.row,
+        col: cursor.col,
+        visible: cursorVisible
+      },
+      viewport: {
+        top: viewportTop,
+        totalRows,
+        followOutput: this.followOutput
+      },
+      lines: simpleLines,
+      richLines
+    };
+
+    const frameHash = createHash('sha256').update(JSON.stringify(frameWithoutHash)).digest('hex');
+
+    return {
+      ...frameWithoutHash,
+      frameHash
+    };
+  }
+
+  private advanceLine(cursor: ScreenCursor, wrapped: boolean, fillStyle: TerminalCellStyle): void {
+    cursor.col = 0;
+    cursor.row += 1;
+    if (cursor.row >= this.rows) {
+      this.scrollUp(1, fillStyle);
+      cursor.row = this.rows - 1;
+    }
+    if (cursor.row >= 0 && cursor.row < this.rows) {
+      this.lines[cursor.row]!.wrapped = wrapped;
+    }
+  }
+
+  private currentLine(cursor: ScreenCursor): InternalLine {
+    return this.lines[cursor.row]!;
+  }
+
+  private maxViewportTop(): number {
+    const totalRows = this.scrollback.length + this.rows;
+    return Math.max(0, totalRows - this.rows);
+  }
+
+  private ensureViewportInRange(): void {
+    const maxTop = this.maxViewportTop();
+    this.viewportTop = Math.max(0, Math.min(maxTop, this.viewportTop));
+  }
+
+  private recomputeViewport(): void {
+    if (this.followOutput) {
+      this.viewportTop = this.maxViewportTop();
+      return;
+    }
+    this.ensureViewportInRange();
+  }
+}
+
+function colorToParams(color: TerminalColor, isBackground: boolean): number[] {
+  if (color.kind === 'default') {
+    return [isBackground ? 49 : 39];
+  }
+
+  if (color.kind === 'indexed') {
+    if (color.index >= 0 && color.index <= 7) {
+      return [(isBackground ? 40 : 30) + color.index];
+    }
+    if (color.index >= 8 && color.index <= 15) {
+      return [(isBackground ? 100 : 90) + (color.index - 8)];
+    }
+    return [isBackground ? 48 : 38, 5, color.index];
+  }
+
+  return [isBackground ? 48 : 38, 2, color.r, color.g, color.b];
+}
+
+function styleToAnsi(style: TerminalCellStyle): string {
+  const params: number[] = [0];
+  if (style.bold) {
+    params.push(1);
+  }
+  if (style.dim) {
+    params.push(2);
+  }
+  if (style.italic) {
+    params.push(3);
+  }
+  if (style.underline) {
+    params.push(4);
+  }
+  if (style.inverse) {
+    params.push(7);
+  }
+  params.push(...colorToParams(style.fg, false));
+  params.push(...colorToParams(style.bg, true));
+  return `\u001b[${params.join(';')}m`;
+}
+
+function clampColor(value: number): number {
+  return Math.max(0, Math.min(255, Math.trunc(value)));
+}
+
+function isWideCodePoint(codePoint: number): boolean {
+  const ranges: ReadonlyArray<readonly [number, number]> = [
+    [0x1100, 0x115f],
+    [0x2329, 0x232a],
+    [0x2e80, 0xa4cf],
+    [0xac00, 0xd7a3],
+    [0xf900, 0xfaff],
+    [0xfe10, 0xfe19],
+    [0xfe30, 0xfe6f],
+    [0xff00, 0xff60],
+    [0xffe0, 0xffe6],
+    [0x1f300, 0x1faff]
+  ];
+
+  for (const [start, end] of ranges) {
+    if (codePoint >= start && codePoint <= end) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function measureDisplayWidth(text: string): number {
+  let width = 0;
+  for (const char of text) {
+    const codePoint = char.codePointAt(0)!;
+
+    if (codePoint < 0x20 || (codePoint >= 0x7f && codePoint < 0xa0)) {
+      continue;
+    }
+
+    if (/\p{Mark}/u.test(char)) {
+      continue;
+    }
+
+    width += isWideCodePoint(codePoint) ? 2 : 1;
+  }
+  return width;
+}
+
+export function wrapTextForColumns(text: string, cols: number): string[] {
+  if (cols <= 0) {
+    return [''];
+  }
+
+  const lines: string[] = [];
+  let current = '';
+  let currentWidth = 0;
+
+  for (const char of text) {
+    if (char === '\n') {
+      lines.push(current);
+      current = '';
+      currentWidth = 0;
+      continue;
+    }
+
+    const charWidth = Math.max(1, measureDisplayWidth(char));
+    if (currentWidth + charWidth > cols) {
+      lines.push(current);
+      current = '';
+      currentWidth = 0;
+    }
+
+    current += char;
+    currentWidth += charWidth;
+  }
+
+  lines.push(current);
+  return lines;
+}
+
+function applySgrParams(style: TerminalCellStyle, params: number[]): TerminalCellStyle {
+  const nextStyle = cloneStyle(style);
+  const queue = params.length === 0 ? [0] : [...params];
+
+  for (let idx = 0; idx < queue.length; idx += 1) {
+    const param = queue[idx]!;
+
+    if (param === 0) {
+      return defaultCellStyle();
+    }
+    if (param === 1) {
+      nextStyle.bold = true;
+      continue;
+    }
+    if (param === 2) {
+      nextStyle.dim = true;
+      continue;
+    }
+    if (param === 3) {
+      nextStyle.italic = true;
+      continue;
+    }
+    if (param === 4) {
+      nextStyle.underline = true;
+      continue;
+    }
+    if (param === 7) {
+      nextStyle.inverse = true;
+      continue;
+    }
+    if (param === 21 || param === 22) {
+      nextStyle.bold = false;
+      nextStyle.dim = false;
+      continue;
+    }
+    if (param === 23) {
+      nextStyle.italic = false;
+      continue;
+    }
+    if (param === 24) {
+      nextStyle.underline = false;
+      continue;
+    }
+    if (param === 27) {
+      nextStyle.inverse = false;
+      continue;
+    }
+    if (param >= 30 && param <= 37) {
+      nextStyle.fg = { kind: 'indexed', index: param - 30 };
+      continue;
+    }
+    if (param >= 90 && param <= 97) {
+      nextStyle.fg = { kind: 'indexed', index: 8 + (param - 90) };
+      continue;
+    }
+    if (param === 39) {
+      nextStyle.fg = DEFAULT_COLOR;
+      continue;
+    }
+    if (param >= 40 && param <= 47) {
+      nextStyle.bg = { kind: 'indexed', index: param - 40 };
+      continue;
+    }
+    if (param >= 100 && param <= 107) {
+      nextStyle.bg = { kind: 'indexed', index: 8 + (param - 100) };
+      continue;
+    }
+    if (param === 49) {
+      nextStyle.bg = DEFAULT_COLOR;
+      continue;
+    }
+
+    if (param !== 38 && param !== 48) {
+      continue;
+    }
+
+    const isBackground = param === 48;
+    const mode = queue[idx + 1];
+    if (mode === 5) {
+      const value = queue[idx + 2];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        const parsedColor: TerminalColor = {
+          kind: 'indexed',
+          index: clampColor(value)
+        };
+        if (isBackground) {
+          nextStyle.bg = parsedColor;
+        } else {
+          nextStyle.fg = parsedColor;
+        }
+      }
+      idx += 2;
+      continue;
+    }
+
+    if (mode === 2) {
+      const red = queue[idx + 2];
+      const green = queue[idx + 3];
+      const blue = queue[idx + 4];
+      if (
+        typeof red === 'number' &&
+        typeof green === 'number' &&
+        typeof blue === 'number' &&
+        Number.isFinite(red) &&
+        Number.isFinite(green) &&
+        Number.isFinite(blue)
+      ) {
+        const parsedColor: TerminalColor = {
+          kind: 'rgb',
+          r: clampColor(red),
+          g: clampColor(green),
+          b: clampColor(blue)
+        };
+        if (isBackground) {
+          nextStyle.bg = parsedColor;
+        } else {
+          nextStyle.fg = parsedColor;
+        }
+      }
+      idx += 4;
+    }
+  }
+
+  return nextStyle;
 }
 
 export class TerminalSnapshotOracle {
   private readonly decoder = new StringDecoder('utf8');
-  private primary: ScreenBuffer;
-  private alternate: ScreenBuffer;
+  private readonly primary: ScreenBuffer;
+  private readonly alternate: ScreenBuffer;
   private activeScreen: ActiveScreen = 'primary';
   private cursor: ScreenCursor = { row: 0, col: 0 };
   private savedCursor: ScreenCursor | null = null;
   private mode: ParserMode = 'normal';
   private csiBuffer = '';
   private cursorVisible = true;
+  private style: TerminalCellStyle = defaultCellStyle();
 
-  constructor(cols: number, rows: number) {
-    this.primary = new ScreenBuffer(cols, rows);
-    this.alternate = new ScreenBuffer(cols, rows);
+  constructor(cols: number, rows: number, scrollbackLimit = 5000) {
+    this.primary = new ScreenBuffer(cols, rows, true, scrollbackLimit);
+    this.alternate = new ScreenBuffer(cols, rows, false, 0);
   }
 
   ingest(chunk: string | Uint8Array): void {
@@ -172,36 +708,25 @@ export class TerminalSnapshotOracle {
   }
 
   resize(cols: number, rows: number): void {
-    if (cols <= 0) {
+    if (cols <= 0 || rows <= 0) {
       return;
     }
-    if (rows <= 0) {
-      return;
-    }
-    this.primary.resize(cols, rows);
-    this.alternate.resize(cols, rows);
+    this.primary.resize(cols, rows, this.style);
+    this.alternate.resize(cols, rows, this.style);
     this.cursor.row = Math.max(0, Math.min(rows - 1, this.cursor.row));
     this.cursor.col = Math.max(0, Math.min(cols - 1, this.cursor.col));
   }
 
+  setFollowOutput(followOutput: boolean): void {
+    this.currentScreen().setFollowOutput(followOutput);
+  }
+
+  scrollViewport(deltaRows: number): void {
+    this.currentScreen().scrollViewport(deltaRows);
+  }
+
   snapshot(): TerminalSnapshotFrame {
-    const screen = this.currentScreen();
-    const frameWithoutHash = {
-      rows: screen.rows,
-      cols: screen.cols,
-      activeScreen: this.activeScreen,
-      cursor: {
-        row: this.cursor.row,
-        col: this.cursor.col,
-        visible: this.cursorVisible
-      },
-      lines: screen.lines()
-    };
-    const frameHash = createHash('sha256').update(JSON.stringify(frameWithoutHash)).digest('hex');
-    return {
-      ...frameWithoutHash,
-      frameHash
-    };
+    return this.currentScreen().snapshot(this.cursor, this.cursorVisible, this.activeScreen);
   }
 
   private currentScreen(): ScreenBuffer {
@@ -229,7 +754,7 @@ export class TerminalSnapshotOracle {
   }
 
   private processNormal(char: string): void {
-    const code = char.charCodeAt(0);
+    const codePoint = char.codePointAt(0)!;
     if (char === '\u001b') {
       this.mode = 'esc';
       return;
@@ -241,7 +766,7 @@ export class TerminalSnapshotOracle {
     if (char === '\n') {
       this.cursor.row += 1;
       if (this.cursor.row >= this.currentScreen().rows) {
-        this.currentScreen().scrollUp(1);
+        this.currentScreen().scrollUp(1, this.style);
         this.cursor.row = this.currentScreen().rows - 1;
       }
       return;
@@ -250,13 +775,17 @@ export class TerminalSnapshotOracle {
       this.cursor.col = Math.max(0, this.cursor.col - 1);
       return;
     }
-    if (code < 0x20) {
+    if (codePoint < 0x20 || (codePoint >= 0x7f && codePoint < 0xa0)) {
       return;
     }
-    if (code === 0x7f) {
+
+    const width = measureDisplayWidth(char);
+    if (width === 0) {
+      this.currentScreen().appendCombining(this.cursor, char);
       return;
     }
-    this.currentScreen().putChar(this.cursor, char);
+
+    this.currentScreen().putGlyph(this.cursor, char, width, this.style);
   }
 
   private processEsc(char: string): void {
@@ -294,6 +823,7 @@ export class TerminalSnapshotOracle {
       this.applyCsi(rawParams, finalByte);
       return;
     }
+
     this.csiBuffer += char;
   }
 
@@ -336,6 +866,12 @@ export class TerminalSnapshotOracle {
       }
     }
 
+    if (finalByte === 'm') {
+      const cleaned = params.filter((value) => Number.isFinite(value));
+      this.style = applySgrParams(this.style, cleaned);
+      return;
+    }
+
     if (finalByte === 'A') {
       this.cursor.row = Math.max(0, this.cursor.row - first);
       return;
@@ -356,14 +892,7 @@ export class TerminalSnapshotOracle {
       this.cursor.col = Math.max(0, Math.min(this.currentScreen().cols - 1, first - 1));
       return;
     }
-    if (finalByte === 'H') {
-      const row = Number.isFinite(params[0]) ? (params[0] as number) : 1;
-      const col = Number.isFinite(params[1]) ? (params[1] as number) : 1;
-      this.cursor.row = Math.max(0, Math.min(this.currentScreen().rows - 1, row - 1));
-      this.cursor.col = Math.max(0, Math.min(this.currentScreen().cols - 1, col - 1));
-      return;
-    }
-    if (finalByte === 'f') {
+    if (finalByte === 'H' || finalByte === 'f') {
       const row = Number.isFinite(params[0]) ? (params[0] as number) : 1;
       const col = Number.isFinite(params[1]) ? (params[1] as number) : 1;
       this.cursor.row = Math.max(0, Math.min(this.currentScreen().rows - 1, row - 1));
@@ -372,30 +901,28 @@ export class TerminalSnapshotOracle {
     }
     if (finalByte === 'J') {
       const mode = Number.isFinite(params[0]) ? (params[0] as number) : 0;
-      this.currentScreen().clearScreen(this.cursor, mode);
+      this.currentScreen().clearScreen(this.cursor, mode, this.style);
       return;
     }
     if (finalByte === 'K') {
       const mode = Number.isFinite(params[0]) ? (params[0] as number) : 0;
-      this.currentScreen().clearLine(this.cursor, mode);
+      this.currentScreen().clearLine(this.cursor, mode, this.style);
       return;
     }
     if (finalByte === 'S') {
-      this.currentScreen().scrollUp(first);
+      this.currentScreen().scrollUp(first, this.style);
       return;
     }
     if (finalByte === 'T') {
-      this.currentScreen().scrollDown(first);
+      this.currentScreen().scrollDown(first, this.style);
       return;
     }
     if (finalByte === 's') {
       this.savedCursor = { row: this.cursor.row, col: this.cursor.col };
       return;
     }
-    if (finalByte === 'u') {
-      if (this.savedCursor !== null) {
-        this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
-      }
+    if (finalByte === 'u' && this.savedCursor !== null) {
+      this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
     }
   }
 
@@ -404,18 +931,21 @@ export class TerminalSnapshotOracle {
       if (!Number.isFinite(value)) {
         continue;
       }
+
       if (value === 25) {
         this.cursorVisible = enabled;
         continue;
       }
+
       if (value === 1047) {
         this.activeScreen = enabled ? 'alternate' : 'primary';
         if (enabled) {
-          this.alternate.clear();
+          this.alternate.clear(this.style);
           this.cursor = { row: 0, col: 0 };
         }
         continue;
       }
+
       if (value === 1048) {
         if (enabled) {
           this.savedCursor = { row: this.cursor.row, col: this.cursor.col };
@@ -424,11 +954,12 @@ export class TerminalSnapshotOracle {
         }
         continue;
       }
+
       if (value === 1049) {
         if (enabled) {
           this.savedCursor = { row: this.cursor.row, col: this.cursor.col };
           this.activeScreen = 'alternate';
-          this.alternate.clear();
+          this.alternate.clear(this.style);
           this.cursor = { row: 0, col: 0 };
         } else {
           this.activeScreen = 'primary';
@@ -441,6 +972,135 @@ export class TerminalSnapshotOracle {
   }
 }
 
+export function renderSnapshotAnsiRow(
+  frame: TerminalSnapshotFrame,
+  rowIndex: number,
+  cols: number
+): string {
+  const line = frame.richLines[rowIndex];
+  const defaultStyle = defaultCellStyle();
+
+  if (line === undefined) {
+    return `${styleToAnsi(defaultStyle)}${' '.repeat(cols)}\u001b[0m`;
+  }
+
+  let output = '';
+  let previousStyle: TerminalCellStyle | null = null;
+
+  for (let col = 0; col < cols; col += 1) {
+    const cell = line.cells[col]!;
+    if (cell.continued) {
+      continue;
+    }
+
+    if (previousStyle === null || !styleEqual(previousStyle, cell.style)) {
+      output += styleToAnsi(cell.style);
+      previousStyle = cell.style;
+    }
+
+    output += cell.glyph;
+    if (cell.width === 2) {
+      col += 1;
+    }
+  }
+
+  output += '\u001b[0m';
+  return output;
+}
+
 export function renderSnapshotText(frame: TerminalSnapshotFrame): string {
   return frame.lines.join('\n');
+}
+
+interface TerminalReplayStep {
+  kind: 'output' | 'resize';
+  chunk?: string;
+  cols?: number;
+  rows?: number;
+}
+
+export function replayTerminalSteps(
+  steps: readonly TerminalReplayStep[],
+  initialCols: number,
+  initialRows: number
+): TerminalSnapshotFrame[] {
+  const oracle = new TerminalSnapshotOracle(initialCols, initialRows);
+  const snapshots: TerminalSnapshotFrame[] = [];
+
+  for (const step of steps) {
+    if (step.kind === 'output') {
+      oracle.ingest(step.chunk ?? '');
+      snapshots.push(oracle.snapshot());
+      continue;
+    }
+
+    const cols = step.cols ?? initialCols;
+    const rows = step.rows ?? initialRows;
+    oracle.resize(cols, rows);
+    snapshots.push(oracle.snapshot());
+  }
+
+  return snapshots;
+}
+
+interface TerminalFrameDiff {
+  equal: boolean;
+  reasons: string[];
+}
+
+export function diffTerminalFrames(expected: TerminalSnapshotFrame, actual: TerminalSnapshotFrame): TerminalFrameDiff {
+  const reasons: string[] = [];
+
+  if (expected.rows !== actual.rows || expected.cols !== actual.cols) {
+    reasons.push('dimensions-mismatch');
+  }
+
+  if (expected.activeScreen !== actual.activeScreen) {
+    reasons.push('active-screen-mismatch');
+  }
+
+  if (expected.cursor.row !== actual.cursor.row || expected.cursor.col !== actual.cursor.col) {
+    reasons.push('cursor-position-mismatch');
+  }
+
+  if (expected.cursor.visible !== actual.cursor.visible) {
+    reasons.push('cursor-visibility-mismatch');
+  }
+
+  const rowCount = Math.max(expected.richLines.length, actual.richLines.length);
+  for (let row = 0; row < rowCount; row += 1) {
+    const expectedLine = expected.richLines[row];
+    const actualLine = actual.richLines[row];
+    if (expectedLine === undefined || actualLine === undefined) {
+      reasons.push(`line-${String(row)}-missing`);
+      continue;
+    }
+
+    if (expectedLine.text !== actualLine.text || expectedLine.wrapped !== actualLine.wrapped) {
+      reasons.push(`line-${String(row)}-text-mismatch`);
+    }
+
+    const cellCount = Math.max(expectedLine.cells.length, actualLine.cells.length);
+    for (let col = 0; col < cellCount; col += 1) {
+      const expectedCell = expectedLine.cells[col];
+      const actualCell = actualLine.cells[col];
+      if (expectedCell === undefined || actualCell === undefined) {
+        reasons.push(`cell-${String(row)}-${String(col)}-missing`);
+        continue;
+      }
+      if (
+        expectedCell.glyph !== actualCell.glyph ||
+        expectedCell.width !== actualCell.width ||
+        expectedCell.continued !== actualCell.continued ||
+        !styleEqual(expectedCell.style, actualCell.style)
+      ) {
+        reasons.push(`cell-${String(row)}-${String(col)}-mismatch`);
+      }
+    }
+  }
+
+  return {
+    equal: reasons.length === 0,
+    reasons
+  };
 }

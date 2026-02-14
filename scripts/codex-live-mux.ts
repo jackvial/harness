@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
-import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
+import { renderSnapshotAnsiRow, wrapTextForColumns } from '../src/terminal/snapshot-oracle.ts';
 import {
   createNormalizedEvent,
   type EventScope,
@@ -199,7 +199,6 @@ async function main(): Promise<number> {
   let paneRows = Math.max(4, size.rows - 1);
   let leftCols = Math.max(20, Math.floor(size.cols * 0.68));
   let rightCols = Math.max(20, size.cols - leftCols - 1);
-  const leftScreen = new TerminalSnapshotOracle(leftCols, paneRows);
   const eventLines: string[] = [];
   const maxEventLines = 1000;
 
@@ -221,7 +220,6 @@ async function main(): Promise<number> {
     paneRows = Math.max(4, size.rows - 1);
     leftCols = Math.max(20, Math.floor(size.cols * 0.68));
     rightCols = Math.max(20, size.cols - leftCols - 1);
-    leftScreen.resize(leftCols, paneRows);
     liveSession.resize(leftCols, paneRows);
     dirty = true;
   };
@@ -239,18 +237,21 @@ async function main(): Promise<number> {
       return;
     }
 
-    const leftRendered = leftScreen.snapshot().lines;
-    const rightStart = Math.max(0, eventLines.length - paneRows);
-    const rightRendered = eventLines.slice(rightStart);
+    const leftFrame = liveSession.snapshot();
+    const wrappedRightLines = eventLines.flatMap((line) => {
+      return wrapTextForColumns(line, rightCols);
+    });
+    const rightStart = Math.max(0, wrappedRightLines.length - paneRows);
+    const rightRendered = wrappedRightLines.slice(rightStart);
 
     const frame: string[] = [];
     frame.push('\u001b[?25l');
     frame.push('\u001b[H\u001b[2J');
 
     for (let row = 0; row < paneRows; row += 1) {
-      const left = padOrTrim(leftRendered[row] ?? '', leftCols);
+      const left = renderSnapshotAnsiRow(leftFrame, row, leftCols);
       const right = padOrTrim(rightRendered[row] ?? '', rightCols);
-      frame.push(`${left}│${right}`);
+      frame.push(`${left}\u001b[0m│${right}`);
     }
 
     const status = padOrTrim(
@@ -273,7 +274,6 @@ async function main(): Promise<number> {
     }
 
     if (event.type === 'terminal-output') {
-      leftScreen.ingest(event.chunk);
       dirty = true;
     }
 

@@ -1,5 +1,6 @@
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import type { NormalizedEventEnvelope } from '../src/events/normalized-events.ts';
+import { TerminalSnapshotOracle, renderSnapshotText } from '../src/terminal/snapshot-oracle.ts';
 
 interface SnapshotOptions {
   conversationId: string;
@@ -14,321 +15,6 @@ interface SnapshotOptions {
   json: boolean;
   clearBetweenFrames: boolean;
   exitOnSessionEnd: boolean;
-}
-
-type ParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc';
-
-class VirtualTerminalScreen {
-  private readonly cols: number;
-  private readonly rows: number;
-  private cells: string[][];
-  private cursorRow = 0;
-  private cursorCol = 0;
-  private savedCursor: { row: number; col: number } | null = null;
-  private mode: ParserMode = 'normal';
-  private csiBuffer = '';
-
-  constructor(cols: number, rows: number) {
-    this.cols = cols;
-    this.rows = rows;
-    this.cells = Array.from({ length: this.rows }, () => this.blankLine());
-  }
-
-  ingest(text: string): void {
-    for (const char of text) {
-      this.processChar(char);
-    }
-  }
-
-  render(): string {
-    const rendered = this.cells.map((line) => this.trimRight(line.join('')));
-    while (rendered.length > 0 && rendered[rendered.length - 1] === '') {
-      rendered.pop();
-    }
-    if (rendered.length === 0) {
-      return '(empty)';
-    }
-    return rendered.join('\n');
-  }
-
-  cursor(): { row: number; col: number } {
-    return {
-      row: this.cursorRow + 1,
-      col: this.cursorCol + 1
-    };
-  }
-
-  private blankLine(): string[] {
-    return Array.from({ length: this.cols }, () => ' ');
-  }
-
-  private trimRight(value: string): string {
-    let end = value.length;
-    while (end > 0 && value.charCodeAt(end - 1) === 32) {
-      end -= 1;
-    }
-    return value.slice(0, end);
-  }
-
-  private processChar(char: string): void {
-    if (this.mode === 'normal') {
-      this.processNormalChar(char);
-      return;
-    }
-
-    if (this.mode === 'esc') {
-      this.processEscChar(char);
-      return;
-    }
-
-    if (this.mode === 'csi') {
-      this.processCsiChar(char);
-      return;
-    }
-
-    if (this.mode === 'osc') {
-      this.processOscChar(char);
-      return;
-    }
-
-    this.processOscEscChar(char);
-  }
-
-  private processNormalChar(char: string): void {
-    const code = char.charCodeAt(0);
-
-    if (char === '\u001b') {
-      this.mode = 'esc';
-      return;
-    }
-
-    if (char === '\r') {
-      this.cursorCol = 0;
-      return;
-    }
-
-    if (char === '\n') {
-      this.cursorRow += 1;
-      if (this.cursorRow >= this.rows) {
-        this.scrollUp(1);
-        this.cursorRow = this.rows - 1;
-      }
-      return;
-    }
-
-    if (char === '\b') {
-      if (this.cursorCol > 0) {
-        this.cursorCol -= 1;
-      }
-      return;
-    }
-
-    if (code < 0x20 || code === 0x7f) {
-      return;
-    }
-
-    this.putChar(char);
-  }
-
-  private processEscChar(char: string): void {
-    if (char === '[') {
-      this.mode = 'csi';
-      this.csiBuffer = '';
-      return;
-    }
-
-    if (char === ']') {
-      this.mode = 'osc';
-      return;
-    }
-
-    this.mode = 'normal';
-  }
-
-  private processCsiChar(char: string): void {
-    const code = char.charCodeAt(0);
-    if (code >= 0x40 && code <= 0x7e) {
-      const finalByte = char;
-      const rawParams = this.csiBuffer;
-      this.mode = 'normal';
-      this.csiBuffer = '';
-      this.applyCsi(rawParams, finalByte);
-      return;
-    }
-
-    this.csiBuffer += char;
-  }
-
-  private processOscChar(char: string): void {
-    if (char === '\u0007') {
-      this.mode = 'normal';
-      return;
-    }
-
-    if (char === '\u001b') {
-      this.mode = 'osc-esc';
-      return;
-    }
-  }
-
-  private processOscEscChar(char: string): void {
-    if (char === '\\') {
-      this.mode = 'normal';
-      return;
-    }
-
-    this.mode = 'osc';
-  }
-
-  private applyCsi(rawParams: string, finalByte: string): void {
-    const params = rawParams.replaceAll('?', '').split(';').map((part) => {
-      if (part.length === 0) {
-        return NaN;
-      }
-      return Number(part);
-    });
-
-    const first = Number.isFinite(params[0]) ? (params[0] as number) : 1;
-
-    if (finalByte === 'A') {
-      this.cursorRow = Math.max(0, this.cursorRow - first);
-      return;
-    }
-    if (finalByte === 'B') {
-      this.cursorRow = Math.min(this.rows - 1, this.cursorRow + first);
-      return;
-    }
-    if (finalByte === 'C') {
-      this.cursorCol = Math.min(this.cols - 1, this.cursorCol + first);
-      return;
-    }
-    if (finalByte === 'D') {
-      this.cursorCol = Math.max(0, this.cursorCol - first);
-      return;
-    }
-    if (finalByte === 'E') {
-      this.cursorRow = Math.min(this.rows - 1, this.cursorRow + first);
-      this.cursorCol = 0;
-      return;
-    }
-    if (finalByte === 'F') {
-      this.cursorRow = Math.max(0, this.cursorRow - first);
-      this.cursorCol = 0;
-      return;
-    }
-    if (finalByte === 'G') {
-      const col = Number.isFinite(params[0]) ? (params[0] as number) : 1;
-      this.cursorCol = Math.max(0, Math.min(this.cols - 1, col - 1));
-      return;
-    }
-    if (finalByte === 'H' || finalByte === 'f') {
-      const row = Number.isFinite(params[0]) ? (params[0] as number) : 1;
-      const col = Number.isFinite(params[1]) ? (params[1] as number) : 1;
-      this.cursorRow = Math.max(0, Math.min(this.rows - 1, row - 1));
-      this.cursorCol = Math.max(0, Math.min(this.cols - 1, col - 1));
-      return;
-    }
-    if (finalByte === 'J') {
-      const mode = Number.isFinite(params[0]) ? (params[0] as number) : 0;
-      this.clearScreen(mode);
-      return;
-    }
-    if (finalByte === 'K') {
-      const mode = Number.isFinite(params[0]) ? (params[0] as number) : 0;
-      this.clearLine(mode);
-      return;
-    }
-    if (finalByte === 'S') {
-      this.scrollUp(first);
-      return;
-    }
-    if (finalByte === 'T') {
-      this.scrollDown(first);
-      return;
-    }
-    if (finalByte === 's') {
-      this.savedCursor = { row: this.cursorRow, col: this.cursorCol };
-      return;
-    }
-    if (finalByte === 'u') {
-      if (this.savedCursor !== null) {
-        this.cursorRow = this.savedCursor.row;
-        this.cursorCol = this.savedCursor.col;
-      }
-      return;
-    }
-  }
-
-  private putChar(char: string): void {
-    this.cells[this.cursorRow]![this.cursorCol] = char;
-    this.cursorCol += 1;
-    if (this.cursorCol >= this.cols) {
-      this.cursorCol = 0;
-      this.cursorRow += 1;
-      if (this.cursorRow >= this.rows) {
-        this.scrollUp(1);
-        this.cursorRow = this.rows - 1;
-      }
-    }
-  }
-
-  private clearScreen(mode: number): void {
-    if (mode === 2 || mode === 3) {
-      this.cells = Array.from({ length: this.rows }, () => this.blankLine());
-      this.cursorRow = 0;
-      this.cursorCol = 0;
-      return;
-    }
-
-    if (mode === 1) {
-      for (let row = 0; row <= this.cursorRow; row += 1) {
-        const end = row === this.cursorRow ? this.cursorCol : this.cols;
-        for (let col = 0; col < end; col += 1) {
-          this.cells[row]![col] = ' ';
-        }
-      }
-      return;
-    }
-
-    for (let row = this.cursorRow; row < this.rows; row += 1) {
-      const start = row === this.cursorRow ? this.cursorCol : 0;
-      for (let col = start; col < this.cols; col += 1) {
-        this.cells[row]![col] = ' ';
-      }
-    }
-  }
-
-  private clearLine(mode: number): void {
-    if (mode === 2) {
-      this.cells[this.cursorRow] = this.blankLine();
-      return;
-    }
-
-    if (mode === 1) {
-      for (let col = 0; col <= this.cursorCol; col += 1) {
-        this.cells[this.cursorRow]![col] = ' ';
-      }
-      return;
-    }
-
-    for (let col = this.cursorCol; col < this.cols; col += 1) {
-      this.cells[this.cursorRow]![col] = ' ';
-    }
-  }
-
-  private scrollUp(lines: number): void {
-    for (let idx = 0; idx < lines; idx += 1) {
-      this.cells.shift();
-      this.cells.push(this.blankLine());
-    }
-  }
-
-  private scrollDown(lines: number): void {
-    for (let idx = 0; idx < lines; idx += 1) {
-      this.cells.pop();
-      this.cells.unshift(this.blankLine());
-    }
-  }
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
@@ -464,21 +150,22 @@ function isSqliteBusyError(error: unknown): boolean {
 }
 
 function printFrame(
-  screen: VirtualTerminalScreen,
+  oracle: TerminalSnapshotOracle,
   options: SnapshotOptions,
   lastRowId: number,
   atTs: string
 ): void {
-  const rendered = screen.render();
-  const cursor = screen.cursor();
+  const frame = oracle.snapshot();
+  const rendered = renderSnapshotText(frame);
+
   if (options.json) {
     process.stdout.write(
       `${JSON.stringify({
         kind: 'snapshot-frame',
         conversationId: options.conversationId,
         rowId: lastRowId,
-        cursor,
         ts: atTs,
+        frame,
         screen: rendered
       })}\n`
     );
@@ -489,7 +176,7 @@ function printFrame(
     process.stdout.write('\u001bc');
   }
   process.stdout.write(
-    `[snapshot] conversation=${options.conversationId} rowId=${String(lastRowId)} cursor=${String(cursor.row)},${String(cursor.col)} ts=${atTs}\n`
+    `[snapshot] conversation=${options.conversationId} rowId=${String(lastRowId)} cursor=${String(frame.cursor.row + 1)},${String(frame.cursor.col + 1)} ts=${atTs}\n`
   );
   process.stdout.write(`${rendered}\n`);
 }
@@ -497,7 +184,7 @@ function printFrame(
 async function main(): Promise<number> {
   const options = parseArgs(process.argv.slice(2));
   const store = new SqliteEventStore(options.dbPath);
-  const screen = new VirtualTerminalScreen(options.cols, options.rows);
+  const oracle = new TerminalSnapshotOracle(options.cols, options.rows);
   let lastRowId = 0;
   let sawSessionExit = false;
   let stop = false;
@@ -555,7 +242,7 @@ async function main(): Promise<number> {
         frameTs = row.event.ts;
         if (row.event.type === 'provider-text-delta' && row.event.payload.kind === 'text-delta') {
           const delta = String(row.event.payload.delta ?? '');
-          screen.ingest(delta);
+          oracle.ingest(delta);
           changed = true;
         }
 
@@ -565,7 +252,7 @@ async function main(): Promise<number> {
       }
 
       if (changed || (!options.follow && rows.length === 0)) {
-        printFrame(screen, options, lastRowId, frameTs);
+        printFrame(oracle, options, lastRowId, frameTs);
       }
 
       if (!options.follow) {
