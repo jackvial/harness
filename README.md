@@ -46,11 +46,13 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux enables CSI-u keyboard mode (`CSI > 1 u`) so modified keys like `Shift+Enter` can be forwarded.
 - Mux wheel routing now scrolls by single-row steps to better match native terminal feel.
 - Mux consumes focus-in/out events and reasserts input modes after focus return.
-- Mux now supports multiple concurrent conversations in one session: left rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
+- Mux now supports multiple concurrent conversations in one session: left rail + active-session switching (Vim-style defaults `Ctrl+J`/`Ctrl+K`) + new conversation (`Ctrl+T`) with attach/detach continuity.
 - Left rail now uses a first-party low-level UI surface with directory-wrapped conversation blocks, inline git + telemetry metadata, unicode/emoji scannability, and integrated process rows (`src/mux/workspace-rail.ts`, `src/ui/surface.ts`).
-- Conversation rows are title-first (`agent - title`) with low-key status/telemetry on a second line, subtle selection highlight scoped to conversation rows only, and bottom-pinned shortcuts.
+- Conversation rows are title-first (`agent - title`) with low-key normalized action status/telemetry on a second line (`needs action`/`working`/`idle`/`complete`/`exited`), subtle full-row selection highlight that preserves the left gutter guide, and bottom-pinned shortcuts.
 - Session summaries now include PTY `processId`; mux samples per-session CPU/memory (`ps`) and renders those metrics inline with each conversation.
 - Conversation status routing is now isolated per session (unique notify sink per live Codex session) to prevent cross-conversation `DONE`/`NEEDS` contamination.
+- Left-rail conversation switching now supports direct mouse click selection.
+- Mux keybindings are now config-backed through `harness.config.jsonc` (`mux.keybindings`) with VS Code-style action IDs and parseable strings (e.g. `ctrl+j`, `ctrl+k`, `cmd+n`).
 - Mux recording now supports one-step capture to GIF (`--record-output <path.gif>`) with optional JSONL sidecar.
 - Recording capture uses canonical full-frame snapshots (not incremental repaint diffs) to prevent interleaved/partial-frame artifacts.
 - Recording timing is wall-clock based from monotonic capture start/finish and quantized with drift compensation for GIF frame delays.
@@ -80,6 +82,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
 - `npm run terminal:parity [-- --json]`
 - `npm run loc [-- --json]`
+- edit `harness.config.jsonc` to customize mux shortcuts (`mux.keybindings`)
 
 ## Human Breakpoints
 - Mux paint correctness:
@@ -99,7 +102,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - drag in right pane to select; selection shrinks/expands with drag movement, and click-without-drag clears
   - use `Cmd+C`/`Ctrl+C` to copy the current selection (OSC52)
   - hold `Alt` while using mouse in right pane to pass mouse events through to the app
-  - use `Ctrl+T` to create a new conversation, `Ctrl+N` / `Ctrl+P` to switch active conversation from the rail
+  - use `Ctrl+T` to create a new conversation, `Ctrl+J` / `Ctrl+K` to switch active conversation from the rail
+  - click any conversation row in the left pane to activate it
   - mux shortcuts are global and remain captured even when terminal keyboard protocols (`CSI u`, `modifyOtherKeys`) are active
   - conversation rail order is stable (creation order); switching only changes selection, not row order
   - by default, `Ctrl+C` terminates all live mux conversations and exits the mux process (`HARNESS_MUX_CTRL_C_EXITS=0` disables this)

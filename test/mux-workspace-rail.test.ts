@@ -29,7 +29,8 @@ void test('workspace rail renders directory-centric rows with title and status m
           memoryMb: 12,
           status: 'running',
           attentionReason: null,
-          startedAt: '2026-01-01T00:00:00.000Z'
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:02:59.000Z'
         },
         {
           sessionId: 'conversation-b',
@@ -40,7 +41,8 @@ void test('workspace rail renders directory-centric rows with title and status m
           memoryMb: 8,
           status: 'completed',
           attentionReason: null,
-          startedAt: '2026-01-01T00:02:40.000Z'
+          startedAt: '2026-01-01T00:02:40.000Z',
+          lastEventAt: '2026-01-01T00:02:50.000Z'
         }
       ],
       processes: [
@@ -64,8 +66,8 @@ void test('workspace rail renders directory-centric rows with title and status m
   assert.equal(rows.some((row) => row.includes('📁 ~/dev/harness ─ main')), true);
   assert.equal(rows.some((row) => row.includes('+12 -3 │ 4 files')), true);
   assert.equal(rows.some((row) => row.includes('codex - untitled task 1')), true);
-  assert.equal(rows.some((row) => row.includes('● running')), true);
-  assert.equal(rows.some((row) => row.includes('○ done')), true);
+  assert.equal(rows.some((row) => row.includes('● working')), true);
+  assert.equal(rows.some((row) => row.includes('○ complete')), true);
   assert.equal(rows.some((row) => row.includes('⚙ npm run dev')), true);
   assert.equal(rows.some((row) => row.includes('running · 3.4% · 180MB')), true);
   assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;254;48;5;238m')), true);
@@ -101,7 +103,7 @@ void test('workspace rail keeps shortcuts pinned to bottom rows', () => {
 
   assert.equal(rows.length, 6);
   assert.equal(rows[4]?.includes('⌨ shortcuts'), true);
-  assert.equal(rows[5]?.includes('^t new'), true);
+  assert.equal(rows[5]?.includes('ctrl+t new'), true);
 });
 
 void test('workspace rail handles tiny row counts by showing shortcut tail', () => {
@@ -117,5 +119,5 @@ void test('workspace rail handles tiny row counts by showing shortcut tail', () 
     1
   );
   assert.equal(rows.length, 1);
-  assert.equal(rows[0]?.includes('^t new'), true);
+  assert.equal(rows[0]?.includes('ctrl+t new'), true);
 });

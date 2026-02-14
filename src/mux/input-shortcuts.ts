@@ -1,65 +1,201 @@
 type MuxGlobalShortcutAction =
-  | 'quit'
-  | 'ctrl-c'
-  | 'new-conversation'
-  | 'next-conversation'
-  | 'previous-conversation';
+  | 'mux.app.quit'
+  | 'mux.app.interrupt-all'
+  | 'mux.conversation.new'
+  | 'mux.conversation.next'
+  | 'mux.conversation.previous';
 
-function isFiniteInteger(value: number): boolean {
-  return Number.isFinite(value) && Number.isInteger(value);
+interface KeyStroke {
+  readonly key: string;
+  readonly ctrl: boolean;
+  readonly alt: boolean;
+  readonly shift: boolean;
+  readonly meta: boolean;
 }
+
+interface ParsedShortcutBinding {
+  readonly stroke: KeyStroke;
+  readonly originalText: string;
+}
+
+interface ResolvedMuxShortcutBindings {
+  readonly rawByAction: Readonly<Record<MuxGlobalShortcutAction, readonly string[]>>;
+  readonly parsedByAction: Readonly<Record<MuxGlobalShortcutAction, readonly ParsedShortcutBinding[]>>;
+}
+
+const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
+  'mux.app.quit',
+  'mux.app.interrupt-all',
+  'mux.conversation.new',
+  'mux.conversation.next',
+  'mux.conversation.previous'
+];
+
+const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction, readonly string[]>> = {
+  'mux.app.quit': ['ctrl+]'],
+  'mux.app.interrupt-all': ['ctrl+c'],
+  'mux.conversation.new': ['ctrl+t'],
+  'mux.conversation.next': ['ctrl+j'],
+  'mux.conversation.previous': ['ctrl+k']
+};
+
+const KEY_TOKEN_ALIASES = new Map<string, string>([
+  ['cmd', 'meta'],
+  ['command', 'meta'],
+  ['meta', 'meta'],
+  ['super', 'meta'],
+  ['ctrl', 'ctrl'],
+  ['control', 'ctrl'],
+  ['alt', 'alt'],
+  ['option', 'alt'],
+  ['shift', 'shift'],
+  ['esc', 'escape'],
+  ['return', 'enter'],
+  ['spacebar', 'space']
+]);
 
 function parseNumericPrefix(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
-  return isFiniteInteger(parsed) ? parsed : null;
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
-function hasCtrlModifier(modifierCode: number): boolean {
-  if (!isFiniteInteger(modifierCode) || modifierCode <= 0) {
-    return false;
+function decodeModifiers(modifierCode: number): Omit<KeyStroke, 'key'> | null {
+  if (modifierCode <= 0) {
+    return null;
   }
-  return ((modifierCode - 1) & 0b0100) !== 0;
+  const mask = modifierCode - 1;
+  return {
+    shift: (mask & 0b0001) !== 0,
+    alt: (mask & 0b0010) !== 0,
+    ctrl: (mask & 0b0100) !== 0,
+    meta: (mask & 0b1000) !== 0
+  };
 }
 
-function mapRawControlByteToAction(asciiCode: number): MuxGlobalShortcutAction | null {
-  if (asciiCode === 0x03) {
-    return 'ctrl-c';
+function keyNameFromKeyCode(keyCode: number): string | null {
+  if (keyCode < 0) {
+    return null;
   }
-  if (asciiCode === 0x14) {
-    return 'new-conversation';
+  if (keyCode === 13) {
+    return 'enter';
   }
-  if (asciiCode === 0x0e) {
-    return 'next-conversation';
+  if (keyCode === 9) {
+    return 'tab';
   }
-  if (asciiCode === 0x10) {
-    return 'previous-conversation';
+  if (keyCode === 27) {
+    return 'escape';
   }
-  if (asciiCode === 0x1d) {
-    return 'quit';
+  if (keyCode === 32) {
+    return 'space';
+  }
+  if (keyCode >= 33 && keyCode <= 126) {
+    return String.fromCharCode(keyCode).toLowerCase();
   }
   return null;
 }
 
-function mapCtrlKeyCodeToAction(asciiCode: number): MuxGlobalShortcutAction | null {
-  if (asciiCode === 99) {
-    return 'ctrl-c';
+function controlByteToKeyStroke(byte: number): KeyStroke | null {
+  if (byte === 0x1b) {
+    return {
+      key: 'escape',
+      ctrl: false,
+      alt: false,
+      shift: false,
+      meta: false
+    };
   }
-  if (asciiCode === 93) {
-    return 'quit';
+  if (byte === 0x0d) {
+    return {
+      key: 'enter',
+      ctrl: false,
+      alt: false,
+      shift: false,
+      meta: false
+    };
   }
-  if (asciiCode === 116) {
-    return 'new-conversation';
+  if (byte === 0x09) {
+    return {
+      key: 'tab',
+      ctrl: false,
+      alt: false,
+      shift: false,
+      meta: false
+    };
   }
-  if (asciiCode === 110) {
-    return 'next-conversation';
+  if (byte === 0x20) {
+    return {
+      key: 'space',
+      ctrl: false,
+      alt: false,
+      shift: false,
+      meta: false
+    };
   }
-  if (asciiCode === 112) {
-    return 'previous-conversation';
+
+  if (byte >= 0x01 && byte <= 0x1a) {
+    return {
+      key: String.fromCharCode(byte + 96),
+      ctrl: true,
+      alt: false,
+      shift: false,
+      meta: false
+    };
   }
+
+  if (byte === 0x1c) {
+    return {
+      key: '\\',
+      ctrl: true,
+      alt: false,
+      shift: false,
+      meta: false
+    };
+  }
+  if (byte === 0x1d) {
+    return {
+      key: ']',
+      ctrl: true,
+      alt: false,
+      shift: false,
+      meta: false
+    };
+  }
+  if (byte === 0x1e) {
+    return {
+      key: '^',
+      ctrl: true,
+      alt: false,
+      shift: false,
+      meta: false
+    };
+  }
+  if (byte === 0x1f) {
+    return {
+      key: '_',
+      ctrl: true,
+      alt: false,
+      shift: false,
+      meta: false
+    };
+  }
+
+  if (byte >= 32 && byte <= 126) {
+    const char = String.fromCharCode(byte);
+    const lower = char.toLowerCase();
+    const isUpper = char !== lower;
+    return {
+      key: lower,
+      ctrl: false,
+      alt: false,
+      shift: isUpper,
+      meta: false
+    };
+  }
+
   return null;
 }
 
-function parseKittyKeyboardProtocol(text: string): MuxGlobalShortcutAction | null {
+function parseKittyKeyboardProtocol(text: string): KeyStroke | null {
   if (!text.startsWith('\u001b[') || !text.endsWith('u')) {
     return null;
   }
@@ -74,16 +210,27 @@ function parseKittyKeyboardProtocol(text: string): MuxGlobalShortcutAction | nul
   if (keyCode === null) {
     return null;
   }
-
-  const modifierCode = params.length >= 2 ? parseNumericPrefix(params[1]!.split(':')[0]!) : 1;
-  if (modifierCode === null || !hasCtrlModifier(modifierCode)) {
+  const key = keyNameFromKeyCode(keyCode);
+  if (key === null) {
     return null;
   }
 
-  return mapCtrlKeyCodeToAction(keyCode);
+  const modifierCode = params.length >= 2 ? parseNumericPrefix(params[1]!.split(':')[0]!) : 1;
+  if (modifierCode === null) {
+    return null;
+  }
+  const modifiers = decodeModifiers(modifierCode);
+  if (modifiers === null) {
+    return null;
+  }
+
+  return {
+    key,
+    ...modifiers
+  };
 }
 
-function parseModifyOtherKeysProtocol(text: string): MuxGlobalShortcutAction | null {
+function parseModifyOtherKeysProtocol(text: string): KeyStroke | null {
   if (!text.startsWith('\u001b[27;') || !text.endsWith('~')) {
     return null;
   }
@@ -96,16 +243,46 @@ function parseModifyOtherKeysProtocol(text: string): MuxGlobalShortcutAction | n
 
   const modifierCode = parseNumericPrefix(params[1]!);
   const keyCode = parseNumericPrefix(params[2]!);
-  if (modifierCode === null || keyCode === null || !hasCtrlModifier(modifierCode)) {
+  if (modifierCode === null || keyCode === null) {
+    return null;
+  }
+  const modifiers = decodeModifiers(modifierCode);
+  const key = keyNameFromKeyCode(keyCode);
+  if (modifiers === null || key === null) {
     return null;
   }
 
-  return mapCtrlKeyCodeToAction(keyCode);
+  return {
+    key,
+    ...modifiers
+  };
 }
 
-export function detectMuxGlobalShortcut(input: Buffer): MuxGlobalShortcutAction | null {
+function parseAltPrefixInput(input: Buffer): KeyStroke | null {
+  if (input.length !== 2 || input[0] !== 0x1b) {
+    return null;
+  }
+  const inner = controlByteToKeyStroke(input[1]!);
+  if (inner === null) {
+    return null;
+  }
+  return {
+    key: inner.key,
+    ctrl: inner.ctrl,
+    alt: true,
+    shift: inner.shift,
+    meta: inner.meta
+  };
+}
+
+function decodeInputToKeyStroke(input: Buffer): KeyStroke | null {
   if (input.length === 1) {
-    return mapRawControlByteToAction(input[0]!);
+    return controlByteToKeyStroke(input[0]!);
+  }
+
+  const altPrefixed = parseAltPrefixInput(input);
+  if (altPrefixed !== null) {
+    return altPrefixed;
   }
 
   const text = input.toString('utf8');
@@ -115,4 +292,164 @@ export function detectMuxGlobalShortcut(input: Buffer): MuxGlobalShortcutAction 
   }
 
   return parseModifyOtherKeysProtocol(text);
+}
+
+function normalizeKeyToken(raw: string): string | null {
+  const key = raw.trim().toLowerCase();
+  if (key.length === 0) {
+    return null;
+  }
+  return KEY_TOKEN_ALIASES.get(key) ?? key;
+}
+
+function parseShortcutBinding(input: string): ParsedShortcutBinding | null {
+  const trimmed = input.trim().toLowerCase();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const rawParts = trimmed.split('+');
+
+  const tokens = rawParts
+    .map((part) => normalizeKeyToken(part))
+    .flatMap((token) => (token === null ? [] : [token]));
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  const modifiers = {
+    ctrl: false,
+    alt: false,
+    shift: false,
+    meta: false
+  };
+
+  for (let idx = 0; idx < tokens.length - 1; idx += 1) {
+    const token = tokens[idx]!;
+    if (token === 'ctrl') {
+      modifiers.ctrl = true;
+      continue;
+    }
+    if (token === 'alt') {
+      modifiers.alt = true;
+      continue;
+    }
+    if (token === 'shift') {
+      modifiers.shift = true;
+      continue;
+    }
+    if (token === 'meta') {
+      modifiers.meta = true;
+      continue;
+    }
+    return null;
+  }
+
+  const key = tokens[tokens.length - 1]!;
+  const validNamedKeys = new Set([
+    'enter',
+    'tab',
+    'escape',
+    'space',
+    'up',
+    'down',
+    'left',
+    'right',
+    'home',
+    'end',
+    'pageup',
+    'pagedown'
+  ]);
+  if (key.length !== 1 && !validNamedKeys.has(key)) {
+    return null;
+  }
+
+  return {
+    stroke: {
+      key,
+      ...modifiers
+    },
+    originalText: trimmed
+  };
+}
+
+function strokesEqual(left: KeyStroke, right: KeyStroke): boolean {
+  return (
+    left.key === right.key &&
+    left.ctrl === right.ctrl &&
+    left.alt === right.alt &&
+    left.shift === right.shift &&
+    left.meta === right.meta
+  );
+}
+
+function parseBindingsForAction(rawBindings: readonly string[]): readonly ParsedShortcutBinding[] {
+  const parsed: ParsedShortcutBinding[] = [];
+  for (const raw of rawBindings) {
+    const normalized = parseShortcutBinding(raw);
+    if (normalized !== null) {
+      parsed.push(normalized);
+    }
+  }
+  return parsed;
+}
+
+function withDefaultBindings(
+  overrides: Readonly<Record<string, readonly string[]> | undefined>
+): Readonly<Record<MuxGlobalShortcutAction, readonly string[]>> {
+  return {
+    'mux.app.quit': overrides?.['mux.app.quit'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.quit'],
+    'mux.app.interrupt-all':
+      overrides?.['mux.app.interrupt-all'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.interrupt-all'],
+    'mux.conversation.new':
+      overrides?.['mux.conversation.new'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.new'],
+    'mux.conversation.next':
+      overrides?.['mux.conversation.next'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.next'],
+    'mux.conversation.previous':
+      overrides?.['mux.conversation.previous'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.previous']
+  };
+}
+
+export function resolveMuxShortcutBindings(
+  overrides?: Readonly<Record<string, readonly string[]> | undefined>
+): ResolvedMuxShortcutBindings {
+  const rawByAction = withDefaultBindings(overrides);
+  return {
+    rawByAction,
+    parsedByAction: {
+      'mux.app.quit': parseBindingsForAction(rawByAction['mux.app.quit']),
+      'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
+      'mux.conversation.new': parseBindingsForAction(rawByAction['mux.conversation.new']),
+      'mux.conversation.next': parseBindingsForAction(rawByAction['mux.conversation.next']),
+      'mux.conversation.previous': parseBindingsForAction(rawByAction['mux.conversation.previous'])
+    }
+  };
+}
+
+const DEFAULT_SHORTCUT_BINDINGS = resolveMuxShortcutBindings();
+
+export function firstShortcutText(
+  bindings: ResolvedMuxShortcutBindings,
+  action: MuxGlobalShortcutAction
+): string {
+  return bindings.rawByAction[action][0] ?? '';
+}
+
+export function detectMuxGlobalShortcut(
+  input: Buffer,
+  bindings: ResolvedMuxShortcutBindings = DEFAULT_SHORTCUT_BINDINGS
+): MuxGlobalShortcutAction | null {
+  const stroke = decodeInputToKeyStroke(input);
+  if (stroke === null) {
+    return null;
+  }
+
+  for (const action of ACTION_ORDER) {
+    const match = bindings.parsedByAction[action].some((binding) =>
+      strokesEqual(binding.stroke, stroke)
+    );
+    if (match) {
+      return action;
+    }
+  }
+  return null;
 }

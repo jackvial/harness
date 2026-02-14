@@ -30,7 +30,12 @@ import {
   parseMuxInputChunk,
   wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
-import { detectMuxGlobalShortcut } from '../src/mux/input-shortcuts.ts';
+import { loadHarnessConfig } from '../src/config/config-core.ts';
+import {
+  detectMuxGlobalShortcut,
+  firstShortcutText,
+  resolveMuxShortcutBindings
+} from '../src/mux/input-shortcuts.ts';
 import {
   cycleConversationId,
   type ConversationRailSessionSummary
@@ -40,14 +45,21 @@ import {
   renderWorkspaceRailAnsiRows
 } from '../src/mux/workspace-rail.ts';
 import {
+  buildWorkspaceRailViewRows,
+  conversationIdAtWorkspaceRailRow
+} from '../src/mux/workspace-rail-model.ts';
+import {
   createTerminalRecordingWriter
 } from '../src/recording/terminal-recording.ts';
 import { renderTerminalRecordingToGif } from './terminal-recording-gif-lib.ts';
+
+type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 
 interface MuxOptions {
   codexArgs: string[];
   storePath: string;
   initialConversationId: string;
+  invocationDirectory: string;
   controlPlaneHost: string | null;
   controlPlanePort: number | null;
   controlPlaneAuthToken: string | null;
@@ -729,6 +741,7 @@ function parseArgs(argv: string[]): MuxOptions {
     codexArgs,
     storePath: process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite',
     initialConversationId,
+    invocationDirectory,
     controlPlaneHost,
     controlPlanePort,
     controlPlaneAuthToken,
@@ -817,14 +830,25 @@ function conversationOrder(conversations: ReadonlyMap<string, ConversationState>
   return [...conversations.keys()];
 }
 
-function buildRailRows(
-  layout: ReturnType<typeof computeDualPaneLayout>,
+function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
+  const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
+  const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
+  const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
+  const quit = firstShortcutText(bindings, 'mux.app.quit') || 'ctrl+]';
+  const switchHint = next === previous ? next : `${next}/${previous}`;
+  return `${newConversation} new  ${switchHint} switch  ${quit} quit`;
+}
+
+type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
+
+function buildRailModel(
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
   activeConversationId: string | null,
   gitSummary: GitSummary,
-  processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>
-): readonly string[] {
+  processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
+  shortcutBindings: ResolvedMuxShortcutBindings
+): WorkspaceRailModel {
   const directoriesByKey = new Map<
     string,
     {
@@ -855,7 +879,7 @@ function buildRailRows(
     }
   }
 
-  const railModel = {
+  return {
     directories: [...directoriesByKey.entries()].map(([key, value]) => ({
       key,
       workspaceId: value.workspaceId,
@@ -882,14 +906,33 @@ function buildRailRows(
       .flatMap((conversation) => (conversation === null ? [] : [conversation])),
     activeConversationId,
     processes: [],
+    shortcutHint: shortcutHintText(shortcutBindings),
     nowMs: Date.now()
   };
+}
 
-  return renderWorkspaceRailAnsiRows(
-    railModel,
-    layout.leftCols,
-    layout.paneRows
+function buildRailRows(
+  layout: ReturnType<typeof computeDualPaneLayout>,
+  conversations: ReadonlyMap<string, ConversationState>,
+  orderedIds: readonly string[],
+  activeConversationId: string | null,
+  gitSummary: GitSummary,
+  processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
+  shortcutBindings: ResolvedMuxShortcutBindings
+): { ansiRows: readonly string[]; viewRows: ReturnType<typeof buildWorkspaceRailViewRows> } {
+  const railModel = buildRailModel(
+    conversations,
+    orderedIds,
+    activeConversationId,
+    gitSummary,
+    processUsageBySessionId,
+    shortcutBindings
   );
+  const viewRows = buildWorkspaceRailViewRows(railModel, layout.paneRows);
+  return {
+    ansiRows: renderWorkspaceRailAnsiRows(railModel, layout.leftCols, layout.paneRows),
+    viewRows
+  };
 }
 
 function buildRenderRows(
@@ -898,7 +941,8 @@ function buildRenderRows(
   rightFrame: TerminalSnapshotFrame,
   activeConversationId: string | null,
   selectionActive: boolean,
-  ctrlCExits: boolean
+  ctrlCExits: boolean,
+  shortcutBindings: ResolvedMuxShortcutBindings
 ): string[] {
   const rows: string[] = [];
   for (let row = 0; row < layout.paneRows; row += 1) {
@@ -911,9 +955,14 @@ function buildRenderRows(
     ? 'pty=live'
     : `pty=scroll(${String(rightFrame.viewport.top + 1)}/${String(rightFrame.viewport.totalRows)})`;
   const selection = selectionActive ? 'select=drag' : 'select=idle';
-  const quitHint = ctrlCExits ? 'ctrl-c/ctrl-] quit' : 'ctrl-] quit';
+  const quitKey = firstShortcutText(shortcutBindings, 'mux.app.quit') || 'ctrl+]';
+  const interruptKey = firstShortcutText(shortcutBindings, 'mux.app.interrupt-all') || 'ctrl+c';
+  const newKey = firstShortcutText(shortcutBindings, 'mux.conversation.new') || 'ctrl+t';
+  const nextKey = firstShortcutText(shortcutBindings, 'mux.conversation.next') || 'ctrl+j';
+  const previousKey = firstShortcutText(shortcutBindings, 'mux.conversation.previous') || 'ctrl+k';
+  const quitHint = ctrlCExits ? `${interruptKey}/${quitKey} quit` : `${quitKey} quit`;
   const status = padOrTrimDisplay(
-    `[mux] conversation=${activeConversationId ?? '-'} ${mainMode} ${selection} ctrl-t new ctrl-n/p switch drag copy alt-pass ${quitHint}`,
+    `[mux] conversation=${activeConversationId ?? '-'} ${mainMode} ${selection} ${newKey} new ${nextKey}/${previousKey} switch drag copy alt-pass ${quitHint}`,
     layout.cols
   );
   rows.push(status);
@@ -1204,6 +1253,13 @@ async function main(): Promise<number> {
   }
 
   const options = parseArgs(process.argv.slice(2));
+  const loadedConfig = loadHarnessConfig({
+    cwd: options.invocationDirectory
+  });
+  if (loadedConfig.error !== null) {
+    process.stderr.write(`[config] using last-known-good due to parse error: ${loadedConfig.error}\n`);
+  }
+  const shortcutBindings = resolveMuxShortcutBindings(loadedConfig.config.mux.keybindings);
   const store = new SqliteEventStore(options.storePath);
   const debugPath = process.env.HARNESS_MUX_DEBUG_PATH ?? null;
 
@@ -1380,6 +1436,7 @@ async function main(): Promise<number> {
   let renderedCursorStyle: RenderCursorStyle | null = null;
   let renderedBracketedPaste: boolean | null = null;
   let previousSelectionRows: readonly number[] = [];
+  let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
   let renderScheduled = false;
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
@@ -1702,21 +1759,24 @@ async function main(): Promise<number> {
         : selection;
     const selectionRows = selectionVisibleRows(rightFrame, renderSelection);
     const orderedIds = conversationOrder(conversations);
-    const railRows = buildRailRows(
+    const rail = buildRailRows(
       layout,
       conversations,
       orderedIds,
       activeConversationId,
       gitSummary,
-      processUsageBySessionId
+      processUsageBySessionId,
+      shortcutBindings
     );
+    latestRailViewRows = rail.viewRows;
     const rows = buildRenderRows(
       layout,
-      railRows,
+      rail.ansiRows,
       rightFrame,
       activeConversationId,
       renderSelection !== null,
-      ctrlCExits
+      ctrlCExits,
+      shortcutBindings
     );
     if (validateAnsi) {
       const issues = findAnsiIntegrityIssues(rows);
@@ -1936,9 +1996,9 @@ async function main(): Promise<number> {
       return;
     }
 
-    const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized);
+    const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized, shortcutBindings);
     if (
-      globalShortcut === 'ctrl-c' &&
+      globalShortcut === 'mux.app.interrupt-all' &&
       ctrlCExits &&
       selection === null &&
       selectionDrag === null
@@ -1946,19 +2006,22 @@ async function main(): Promise<number> {
       requestStop();
       return;
     }
-    if (globalShortcut === 'quit') {
+    if (globalShortcut === 'mux.app.quit') {
       requestStop();
       return;
     }
-    if (globalShortcut === 'new-conversation') {
+    if (globalShortcut === 'mux.conversation.new') {
       queueControlPlaneOp(async () => {
         await createAndActivateConversation();
       });
       return;
     }
-    if (globalShortcut === 'next-conversation' || globalShortcut === 'previous-conversation') {
+    if (
+      globalShortcut === 'mux.conversation.next' ||
+      globalShortcut === 'mux.conversation.previous'
+    ) {
       const orderedIds = conversationOrder(conversations);
-      const direction = globalShortcut === 'next-conversation' ? 'next' : 'previous';
+      const direction = globalShortcut === 'mux.conversation.next' ? 'next' : 'previous';
       const targetId = cycleConversationId(orderedIds, activeConversationId, direction);
       if (targetId !== null) {
         queueControlPlaneOp(async () => {
@@ -2014,6 +2077,34 @@ async function main(): Promise<number> {
           markDirty();
           continue;
         }
+      }
+      const leftPaneConversationSelect =
+        target === 'left' &&
+        isLeftButtonPress(token.event.code, token.event.final) &&
+        !hasAltModifier(token.event.code) &&
+        !isMotionMouseCode(token.event.code);
+      if (leftPaneConversationSelect) {
+        const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
+        const selectedConversationId = conversationIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        if (selection !== null || selectionDrag !== null) {
+          selection = null;
+          selectionDrag = null;
+          releaseViewportPinForSelection();
+        }
+        if (selectedConversationId !== null && selectedConversationId !== activeConversationId) {
+          queueControlPlaneOp(async () => {
+            await activateConversation(selectedConversationId);
+          });
+        }
+        appendDebugRecord(debugPath, {
+          kind: 'conversation-select-mouse',
+          row: token.event.row,
+          col: token.event.col,
+          rowIndex,
+          selectedConversationId
+        });
+        markDirty();
+        continue;
       }
       const point = pointFromMouseEvent(layout, snapshotForInput, token.event);
       const startSelection = isMainPaneTarget && isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code);

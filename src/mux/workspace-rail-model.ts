@@ -25,6 +25,7 @@ interface WorkspaceRailConversationSummary {
   readonly status: ConversationRailSessionSummary['status'];
   readonly attentionReason: string | null;
   readonly startedAt: string;
+  readonly lastEventAt: string | null;
 }
 
 interface WorkspaceRailProcessSummary {
@@ -41,6 +42,7 @@ interface WorkspaceRailModel {
   readonly conversations: readonly WorkspaceRailConversationSummary[];
   readonly processes: readonly WorkspaceRailProcessSummary[];
   readonly activeConversationId: string | null;
+  readonly shortcutHint?: string;
   readonly nowMs?: number;
 }
 
@@ -54,34 +56,62 @@ interface WorkspaceRailViewRow {
     | 'process-meta'
     | 'shortcut-header'
     | 'shortcut-body'
-    | 'muted'
-    | 'empty';
+    | 'muted';
   readonly text: string;
   readonly active: boolean;
+  readonly conversationSessionId: string | null;
 }
 
-function statusGlyph(status: ConversationRailSessionSummary['status']): string {
-  if (status === 'needs-input') {
+type NormalizedConversationStatus = 'needs-action' | 'working' | 'idle' | 'complete' | 'exited';
+
+function normalizeConversationStatus(
+  conversation: WorkspaceRailConversationSummary,
+  nowMs: number
+): NormalizedConversationStatus {
+  if (conversation.status === 'needs-input') {
+    return 'needs-action';
+  }
+  if (conversation.status === 'completed') {
+    return 'complete';
+  }
+  if (conversation.status === 'exited') {
+    return 'exited';
+  }
+  const lastEventAtMs = conversation.lastEventAt === null ? Number.NaN : Date.parse(conversation.lastEventAt);
+  if (Number.isFinite(lastEventAtMs) && nowMs - lastEventAtMs > 15_000) {
+    return 'idle';
+  }
+  return 'working';
+}
+
+function statusGlyph(status: NormalizedConversationStatus): string {
+  if (status === 'needs-action') {
     return '◐';
   }
-  if (status === 'running') {
+  if (status === 'working') {
     return '●';
   }
-  if (status === 'completed') {
+  if (status === 'idle') {
+    return '◍';
+  }
+  if (status === 'complete') {
     return '○';
   }
   return '◌';
 }
 
-function statusText(status: ConversationRailSessionSummary['status']): string {
-  if (status === 'needs-input') {
-    return 'needs input';
+function statusText(status: NormalizedConversationStatus): string {
+  if (status === 'needs-action') {
+    return 'needs action';
   }
-  if (status === 'running') {
-    return 'running';
+  if (status === 'working') {
+    return 'working';
   }
-  if (status === 'completed') {
-    return 'done';
+  if (status === 'idle') {
+    return 'idle';
+  }
+  if (status === 'complete') {
+    return 'complete';
   }
   return 'exited';
 }
@@ -131,12 +161,14 @@ function pushRow(
   rows: WorkspaceRailViewRow[],
   kind: WorkspaceRailViewRow['kind'],
   text: string,
-  active = false
+  active = false,
+  conversationSessionId: string | null = null
 ): void {
   rows.push({
     kind,
     text,
-    active
+    active,
+    conversationSessionId
   });
 }
 
@@ -177,20 +209,23 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
           conversation.attentionReason !== null && conversation.attentionReason.trim().length > 0
             ? ` · ${conversation.attentionReason.trim()}`
             : '';
+        const normalizedStatus = normalizeConversationStatus(conversation, nowMs);
         pushRow(
           rows,
           'conversation-title',
           `│  ${active ? '▸' : ' '} ${conversation.agentLabel} - ${conversation.title}`,
-          active
+          active,
+          conversation.sessionId
         );
         pushRow(
           rows,
           'conversation-meta',
-          `│    ${statusGlyph(conversation.status)} ${statusText(conversation.status)}${reason} · ${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)} · ${formatDuration(conversation.startedAt, nowMs)}`,
-          active
+          `│    ${statusGlyph(normalizedStatus)} ${statusText(normalizedStatus)}${reason} · ${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)} · ${formatDuration(conversation.startedAt, nowMs)}`,
+          active,
+          conversation.sessionId
         );
         if (index + 1 < conversations.length) {
-          pushRow(rows, 'empty', '');
+          pushRow(rows, 'muted', '│');
         }
       }
     }
@@ -217,12 +252,14 @@ function shortcutRows(): readonly WorkspaceRailViewRow[] {
     {
       kind: 'shortcut-header',
       text: '├─ ⌨ shortcuts',
-      active: false
+      active: false,
+      conversationSessionId: null
     },
     {
       kind: 'shortcut-body',
-      text: '│  ^t new  ^n/^p switch  ^] quit',
-      active: false
+      text: '│  ctrl+t new  ctrl+j/k switch  ctrl+] quit',
+      active: false,
+      conversationSessionId: null
     }
   ];
 }
@@ -243,8 +280,26 @@ export function buildWorkspaceRailViewRows(
   const contentCapacity = safeRows - shortcuts.length;
   const rows: WorkspaceRailViewRow[] = [...contentRows.slice(0, contentCapacity)];
   while (rows.length < contentCapacity) {
-    pushRow(rows, 'empty', '');
+    pushRow(rows, 'muted', '│');
+  }
+  if (model.shortcutHint !== undefined && model.shortcutHint.trim().length > 0) {
+    rows.push(shortcuts[0]!, {
+      ...shortcuts[1]!,
+      text: `│  ${model.shortcutHint.trim()}`
+    });
+    return rows;
   }
   rows.push(...shortcuts);
   return rows;
+}
+
+export function conversationIdAtWorkspaceRailRow(
+  rows: readonly WorkspaceRailViewRow[],
+  rowIndex: number
+): string | null {
+  const row = rows[rowIndex];
+  if (row === undefined) {
+    return null;
+  }
+  return row.conversationSessionId;
 }

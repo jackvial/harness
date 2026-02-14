@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
+import {
+  buildWorkspaceRailViewRows,
+  conversationIdAtWorkspaceRailRow
+} from '../src/mux/workspace-rail-model.ts';
 
 void test('workspace rail model builds rows with conversation spacing and process metadata', () => {
   const rows = buildWorkspaceRailViewRows(
@@ -41,7 +44,8 @@ void test('workspace rail model builds rows with conversation spacing and proces
           memoryMb: 0,
           status: 'needs-input',
           attentionReason: 'approval',
-          startedAt: '2026-01-01T00:00:00.000Z'
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:09.000Z'
         },
         {
           sessionId: 's2',
@@ -52,7 +56,8 @@ void test('workspace rail model builds rows with conversation spacing and proces
           memoryMb: null,
           status: 'exited',
           attentionReason: null,
-          startedAt: 'bad-time'
+          startedAt: 'bad-time',
+          lastEventAt: null
         }
       ],
       processes: [
@@ -73,12 +78,13 @@ void test('workspace rail model builds rows with conversation spacing and proces
 
   assert.equal(rows.length, 18);
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.active), true);
-  assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('needs input · approval')), true);
+  assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('needs action · approval')), true);
   assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('◌ exited · · · ·')), true);
   assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('exited · · · ·')), true);
   assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.startsWith('├─ 📁 charlie')), true);
   assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('(no conversations)')), true);
-  assert.equal(rows.some((row) => row.kind === 'empty'), true);
+  assert.equal(rows.some((row) => row.kind === 'muted' && row.text === '│'), true);
+  assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.conversationSessionId === 's1'), true);
   assert.equal(rows[rows.length - 2]?.kind, 'shortcut-header');
   assert.equal(rows[rows.length - 1]?.kind, 'shortcut-body');
 });
@@ -161,7 +167,8 @@ void test('workspace rail model truncates content before pinned shortcuts and su
           memoryMb: 30,
           status: 'running',
           attentionReason: null,
-          startedAt: '2026-01-01T00:00:00.000Z'
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:59.000Z'
         }
       ],
       processes: [],
@@ -173,4 +180,106 @@ void test('workspace rail model truncates content before pinned shortcuts and su
   assert.equal(truncated.length, 3);
   assert.equal(truncated[1]?.kind, 'shortcut-header');
   assert.equal(truncated[2]?.kind, 'shortcut-body');
+});
+
+void test('workspace rail model supports idle normalization custom shortcuts and row hit-testing', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          active: false,
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'untitled',
+          agentLabel: 'codex',
+          cpuPercent: 0.1,
+          memoryMb: 10,
+          status: 'running',
+          attentionReason: '   ',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:00.000Z'
+        }
+      ],
+      processes: [],
+      activeConversationId: 'conversation-a',
+      shortcutHint: '   ',
+      nowMs: Date.parse('2026-01-01T00:00:20.000Z')
+    },
+    8
+  );
+
+  assert.equal(rows.some((row) => row.text.includes('◍ idle')), true);
+  assert.equal(rows[rows.length - 1]?.text.includes('ctrl+j/k switch'), true);
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, 3), 'conversation-a');
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, -1), null);
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, 100), null);
+});
+
+void test('workspace rail model overrides default shortcut text when custom hint is set', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeConversationId: null,
+      shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+] quit'
+    },
+    3
+  );
+
+  assert.equal(rows[2]?.text.includes('ctrl+n/p switch'), true);
+});
+
+void test('workspace rail model treats running sessions with missing last event as working', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          active: false,
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-working',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0,
+          memoryMb: 1,
+          status: 'running',
+          attentionReason: null,
+          startedAt: 'bad-time',
+          lastEventAt: null
+        }
+      ],
+      processes: [],
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T00:00:20.000Z')
+    },
+    10
+  );
+
+  assert.equal(rows.some((row) => row.text.includes('● working')), true);
 });

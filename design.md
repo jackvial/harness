@@ -497,6 +497,9 @@ Design constraints:
 - Current verified implementation:
   - left rail: directories -> conversations -> process telemetry -> git stats
   - right pane: active live steerable PTY session
+  - left-rail conversation activation via keyboard and mouse click with deterministic row hit-testing
+  - normalized action-oriented conversation status labels (`needs action`, `working`, `idle`, `complete`, `exited`)
+  - keybindings loaded from `harness.config.jsonc` using VS Code-style action IDs and parseable key strings
 - Next target layout iterations:
   - first-class directory/worktree actions in rail (`add/select/archive`) via control-plane commands
   - explicit background-process rows beyond conversation-host process telemetry
@@ -535,7 +538,8 @@ Target layout sketch:
 Left-rail rendering/style principles:
 - Visual hierarchy from typography and spacing first; color is secondary reinforcement.
 - Stable row order by default; selection changes highlight only.
-- Status badges are short and color-coded (`RUN`, `NEEDS`, `DONE`, `FAIL`) with icon assist.
+- Status indicators are short, icon-assisted, and action-oriented (`needs action`, `working`, `idle`, `complete`, `exited`).
+- Status text is normalized for operator action semantics rather than provider-specific phrasing.
 - Git and process stats remain visible at all times to reduce context switches.
 
 ### Optional Remote/Web Client

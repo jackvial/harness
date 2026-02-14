@@ -54,7 +54,11 @@ function drawConversationRow(
   rowIndex: number,
   row: WorkspaceRailViewRow
 ): void {
-  fillUiRow(surface, rowIndex, NORMAL_STYLE);
+  if (row.active) {
+    fillUiRow(surface, rowIndex, row.kind === 'conversation-meta' ? ACTIVE_META_STYLE : ACTIVE_TITLE_STYLE);
+  } else {
+    fillUiRow(surface, rowIndex, NORMAL_STYLE);
+  }
   drawUiText(surface, 0, rowIndex, '│ ', MUTED_STYLE);
   const text = row.text.slice(2);
   if (row.active) {
@@ -112,7 +116,6 @@ export function renderWorkspaceRailAnsiRows(
       drawUiText(surface, 0, rowIndex, row.text, MUTED_STYLE);
       continue;
     }
-    fillUiRow(surface, rowIndex, NORMAL_STYLE);
   }
 
   return renderUiSurfaceAnsiRows(surface);
