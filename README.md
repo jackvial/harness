@@ -22,6 +22,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Control-plane TCP stream baseline (`src/control-plane/*`) with typed command/event envelopes.
 - Control-plane auth handshake (`auth` / `auth.ok` / `auth.error`) with optional shared-token enforcement.
 - Control-plane session discovery/state commands: `session.list`, `session.status`, `session.snapshot`.
+- Control-plane attention and steering wrappers: `attention.list`, `session.respond`, `session.interrupt`.
+- Exited session lifecycle now uses tombstones with TTL cleanup plus explicit `session.remove`.
 - Control-plane output fanout now enforces per-connection backpressure limits (bounded buffering).
 - Mux control path now runs through the same stream API primitives (`pty.start/attach/input/resize/signal/close`) used for programmatic clients.
 - Mux control-plane attach/start wiring is extracted into reusable `src/control-plane/codex-session-stream.ts` so local/remote transport is swappable.

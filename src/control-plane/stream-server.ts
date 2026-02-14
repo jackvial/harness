@@ -55,6 +55,7 @@ interface StartControlPlaneStreamServerOptions {
   startSession?: StartControlPlaneSession;
   authToken?: string;
   maxConnectionBufferedBytes?: number;
+  sessionExitTombstoneTtlMs?: number;
 }
 
 interface ConnectionState {
@@ -73,18 +74,22 @@ type SessionRuntimeStatus = 'running' | 'needs-input' | 'completed' | 'exited';
 
 interface SessionState {
   id: string;
-  session: LiveSessionLike;
+  session: LiveSessionLike | null;
   eventSubscriberConnectionIds: Set<string>;
   attachmentByConnectionId: Map<string, string>;
-  unsubscribe: () => void;
+  unsubscribe: (() => void) | null;
   status: SessionRuntimeStatus;
   attentionReason: string | null;
   lastEventAt: string | null;
   lastExit: PtyExit | null;
+  lastSnapshot: Record<string, unknown> | null;
   startedAt: string;
+  exitedAt: string | null;
+  tombstoneTimer: NodeJS.Timeout | null;
 }
 
 const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
+const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 
 function mapNotifyRecord(record: { ts: string; payload: NotifyPayload }): {
   ts: string;
@@ -134,6 +139,7 @@ export class ControlPlaneStreamServer {
   private readonly port: number;
   private readonly authToken: string | null;
   private readonly maxConnectionBufferedBytes: number;
+  private readonly sessionExitTombstoneTtlMs: number;
   private readonly startSession: StartControlPlaneSession;
   private readonly server: Server;
   private readonly connections = new Map<string, ConnectionState>();
@@ -146,6 +152,8 @@ export class ControlPlaneStreamServer {
     this.authToken = options.authToken ?? null;
     this.maxConnectionBufferedBytes =
       options.maxConnectionBufferedBytes ?? DEFAULT_MAX_CONNECTION_BUFFERED_BYTES;
+    this.sessionExitTombstoneTtlMs =
+      options.sessionExitTombstoneTtlMs ?? DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS;
     if (options.startSession === undefined) {
       throw new Error('startSession is required');
     }
@@ -341,6 +349,14 @@ export class ControlPlaneStreamServer {
       };
     }
 
+    if (command.type === 'attention.list') {
+      return {
+        sessions: [...this.sessions.values()]
+          .filter((state) => state.status === 'needs-input')
+          .map((state) => this.sessionSummaryRecord(state))
+      };
+    }
+
     if (command.type === 'session.status') {
       const state = this.requireSession(command.sessionId);
       return this.sessionSummaryRecord(state);
@@ -348,15 +364,61 @@ export class ControlPlaneStreamServer {
 
     if (command.type === 'session.snapshot') {
       const state = this.requireSession(command.sessionId);
+      if (state.session === null) {
+        if (state.lastSnapshot === null) {
+          throw new Error(`session snapshot unavailable: ${command.sessionId}`);
+        }
+        return {
+          sessionId: command.sessionId,
+          snapshot: state.lastSnapshot,
+          stale: true
+        };
+      }
+      const snapshot = this.snapshotRecordFromFrame(state.session.snapshot());
+      state.lastSnapshot = snapshot;
       return {
         sessionId: command.sessionId,
-        snapshot: this.snapshotRecordFromFrame(state.session.snapshot())
+        snapshot,
+        stale: false
+      };
+    }
+
+    if (command.type === 'session.respond') {
+      const state = this.requireLiveSession(command.sessionId);
+      state.session.write(command.text);
+      state.status = 'running';
+      state.attentionReason = null;
+      return {
+        responded: true,
+        sentBytes: Buffer.byteLength(command.text)
+      };
+    }
+
+    if (command.type === 'session.interrupt') {
+      const state = this.requireLiveSession(command.sessionId);
+      state.session.write('\u0003');
+      state.status = 'running';
+      state.attentionReason = null;
+      return {
+        interrupted: true
+      };
+    }
+
+    if (command.type === 'session.remove') {
+      this.destroySession(command.sessionId, true);
+      return {
+        removed: true
       };
     }
 
     if (command.type === 'pty.start') {
-      if (this.sessions.has(command.sessionId)) {
+      const existing = this.sessions.get(command.sessionId);
+      if (existing !== undefined) {
+        if (existing.status === 'exited' && existing.session === null) {
+          this.destroySession(command.sessionId, false);
+        } else {
         throw new Error(`session already exists: ${command.sessionId}`);
+        }
       }
 
       const startInput: StartControlPlaneSessionInput = {
@@ -390,7 +452,10 @@ export class ControlPlaneStreamServer {
         attentionReason: null,
         lastEventAt: null,
         lastExit: null,
-        startedAt: new Date().toISOString()
+        lastSnapshot: null,
+        startedAt: new Date().toISOString(),
+        exitedAt: null,
+        tombstoneTimer: null
       });
 
       return {
@@ -399,7 +464,7 @@ export class ControlPlaneStreamServer {
     }
 
     if (command.type === 'pty.attach') {
-      const state = this.requireSession(command.sessionId);
+      const state = this.requireLiveSession(command.sessionId);
       const previous = state.attachmentByConnectionId.get(connection.id);
       if (previous !== undefined) {
         state.session.detach(previous);
@@ -460,7 +525,7 @@ export class ControlPlaneStreamServer {
       };
     }
 
-    this.requireSession(command.sessionId);
+    this.requireLiveSession(command.sessionId);
     this.destroySession(command.sessionId, true);
     return {
       closed: true
@@ -472,7 +537,7 @@ export class ControlPlaneStreamServer {
     if (state === undefined) {
       return;
     }
-    if (state.status === 'exited') {
+    if (state.status === 'exited' || state.session === null) {
       return;
     }
 
@@ -490,7 +555,7 @@ export class ControlPlaneStreamServer {
     if (state === undefined) {
       return;
     }
-    if (state.status === 'exited') {
+    if (state.status === 'exited' || state.session === null) {
       return;
     }
     state.session.resize(cols, rows);
@@ -501,7 +566,7 @@ export class ControlPlaneStreamServer {
     if (state === undefined) {
       return;
     }
-    if (state.status === 'exited') {
+    if (state.status === 'exited' || state.session === null) {
       return;
     }
 
@@ -562,7 +627,10 @@ export class ControlPlaneStreamServer {
       sessionState.status = 'exited';
       sessionState.attentionReason = null;
       sessionState.lastExit = event.exit;
-      sessionState.lastEventAt = new Date().toISOString();
+      const exitedAt = new Date().toISOString();
+      sessionState.lastEventAt = exitedAt;
+      sessionState.exitedAt = exitedAt;
+      this.deactivateSession(sessionState.id, true);
     }
   }
 
@@ -574,6 +642,14 @@ export class ControlPlaneStreamServer {
     return state;
   }
 
+  private requireLiveSession(sessionId: string): SessionState & { session: LiveSessionLike } {
+    const state = this.requireSession(sessionId);
+    if (state.session === null) {
+      throw new Error(`session is not live: ${sessionId}`);
+    }
+    return state as SessionState & { session: LiveSessionLike };
+  }
+
   private detachConnectionFromSession(connectionId: string, sessionId: string): void {
     const state = this.sessions.get(sessionId);
     if (state === undefined) {
@@ -582,6 +658,10 @@ export class ControlPlaneStreamServer {
 
     const attachmentId = state.attachmentByConnectionId.get(connectionId);
     if (attachmentId === undefined) {
+      return;
+    }
+    if (state.session === null) {
+      state.attachmentByConnectionId.delete(connectionId);
       return;
     }
 
@@ -607,31 +687,87 @@ export class ControlPlaneStreamServer {
     this.connections.delete(connectionId);
   }
 
-  private destroySession(sessionId: string, closeSession: boolean): void {
+  private deactivateSession(sessionId: string, closeSession: boolean): void {
     const state = this.sessions.get(sessionId);
-    if (state === undefined) {
+    if (state === undefined || state.session === null) {
       return;
     }
 
-    state.unsubscribe();
+    const liveSession = state.session;
+    state.session = null;
+
+    if (state.unsubscribe !== null) {
+      state.unsubscribe();
+      state.unsubscribe = null;
+    }
+
+    state.lastSnapshot = this.snapshotRecordFromFrame(liveSession.snapshot());
 
     if (closeSession) {
-      state.session.close();
+      liveSession.close();
     }
 
     for (const [connectionId, attachmentId] of state.attachmentByConnectionId.entries()) {
-      state.session.detach(attachmentId);
+      liveSession.detach(attachmentId);
       const connection = this.connections.get(connectionId);
       if (connection !== undefined) {
         connection.attachedSessionIds.delete(sessionId);
       }
     }
+    state.attachmentByConnectionId.clear();
 
     for (const connectionId of state.eventSubscriberConnectionIds) {
       const connection = this.connections.get(connectionId);
       if (connection !== undefined) {
         connection.eventSessionIds.delete(sessionId);
       }
+    }
+    state.eventSubscriberConnectionIds.clear();
+
+    if (state.status === 'exited') {
+      this.scheduleTombstoneRemoval(state.id);
+    }
+  }
+
+  private scheduleTombstoneRemoval(sessionId: string): void {
+    const state = this.sessions.get(sessionId);
+    if (state === undefined || state.status !== 'exited') {
+      return;
+    }
+
+    if (state.tombstoneTimer !== null) {
+      clearTimeout(state.tombstoneTimer);
+      state.tombstoneTimer = null;
+    }
+
+    if (this.sessionExitTombstoneTtlMs <= 0) {
+      this.destroySession(sessionId, false);
+      return;
+    }
+
+    state.tombstoneTimer = setTimeout(() => {
+      const current = this.sessions.get(sessionId);
+      if (current === undefined || current.status !== 'exited') {
+        return;
+      }
+      this.destroySession(sessionId, false);
+    }, this.sessionExitTombstoneTtlMs);
+    state.tombstoneTimer.unref();
+  }
+
+  private destroySession(sessionId: string, closeSession: boolean): void {
+    const state = this.sessions.get(sessionId);
+    if (state === undefined) {
+      return;
+    }
+
+    if (state.tombstoneTimer !== null) {
+      clearTimeout(state.tombstoneTimer);
+      state.tombstoneTimer = null;
+    }
+
+    if (state.session !== null) {
+      this.deactivateSession(sessionId, closeSession);
     }
 
     this.sessions.delete(sessionId);
@@ -642,12 +778,14 @@ export class ControlPlaneStreamServer {
       sessionId: state.id,
       status: state.status,
       attentionReason: state.attentionReason,
-      latestCursor: state.session.latestCursorValue(),
+      latestCursor: state.session?.latestCursorValue() ?? null,
       attachedClients: state.attachmentByConnectionId.size,
       eventSubscribers: state.eventSubscriberConnectionIds.size,
       startedAt: state.startedAt,
       lastEventAt: state.lastEventAt,
-      lastExit: state.lastExit
+      lastExit: state.lastExit,
+      exitedAt: state.exitedAt,
+      live: state.session !== null
     };
   }
 

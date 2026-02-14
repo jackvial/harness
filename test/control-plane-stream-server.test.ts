@@ -346,11 +346,18 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   assert.equal(created[0]!.writes.length, writesBeforeExitedInput);
   assert.equal(created[0]!.resizeCalls.length, resizeBeforeExitedInput);
 
-  const closeAfterExit = await clientA.sendCommand({
-    type: 'pty.close',
+  await assert.rejects(
+    clientA.sendCommand({
+      type: 'pty.close',
+      sessionId: 'session-1'
+    }),
+    /session is not live/
+  );
+  const removedAfterExit = await clientA.sendCommand({
+    type: 'session.remove',
     sessionId: 'session-1'
   });
-  assert.equal(closeAfterExit['closed'], true);
+  assert.equal(removedAfterExit['removed'], true);
 
   await clientA.sendCommand({
     type: 'pty.start',
@@ -473,6 +480,70 @@ void test('stream server supports session.list, session.status, and session.snap
   }
 });
 
+void test('stream server exposes attention list and respond/interrupt wrappers', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-attention',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+
+    sessions[0]!.emitEvent({
+      type: 'attention-required',
+      reason: 'approval',
+      record: {
+        ts: new Date(0).toISOString(),
+        payload: {
+          type: 'approval-needed'
+        }
+      }
+    });
+
+    const attention = await client.sendCommand({
+      type: 'attention.list'
+    });
+    const attentionSessions = attention['sessions'] as Array<Record<string, unknown>>;
+    assert.equal(attentionSessions.length, 1);
+    assert.equal(attentionSessions[0]?.['sessionId'], 'session-attention');
+    assert.equal(attentionSessions[0]?.['attentionReason'], 'approval');
+
+    const responded = await client.sendCommand({
+      type: 'session.respond',
+      sessionId: 'session-attention',
+      text: 'approved'
+    });
+    assert.equal(responded['responded'], true);
+    assert.equal(responded['sentBytes'], Buffer.byteLength('approved'));
+    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'approved'), true);
+
+    const interrupted = await client.sendCommand({
+      type: 'session.interrupt',
+      sessionId: 'session-attention'
+    });
+    assert.equal(interrupted['interrupted'], true);
+    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'), true);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('stream server surfaces listen failures', async () => {
   const startSession = (input: StartControlPlaneSessionInput): FakeLiveSession => new FakeLiveSession(input);
   const first = new ControlPlaneStreamServer({
@@ -537,6 +608,197 @@ void test('stream server enforces optional auth token on all operations', async 
     }
   } finally {
     unauthenticatedClient.close();
+    await server.close();
+  }
+});
+
+void test('stream server retains exited tombstones briefly then auto-removes by ttl', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    sessionExitTombstoneTtlMs: 15,
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-ttl',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+
+    sessions[0]!.emitExit({
+      code: 0,
+      signal: null
+    });
+    await delay(5);
+
+    const exited = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-ttl'
+    });
+    assert.equal(exited['status'], 'exited');
+    assert.equal(exited['live'], false);
+    await assert.rejects(
+      client.sendCommand({
+        type: 'session.interrupt',
+        sessionId: 'session-ttl'
+      }),
+      /session is not live/
+    );
+
+    await delay(40);
+    await assert.rejects(
+      client.sendCommand({
+        type: 'session.status',
+        sessionId: 'session-ttl'
+      }),
+      /session not found/
+    );
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server allows restarting a session id from exited tombstone', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    sessionExitTombstoneTtlMs: 1000,
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-restart',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    sessions[0]!.emitExit({
+      code: 0,
+      signal: null
+    });
+    await delay(5);
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-restart',
+      args: [],
+      initialCols: 90,
+      initialRows: 30
+    });
+    assert.equal(sessions.length, 2);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server can remove exited tombstones before ttl callback', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    sessionExitTombstoneTtlMs: 20,
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-remove-tombstone',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    sessions[0]!.emitExit({
+      code: 0,
+      signal: null
+    });
+    await delay(5);
+    await client.sendCommand({
+      type: 'session.remove',
+      sessionId: 'session-remove-tombstone'
+    });
+    await delay(40);
+    await assert.rejects(
+      client.sendCommand({
+        type: 'session.status',
+        sessionId: 'session-remove-tombstone'
+      }),
+      /session not found/
+    );
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server ttl zero removes exited session immediately', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    sessionExitTombstoneTtlMs: 0,
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-zero-ttl',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    sessions[0]!.emitExit({
+      code: 0,
+      signal: null
+    });
+    await delay(5);
+    await assert.rejects(
+      client.sendCommand({
+        type: 'session.status',
+        sessionId: 'session-zero-ttl'
+      }),
+      /session not found/
+    );
+  } finally {
+    client.close();
     await server.close();
   }
 });
@@ -727,9 +989,26 @@ void test('stream server bounds per-connection output buffering under backpressu
 
 void test('stream server internal guard branches remain safe for missing ids', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
+    sessionExitTombstoneTtlMs: 5
   });
   try {
+    interface InternalSessionState {
+      id: string;
+      session: FakeLiveSession | null;
+      eventSubscriberConnectionIds: Set<string>;
+      attachmentByConnectionId: Map<string, string>;
+      unsubscribe: (() => void) | null;
+      status: 'running' | 'needs-input' | 'completed' | 'exited';
+      attentionReason: string | null;
+      lastEventAt: string | null;
+      lastExit: PtyExit | null;
+      lastSnapshot: Record<string, unknown> | null;
+      startedAt: string;
+      exitedAt: string | null;
+      tombstoneTimer: NodeJS.Timeout | null;
+    }
+
     const internals = server as unknown as {
       connections: Map<
         string,
@@ -745,7 +1024,11 @@ void test('stream server internal guard branches remain safe for missing ids', a
           writeBlocked: boolean;
         }
       >;
+      sessions: Map<string, InternalSessionState>;
       handleSessionEvent: (sessionId: string, event: CodexLiveEvent) => void;
+      detachConnectionFromSession: (connectionId: string, sessionId: string) => void;
+      deactivateSession: (sessionId: string, closeSession: boolean) => void;
+      scheduleTombstoneRemoval: (sessionId: string) => void;
       destroySession: (sessionId: string, closeSession: boolean) => void;
       sendToConnection: (connectionId: string, envelope: StreamServerEnvelope) => void;
       flushConnectionWrites: (connectionId: string) => void;
@@ -790,6 +1073,57 @@ void test('stream server internal guard branches remain safe for missing ids', a
     fakeConnection.queuedPayloadBytes = 7;
     internals.flushConnectionWrites('fake-connection');
     assert.equal(destroyed, true);
+
+    internals.sessions.set('fake-session', {
+      id: 'fake-session',
+      session: null,
+      eventSubscriberConnectionIds: new Set<string>(),
+      attachmentByConnectionId: new Map<string, string>([['fake-connection', 'attachment-x']]),
+      unsubscribe: null,
+      status: 'exited',
+      attentionReason: null,
+      lastEventAt: null,
+      lastExit: null,
+      lastSnapshot: null,
+      startedAt: new Date(0).toISOString(),
+      exitedAt: new Date(0).toISOString(),
+      tombstoneTimer: null
+    } as unknown as (typeof internals.sessions extends Map<string, infer T> ? T : never));
+    internals.detachConnectionFromSession('fake-connection', 'fake-session');
+
+    internals.deactivateSession('missing-session', true);
+    internals.deactivateSession('fake-session', true);
+    internals.scheduleTombstoneRemoval('missing-session');
+
+    const fakeTimer = setTimeout(() => undefined, 1000);
+    const fakeSessionState = internals.sessions.get('fake-session');
+    assert.notEqual(fakeSessionState, undefined);
+    fakeSessionState!.status = 'exited';
+    fakeSessionState!.tombstoneTimer = fakeTimer;
+    internals.scheduleTombstoneRemoval('fake-session');
+
+    internals.sessions.set('timer-guard-session', {
+      id: 'timer-guard-session',
+      session: null,
+      eventSubscriberConnectionIds: new Set<string>(),
+      attachmentByConnectionId: new Map<string, string>(),
+      unsubscribe: null,
+      status: 'exited',
+      attentionReason: null,
+      lastEventAt: null,
+      lastExit: null,
+      lastSnapshot: null,
+      startedAt: new Date(0).toISOString(),
+      exitedAt: new Date(0).toISOString(),
+      tombstoneTimer: null
+    });
+    internals.scheduleTombstoneRemoval('timer-guard-session');
+    const timerGuardState = internals.sessions.get('timer-guard-session');
+    assert.notEqual(timerGuardState, undefined);
+    timerGuardState!.status = 'running';
+    await delay(20);
+    assert.equal(internals.sessions.has('timer-guard-session'), true);
+    internals.destroySession('timer-guard-session', false);
   } finally {
     await server.close();
   }

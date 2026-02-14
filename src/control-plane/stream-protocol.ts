@@ -6,6 +6,10 @@ interface SessionListCommand {
   type: 'session.list';
 }
 
+interface AttentionListCommand {
+  type: 'attention.list';
+}
+
 interface SessionStatusCommand {
   type: 'session.status';
   sessionId: string;
@@ -13,6 +17,22 @@ interface SessionStatusCommand {
 
 interface SessionSnapshotCommand {
   type: 'session.snapshot';
+  sessionId: string;
+}
+
+interface SessionRespondCommand {
+  type: 'session.respond';
+  sessionId: string;
+  text: string;
+}
+
+interface SessionInterruptCommand {
+  type: 'session.interrupt';
+  sessionId: string;
+}
+
+interface SessionRemoveCommand {
+  type: 'session.remove';
   sessionId: string;
 }
 
@@ -55,8 +75,12 @@ interface PtyCloseCommand {
 
 export type StreamCommand =
   | SessionListCommand
+  | AttentionListCommand
   | SessionStatusCommand
   | SessionSnapshotCommand
+  | SessionRespondCommand
+  | SessionInterruptCommand
+  | SessionRemoveCommand
   | PtyStartCommand
   | PtyAttachCommand
   | PtyDetachCommand
@@ -275,7 +299,13 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
     };
   }
 
-  if (type === 'session.status' || type === 'session.snapshot') {
+  if (type === 'attention.list') {
+    return {
+      type
+    };
+  }
+
+  if (type === 'session.status' || type === 'session.snapshot' || type === 'session.interrupt' || type === 'session.remove') {
     const sessionId = readString(record['sessionId']);
     if (sessionId === null) {
       return null;
@@ -283,6 +313,19 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
     return {
       type,
       sessionId
+    };
+  }
+
+  if (type === 'session.respond') {
+    const sessionId = readString(record['sessionId']);
+    const text = readString(record['text']);
+    if (sessionId === null || text === null) {
+      return null;
+    }
+    return {
+      type,
+      sessionId,
+      text
     };
   }
 
