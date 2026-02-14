@@ -326,6 +326,13 @@ function normalizeExitCode(exit: PtyExit): number {
   return 1;
 }
 
+function isSessionNotFoundError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /session not found/i.test(error.message);
+}
+
 function mapTerminalOutputToNormalizedEvent(
   chunk: Buffer,
   scope: EventScope,
@@ -1575,8 +1582,13 @@ async function main(): Promise<number> {
       conversation.scope.tenantId = record.tenantId;
       conversation.scope.userId = record.userId;
       conversation.scope.workspaceId = record.workspaceId;
-      conversation.status = record.runtimeStatus;
-      conversation.live = record.runtimeLive;
+      conversation.status =
+        !record.runtimeLive &&
+        (record.runtimeStatus === 'running' || record.runtimeStatus === 'needs-input')
+          ? 'completed'
+          : record.runtimeStatus;
+      // Persisted runtime flags are advisory; session.list is authoritative for live sessions.
+      conversation.live = false;
     }
 
     const listedLive = await streamClient.sendCommand({
@@ -1599,7 +1611,7 @@ async function main(): Promise<number> {
   };
 
   await hydrateConversationList();
-  if (!conversations.has(options.initialConversationId)) {
+  if (conversations.size === 0) {
     const initialTitle = `untitled task ${String(conversations.size + 1)}`;
     await streamClient.sendCommand({
       type: 'conversation.create',
@@ -1916,7 +1928,23 @@ async function main(): Promise<number> {
     if (targetConversation !== undefined && !targetConversation.live) {
       await startConversation(sessionId);
     }
-    await attachConversation(sessionId);
+    try {
+      await attachConversation(sessionId);
+    } catch (error: unknown) {
+      if (!isSessionNotFoundError(error)) {
+        throw error;
+      }
+      if (targetConversation !== undefined) {
+        targetConversation.live = false;
+        targetConversation.attached = false;
+        if (targetConversation.status === 'running' || targetConversation.status === 'needs-input') {
+          targetConversation.status = 'completed';
+          targetConversation.attentionReason = null;
+        }
+      }
+      await startConversation(sessionId);
+      await attachConversation(sessionId);
+    }
     schedulePtyResize(
       {
         cols: layout.rightCols,
