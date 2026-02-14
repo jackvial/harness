@@ -413,8 +413,7 @@ class ScreenBuffer {
       if (
         shifted !== undefined &&
         this.includeScrollback &&
-        clampedTop === 0 &&
-        clampedBottom === this.rows - 1
+        clampedTop === 0
       ) {
         this.scrollback.push(shifted);
         while (this.scrollback.length > this.scrollbackLimit) {

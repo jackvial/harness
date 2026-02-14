@@ -26,6 +26,9 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Parity scene matrix for codex/vim/core profiles (`npm run terminal:parity`).
 - First-party split mux now uses dirty-row repaint (no full-screen redraw loop).
 - Right pane supports independent scrollback (`live`/`scroll`) with mouse wheel routing.
+- Left pane scrollback now works with Codex-style pinned footer scroll regions.
+- Mux shows the live terminal cursor in follow mode and hides it while scrolled.
+- Mux probes host terminal OSC `10/11` colors to better match local theme brightness.
 - Mux core is now deterministic and directly tested (`test/mux-dual-pane-core.test.ts`).
 - Footer background persistence parity scene added for Codex-like pinned input/status rows.
 - Strict verification gate: lint + typecheck + deadcode + 100% unit/integration/e2e coverage.

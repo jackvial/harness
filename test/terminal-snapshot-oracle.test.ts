@@ -355,6 +355,23 @@ void test('snapshot oracle supports scroll regions, origin mode, and insert/dele
   assert.equal(frame.rows, 3);
 });
 
+void test('snapshot oracle retains scrollback when top-anchored scroll region is active', () => {
+  const oracle = new TerminalSnapshotOracle(16, 6);
+  oracle.ingest('\u001b[1;4r');
+  oracle.ingest('\u001b[5;1H> chat');
+  oracle.ingest('\u001b[6;1H? status');
+  oracle.ingest('\u001b[4;1Hline-1\nline-2\nline-3\nline-4\nline-5\nline-6\nline-7');
+
+  const followFrame = oracle.snapshot();
+  assert.equal(followFrame.viewport.totalRows > 6, true);
+  const followTop = followFrame.viewport.top;
+
+  oracle.scrollViewport(-2);
+  const scrolledFrame = oracle.snapshot();
+  assert.equal(scrolledFrame.viewport.followOutput, false);
+  assert.equal(scrolledFrame.viewport.top < followTop, true);
+});
+
 void test('snapshot oracle covers control-flow guards for scroll region operations', () => {
   const singleRow = new TerminalSnapshotOracle(5, 1);
   singleRow.ingest('\n');

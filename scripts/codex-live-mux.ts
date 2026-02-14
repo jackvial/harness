@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
-import { renderSnapshotAnsiRow } from '../src/terminal/snapshot-oracle.ts';
+import { renderSnapshotAnsiRow, type TerminalSnapshotFrame } from '../src/terminal/snapshot-oracle.ts';
 import {
   createNormalizedEvent,
   type EventScope,
@@ -24,6 +24,11 @@ interface MuxOptions {
   conversationId: string;
   turnId: string;
   scope: EventScope;
+}
+
+interface TerminalPaletteProbe {
+  foregroundHex?: string;
+  backgroundHex?: string;
 }
 
 function asString(value: unknown, fallback: string): string {
@@ -164,6 +169,151 @@ function terminalSize(): { cols: number; rows: number } {
   return { cols: 120, rows: 40 };
 }
 
+function parseOscRgbHex(value: string): string | null {
+  if (!value.startsWith('rgb:')) {
+    return null;
+  }
+
+  const components = value.slice(4).split('/');
+  if (components.length !== 3) {
+    return null;
+  }
+
+  const bytes: string[] = [];
+  for (const component of components) {
+    const normalized = component.trim();
+    if (normalized.length < 1 || normalized.length > 4) {
+      return null;
+    }
+    if (!/^[0-9a-fA-F]+$/.test(normalized)) {
+      return null;
+    }
+
+    const raw = Number.parseInt(normalized, 16);
+    if (Number.isNaN(raw)) {
+      return null;
+    }
+    const max = (1 << (normalized.length * 4)) - 1;
+    const scaled = Math.round((raw * 255) / max);
+    bytes.push(scaled.toString(16).padStart(2, '0'));
+  }
+
+  return `${bytes[0]}${bytes[1]}${bytes[2]}`;
+}
+
+function extractOscColorReplies(buffer: string): {
+  readonly remainder: string;
+  readonly foregroundHex?: string;
+  readonly backgroundHex?: string;
+} {
+  let remainder = buffer;
+  let foregroundHex: string | undefined;
+  let backgroundHex: string | undefined;
+
+  while (true) {
+    const start = remainder.indexOf('\u001b]');
+    if (start < 0) {
+      break;
+    }
+    if (start > 0) {
+      remainder = remainder.slice(start);
+    }
+
+    const bellTerminator = remainder.indexOf('\u0007', 2);
+    const stTerminator = remainder.indexOf('\u001b\\', 2);
+    let end = -1;
+    let terminatorLength = 0;
+
+    if (bellTerminator >= 0 && (stTerminator < 0 || bellTerminator < stTerminator)) {
+      end = bellTerminator;
+      terminatorLength = 1;
+    } else if (stTerminator >= 0) {
+      end = stTerminator;
+      terminatorLength = 2;
+    }
+
+    if (end < 0) {
+      break;
+    }
+
+    const payload = remainder.slice(2, end);
+    remainder = remainder.slice(end + terminatorLength);
+    const separator = payload.indexOf(';');
+    if (separator < 0) {
+      continue;
+    }
+
+    const code = payload.slice(0, separator);
+    const value = payload.slice(separator + 1);
+    const hex = parseOscRgbHex(value);
+    if (hex === null) {
+      continue;
+    }
+
+    if (code === '10') {
+      foregroundHex = hex;
+      continue;
+    }
+
+    if (code === '11') {
+      backgroundHex = hex;
+    }
+  }
+
+  if (remainder.length > 512) {
+    remainder = remainder.slice(-512);
+  }
+
+  return {
+    remainder,
+    foregroundHex,
+    backgroundHex
+  };
+}
+
+async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProbe> {
+  return await new Promise((resolve) => {
+    let finished = false;
+    let buffer = '';
+    let foregroundHex: string | undefined;
+    let backgroundHex: string | undefined;
+
+    const finish = (): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      clearTimeout(timer);
+      process.stdin.off('data', onData);
+      resolve({ foregroundHex, backgroundHex });
+    };
+
+    const onData = (chunk: Buffer): void => {
+      buffer += chunk.toString('utf8');
+      const extracted = extractOscColorReplies(buffer);
+      buffer = extracted.remainder;
+
+      if (extracted.foregroundHex !== undefined) {
+        foregroundHex = extracted.foregroundHex;
+      }
+      if (extracted.backgroundHex !== undefined) {
+        backgroundHex = extracted.backgroundHex;
+      }
+
+      if (foregroundHex !== undefined && backgroundHex !== undefined) {
+        finish();
+      }
+    };
+
+    const timer = setTimeout(() => {
+      finish();
+    }, timeoutMs);
+
+    process.stdin.on('data', onData);
+    process.stdout.write('\u001b]10;?\u0007\u001b]11;?\u0007');
+  });
+}
+
 function parseArgs(argv: string[]): MuxOptions {
   const conversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
   const turnId = process.env.HARNESS_TURN_ID ?? `turn-${randomUUID()}`;
@@ -186,11 +336,10 @@ function parseArgs(argv: string[]): MuxOptions {
 
 function buildRenderRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
-  liveSession: ReturnType<typeof startCodexLiveSession>,
+  leftFrame: TerminalSnapshotFrame,
   events: EventPaneViewport,
   conversationId: string
 ): string[] {
-  const leftFrame = liveSession.snapshot();
   const rightView = events.view(layout.rightCols, layout.paneRows);
 
   const rows: string[] = [];
@@ -230,12 +379,19 @@ async function main(): Promise<number> {
   let size = terminalSize();
   let layout = computeDualPaneLayout(size.cols, size.rows);
 
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+
+  const probedPalette = await probeTerminalPalette();
+
   const liveSession = startCodexLiveSession({
     args: options.codexArgs,
     env: {
       ...process.env,
       TERM: process.env.TERM ?? 'xterm-256color'
-    }
+    },
+    terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
+    terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex
   });
 
   const idFactory = (): string => `event-${randomUUID()}`;
@@ -265,7 +421,8 @@ async function main(): Promise<number> {
       return;
     }
 
-    const rows = buildRenderRows(layout, liveSession, events, options.conversationId);
+    const leftFrame = liveSession.snapshot();
+    const rows = buildRenderRows(layout, leftFrame, events, options.conversationId);
     const diff = diffRenderedRows(rows, previousRows);
 
     let output = '';
@@ -274,6 +431,19 @@ async function main(): Promise<number> {
       forceFullClear = false;
     }
     output += diff.output;
+
+    if (
+      leftFrame.viewport.followOutput &&
+      leftFrame.cursor.visible &&
+      leftFrame.cursor.row >= 0 &&
+      leftFrame.cursor.row < layout.paneRows &&
+      leftFrame.cursor.col >= 0 &&
+      leftFrame.cursor.col < layout.leftCols
+    ) {
+      output += `\u001b[?25h\u001b[${String(leftFrame.cursor.row + 1)};${String(leftFrame.cursor.col + 1)}H`;
+    } else {
+      output += '\u001b[?25l';
+    }
 
     if (output.length > 0) {
       process.stdout.write(output);
@@ -332,8 +502,6 @@ async function main(): Promise<number> {
     recalcLayout();
   };
 
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
   process.stdin.on('data', onInput);
   process.stdout.on('resize', onResize);
 
