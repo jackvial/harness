@@ -15,6 +15,7 @@ This project has two core documents:
 - Coverage compliance must be continuously verified (local + CI), not assumed.
 - Unit tests, integration tests, and end-to-end tests are all required.
 - Linting must pass at 100% (zero warnings, zero errors) before completion.
+- Dead code is prohibited and must be verified by tooling in local + CI gates.
 - No artificial test skipping: no `skip`, `only`, quarantined suites, or silent exclusions.
 - Failures or coverage regressions block completion until fixed.
 

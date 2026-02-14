@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { configurePerfCore, shutdownPerfCore } from '../src/perf/perf-core.ts';
 import { startPtySession, type PtyExit } from '../src/pty/pty_host.ts';
 
 function createCollector() {
@@ -15,16 +19,28 @@ function createCollector() {
 }
 
 function waitForMatch(readOutput: () => string, matcher: RegExp, timeoutMs = 3000): Promise<void> {
+  return waitForCondition(
+    () => matcher.test(readOutput()),
+    `pattern: ${matcher.source}`,
+    timeoutMs
+  );
+}
+
+function waitForCondition(
+  predicate: () => boolean,
+  description: string,
+  timeoutMs = 3000
+): Promise<void> {
   const startedAt = Date.now();
   return new Promise((resolve, reject) => {
     const tick = (): void => {
-      if (matcher.test(readOutput())) {
+      if (predicate()) {
         resolve();
         return;
       }
 
       if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error(`timed out waiting for pattern: ${matcher.source}`));
+        reject(new Error(`timed out waiting for ${description}`));
         return;
       }
 
@@ -62,6 +78,78 @@ function isPtyExit(value: unknown): value is PtyExit {
   const signalOk = typeof candidate.signal === 'string' || candidate.signal === null;
   return codeOk && signalOk;
 }
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function percentile(values: readonly number[], quantile: number): number {
+  if (values.length === 0) {
+    throw new Error('cannot compute percentile for empty values');
+  }
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const rawIndex = Math.ceil((quantile / 100) * sorted.length) - 1;
+  const clampedIndex = Math.min(Math.max(rawIndex, 0), sorted.length - 1);
+  const value = sorted[clampedIndex];
+  if (value === undefined) {
+    throw new Error('percentile index out of range');
+  }
+  return value;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+interface PerfRecord {
+  type: string;
+  name: string;
+  'duration-ns'?: string;
+}
+
+function parsePerfRecord(line: string): PerfRecord {
+  const parsed: unknown = JSON.parse(line);
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('invalid perf record');
+  }
+
+  const candidate = parsed as Record<string, unknown>;
+  if (typeof candidate.type !== 'string' || typeof candidate.name !== 'string') {
+    throw new Error('invalid perf record');
+  }
+
+  if (candidate['duration-ns'] !== undefined && typeof candidate['duration-ns'] !== 'string') {
+    throw new Error('invalid perf record');
+  }
+  const durationNs = candidate['duration-ns'];
+  const baseRecord = {
+    type: candidate.type,
+    name: candidate.name
+  };
+  if (typeof durationNs === 'string') {
+    return {
+      ...baseRecord,
+      'duration-ns': durationNs
+    };
+  }
+  return baseRecord;
+}
+
+function readPerfRecords(filePath: string): PerfRecord[] {
+  const contents = readFileSync(filePath, 'utf8');
+  return contents
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .map(parsePerfRecord);
+}
+
+test.afterEach(() => {
+  configurePerfCore({ enabled: false });
+  shutdownPerfCore();
+});
 
 void test('pty-host transparently echoes input using cat', async () => {
   const session = startPtySession({
@@ -144,3 +232,146 @@ void test('pty-host emits error when helper executable cannot be launched', asyn
 
   assert.match(error.message, /ENOENT/);
 });
+
+void test('pty-host supports interactive vim editing flow', { timeout: 20000 }, async () => {
+  const tempPath = mkdtempSync(join(tmpdir(), 'harness-vim-'));
+  const notePath = join(tempPath, 'note.txt');
+
+  try {
+    const session = startPtySession({
+      command: '/usr/bin/vim',
+      commandArgs: ['-Nu', 'NONE', '-n', notePath],
+      env: {
+        ...process.env,
+        TERM: process.env.TERM ?? 'xterm-256color'
+      }
+    });
+    const collector = createCollector();
+    session.on('data', collector.onData);
+
+    await waitForCondition(
+      () => collector.read().length > 0,
+      'vim initial terminal output',
+      5000
+    );
+    await delay(100);
+
+    session.write('iharness-vim-checkpoint');
+    session.write('\u001b');
+    session.write(':wq\r');
+
+    const exit = await waitForExit(session, 10000);
+    assert.equal(exit.code, 0);
+    assert.match(readFileSync(notePath, 'utf8'), /harness-vim-checkpoint/);
+  } finally {
+    rmSync(tempPath, { recursive: true, force: true });
+  }
+});
+
+void test(
+  'pty-host perf emits stdout chunk events when no write probe is pending',
+  { timeout: 10000 },
+  async () => {
+    const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-empty-'));
+    const perfFilePath = join(tempPath, 'perf.jsonl');
+
+    try {
+      configurePerfCore({
+        enabled: true,
+        filePath: perfFilePath
+      });
+
+      const session = startPtySession({
+        command: '/bin/sh',
+        commandArgs: ['-c', 'printf "stdout-without-probe\\n"']
+      });
+
+      const exit = await waitForExit(session, 10000);
+      assert.equal(exit.code, 0);
+
+      configurePerfCore({
+        enabled: false,
+        filePath: perfFilePath
+      });
+      shutdownPerfCore();
+
+      const records = readPerfRecords(perfFilePath);
+      assert.ok(
+        records.some((record) => record.type === 'event' && record.name === 'pty.stdout.chunk')
+      );
+      assert.equal(
+        records.some((record) => record.type === 'span' && record.name === 'pty.keystroke.roundtrip'),
+        false
+      );
+    } finally {
+      configurePerfCore({ enabled: false });
+      shutdownPerfCore();
+      rmSync(tempPath, { recursive: true, force: true });
+    }
+  }
+);
+
+void test(
+  'pty-host emits keystroke roundtrip instrumentation with low latency',
+  { timeout: 30000 },
+  async () => {
+    const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-'));
+    const perfFilePath = join(tempPath, 'perf.jsonl');
+
+    try {
+      configurePerfCore({
+        enabled: true,
+        filePath: perfFilePath
+      });
+
+      const session = startPtySession({
+        command: '/bin/cat',
+        commandArgs: []
+      });
+      const collector = createCollector();
+      session.on('data', collector.onData);
+
+      const sampleCount = 300;
+      for (let idx = 0; idx < sampleCount; idx += 1) {
+        const marker = `roundtrip-${idx}`;
+        session.write(`${marker}\n`);
+        await waitForMatch(collector.read, new RegExp(escapeRegExp(marker)));
+      }
+
+      session.write(new Uint8Array([0x04]));
+      const exit = await waitForExit(session, 10000);
+      assert.equal(exit.code, 0);
+
+      configurePerfCore({
+        enabled: false,
+        filePath: perfFilePath
+      });
+      shutdownPerfCore();
+
+      const records = readPerfRecords(perfFilePath);
+      const spans = records.filter((record) => {
+        return record.type === 'span' && record.name === 'pty.keystroke.roundtrip';
+      });
+
+      assert.equal(spans.length, sampleCount);
+      const durationsMs = spans.map((span) => {
+        if (span['duration-ns'] === undefined) {
+          throw new Error('missing duration');
+        }
+        return Number(BigInt(span['duration-ns'])) / 1_000_000;
+      });
+
+      const p50 = percentile(durationsMs, 50);
+      const p95 = percentile(durationsMs, 95);
+      const p99 = percentile(durationsMs, 99);
+
+      assert.ok(p50 <= 5, `expected p50 <= 5ms, got ${p50.toFixed(3)}ms`);
+      assert.ok(p95 <= 10, `expected p95 <= 10ms, got ${p95.toFixed(3)}ms`);
+      assert.ok(p99 <= 15, `expected p99 <= 15ms, got ${p99.toFixed(3)}ms`);
+    } finally {
+      configurePerfCore({ enabled: false });
+      shutdownPerfCore();
+      rmSync(tempPath, { recursive: true, force: true });
+    }
+  }
+);
