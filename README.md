@@ -32,6 +32,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux renderer tolerates transient frame/resize mismatches without crashing.
 - Fatal mux errors now force terminal state restore (raw mode off, cursor visible, input modes disabled).
 - Mux resize handling is coalesced/throttled for UI repaint and debounced for PTY resize to reduce resize-induced input lag and startup squish (`HARNESS_MUX_RESIZE_MIN_INTERVAL_MS`, default `33`; `HARNESS_MUX_PTY_RESIZE_SETTLE_MS`, default `75`).
+- Mux supports host-native selection/copy mode toggle with `Ctrl-\` (`select=host-copy` in status).
 - Mux probes host terminal OSC `10/11` colors to better match local theme brightness.
 - Mux enables CSI-u keyboard mode (`CSI > 1 u`) so modified keys like `Shift+Enter` can be forwarded.
 - Mux wheel routing now scrolls by single-row steps to better match native terminal feel.
@@ -58,6 +59,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - scroll wheel in left pane should switch status from `pty=live` to `pty=scroll(...)`
   - confirm right pane scroll wheel enters `events=scroll(...)` mode in status and does not type into Codex
   - scroll back to bottom and confirm status returns to `pty=live` and `events=live`
+  - press `Ctrl-\` to switch to `select=host-copy`, then drag-select/copy in your terminal; press `Ctrl-\` again to return to app input
 - Footer/background parity:
   - run `npm run terminal:parity`
   - verify `codex-footer-background-persistence` passes

@@ -428,7 +428,8 @@ function buildRenderRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
   leftFrame: TerminalSnapshotFrame,
   events: EventPaneViewport,
-  conversationId: string
+  conversationId: string,
+  selectionMode: boolean
 ): string[] {
   const rightView = events.view(layout.rightCols, layout.paneRows);
 
@@ -445,8 +446,9 @@ function buildRenderRows(
   const leftMode = leftFrame.viewport.followOutput
     ? 'pty=live'
     : `pty=scroll(${String(leftFrame.viewport.top + 1)}/${String(leftFrame.viewport.totalRows)})`;
+  const selection = selectionMode ? 'select=host-copy' : 'select=app-input';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${conversationId} ${leftMode} ${mode} ctrl-] quit`,
+    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} ctrl-\\ toggle-copy ctrl-] quit`,
     layout.cols
   );
   rows.push(status);
@@ -520,6 +522,7 @@ async function main(): Promise<number> {
   let renderedCursorVisible: boolean | null = null;
   let renderedCursorStyle: RenderCursorStyle | null = null;
   let renderScheduled = false;
+  let selectionMode = false;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -556,6 +559,11 @@ async function main(): Promise<number> {
     }
     currentPtySize = ptySize;
     liveSession.resize(ptySize.cols, ptySize.rows);
+    appendDebugRecord(debugPath, {
+      kind: 'resize-pty-apply',
+      ptyCols: ptySize.cols,
+      ptyRows: ptySize.rows
+    });
     markDirty();
   };
 
@@ -571,6 +579,13 @@ async function main(): Promise<number> {
 
   const schedulePtyResize = (ptySize: { cols: number; rows: number }, immediate = false): void => {
     pendingPtySize = ptySize;
+    appendDebugRecord(debugPath, {
+      kind: 'resize-pty-schedule',
+      ptyCols: ptySize.cols,
+      ptyRows: ptySize.rows,
+      immediate,
+      settleMs: ptyResizeSettleMs
+    });
     if (immediate) {
       if (ptyResizeTimer !== null) {
         clearTimeout(ptyResizeTimer);
@@ -606,7 +621,17 @@ async function main(): Promise<number> {
     }
     size = nextSize;
     layout = nextLayout;
-    // Keep previous rows and diff incrementally to avoid full-screen clear jank on rapid resize.
+    // Force a full clear on actual layout changes to avoid stale diagonal artifacts during drag.
+    previousRows = [];
+    forceFullClear = true;
+    appendDebugRecord(debugPath, {
+      kind: 'resize-layout-apply',
+      cols: nextLayout.cols,
+      rows: nextLayout.rows,
+      leftCols: nextLayout.leftCols,
+      rightCols: nextLayout.rightCols,
+      paneRows: nextLayout.paneRows
+    });
     markDirty();
   };
 
@@ -656,7 +681,7 @@ async function main(): Promise<number> {
     }
 
     const leftFrame = liveSession.snapshot();
-    const rows = buildRenderRows(layout, leftFrame, events, options.conversationId);
+    const rows = buildRenderRows(layout, leftFrame, events, options.conversationId, selectionMode);
     const diff = diffRenderedRows(rows, previousRows);
 
     let output = '';
@@ -734,9 +759,28 @@ async function main(): Promise<number> {
   });
 
   const onInput = (chunk: Buffer): void => {
+    if (chunk.length === 1 && chunk[0] === 0x1c) {
+      selectionMode = !selectionMode;
+      process.stdout.write(selectionMode ? DISABLE_INPUT_MODES : ENABLE_INPUT_MODES);
+      appendDebugRecord(debugPath, {
+        kind: 'selection-mode-toggle',
+        enabled: selectionMode
+      });
+      markDirty();
+      return;
+    }
+
     if (chunk.length === 1 && chunk[0] === 0x1d) {
       stop = true;
       liveSession.close();
+      return;
+    }
+
+    if (selectionMode) {
+      appendDebugRecord(debugPath, {
+        kind: 'input-swallowed-selection-mode',
+        rawBytesHex: chunk.toString('hex')
+      });
       return;
     }
 
@@ -791,7 +835,13 @@ async function main(): Promise<number> {
   };
 
   const onResize = (): void => {
-    queueResize(terminalSize());
+    const nextSize = terminalSize();
+    appendDebugRecord(debugPath, {
+      kind: 'resize-observed',
+      cols: nextSize.cols,
+      rows: nextSize.rows
+    });
+    queueResize(nextSize);
   };
 
   process.stdin.on('data', onInput);
