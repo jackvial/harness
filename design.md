@@ -1,0 +1,690 @@
+# Agent Harness Design
+
+## Purpose
+Build a high-performance, terminal-first harness that manages many concurrent AI coding agent conversations across multiple directories/worktrees, with:
+
+- Full terminal passthrough compatibility.
+- Reliable “needs attention” signaling.
+- Fast switching between projects, branches, and conversations.
+- Minimal, model-agnostic core that works with Codex first, then Claude Code and others.
+- High-fidelity event instrumentation with provider-like granularity and separate orchestration/meta events.
+
+## Product Goals
+- Support 5-6+ simultaneous active branches/conversations with low UI overhead.
+- Model conversations per directory/worktree and make switching constant-time.
+- Expose three primary actions per conversation:
+  - manage conversation
+  - view git diff
+  - open file/project in editor
+- Allow pause/resume/new conversation and long-running thread continuity.
+- Keep architecture client/server so remote/web clients are optional and supported by design.
+- Guarantee human/API parity: anything a human can do in the harness must be available through a documented API for agentic automation.
+- Enforce strict control of latency-critical paths: no third-party dependencies in the input-to-render hot path.
+- Enforce one shared logger abstraction across all subsystems, with replay-grade structured logs.
+- Enforce one shared performance instrumentation abstraction across all subsystems, with trace-grade structured output.
+- Enforce one shared configuration file and abstraction across all subsystems.
+
+## Non-Goals (v1)
+- Rebuilding a full IDE.
+- Deep inline code editing UI in the harness.
+- Agent-specific bespoke UX beyond adapter capabilities.
+
+## Landscape and Prior Art
+- `agent-of-empires`: tmux-based multi-agent orchestration and dashboarding pattern.
+- `coder/mux`: performant workspace/session abstraction and server/client split.
+- `vibetunnel`: remote terminal proxy and notification-style activity routing.
+- Claude Code hooks: explicit lifecycle/tool notification model.
+- Codex app-server: structured thread/turn API and event stream (locally validated in this environment).
+
+## Core Architecture
+
+```txt
+[Human TUI] [Automation Agent Client] [Optional Web Client]
+      \              |                    /
+       \             |                   /
+        +--- [Control Plane Stream API (TCP/WS)] ---+
+                       |
+                       v
+                 [Harness Daemon]
+                  - Command Router
+                  - Session Registry
+                 - Agent Adapter Manager
+                 - Event Bus (normalized)
+                  - Log Core (`log-core`)
+                  - Perf Core (`perf-core`)
+                  - Config Core (`config-core`)
+                  - Git Service (diff/worktree/branch)
+                  - Notification Service (sound/OS)
+                  - SQLite Event/State Store
+                  - PTY Manager (attach/detach)
+                     |                 |
+                     |                 +--> [tmux/pty-host sessions for raw passthrough]
+                     |
+                     +--> [Codex Adapter -> codex app-server]
+                     +--> [Claude Adapter -> hooks + CLI]
+                     +--> [Generic Adapter -> PTY parser fallback]
+```
+
+## Hierarchical Data Model
+
+```txt
+Tenant
+  -> User
+    -> Workspace (repo root)
+      -> Worktree (branch checkout)
+        -> Conversation (agent thread/session)
+          -> Turn (one user request cycle)
+            -> Events (lifecycle + attention + diff + output)
+```
+
+## Adapter Abstraction
+
+```ts
+export interface AgentAdapter {
+  id: "codex" | "claude" | "generic";
+  capabilities: {
+    structuredEvents: boolean;
+    diffStreaming: boolean;
+    resumableThreads: boolean;
+    approvalCallbacks: boolean;
+    rawPtyAttach: boolean;
+  };
+  startConversation(input: StartConversationInput): Promise<ConversationRef>;
+  resumeConversation(ref: ConversationRef): Promise<void>;
+  sendTurn(ref: ConversationRef, message: string): Promise<void>;
+  interrupt(ref: ConversationRef): Promise<void>;
+  attachPty(ref: ConversationRef): Promise<PtyHandle>;
+  onEvent(cb: (event: NormalizedEvent) => void): Unsubscribe;
+}
+```
+
+## Human/API Parity and Strict Separation
+
+Design rule:
+- No client (including TUI) can call adapters or persistence directly.
+- All reads and mutations flow through the same Control Plane Stream API.
+- The TUI is an API client, not a privileged path.
+
+Consequence:
+- Programmatic clients can monitor progress, inspect changes over time, interrupt, queue, steer, fork, resume, and archive conversations exactly as a human can.
+- Every action is represented as an auditable command with a corresponding event trail.
+
+Control-plane boundaries:
+- Clients issue commands.
+- Daemon validates and executes commands.
+- Daemon emits normalized events and state snapshots.
+- Clients render state and subscribe to events.
+
+This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
+
+## Control Plane Stream Surface
+
+Required command categories:
+- Workspace/worktree: create, list, select, archive.
+- Conversation lifecycle: create, fork, resume, interrupt, archive, rename.
+- Turn control: send user turn, steer active turn, cancel/interrupt active turn.
+- Queueing: enqueue turn, reorder queue, pause queue, resume queue, drop queued turn.
+- Approval/input: approve/decline command or file changes, answer tool input requests.
+- Diff/history: fetch current turn diff, fetch conversation diff timeline, fetch event timeline.
+- Terminal/session: attach PTY, detach PTY, list active sessions.
+- Configuration: read effective config, validate proposed config, reload config.
+
+Required read/stream categories:
+- Conversation and turn status snapshots.
+- Attention queue and pending approvals.
+- Streaming normalized event feed for all subscribed conversations/workspaces.
+- Time-ordered change history (diff snapshots and significant lifecycle transitions).
+- Streaming provider-fidelity event feed for all subscribed conversations/workspaces.
+- Streaming orchestration/meta event feed for queueing, scheduling, and handoff behavior.
+- Query access to structured logs by workspace/worktree/conversation/turn/time range.
+- Query access to performance traces/latency measurements by component and time range.
+
+## Control Plane Transport Principles
+
+- Stream-first interface: long-lived full-duplex connection is primary (`tcp` or `ws` transport profile).
+- Commands, progress, events, and terminal/session signals flow over the same stream envelope.
+- Each command includes stable correlation and idempotency fields (`command_id`, `trace_id`, `seq`, `idempotency_key`).
+- Server emits explicit lifecycle envelopes per command:
+  - `command.accepted`
+  - `command.progress` (0..n)
+  - `command.completed` or `command.failed`
+- Support backpressure and bounded queues so slow consumers do not stall hot paths.
+- Support heartbeat/keepalive plus reconnect with cursor/resume token for stream continuity.
+- Request/response wrappers are optional convenience layers over the stream protocol, not the primary control path.
+
+## Event Normalization
+
+Adapters publish two coordinated event classes:
+
+1. Provider-fidelity events:
+  - Preserve native semantics, ordering, and payload shape at fine granularity.
+  - Track details similar to model-provider streams (deltas, tool lifecycle, reasoning, approvals, compaction, turn lifecycle).
+  - Designed for instrumentation and debugging accuracy, not forced semantic flattening.
+
+2. Canonical/meta events:
+  - Canonical lifecycle events for common harness behavior.
+  - Additional orchestration events for multi-conversation scheduling, attention, and control-plane state.
+
+Canonical lifecycle events:
+
+- `thread.started`
+- `turn.started`
+- `turn.completed`
+- `turn.failed`
+- `turn.interrupted`
+- `diff.updated`
+- `attention.required` (approval, user input, stalled prompt)
+- `output.delta` (agent text/tool/terminal output)
+- `conversation.archived`
+
+Provider-fidelity event families (examples):
+- `provider.text.delta`
+- `provider.reasoning.delta`
+- `provider.tool.call.started`
+- `provider.tool.call.delta`
+- `provider.tool.call.completed`
+- `provider.context.compaction.started`
+- `provider.context.compaction.completed`
+- `provider.turn.completed`
+
+Meta/orchestration event families (examples):
+- `meta.queue.updated`
+- `meta.attention.raised`
+- `meta.attention.cleared`
+- `meta.scheduler.assignment.changed`
+- `meta.conversation.handoff`
+
+The daemon computes derived status from both classes without dropping provider-level detail.
+
+## Event Fidelity Rules
+
+- Do not force a cross-model behavioral abstraction that erases provider-native semantics.
+- Keep provider-built-in tools (for example native web search) as explicit tool events, not generic text output.
+- Keep context compaction as explicit lifecycle events, not hidden implementation details.
+- Preserve raw provider payload references for traceability and replay.
+- Provide stable event envelopes with schema versioning so clients can process streams safely.
+
+## Status Model and Attention Routing
+
+Primary statuses:
+- `idle`
+- `running`
+- `needs_input`
+- `completed`
+- `failed`
+- `interrupted`
+
+State machine:
+
+```txt
+IDLE
+  -> RUNNING_TURN
+  -> NEEDS_INPUT (approval/tool/user input)
+  -> RUNNING_TURN
+  -> COMPLETED | FAILED | INTERRUPTED
+```
+
+Notification policy:
+- Trigger sound/desktop notifications on transitions to `needs_input`, `completed`, or `failed`.
+- Optionally focus/switch to target tab/session.
+- De-duplicate repeated alerts for same turn.
+
+## Codex-First Integration (v1)
+
+Use `codex app-server` as primary structured integration path, not screen scraping.
+
+Capabilities validated locally:
+- Transport: `stdio://` and `ws://`.
+- Generated protocol artifacts: JSON Schema and TypeScript bindings.
+- Thread and turn APIs (start/resume/fork/list/read/interrupt).
+- Diff update events and approval requests.
+
+Representative client request methods:
+- `thread/start`
+- `thread/resume`
+- `thread/fork`
+- `thread/list`
+- `thread/read`
+- `turn/start`
+- `turn/interrupt`
+
+Representative server notifications:
+- `thread/started`
+- `turn/started`
+- `turn/completed`
+- `turn/diff/updated`
+- `item/started`
+- `item/completed`
+- `item/agentMessage/delta`
+- `item/commandExecution/outputDelta`
+- `item/commandExecution/terminalInteraction`
+
+Representative server requests requiring user decision:
+- `item/commandExecution/requestApproval`
+- `item/fileChange/requestApproval`
+- `item/tool/requestUserInput`
+
+Codex enums map cleanly into harness status:
+- Turn status: `inProgress | completed | failed | interrupted`
+- Command/file-change status: includes `declined`
+- Approval responses: `accept | acceptForSession | decline | cancel` (plus exec-policy amendment variant for commands)
+
+## Model-Agnostic Strategy
+
+Integration tiers:
+
+1. Structured adapter (best): official API/hook stream and typed events.
+2. Semi-structured adapter: CLI + known machine-readable logs/events.
+3. Raw PTY adapter (fallback): pass-through terminal with heuristic parsing and manual controls.
+
+This keeps the harness useful for any terminal agent while maximizing reliability where structured APIs exist.
+
+## Terminal Compatibility Strategy
+
+- Sequence starts with one terminal session only and optimizes it for direct-terminal parity before any multi-session features.
+- Default to PTY-backed sessions for universal pass-through.
+- Layer structured control/event channels when adapter supports them.
+- Preserve attach/detach behavior so users can jump into any live conversation terminal instantly.
+- Optional tmux integration for durable session hosting and external inspection.
+
+## Git and Editor Integration
+
+Per conversation:
+- Track associated workspace/worktree/branch metadata.
+- Use Git as the authoritative source of diff truth.
+- Surface live diff summary from:
+  - git queries (`git diff`, `git diff --name-only`, optional `git diff <remote>`) as canonical
+  - adapter-native diff events (for preview/latency hints) when available
+
+Open actions:
+- Open repository root in editor.
+- Open specific changed file.
+- Open workspace/worktree in terminal attach mode.
+
+## Persistence
+
+Use one tenanted SQLite database for local durability and fast indexing.
+
+Core tables:
+- `tenants`
+- `users`
+- `tenant_memberships`
+- `workspaces`
+- `worktrees`
+- `conversations`
+- `turns`
+- `events` (append-only canonical state history)
+- `attention_queue`
+- `notifications_sent`
+
+Design constraints:
+- No separate external event journal or projection service.
+- The `events` table and query-oriented state tables live in the same SQLite store.
+- Each command writes append-only events and state-table updates in one transaction.
+- Rebuildable state from the `events` table.
+- Crash-safe resume of all active sessions.
+- Every row is tenant-scoped; user-scoped rows include `user_id`.
+- All queries, streams, and mutations enforce tenant/user boundaries.
+
+## Logging Architecture
+
+- Single logger abstraction only (`log-core`) used by every subsystem and process.
+- Single canonical structured file (JSONL) as the source of truth for diagnostics, replay, and performance tracing.
+- One sibling pretty log file is derived from the exact same structured entries for human readability.
+- No direct ad-hoc logging calls outside `log-core`.
+- Log records must include stable correlation fields at minimum:
+  - `ts`
+  - `level`
+  - `workspace_id`
+  - `worktree_id`
+  - `conversation_id`
+  - `turn_id`
+  - `event_id`
+  - `source` (provider/meta/system)
+  - `message`
+  - `payload_ref` (when payload is externalized)
+- Logging must be detailed enough to replay and reproduce behavior across turns and scheduling decisions.
+
+## Performance Instrumentation Architecture
+
+- Single instrumentation abstraction only (`perf-core`) used by every subsystem and process.
+- `perf-core` writes structured performance events to the same canonical structured file used by `log-core`.
+- Trace model must support flamegraph-style analysis:
+  - `trace_id`
+  - `span_id`
+  - `parent_span_id`
+  - `name`
+  - `start_ns`
+  - `duration_ns`
+  - `attrs` (component, operation, ids)
+- Key choke points are permanently instrumented, including:
+  - keystroke round-trip latency (`stdin -> scheduler -> PTY -> render`)
+  - PTY read/write buffering and flush timing
+  - scheduler queue wait/run timing
+  - renderer diff/flush timing
+  - control-plane command handling latency
+- Global runtime boolean controls instrumentation emission (enabled/disabled) without removing instrumentation calls from code.
+- Disabled mode must be near-no-op: no formatting, no dynamic allocation, and no file write on disabled path.
+
+## Configuration Architecture
+
+- Single canonical config file: `harness.config.jsonc`.
+- JSON-with-comments format (JSONC) is required to allow inline documentation and annotation.
+- Single configuration abstraction only (`config-core`) used by every subsystem and process.
+- No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
+- Config lifecycle:
+  - parse -> validate -> publish immutable runtime snapshot
+  - on reload, replace snapshot atomically
+  - on invalid config, keep last known good snapshot and emit error events/logs
+- Config values affecting hot paths must be read from in-memory snapshot, never reparsed on critical operations.
+
+## Client Surfaces
+
+### TUI (v1)
+- Left pane: workspaces/worktrees.
+- Middle pane: conversations with status badges.
+- Right pane: current diff preview + actions.
+- Global shortcuts:
+  - switch workspace/worktree/conversation
+  - attach terminal
+  - send message
+  - steer active turn
+  - queue turn
+  - interrupt
+  - open file/project
+
+### Optional Remote/Web Client
+- Connect to daemon over authenticated stream transport (WebSocket profile by default).
+- Subscribe to normalized events and status snapshots.
+- Reuse same server-side adapter and state model.
+
+### Automation Agent Client
+- Connect over the same authenticated stream protocol as TUI and web clients.
+- Use command envelopes for all actions a human can perform.
+- Subscribe to event streams for monitoring, intervention, and orchestration logic.
+
+## Language and Runtime Choice
+
+### Recommendation: TypeScript first
+- Fastest development path.
+- Strong familiarity.
+- Native fit with Node built-in process, stream, and net primitives.
+- Works with generated Codex TS bindings and supports strict hot-path boundary enforcement.
+
+### Optimization path
+- Keep adapter/event boundaries stable.
+- Move PTY-heavy or scheduling-critical components to Rust/Go sidecar only if profiling requires it.
+
+## Dependency Policy (Latency-Critical Control)
+
+Policy:
+- Third-party dependencies are allowed only outside latency-critical paths.
+- The input hot path (`stdin -> parser -> scheduler -> PTY write`) and output hot path (`PTY read -> diff/render prep -> screen flush`) must be implemented in-repo.
+- External libraries are acceptable for non-interactive concerns (storage, tests, networking helpers, tooling), provided they do not sit on hot-path execution.
+
+Scope note:
+- This is an initial performance-governed policy.
+- Any dependency used in or near hot paths requires explicit latency measurement and approval.
+
+Architecture impact:
+- Draw explicit boundaries around hot-path modules and enforce them with import rules.
+- Keep PTY, multiplexer, scheduler, and terminal renderer as first-party modules.
+- Keep non-hot-path capabilities modular so best-in-class libraries can be used without affecting interaction latency.
+
+## Build In-House (From Scratch)
+
+Subsystems that remain first-party for quality and latency control:
+
+- PTY process integration:
+  - Build: `pty-host`
+  - Reason: direct control over buffering, backpressure, and write coalescing on the input/output hot path.
+
+- Terminal multiplexer/session scheduler:
+  - Build: `mux-core`
+  - Reason: deterministic scheduling, queue/steer/interrupt semantics, and low-overhead session switching.
+
+- Terminal UI:
+  - Build: `tui-core`
+  - Reason: control raw input handling, render diffing, and flush behavior; avoid high-level frameworks with measurable lag.
+
+- Hot-path observability and benchmarking:
+  - Build: `perf-core`
+  - Reason: provide trace/flamegraph-capable instrumentation and latency budgets with a permanent no-op disable path.
+
+- Agent orchestration core:
+  - Build: `control-core`
+  - Reason: guarantee parity semantics for human/API operations (queue, steer, interrupt, approvals) with auditable eventing.
+
+## Use External Libraries (Intentionally)
+
+Subsystems where mature dependencies are acceptable because they are outside direct interaction hot paths:
+
+- SQLite access and migrations:
+  - Use: `better-sqlite3` or `sqlite3` plus simple migration tooling.
+  - Rationale: avoid rebuilding storage engines/bindings.
+
+- Testing framework and assertions:
+  - Use: `node:test`, `jest`, or `vitest`.
+  - Rationale: avoid rebuilding test runners and assertion ecosystems.
+
+- Networking and protocol helpers:
+  - Use: runtime primitives and/or focused libraries (for example WebSocket utilities).
+  - Rationale: reliability and protocol correctness outside terminal hot-path rendering/input loops.
+
+- CLI parsing and config ergonomics:
+  - Use: `yargs`/`commander` and config parsing libraries.
+  - Rationale: not latency sensitive; faster iteration and fewer parser edge-case bugs.
+
+- Validation and serialization helpers:
+  - Use: `zod`/`ajv` or similar.
+  - Rationale: safer API boundaries with lower maintenance burden.
+
+- Logging and diagnostics:
+  - Use: a mature backend behind `log-core` (for example `pino`), never directly from feature code.
+  - Rationale: keep one logging contract while using reliable non-hot-path plumbing.
+
+## Verifiable Outputs
+
+Output 0: Dependency Boundary Baseline
+- Dependency policy is enforced: hot paths are first-party; non-hot-path libraries are allowed.
+- Demonstration:
+  - define and publish module boundary map for hot-path vs non-hot-path code
+  - automated import guard prevents external dependencies inside hot-path modules
+  - smoke test validates daemon/TUI startup with selected external libs enabled
+  - latency benchmark confirms hot-path budgets remain intact with non-hot-path dependencies present
+
+Output 1: Single-Session Terminal Pass-Through Parity
+- One harness-managed terminal session behaves like direct terminal usage with no perceptible added latency.
+- Demonstration:
+  - benchmark direct terminal vs harness-managed terminal using identical command/input workloads
+  - collect end-to-end input-to-echo timing for both paths
+  - compute harness overhead (`harness_latency - direct_latency`) across p50/p95/p99
+  - pass criteria:
+    - p50 overhead <= 1 ms
+    - p95 overhead <= 3 ms
+    - p99 overhead <= 5 ms
+  - run blind A/B typing test where operator cannot reliably distinguish harness session from direct terminal
+
+Output 2: Daemon Core
+- Includes session registry, adapter manager, normalized event bus, and SQLite persistence.
+- Demonstration:
+  - start daemon
+  - create tenant/user/workspace/worktree records
+  - persist and replay synthetic normalized events
+  - rebuild in-memory status from SQLite `events` table after restart
+
+Output 3: Codex Structured Adapter
+- Uses `codex app-server` for thread/turn lifecycle, diff updates, and approval handling.
+- Demonstration:
+  - start conversation
+  - send turn
+  - observe `turn/started`, streaming item events, and `turn/completed`
+  - capture `turn/diff/updated` into harness diff panel data model
+  - handle one approval request and return decision
+  - verify provider-fidelity and canonical/meta events are both available for the same turn
+
+Output 4: Multi-Conversation Control in TUI
+- Lists workspaces, worktrees, and active conversations with live status badges.
+- Demonstration:
+  - run 6 concurrent Codex conversations
+  - switch active view among them
+  - attach/detach terminal pass-through for any conversation
+  - queue and steer a turn in a selected conversation
+  - interrupt and resume selected conversation
+
+Output 5: Attention and Notification Loop
+- Notification service emits deterministic alerts from state transitions.
+- Demonstration:
+  - trigger `needs_input`, `completed`, and `failed` states
+  - verify one notification per transition (deduped)
+  - verify attention queue ordering and clear-on-action behavior
+
+Output 6: Diff + Open Actions
+- Every conversation exposes file/project open actions and a diff summary.
+- Demonstration:
+  - verify Git-derived diff is canonical
+  - use adapter diff updates only as optional preview hints
+  - open selected file and repo root from harness action handlers
+
+Output 7: Model-Agnostic Fallback Path
+- Generic PTY adapter supports arbitrary terminal agents.
+- Demonstration:
+  - launch non-Codex terminal app via PTY adapter
+  - retain attach/detach and manual attention controls
+  - keep conversation indexed under workspace/worktree model
+
+Output 8: Optional Remote Client Contract
+- Authenticated event subscription and status snapshot API from daemon.
+- Demonstration:
+  - connect second client process
+  - receive live normalized events
+  - issue stream commands and receive accepted/progress/completed envelopes
+  - reconnect using resume token/cursor and continue event consumption without duplication
+  - render same conversation status as TUI for a shared session
+
+Output 9: Human/API Parity Contract
+- No operation is available exclusively through TUI internals.
+- Demonstration:
+  - execute a parity test matrix where each human action is invoked via API:
+    - monitor progress stream
+    - inspect diff/change history over time
+    - interrupt running turn
+    - queue and reorder pending turns
+    - steer active turn
+    - resume/fork/archive conversation
+  - verify resulting state/events match equivalent TUI-triggered actions
+
+Output 10: Event Fidelity + Meta-Orchestration Contract
+- Harness exposes provider-fidelity events and separate orchestration/meta events without collapsing either stream.
+- Demonstration:
+  - subscribe to provider-fidelity stream and verify ordered delta/tool/compaction events for a tool-heavy turn
+  - subscribe to meta stream and verify queue/attention/scheduler updates for the same conversation
+  - correlate both streams by workspace/worktree/conversation/turn ids
+  - verify no event loss across compaction boundaries
+
+Output 11: Replay-Grade Logging Contract
+- Structured and pretty logs are emitted from one shared logger abstraction and support reproducible replay.
+- Demonstration:
+  - verify all modules log through `log-core` only
+  - verify canonical structured log file and sibling pretty log file are both generated from same entries
+  - replay a captured session from structured logs and reproduce turn/order/decision flow
+  - verify correlation ids link commands, events, queue transitions, approvals, and terminal interactions
+
+Output 12: Global Instrumentation Contract
+- One shared instrumentation abstraction (`perf-core`) is used everywhere and writes trace-grade events to the canonical structured file.
+- Demonstration:
+  - verify all modules emit performance events only through `perf-core`
+  - verify traces can be transformed into flamegraph/span timeline views
+  - verify keystroke round-trip latency is captured with trace correlation to scheduler/PTY/render spans
+  - verify disabling instrumentation via single boolean yields near-no-op behavior with no code removal
+
+Output 13: Single Config Contract
+- One config file (`harness.config.jsonc`) and one shared abstraction (`config-core`) govern runtime behavior.
+- Demonstration:
+  - verify no subsystem reads config outside `config-core`
+  - verify JSONC parsing and schema validation behavior
+  - verify atomic reload updates runtime snapshot without process restart
+  - verify invalid config rollback to last known good snapshot with explicit log/event emission
+
+## Milestones
+
+Milestone 1: Transparent PTY Self-Hosting (Vim-grade)
+- Goal: self-host a single terminal session with behavior parity to direct terminal use, including complex TUI apps such as `vim`.
+- Exit criteria:
+  - alternate screen, cursor modes, resize, mouse, paste, and color behavior match direct terminal behavior
+  - keystroke-to-echo overhead meets defined latency thresholds (p50 <= 1 ms, p95 <= 3 ms, p99 <= 5 ms)
+  - blind A/B usage test does not reliably distinguish harness terminal from direct terminal
+
+Milestone 2: Codex Self-Hosting with Full Event Instrumentation
+- Goal: self-host Codex with provider-fidelity and meta event emitters firing correctly across all core paths.
+- Exit criteria:
+  - lifecycle, tool, approval, diff, and compaction events are emitted, persisted, and queryable
+  - event matrix coverage passes for success, failure, interrupt, approval, and tool-heavy turns
+  - no dropped events; ordering constraints hold per conversation/turn stream
+
+Milestone 3: Multi-Conversation Model (Directories > Conversations)
+- Goal: support multiple directories with multiple conversations per directory, with deterministic switching and control.
+- Exit criteria:
+  - stable mapping among tenant/user/workspace/worktree/conversation/turn
+  - queue, steer, interrupt, resume, and diff actions function per conversation without cross-talk
+  - concurrent activity preserves correct status, diff, and attention routing
+
+Milestone 4: Remote Local-Gateway Access
+- Goal: connect to the harness daemon remotely through an authenticated local gateway.
+- Exit criteria:
+  - authenticated login/session establishment is required and enforced
+  - remote clients receive the same authoritative state snapshots and event streams as local clients
+  - remote clients can execute control commands over the same stream protocol with lifecycle envelopes
+  - gateway path does not violate hot-path latency guarantees for local interaction
+
+Milestone 5: Agent Operator Parity (Wake, Query, Interact)
+- Goal: allow an automation agent to control live sessions with the same operational capabilities as a human client.
+- Exit criteria:
+  - agent can wake, query, and interact with conversations through the Control Plane Stream API
+  - parity matrix passes for monitor, diff-history query, queue, reorder, steer, interrupt, resume, fork, and archive actions
+  - all agent actions are auditable through command/event correlation
+
+## Risks and Mitigations
+
+- Hot-path custom implementations can drift in quality if not continuously benchmarked.
+  - Mitigation: enforce latency benchmarks and import-boundary checks in CI.
+- API churn in experimental protocols.
+  - Mitigation: adapter isolation + versioned capability checks.
+- Incomplete structured events for some providers.
+  - Mitigation: fallback PTY adapter + manual controls.
+- Notification spam in high-parallel runs.
+  - Mitigation: rate limiting + dedupe + per-conversation silence controls.
+- State divergence after crashes.
+  - Mitigation: append-only `events` table, transactional state updates, and startup reconciliation.
+- Log volume and retention can degrade storage/performance.
+  - Mitigation: configurable retention/rotation and payload externalization with references.
+- Instrumentation overhead can distort measured latency if poorly implemented.
+  - Mitigation: enforce disabled-mode near-no-op checks and compare enabled vs disabled benchmark baselines.
+- Single-file config corruption can impact startup/reload.
+  - Mitigation: strict validation, last-known-good fallback, and startup diagnostics.
+
+## Initial Success Criteria
+
+- Dependency boundary policy is enforced: no third-party imports in declared hot-path modules.
+- Single-session terminal pass-through meets direct-terminal parity thresholds (p50 <= 1 ms, p95 <= 3 ms, p99 <= 5 ms overhead) and passes blind A/B perception test.
+- Provider-fidelity and meta event streams are both available, correlated by ids, and lossless across tool-heavy/compaction turns.
+- Replay-grade logging is operational: one canonical structured log + one sibling pretty log, both emitted via `log-core`.
+- Replay-grade instrumentation is operational: `perf-core` spans are present in the canonical structured file and support flamegraph-style analysis.
+- Instrumentation disabled mode is validated as near-no-op in benchmark runs.
+- Tenant boundaries are enforced across reads/writes/streams in the shared SQLite store.
+- Single config contract is operational: `harness.config.jsonc` is the sole runtime config source through `config-core`.
+- 6 concurrent Codex conversations across multiple worktrees remain responsive.
+- Accurate `needs_input` and `completed` notifications without polling the screen.
+- Conversation switching under 100ms in TUI.
+- Diff view is available for every active turn (adapter-native or git fallback).
+- Session recovery after daemon restart without losing thread mappings.
+
+## Sources
+- https://openai.com/index/unlocking-codex-in-your-agent-harness/
+- https://docs.anthropic.com/en/docs/claude-code/hooks
+- https://github.com/ThePrimeagen/agent-of-empires
+- https://github.com/coder/mux
+- https://github.com/amacneil/vibetunnel
+- https://github.com/microsoft/node-pty
+- https://github.com/creack/pty
+- https://github.com/wezterm/wezterm/tree/main/pty
