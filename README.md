@@ -29,6 +29,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Left pane scrollback now works with Codex-style pinned footer scroll regions.
 - Mux shows the live terminal cursor in follow mode and hides it while scrolled.
 - Mux probes host terminal OSC `10/11` colors to better match local theme brightness.
+- Mux enables CSI-u keyboard mode (`CSI > 1 u`) so modified keys like `Shift+Enter` can be forwarded.
+- Optional mux debug trace: set `HARNESS_MUX_DEBUG_PATH=/tmp/harness-mux-debug.jsonl` to capture input/routing/render cursor records.
 - Mux core is now deterministic and directly tested (`test/mux-dual-pane-core.test.ts`).
 - Footer background persistence parity scene added for Codex-like pinned input/status rows.
 - Strict verification gate: lint + typecheck + deadcode + 100% unit/integration/e2e coverage.

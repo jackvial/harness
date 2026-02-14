@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import { renderSnapshotAnsiRow, type TerminalSnapshotFrame } from '../src/terminal/snapshot-oracle.ts';
@@ -29,6 +30,24 @@ interface MuxOptions {
 interface TerminalPaletteProbe {
   foregroundHex?: string;
   backgroundHex?: string;
+}
+
+function appendDebugRecord(debugPath: string | null, record: Record<string, unknown>): void {
+  if (debugPath === null) {
+    return;
+  }
+  try {
+    appendFileSync(
+      debugPath,
+      `${JSON.stringify({
+        ts: new Date().toISOString(),
+        ...record
+      })}\n`,
+      'utf8'
+    );
+  } catch {
+    // Debug tracing must never break the live session loop.
+  }
 }
 
 function asString(value: unknown, fallback: string): string {
@@ -372,6 +391,7 @@ async function main(): Promise<number> {
 
   const options = parseArgs(process.argv.slice(2));
   const store = new SqliteEventStore(options.storePath);
+  const debugPath = process.env.HARNESS_MUX_DEBUG_PATH ?? null;
 
   const maxEventLines = 1000;
   const events = new EventPaneViewport(maxEventLines);
@@ -401,6 +421,8 @@ async function main(): Promise<number> {
   let inputRemainder = '';
   let previousRows: readonly string[] = [];
   let forceFullClear = true;
+  let lastInputAt = 0;
+  let lastOutputAt = 0;
 
   const recalcLayout = (): void => {
     size = terminalSize();
@@ -432,13 +454,19 @@ async function main(): Promise<number> {
     }
     output += diff.output;
 
+    const now = Date.now();
+    const cursorSuppressedWhileStreaming =
+      leftFrame.viewport.followOutput &&
+      lastOutputAt > lastInputAt &&
+      now - lastOutputAt < 250;
     if (
       leftFrame.viewport.followOutput &&
       leftFrame.cursor.visible &&
       leftFrame.cursor.row >= 0 &&
       leftFrame.cursor.row < layout.paneRows &&
       leftFrame.cursor.col >= 0 &&
-      leftFrame.cursor.col < layout.leftCols
+      leftFrame.cursor.col < layout.leftCols &&
+      !cursorSuppressedWhileStreaming
     ) {
       output += `\u001b[?25h\u001b[${String(leftFrame.cursor.row + 1)};${String(leftFrame.cursor.col + 1)}H`;
     } else {
@@ -448,6 +476,17 @@ async function main(): Promise<number> {
     if (output.length > 0) {
       process.stdout.write(output);
     }
+    appendDebugRecord(debugPath, {
+      kind: 'render',
+      changedRows: diff.changedRows,
+      leftViewportTop: leftFrame.viewport.top,
+      leftViewportFollow: leftFrame.viewport.followOutput,
+      leftViewportTotalRows: leftFrame.viewport.totalRows,
+      leftCursorRow: leftFrame.cursor.row,
+      leftCursorCol: leftFrame.cursor.col,
+      leftCursorVisible: leftFrame.cursor.visible,
+      cursorSuppressedWhileStreaming
+    });
 
     previousRows = diff.nextRows;
     dirty = false;
@@ -463,6 +502,7 @@ async function main(): Promise<number> {
     }
 
     if (event.type === 'terminal-output') {
+      lastOutputAt = Date.now();
       dirty = true;
     }
 
@@ -484,6 +524,9 @@ async function main(): Promise<number> {
     inputRemainder = parsed.remainder;
 
     const routed = routeMuxInputTokens(parsed.tokens, layout);
+    if (routed.forwardToSession.length > 0) {
+      lastInputAt = Date.now();
+    }
     if (routed.leftPaneScrollRows !== 0) {
       liveSession.scrollViewport(routed.leftPaneScrollRows);
       dirty = true;
@@ -496,6 +539,16 @@ async function main(): Promise<number> {
     for (const forwardChunk of routed.forwardToSession) {
       liveSession.write(forwardChunk);
     }
+
+    appendDebugRecord(debugPath, {
+      kind: 'input',
+      rawBytesHex: chunk.toString('hex'),
+      tokenCount: parsed.tokens.length,
+      remainderLength: inputRemainder.length,
+      routedForwardCount: routed.forwardToSession.length,
+      leftPaneScrollRows: routed.leftPaneScrollRows,
+      rightPaneScrollRows: routed.rightPaneScrollRows
+    });
   };
 
   const onResize = (): void => {
@@ -505,7 +558,7 @@ async function main(): Promise<number> {
   process.stdin.on('data', onInput);
   process.stdout.on('resize', onResize);
 
-  process.stdout.write('\u001b[?1000h\u001b[?1002h\u001b[?1006h');
+  process.stdout.write('\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1006h');
   recalcLayout();
 
   const renderTimer = setInterval(() => {
@@ -526,7 +579,7 @@ async function main(): Promise<number> {
     process.stdin.setRawMode(false);
     liveSession.close();
     store.close();
-    process.stdout.write('\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[?25h\u001b[0m\n');
+    process.stdout.write('\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[<u\u001b[?25h\u001b[0m\n');
   }
 
   if (exit === null) {

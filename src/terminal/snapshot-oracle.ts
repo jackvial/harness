@@ -288,8 +288,9 @@ class ScreenBuffer {
     }
 
     const maxTop = this.maxViewportTop();
-    this.followOutput = false;
-    this.viewportTop = Math.max(0, Math.min(maxTop, this.viewportTop + deltaRows));
+    const nextTop = Math.max(0, Math.min(maxTop, this.viewportTop + deltaRows));
+    this.viewportTop = nextTop;
+    this.followOutput = nextTop === maxTop;
   }
 
   putGlyph(cursor: ScreenCursor, glyph: string, width: number, style: TerminalCellStyle): boolean {
