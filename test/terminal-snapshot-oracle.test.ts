@@ -397,3 +397,77 @@ void test('snapshot oracle tolerates restore sequences without prior saved curso
   assert.equal(frame.activeScreen, 'primary');
   assert.equal(frame.cursor.row, 0);
 });
+
+void test('snapshot oracle applies pending-wrap semantics before next printable glyph', () => {
+  const oracle = new TerminalSnapshotOracle(5, 3);
+  oracle.ingest('abcde');
+  let frame = oracle.snapshot();
+  assert.equal(frame.lines[0], 'abcde');
+  assert.equal(frame.cursor.row, 0);
+  assert.equal(frame.cursor.col, 4);
+
+  oracle.ingest('f');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[0], 'abcde');
+  assert.equal(frame.lines[1], 'f');
+  assert.equal(frame.cursor.row, 1);
+  assert.equal(frame.cursor.col, 1);
+
+  const styledWrap = new TerminalSnapshotOracle(5, 3);
+  styledWrap.ingest('abcde');
+  styledWrap.ingest('\u001b[31m');
+  styledWrap.ingest('Z');
+  const styledFrame = styledWrap.snapshot();
+  assert.equal(styledFrame.lines[0], 'abcde');
+  assert.equal(styledFrame.lines[1], 'Z');
+  assert.deepEqual(styledFrame.richLines[1]!.cells[0]!.style.fg, { kind: 'indexed', index: 1 });
+});
+
+void test('snapshot oracle supports tab stops and tab clear operations', () => {
+  const oracle = new TerminalSnapshotOracle(16, 3);
+  oracle.ingest('a\tb');
+  let frame = oracle.snapshot();
+  assert.equal(frame.lines[0], 'a       b');
+
+  oracle.ingest('\rxy\u001bH\r\tq');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[0]!.startsWith('xyq'), true);
+
+  oracle.ingest('\r\u001b[0g\tm');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[0]!.startsWith('xym'), true);
+
+  oracle.ingest('\r\u001b[1g\tn');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[0]!.startsWith('xyn'), true);
+
+  oracle.ingest('\r\u001b[3g\tz');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[0]!.endsWith('z'), true);
+  assert.equal(frame.cursor.col, 15);
+});
+
+void test('snapshot oracle supports insert/delete character control sequences', () => {
+  const oracle = new TerminalSnapshotOracle(8, 2);
+  oracle.ingest('abcdef');
+  oracle.ingest('\u001b[1;3H');
+  oracle.ingest('\u001b[2@');
+  let frame = oracle.snapshot();
+  assert.equal(frame.lines[0], 'ab  cdef');
+
+  oracle.ingest('\u001b[1P');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[0], 'ab cdef');
+});
+
+void test('snapshot oracle clears pending-wrap state when resized off right margin', () => {
+  const oracle = new TerminalSnapshotOracle(5, 2);
+  oracle.ingest('abcde');
+  let frame = oracle.snapshot();
+  assert.equal(frame.cursor.col, 4);
+
+  oracle.resize(9, 2);
+  oracle.ingest('x');
+  frame = oracle.snapshot();
+  assert.equal(frame.lines[0]!.startsWith('abcdx'), true);
+});

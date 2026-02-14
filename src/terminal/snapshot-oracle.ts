@@ -152,6 +152,15 @@ function continuationCell(style: TerminalCellStyle): TerminalCell {
   };
 }
 
+function cloneCell(cell: TerminalCell): TerminalCell {
+  return {
+    glyph: cell.glyph,
+    width: cell.width,
+    continued: cell.continued,
+    style: cloneStyle(cell.style)
+  };
+}
+
 function trimRightCells(cells: readonly TerminalCell[]): readonly TerminalCell[] {
   let end = cells.length;
   while (end > 0) {
@@ -283,7 +292,7 @@ class ScreenBuffer {
     this.viewportTop = Math.max(0, Math.min(maxTop, this.viewportTop + deltaRows));
   }
 
-  putGlyph(cursor: ScreenCursor, glyph: string, width: number, style: TerminalCellStyle): void {
+  putGlyph(cursor: ScreenCursor, glyph: string, width: number, style: TerminalCellStyle): boolean {
     const normalizedWidth = Math.max(1, Math.min(2, width));
 
     if (this.currentLine(cursor).cells[cursor.col]?.continued === true && cursor.col > 0) {
@@ -305,10 +314,16 @@ class ScreenBuffer {
       this.currentLine(cursor).cells[cursor.col + 1] = continuationCell(style);
     }
 
+    if (normalizedWidth === 1 && cursor.col === this.cols - 1) {
+      return true;
+    }
+
     cursor.col += normalizedWidth;
     if (cursor.col >= this.cols) {
       this.advanceLine(cursor, true, style);
+      return false;
     }
+    return false;
   }
 
   lineFeed(cursor: ScreenCursor, fillStyle: TerminalCellStyle): void {
@@ -448,6 +463,30 @@ class ScreenBuffer {
     for (let idx = 0; idx < count; idx += 1) {
       this.lines.splice(cursor.row, 1);
       this.lines.splice(this.scrollRegionBottom, 0, createLine(this.cols, fillStyle));
+    }
+  }
+
+  insertChars(cursor: ScreenCursor, chars: number, fillStyle: TerminalCellStyle): void {
+    const line = this.lines[cursor.row]!;
+    const maxCount = this.cols - cursor.col;
+    const count = Math.max(1, Math.min(chars, maxCount));
+    for (let col = this.cols - 1; col >= cursor.col + count; col -= 1) {
+      line.cells[col] = cloneCell(line.cells[col - count]!);
+    }
+    for (let col = cursor.col; col < cursor.col + count; col += 1) {
+      line.cells[col] = blankCell(fillStyle);
+    }
+  }
+
+  deleteChars(cursor: ScreenCursor, chars: number, fillStyle: TerminalCellStyle): void {
+    const line = this.lines[cursor.row]!;
+    const maxCount = this.cols - cursor.col;
+    const count = Math.max(1, Math.min(chars, maxCount));
+    for (let col = cursor.col; col < this.cols - count; col += 1) {
+      line.cells[col] = cloneCell(line.cells[col + count]!);
+    }
+    for (let col = this.cols - count; col < this.cols; col += 1) {
+      line.cells[col] = blankCell(fillStyle);
     }
   }
 
@@ -786,10 +825,13 @@ export class TerminalSnapshotOracle {
   private cursorVisible = true;
   private style: TerminalCellStyle = defaultCellStyle();
   private originMode = false;
+  private pendingWrap = false;
+  private tabStops = new Set<number>();
 
   constructor(cols: number, rows: number, scrollbackLimit = 5000) {
     this.primary = new ScreenBuffer(cols, rows, true, scrollbackLimit);
     this.alternate = new ScreenBuffer(cols, rows, false, 0);
+    this.resetTabStops(cols);
   }
 
   ingest(chunk: string | Uint8Array): void {
@@ -807,6 +849,10 @@ export class TerminalSnapshotOracle {
     this.alternate.resize(cols, rows, this.style);
     this.cursor.row = Math.max(0, Math.min(rows - 1, this.cursor.row));
     this.cursor.col = Math.max(0, Math.min(cols - 1, this.cursor.col));
+    this.resetTabStops(cols);
+    if (this.pendingWrap && this.cursor.col !== cols - 1) {
+      this.pendingWrap = false;
+    }
   }
 
   setFollowOutput(followOutput: boolean): void {
@@ -853,18 +899,36 @@ export class TerminalSnapshotOracle {
     }
     if (char === '\r') {
       this.cursor.col = 0;
+      this.pendingWrap = false;
       return;
     }
     if (char === '\n') {
       this.currentScreen().lineFeed(this.cursor, this.style);
+      this.pendingWrap = false;
+      return;
+    }
+    if (char === '\t') {
+      if (this.pendingWrap) {
+        this.currentScreen().lineFeed(this.cursor, this.style);
+        this.cursor.col = 0;
+        this.pendingWrap = false;
+      }
+      this.cursor.col = this.nextTabStop(this.cursor.col, this.currentScreen().cols);
       return;
     }
     if (char === '\b') {
       this.cursor.col = Math.max(0, this.cursor.col - 1);
+      this.pendingWrap = false;
       return;
     }
     if (codePoint < 0x20 || (codePoint >= 0x7f && codePoint < 0xa0)) {
       return;
+    }
+
+    if (this.pendingWrap) {
+      this.currentScreen().lineFeed(this.cursor, this.style);
+      this.cursor.col = 0;
+      this.pendingWrap = false;
     }
 
     const width = measureDisplayWidth(char);
@@ -873,7 +937,7 @@ export class TerminalSnapshotOracle {
       return;
     }
 
-    this.currentScreen().putGlyph(this.cursor, char, width, this.style);
+    this.pendingWrap = this.currentScreen().putGlyph(this.cursor, char, width, this.style);
   }
 
   private processEsc(char: string): void {
@@ -900,17 +964,25 @@ export class TerminalSnapshotOracle {
     }
     if (char === 'D') {
       this.currentScreen().lineFeed(this.cursor, this.style);
+      this.pendingWrap = false;
       this.mode = 'normal';
       return;
     }
     if (char === 'E') {
       this.cursor.col = 0;
       this.currentScreen().lineFeed(this.cursor, this.style);
+      this.pendingWrap = false;
       this.mode = 'normal';
       return;
     }
     if (char === 'M') {
       this.currentScreen().reverseLineFeed(this.cursor, this.style);
+      this.pendingWrap = false;
+      this.mode = 'normal';
+      return;
+    }
+    if (char === 'H') {
+      this.tabStops.add(this.cursor.col);
       this.mode = 'normal';
       return;
     }
@@ -979,23 +1051,28 @@ export class TerminalSnapshotOracle {
     if (finalByte === 'A') {
       const bounds = this.activeRowBounds();
       this.cursor.row = Math.max(bounds.top, this.cursor.row - first);
+      this.pendingWrap = false;
       return;
     }
     if (finalByte === 'B') {
       const bounds = this.activeRowBounds();
       this.cursor.row = Math.min(bounds.bottom, this.cursor.row + first);
+      this.pendingWrap = false;
       return;
     }
     if (finalByte === 'C') {
       this.cursor.col = Math.min(this.currentScreen().cols - 1, this.cursor.col + first);
+      this.pendingWrap = false;
       return;
     }
     if (finalByte === 'D') {
       this.cursor.col = Math.max(0, this.cursor.col - first);
+      this.pendingWrap = false;
       return;
     }
     if (finalByte === 'G') {
       this.cursor.col = Math.max(0, Math.min(this.currentScreen().cols - 1, first - 1));
+      this.pendingWrap = false;
       return;
     }
     if (finalByte === 'H' || finalByte === 'f') {
@@ -1005,6 +1082,7 @@ export class TerminalSnapshotOracle {
       const targetRow = this.originMode ? bounds.top + row - 1 : row - 1;
       this.cursor.row = Math.max(bounds.top, Math.min(bounds.bottom, targetRow));
       this.cursor.col = Math.max(0, Math.min(this.currentScreen().cols - 1, col - 1));
+      this.pendingWrap = false;
       return;
     }
     if (finalByte === 'J') {
@@ -1029,10 +1107,31 @@ export class TerminalSnapshotOracle {
     }
     if (finalByte === 'L') {
       this.currentScreen().insertLines(this.cursor, first, this.style);
+      this.pendingWrap = false;
       return;
     }
     if (finalByte === 'M') {
       this.currentScreen().deleteLines(this.cursor, first, this.style);
+      this.pendingWrap = false;
+      return;
+    }
+    if (finalByte === '@') {
+      this.currentScreen().insertChars(this.cursor, first, this.style);
+      this.pendingWrap = false;
+      return;
+    }
+    if (finalByte === 'P') {
+      this.currentScreen().deleteChars(this.cursor, first, this.style);
+      this.pendingWrap = false;
+      return;
+    }
+    if (finalByte === 'g') {
+      const mode = Number.isFinite(params[0]) ? (params[0] as number) : 0;
+      if (mode === 0) {
+        this.tabStops.delete(this.cursor.col);
+      } else if (mode === 3) {
+        this.tabStops.clear();
+      }
       return;
     }
     if (finalByte === 'r') {
@@ -1041,6 +1140,7 @@ export class TerminalSnapshotOracle {
       if (this.currentScreen().setScrollRegion(top, bottom)) {
         this.homeCursor();
       }
+      this.pendingWrap = false;
       return;
     }
     if (finalByte === 's') {
@@ -1049,6 +1149,7 @@ export class TerminalSnapshotOracle {
     }
     if (finalByte === 'u' && this.savedCursor !== null) {
       this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
+      this.pendingWrap = false;
     }
   }
 
@@ -1071,6 +1172,7 @@ export class TerminalSnapshotOracle {
           this.alternate.resetScrollRegion();
           this.cursor = { row: 0, col: 0 };
         }
+        this.pendingWrap = false;
         continue;
       }
 
@@ -1080,6 +1182,7 @@ export class TerminalSnapshotOracle {
         } else if (this.savedCursor !== null) {
           this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
         }
+        this.pendingWrap = false;
         continue;
       }
 
@@ -1097,12 +1200,14 @@ export class TerminalSnapshotOracle {
             this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
           }
         }
+        this.pendingWrap = false;
         continue;
       }
 
       if (value === 6) {
         this.originMode = enabled;
         this.homeCursor();
+        this.pendingWrap = false;
       }
     }
   }
@@ -1121,6 +1226,24 @@ export class TerminalSnapshotOracle {
     const bounds = this.activeRowBounds();
     this.cursor.row = bounds.top;
     this.cursor.col = 0;
+    this.pendingWrap = false;
+  }
+
+  private resetTabStops(cols: number): void {
+    this.tabStops.clear();
+    for (let col = 8; col < cols; col += 8) {
+      this.tabStops.add(col);
+    }
+  }
+
+  private nextTabStop(currentCol: number, cols: number): number {
+    const sortedStops = [...this.tabStops].sort((left, right) => left - right);
+    for (const stop of sortedStops) {
+      if (stop > currentCol) {
+        return Math.min(cols - 1, stop);
+      }
+    }
+    return cols - 1;
   }
 }
 

@@ -747,6 +747,48 @@ Milestone 1 execution plan:
   - Deliverable: CI suite for protocol correctness + latency regression + reconnect stability.
   - Verification: Milestone 1 marked complete only when all gates pass and results are committed.
 
+### Milestone 1 Active Backlog (Detailed)
+
+Terminal correctness backlog (Codex/Vim parity critical):
+- Pending-wrap semantics at right margin (`DECAWM` behavior):
+  - status: in progress
+  - expected output: line-ending behavior matches direct terminal when glyph lands in last column and next glyph arrives.
+  - verification: parity scene + snapshot tests for plain and SGR-interleaved writes at the right margin.
+- Tab stops (`HT`, default every 8 cols, `HTS`, `TBC`):
+  - status: in progress
+  - expected output: shell prompts and Codex tab-aligned UI fields render correctly.
+  - verification: parity scene + snapshot tests for default stops, set/clear current stop, and clear-all stops.
+- Insert/delete character controls (`CSI @`, `CSI P`):
+  - status: in progress
+  - expected output: inline-edit TUIs preserve row content shifts without line corruption.
+  - verification: snapshot tests and parity scene coverage for insert/delete char edits.
+
+Mux/runtime backlog (post-correctness, latency-focused):
+- Full-screen redraw elimination in mux:
+  - status: planned
+  - expected output: dirty-row/region repaint path replaces 33ms full-frame loop.
+  - verification: perf traces demonstrate reduced render work and lower keystroke-to-paint variance under heavy output.
+
+Pane interaction backlog (human/operator UX):
+- Pane-aware mouse routing:
+  - status: planned
+  - expected output: mouse wheel/click is routed to pane under pointer.
+  - verification: integration tests for pane hit-testing and scroll routing.
+- Per-pane scrollback navigation:
+  - status: planned
+  - expected output: each pane can scroll backward independently with pinned/live mode transitions.
+  - verification: snapshot-oracle-backed integration tests asserting per-pane viewport state.
+- Selection/copy in pane:
+  - status: planned
+  - expected output: select text in a pane and copy without breaking live steering mode.
+  - verification: deterministic selection model tests + e2e clipboard command assertions on macOS.
+
+Vim expansion backlog (after above foundations):
+- Extended Vim protocol support set:
+  - status: planned
+  - expected output: higher-fidelity behavior for split windows, mouse interactions, and inline edits.
+  - verification: expanded vttest/Vim scripted corpus with parity matrix checkpoints.
+
 Milestone 2: Codex Live-Steering Session (Human-First)
 - Goal: self-host an interactive `codex` session inside the harness where human steering is first-class and event streaming is continuous.
 - Exit criteria:

@@ -310,5 +310,70 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
         { row: 5, includes: 'status' }
       ]
     }
+  },
+  {
+    id: 'core-pending-wrap',
+    profile: 'core',
+    description: 'Glyph at right margin wraps only when next printable glyph arrives.',
+    cols: 5,
+    rows: 3,
+    steps: [
+      { kind: 'output', chunk: 'abcde' },
+      { kind: 'output', chunk: '\u001b[31m' },
+      { kind: 'output', chunk: 'f' }
+    ],
+    expectations: {
+      lines: [
+        { row: 0, equals: 'abcde' },
+        { row: 1, equals: 'f' }
+      ],
+      cells: [
+        {
+          row: 1,
+          col: 0,
+          style: {
+            fg: { kind: 'indexed', index: 1 }
+          }
+        }
+      ]
+    }
+  },
+  {
+    id: 'core-wrap-tab-insert-delete-char',
+    profile: 'core',
+    description: 'Pending wrap, default tab stops, and insert/delete character semantics.',
+    cols: 16,
+    rows: 4,
+    steps: [
+      { kind: 'output', chunk: 'abcde' },
+      { kind: 'output', chunk: '\u001b[31m' },
+      { kind: 'output', chunk: 'Z' },
+      { kind: 'output', chunk: '\r\tX' },
+      { kind: 'output', chunk: '\u001b[2;1Habcdef' },
+      { kind: 'output', chunk: '\u001b[2;3H\u001b[2@\u001b[1P' }
+    ],
+    expectations: {
+      lines: [
+        { row: 0, equals: 'abcdeZ  X' },
+        { row: 1, includes: 'ab cdef' }
+      ],
+      cells: [
+        {
+          row: 0,
+          col: 8,
+          glyph: 'X'
+        },
+        {
+          row: 1,
+          col: 0,
+          glyph: 'a'
+        },
+        {
+          row: 1,
+          col: 2,
+          glyph: ' '
+        }
+      ]
+    }
   }
 ];
