@@ -82,6 +82,10 @@ class SingleSessionBroker {
     this.session.close();
   }
 
+  processId(): number | null {
+    return this.session.processId();
+  }
+
   private handleData(chunk: Buffer): void {
     const fullChunk = Buffer.from(chunk);
     let storedChunk = fullChunk;

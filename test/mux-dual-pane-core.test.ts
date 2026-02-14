@@ -17,10 +17,10 @@ void test('computeDualPaneLayout normalizes dimensions and computes pane widths'
   assert.equal(wide.rows, 40);
   assert.equal(wide.paneRows, 39);
   assert.equal(wide.statusRow, 40);
-  assert.equal(wide.leftCols, 81);
-  assert.equal(wide.rightCols, 38);
-  assert.equal(wide.separatorCol, 82);
-  assert.equal(wide.rightStartCol, 83);
+  assert.equal(wide.leftCols, 36);
+  assert.equal(wide.rightCols, 83);
+  assert.equal(wide.separatorCol, 37);
+  assert.equal(wide.rightStartCol, 38);
 
   const tiny = computeDualPaneLayout(2, 1);
   assert.equal(tiny.cols, 3);

@@ -99,6 +99,10 @@ class PtySession extends EventEmitter {
     this.child.stdin.write(frame);
   }
 
+  processId(): number | null {
+    return typeof this.child.pid === 'number' ? this.child.pid : null;
+  }
+
   private trackRoundtrip(chunk: Buffer): void {
     if (!isPerfCoreEnabled()) {
       return;

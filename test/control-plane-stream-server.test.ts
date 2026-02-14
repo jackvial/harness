@@ -30,9 +30,11 @@ interface SessionAttachHandlers {
 }
 
 class FakeLiveSession {
+  private static nextProcessId = 51000;
   readonly input: StartControlPlaneSessionInput;
   readonly writes: Buffer[] = [];
   readonly resizeCalls: Array<{ cols: number; rows: number }> = [];
+  readonly processIdValue: number;
 
   private readonly attachments = new Map<string, SessionAttachHandlers>();
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
@@ -44,6 +46,8 @@ class FakeLiveSession {
 
   constructor(input: StartControlPlaneSessionInput) {
     this.input = input;
+    this.processIdValue = FakeLiveSession.nextProcessId;
+    FakeLiveSession.nextProcessId += 1;
     this.snapshotOracle = new TerminalSnapshotOracle(input.initialCols, input.initialRows);
     this.backlog = [
       {
@@ -85,6 +89,10 @@ class FakeLiveSession {
 
   latestCursorValue(): number {
     return this.latestCursor;
+  }
+
+  processId(): number | null {
+    return this.processIdValue;
   }
 
   write(data: string | Uint8Array): void {
@@ -492,6 +500,7 @@ void test('stream server supports session.list, session.status, and session.snap
     assert.equal(sessionEntries[0]?.['tenantId'], 'tenant-a');
     assert.equal(sessionEntries[0]?.['workspaceId'], 'workspace-a');
     assert.equal(sessionEntries[0]?.['status'], 'running');
+    assert.equal(typeof sessionEntries[0]?.['processId'], 'number');
     assert.equal(sessionEntries[1]?.['sessionId'], 'session-list-2');
 
     const limited = await client.sendCommand({
@@ -541,6 +550,7 @@ void test('stream server supports session.list, session.status, and session.snap
     });
     assert.equal(status['sessionId'], 'session-list');
     assert.equal(status['status'], 'running');
+    assert.equal(typeof status['processId'], 'number');
 
     const snapshot = await client.sendCommand({
       type: 'session.snapshot',

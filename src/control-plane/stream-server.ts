@@ -33,6 +33,7 @@ interface LiveSessionLike {
   attach(handlers: SessionAttachHandlers, sinceCursor?: number): string;
   detach(attachmentId: string): void;
   latestCursorValue(): number;
+  processId(): number | null;
   write(data: string | Uint8Array): void;
   resize(cols: number, rows: number): void;
   snapshot(): TerminalSnapshotFrame;
@@ -886,6 +887,7 @@ export class ControlPlaneStreamServer {
       status: state.status,
       attentionReason: state.attentionReason,
       latestCursor: state.session?.latestCursorValue() ?? null,
+      processId: state.session?.processId() ?? null,
       attachedClients: state.attachmentByConnectionId.size,
       eventSubscribers: state.eventSubscriberConnectionIds.size,
       startedAt: state.startedAt,

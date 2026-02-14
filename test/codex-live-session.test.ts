@@ -40,6 +40,10 @@ class FakeBroker {
     return 7;
   }
 
+  processId(): number | null {
+    return 43210;
+  }
+
   write(data: string | Uint8Array): void {
     this.writes.push(data);
   }
@@ -248,6 +252,7 @@ void test('codex live session emits terminal and notify-derived events', () => {
   });
   session.detach(attachmentId);
   assert.equal(session.latestCursorValue(), 7);
+  assert.equal(session.processId(), 43210);
   session.write('abc');
   session.resize(100, 40);
   session.scrollViewport(-1);

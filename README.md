@@ -35,20 +35,20 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Parity scene matrix for codex/vim/core profiles (`npm run terminal:parity`).
 - First-party split mux now uses dirty-row repaint (no full-screen redraw loop).
 - Mux render scheduling is event-driven (`setImmediate` on dirty) instead of fixed-interval polling.
-- Right pane supports independent scrollback (`live`/`scroll`) with mouse wheel routing.
-- Left pane scrollback now works with Codex-style pinned footer scroll regions.
+- Right pane scrollback now works with Codex-style pinned footer scroll regions.
 - Mux cursor rendering is VTE-driven (style + visibility + position), including DECSCUSR style parity.
 - Mux renderer tolerates transient frame/resize mismatches without crashing.
 - Fatal mux errors now force terminal state restore (raw mode off, cursor visible, input modes disabled).
 - Mux resize handling is coalesced/throttled for UI repaint and debounced for PTY resize to reduce resize-induced input lag and startup squish (`HARNESS_MUX_RESIZE_MIN_INTERVAL_MS`, default `33`; `HARNESS_MUX_PTY_RESIZE_SETTLE_MS`, default `75`).
-- Mux supports first-party in-pane selection with visual highlight via plain drag in the left pane.
+- Mux supports first-party in-pane selection with visual highlight via plain drag in the right PTY pane.
 - Mux tracks and mirrors bracketed paste mode (`DECSET/DECRST ?2004`) from the VTE model to host terminal mode.
 - Mux probes host terminal OSC `10/11` colors to better match local theme brightness.
 - Mux enables CSI-u keyboard mode (`CSI > 1 u`) so modified keys like `Shift+Enter` can be forwarded.
 - Mux wheel routing now scrolls by single-row steps to better match native terminal feel.
 - Mux consumes focus-in/out events and reasserts input modes after focus return.
-- Mux now supports multiple concurrent conversations in one session: conversation rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
-- Right rail now uses a first-party low-level UI surface with styled rows/badges/active selection highlight (`src/ui/surface.ts`), not a framework renderer.
+- Mux now supports multiple concurrent conversations in one session: left rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
+- Left rail now uses a first-party low-level UI surface with sections for directories, conversations, processes, and git stats (`src/mux/workspace-rail.ts`, `src/ui/surface.ts`).
+- Session summaries now include PTY `processId`; mux samples per-session CPU/memory (`ps`) for process telemetry in the rail.
 - Conversation status routing is now isolated per session (unique notify sink per live Codex session) to prevent cross-conversation `DONE`/`NEEDS` contamination.
 - Mux recording now supports one-step capture to GIF (`--record-output <path.gif>`) with optional JSONL sidecar.
 - Recording capture uses canonical full-frame snapshots (not incremental repaint diffs) to prevent interleaved/partial-frame artifacts.
@@ -87,13 +87,13 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - client/server mode:
     - terminal 1: `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
     - terminal 2: `HARNESS_CONTROL_PLANE_AUTH_TOKEN=secret npm run codex:live:mux:client -- --harness-server-token secret <codex-args>`
-  - confirm left pane remains interactive while right pane updates event feed
-  - scroll wheel in left pane should switch status from `pty=live` to `pty=scroll(...)`
-  - confirm right pane scroll wheel enters `events=scroll(...)` mode in status and does not type into Codex
-  - scroll back to bottom and confirm status returns to `pty=live` and `events=live`
-  - drag in left pane to select; selection shrinks/expands with drag movement, and click-without-drag clears
+  - confirm left rail shows `DIR`, `CONV`, `PROC`, and `GIT` sections
+  - confirm right pane remains interactive Codex passthrough while left rail continuously updates status/process/git
+  - scroll wheel in right pane should switch status from `pty=live` to `pty=scroll(...)`
+  - scroll back to bottom and confirm status returns to `pty=live`
+  - drag in right pane to select; selection shrinks/expands with drag movement, and click-without-drag clears
   - use `Cmd+C`/`Ctrl+C` to copy the current selection (OSC52)
-  - hold `Alt` while using mouse in left pane to pass mouse events through to the app
+  - hold `Alt` while using mouse in right pane to pass mouse events through to the app
   - use `Ctrl+T` to create a new conversation, `Ctrl+N` / `Ctrl+P` to switch active conversation from the rail
   - mux shortcuts are global and remain captured even when terminal keyboard protocols (`CSI u`, `modifyOtherKeys`) are active
   - conversation rail order is stable (creation order); switching only changes selection, not row order
@@ -108,10 +108,9 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - verify `codex-footer-background-persistence` passes
 
 ## Next UX Target
-- Remove raw event-stream pane from the operator UI.
-- Move to a Codex-style left rail: `directory -> conversations -> background processes`.
-- Keep active PTY session as the primary large pane.
-- Surface always-visible git stats (`branch`, `+/-/~`, file count) and per-process `cpu/memory` in the left rail.
+- Add first-class directory/worktree management operations (`add/select/archive`) through control-plane commands.
+- Add explicit background process lifecycle in the control plane so rail `PROC` rows are not conversation-derived only.
+- Add rail interactions for directory switching with deterministic focus behavior across live sessions.
 
 ## Core Docs
 - `design.md`: architecture, principles, milestones, and verified system behavior.

@@ -77,6 +77,7 @@ void test('single-session broker supports detach and reattach with cursor replay
     command: '/bin/cat',
     commandArgs: []
   });
+  assert.equal(typeof broker.processId(), 'number');
   try {
     const first = createAttachmentCollector();
     const firstAttachmentId = broker.attach(first.handlers);

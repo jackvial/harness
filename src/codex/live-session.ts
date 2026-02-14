@@ -23,6 +23,7 @@ interface SessionBrokerLike {
   write(data: string | Uint8Array): void;
   resize(cols: number, rows: number): void;
   close(): void;
+  processId(): number | null;
 }
 
 interface NotifyRecord {
@@ -372,6 +373,10 @@ class CodexLiveSession {
 
   latestCursorValue(): number {
     return this.broker.latestCursorValue();
+  }
+
+  processId(): number | null {
+    return this.broker.processId();
   }
 
   write(data: string | Uint8Array): void {

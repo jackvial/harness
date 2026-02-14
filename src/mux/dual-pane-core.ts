@@ -1,7 +1,8 @@
 import { measureDisplayWidth, wrapTextForColumns } from '../terminal/snapshot-oracle.ts';
 
-const MIN_PANE_COLS = 20;
-const LEFT_RATIO_NUMERATOR = 68;
+const MIN_LEFT_PANE_COLS = 28;
+const MIN_RIGHT_PANE_COLS = 20;
+const LEFT_RATIO_NUMERATOR = 30;
 const LEFT_RATIO_DENOMINATOR = 100;
 const SCROLL_STEP_ROWS = 1;
 
@@ -74,9 +75,9 @@ export function computeDualPaneLayout(cols: number, rows: number): DualPaneLayou
   let leftCols = Math.floor((normalizedCols * LEFT_RATIO_NUMERATOR) / LEFT_RATIO_DENOMINATOR);
   leftCols = clamp(leftCols, 1, availablePaneCols - 1);
 
-  if (normalizedCols >= MIN_PANE_COLS * 2 + 1) {
-    leftCols = Math.max(MIN_PANE_COLS, leftCols);
-    const maxLeft = availablePaneCols - MIN_PANE_COLS;
+  if (normalizedCols >= MIN_LEFT_PANE_COLS + MIN_RIGHT_PANE_COLS + 1) {
+    leftCols = Math.max(MIN_LEFT_PANE_COLS, leftCols);
+    const maxLeft = availablePaneCols - MIN_RIGHT_PANE_COLS;
     leftCols = Math.min(leftCols, maxLeft);
   }
 

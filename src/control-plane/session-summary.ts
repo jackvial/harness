@@ -10,6 +10,7 @@ interface StreamSessionSummary {
   readonly status: StreamSessionRuntimeStatus;
   readonly attentionReason: string | null;
   readonly latestCursor: number | null;
+  readonly processId: number | null;
   readonly attachedClients: number;
   readonly eventSubscribers: number;
   readonly startedAt: string;
@@ -122,6 +123,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   }
   const attentionReason = readNullableString(record['attentionReason']);
   const latestCursor = readNullableNumber(record['latestCursor']);
+  const processId = readNullableNumber(record['processId']);
   const attachedClients = readNumber(record['attachedClients']);
   const eventSubscribers = readNumber(record['eventSubscribers']);
   const startedAt = readString(record['startedAt']);
@@ -133,6 +135,9 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     return null;
   }
   if (latestCursor === undefined) {
+    return null;
+  }
+  if (processId === undefined) {
     return null;
   }
   if (attachedClients === null) {
@@ -165,6 +170,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     status,
     attentionReason,
     latestCursor,
+    processId,
     attachedClients,
     eventSubscribers,
     startedAt,

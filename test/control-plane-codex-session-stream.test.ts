@@ -35,13 +35,17 @@ interface SessionAttachHandlers {
 }
 
 class TestLiveSession {
+  private static nextProcessId = 61000;
   private readonly snapshotOracle: TerminalSnapshotOracle;
   private readonly attachments = new Map<string, SessionAttachHandlers>();
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
+  private readonly processIdValue: number;
   private nextAttachmentId = 1;
   private latestCursor = 0;
 
   constructor(input: StartControlPlaneSessionInput) {
+    this.processIdValue = TestLiveSession.nextProcessId;
+    TestLiveSession.nextProcessId += 1;
     this.snapshotOracle = new TerminalSnapshotOracle(input.initialCols, input.initialRows);
   }
 
@@ -58,6 +62,10 @@ class TestLiveSession {
 
   latestCursorValue(): number {
     return this.latestCursor;
+  }
+
+  processId(): number | null {
+    return this.processIdValue;
   }
 
   write(data: string | Uint8Array): void {

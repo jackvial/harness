@@ -159,6 +159,7 @@ void test('pty-host transparently echoes input using cat', async () => {
     command: '/bin/cat',
     commandArgs: []
   });
+  assert.equal(typeof session.processId(), 'number');
   const collector = createCollector();
   session.on('data', collector.onData);
 
@@ -228,6 +229,7 @@ void test('pty-host emits error when helper executable cannot be launched', asyn
   const session = startPtySession({
     helperPath: '/path/that/does/not/exist'
   });
+  assert.equal(session.processId(), null);
 
   const error = await new Promise<Error>((resolve) => {
     session.once('error', resolve);

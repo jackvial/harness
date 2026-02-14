@@ -14,6 +14,7 @@ const validSummary = {
   status: 'running',
   attentionReason: null,
   latestCursor: 12,
+  processId: 51000,
   attachedClients: 1,
   eventSubscribers: 1,
   startedAt: '2026-01-01T00:00:00.000Z',
@@ -28,6 +29,7 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
   assert.notEqual(parsed, null);
   assert.equal(parsed?.sessionId, 'conversation-1');
   assert.equal(parsed?.live, true);
+  assert.equal(parsed?.processId, 51000);
 
   const exited = parseSessionSummaryRecord({
     ...validSummary,
@@ -142,8 +144,15 @@ void test('parseSessionSummaryRecord rejects missing nullable fields when absent
   );
   assert.equal(
     parseSessionSummaryRecord({
+    ...validSummary,
+    latestCursor: undefined
+  }),
+  null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
       ...validSummary,
-      latestCursor: undefined
+      processId: undefined
     }),
     null
   );

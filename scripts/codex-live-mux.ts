@@ -1,6 +1,7 @@
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { openCodexControlPlaneClient } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
@@ -22,21 +23,21 @@ import {
 } from '../src/events/normalized-events.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import {
-  EventPaneViewport,
   classifyPaneAt,
   computeDualPaneLayout,
   diffRenderedRows,
   padOrTrimDisplay,
   parseMuxInputChunk,
-  routeMuxInputTokens,
   wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
 import { detectMuxGlobalShortcut } from '../src/mux/input-shortcuts.ts';
 import {
   cycleConversationId,
-  renderConversationRailAnsiRows,
   type ConversationRailSessionSummary
 } from '../src/mux/conversation-rail.ts';
+import {
+  renderWorkspaceRailAnsiRows
+} from '../src/mux/workspace-rail.ts';
 import {
   createTerminalRecordingWriter
 } from '../src/recording/terminal-recording.ts';
@@ -94,15 +95,35 @@ interface ConversationState {
   turnId: string;
   scope: EventScope;
   oracle: TerminalSnapshotOracle;
-  events: EventPaneViewport;
   status: ConversationRailSessionSummary['status'];
   attentionReason: string | null;
   startedAt: string;
   lastEventAt: string | null;
   exitedAt: string | null;
   lastExit: PtyExit | null;
+  processId: number | null;
   live: boolean;
   attached: boolean;
+}
+
+interface ProcessUsageSample {
+  readonly cpuPercent: number | null;
+  readonly memoryMb: number | null;
+}
+
+interface GitSummary {
+  readonly branch: string;
+  readonly changedFiles: number;
+  readonly additions: number;
+  readonly deletions: number;
+}
+
+interface RailProcessSummary {
+  readonly key: string;
+  readonly label: string;
+  readonly cpuPercent: number | null;
+  readonly memoryMb: number | null;
+  readonly status: 'running' | 'exited';
 }
 
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
@@ -291,29 +312,6 @@ function sanitizeProcessEnv(): Record<string, string> {
   return env;
 }
 
-function summarizeEvent(event: NormalizedEventEnvelope): string {
-  const turnId = event.scope.turnId ?? '-';
-  const payload = event.payload;
-
-  if (event.type === 'meta-notify-observed' && payload.kind === 'notify') {
-    return `${event.ts} notify ${payload.notifyType}`;
-  }
-
-  if (event.type === 'meta-attention-raised' && payload.kind === 'attention') {
-    return `${event.ts} attention ${payload.reason}`;
-  }
-
-  if (event.type === 'provider-turn-completed') {
-    return `${event.ts} turn completed (${turnId})`;
-  }
-
-  if (event.type === 'meta-attention-cleared') {
-    return `${event.ts} session exited`;
-  }
-
-  return `${event.ts} ${event.type}`;
-}
-
 function terminalSize(): { cols: number; rows: number } {
   const cols = process.stdout.columns;
   const rows = process.stdout.rows;
@@ -346,6 +344,96 @@ function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean 
     return false;
   }
   return fallback;
+}
+
+function runGitCommand(cwd: string, args: readonly string[]): string {
+  const result = spawnSync('git', [...args], {
+    cwd,
+    encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    return '';
+  }
+  return result.stdout.trim();
+}
+
+function readGitSummary(cwd: string): GitSummary {
+  const branch = runGitCommand(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']) || '(detached)';
+  const statusOutput = runGitCommand(cwd, ['status', '--porcelain']);
+  const changedFiles = statusOutput.length === 0 ? 0 : statusOutput.split('\n').filter((line) => line.trim().length > 0).length;
+
+  const numstatOutputs = [
+    runGitCommand(cwd, ['diff', '--numstat']),
+    runGitCommand(cwd, ['diff', '--numstat', '--cached'])
+  ];
+  let additions = 0;
+  let deletions = 0;
+  for (const output of numstatOutputs) {
+    if (output.length === 0) {
+      continue;
+    }
+    const lines = output.split('\n');
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 2) {
+        continue;
+      }
+      const added = Number.parseInt(parts[0] ?? '', 10);
+      const removed = Number.parseInt(parts[1] ?? '', 10);
+      if (Number.isFinite(added)) {
+        additions += added;
+      }
+      if (Number.isFinite(removed)) {
+        deletions += removed;
+      }
+    }
+  }
+
+  return {
+    branch,
+    changedFiles,
+    additions,
+    deletions
+  };
+}
+
+function readProcessUsageSample(processId: number | null): ProcessUsageSample {
+  if (processId === null) {
+    return {
+      cpuPercent: null,
+      memoryMb: null
+    };
+  }
+
+  const result = spawnSync('ps', ['-p', String(processId), '-o', '%cpu=,rss='], {
+    encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    return {
+      cpuPercent: null,
+      memoryMb: null
+    };
+  }
+
+  const line = result.stdout
+    .split('\n')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .at(-1);
+  if (line === undefined) {
+    return {
+      cpuPercent: null,
+      memoryMb: null
+    };
+  }
+
+  const parts = line.split(/\s+/);
+  const cpuPercentRaw = Number.parseFloat(parts[0] ?? '');
+  const memoryKbRaw = Number.parseInt(parts[1] ?? '', 10);
+  return {
+    cpuPercent: Number.isFinite(cpuPercentRaw) ? cpuPercentRaw : null,
+    memoryMb: Number.isFinite(memoryKbRaw) ? memoryKbRaw / 1024 : null
+  };
 }
 
 function parseOscRgbHex(value: string): string | null {
@@ -688,13 +776,13 @@ function createConversationState(
     turnId,
     scope: createConversationScope(baseScope, sessionId, turnId),
     oracle: new TerminalSnapshotOracle(cols, rows),
-    events: new EventPaneViewport(1000),
     status: 'running',
     attentionReason: null,
     startedAt: new Date().toISOString(),
     lastEventAt: null,
     exitedAt: null,
     lastExit: null,
+    processId: null,
     live: true,
     attached: false
   };
@@ -713,6 +801,7 @@ function applySummaryToConversation(
   target.lastEventAt = summary.lastEventAt;
   target.exitedAt = summary.exitedAt;
   target.lastExit = summary.lastExit;
+  target.processId = summary.processId;
   target.live = summary.live;
 }
 
@@ -731,46 +820,113 @@ function conversationOrder(conversations: ReadonlyMap<string, ConversationState>
   return [...conversations.keys()];
 }
 
+function buildRailProcessRows(
+  conversations: ReadonlyMap<string, ConversationState>,
+  orderedIds: readonly string[],
+  processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>
+): readonly RailProcessSummary[] {
+  const rows: RailProcessSummary[] = [];
+  for (const sessionId of orderedIds) {
+    const conversation = conversations.get(sessionId);
+    if (conversation === undefined) {
+      continue;
+    }
+    const shortId = sessionId.startsWith('conversation-')
+      ? sessionId.slice('conversation-'.length, 'conversation-'.length + 8)
+      : sessionId.slice(0, 8);
+    rows.push({
+      key: sessionId,
+      label: `codex ${shortId}`,
+      cpuPercent: processUsageBySessionId.get(sessionId)?.cpuPercent ?? null,
+      memoryMb: processUsageBySessionId.get(sessionId)?.memoryMb ?? null,
+      status: conversation.live ? 'running' : 'exited'
+    });
+  }
+  return rows;
+}
+
+function buildRailRows(
+  layout: ReturnType<typeof computeDualPaneLayout>,
+  conversations: ReadonlyMap<string, ConversationState>,
+  orderedIds: readonly string[],
+  activeConversationId: string | null,
+  gitSummary: GitSummary,
+  processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>
+): readonly string[] {
+  const directoriesByKey = new Map<
+    string,
+    {
+      workspaceId: string;
+      worktreeId: string;
+      active: boolean;
+    }
+  >();
+
+  for (const sessionId of orderedIds) {
+    const conversation = conversations.get(sessionId);
+    if (conversation === undefined) {
+      continue;
+    }
+    const key = `${conversation.scope.workspaceId}:${conversation.scope.worktreeId}`;
+    const existing = directoriesByKey.get(key);
+    const active = sessionId === activeConversationId;
+    if (existing === undefined) {
+      directoriesByKey.set(key, {
+        workspaceId: conversation.scope.workspaceId,
+        worktreeId: conversation.scope.worktreeId,
+        active
+      });
+      continue;
+    }
+    if (active) {
+      existing.active = true;
+    }
+  }
+
+  const conversationsForRail = orderedIds
+    .map((sessionId) => conversations.get(sessionId))
+    .flatMap((conversation) => (conversation === undefined ? [] : [conversationSummary(conversation)]));
+
+  return renderWorkspaceRailAnsiRows(
+    {
+      directories: [...directoriesByKey.entries()].map(([key, value]) => ({
+        key,
+        workspaceId: value.workspaceId,
+        worktreeId: value.worktreeId,
+        active: value.active
+      })),
+      conversations: conversationsForRail,
+      activeConversationId,
+      processes: buildRailProcessRows(conversations, orderedIds, processUsageBySessionId),
+      git: gitSummary
+    },
+    layout.leftCols,
+    layout.paneRows
+  );
+}
+
 function buildRenderRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
-  leftFrame: TerminalSnapshotFrame,
-  events: EventPaneViewport,
-  conversations: readonly ConversationRailSessionSummary[],
+  railRows: readonly string[],
+  rightFrame: TerminalSnapshotFrame,
   activeConversationId: string | null,
   selectionActive: boolean,
   ctrlCExits: boolean
 ): string[] {
-  const railRows = Math.max(3, Math.min(8, Math.floor(layout.paneRows / 3)));
-  const railLines = renderConversationRailAnsiRows(
-    conversations,
-    activeConversationId,
-    layout.rightCols,
-    railRows,
-    'input-order'
-  );
-  const eventRows = Math.max(1, layout.paneRows - railLines.length);
-  const rightView = events.view(layout.rightCols, eventRows);
-
   const rows: string[] = [];
   for (let row = 0; row < layout.paneRows; row += 1) {
-    const left = renderSnapshotAnsiRow(leftFrame, row, layout.leftCols);
-    const right =
-      row < railLines.length
-        ? railLines[row]!
-        : padOrTrimDisplay(rightView.lines[row - railLines.length] ?? '', layout.rightCols);
+    const left = padOrTrimDisplay(railRows[row] ?? '', layout.leftCols);
+    const right = renderSnapshotAnsiRow(rightFrame, row, layout.rightCols);
     rows.push(`${left}\u001b[0m│${right}`);
   }
 
-  const mode = rightView.followOutput
-    ? 'events=live'
-    : `events=scroll(${String(rightView.top + 1)}/${String(rightView.totalRows)})`;
-  const leftMode = leftFrame.viewport.followOutput
+  const mainMode = rightFrame.viewport.followOutput
     ? 'pty=live'
-    : `pty=scroll(${String(leftFrame.viewport.top + 1)}/${String(leftFrame.viewport.totalRows)})`;
+    : `pty=scroll(${String(rightFrame.viewport.top + 1)}/${String(rightFrame.viewport.totalRows)})`;
   const selection = selectionActive ? 'select=drag' : 'select=idle';
   const quitHint = ctrlCExits ? 'ctrl-c/ctrl-] quit' : 'ctrl-] quit';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${activeConversationId ?? '-'} ${leftMode} ${mode} ${selection} ctrl-t new ctrl-n/p switch drag copy alt-pass ${quitHint}`,
+    `[mux] conversation=${activeConversationId ?? '-'} ${mainMode} ${selection} ctrl-t new ctrl-n/p switch drag copy alt-pass ${quitHint}`,
     layout.cols
   );
   rows.push(status);
@@ -849,7 +1005,7 @@ function clampPanePoint(
   const maxRowAbs = Math.max(0, frame.viewport.totalRows - 1);
   return {
     rowAbs: Math.max(0, Math.min(maxRowAbs, rowAbs)),
-    col: Math.max(0, Math.min(layout.leftCols - 1, col))
+    col: Math.max(0, Math.min(layout.rightCols - 1, col))
   };
 }
 
@@ -859,7 +1015,12 @@ function pointFromMouseEvent(
   event: { col: number; row: number }
 ): SelectionPoint {
   const rowViewport = Math.max(0, Math.min(layout.paneRows - 1, event.row - 1));
-  return clampPanePoint(layout, frame, frame.viewport.top + rowViewport, event.col - 1);
+  return clampPanePoint(
+    layout,
+    frame,
+    frame.viewport.top + rowViewport,
+    event.col - layout.rightStartCol
+  );
 }
 
 function isWheelMouseCode(code: number): boolean {
@@ -908,6 +1069,7 @@ function cellGlyphForOverlay(frame: TerminalSnapshotFrame, row: number, col: num
 }
 
 function renderSelectionOverlay(
+  layout: ReturnType<typeof computeDualPaneLayout>,
   frame: TerminalSnapshotFrame,
   selection: PaneSelection | null
 ): string {
@@ -933,7 +1095,7 @@ function renderSelectionOverlay(
       continue;
     }
 
-    output += `\u001b[${String(row + 1)};${String(rowStartCol + 1)}H\u001b[7m`;
+    output += `\u001b[${String(row + 1)};${String(layout.rightStartCol + rowStartCol)}H\u001b[7m`;
     for (let col = rowStartCol; col <= rowEndCol; col += 1) {
       output += cellGlyphForOverlay(frame, row, col);
     }
@@ -1131,7 +1293,7 @@ async function main(): Promise<number> {
       sessionId,
       `turn-${randomUUID()}`,
       options.scope,
-      layout.leftCols,
+      layout.rightCols,
       layout.paneRows
     );
     conversations.set(sessionId, state);
@@ -1155,7 +1317,7 @@ async function main(): Promise<number> {
       sessionId,
       args: options.codexArgs,
       env: sessionEnv,
-      initialCols: layout.leftCols,
+      initialCols: layout.rightCols,
       initialRows: layout.paneRows,
       terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
       terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
@@ -1207,6 +1369,17 @@ async function main(): Promise<number> {
   if (activeConversationId === null) {
     activeConversationId = options.initialConversationId;
   }
+
+  let gitSummary = readGitSummary(process.cwd());
+  const processUsageBySessionId = new Map<string, ProcessUsageSample>();
+
+  const refreshProcessUsage = (): void => {
+    for (const [sessionId, conversation] of conversations.entries()) {
+      processUsageBySessionId.set(sessionId, readProcessUsageSample(conversation.processId));
+    }
+  };
+
+  refreshProcessUsage();
 
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
@@ -1274,6 +1447,23 @@ async function main(): Promise<number> {
     scheduleRender();
   };
 
+  const processUsageTimer = setInterval(() => {
+    refreshProcessUsage();
+    markDirty();
+  }, 1000);
+  const gitSummaryTimer = setInterval(() => {
+    const next = readGitSummary(process.cwd());
+    if (
+      next.branch !== gitSummary.branch ||
+      next.changedFiles !== gitSummary.changedFiles ||
+      next.additions !== gitSummary.additions ||
+      next.deletions !== gitSummary.deletions
+    ) {
+      gitSummary = next;
+      markDirty();
+    }
+  }, 1500);
+
   const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
     if (
       currentPtySize !== null &&
@@ -1333,7 +1523,7 @@ async function main(): Promise<number> {
     const nextLayout = computeDualPaneLayout(nextSize.cols, nextSize.rows);
     schedulePtyResize(
       {
-        cols: nextLayout.leftCols,
+        cols: nextLayout.rightCols,
         rows: nextLayout.paneRows
       },
       forceImmediatePtyResize
@@ -1350,7 +1540,7 @@ async function main(): Promise<number> {
     size = nextSize;
     layout = nextLayout;
     for (const conversation of conversations.values()) {
-      conversation.oracle.resize(nextLayout.leftCols, nextLayout.paneRows);
+      conversation.oracle.resize(nextLayout.rightCols, nextLayout.paneRows);
     }
     if (muxRecordingOracle !== null) {
       muxRecordingOracle.resize(nextLayout.cols, nextLayout.rows);
@@ -1404,27 +1594,13 @@ async function main(): Promise<number> {
     resizeTimer = setTimeout(flushPendingResize, delayMs);
   };
 
-  const appendEventLine = (line: string, sessionId: string | null = activeConversationId): void => {
-    if (sessionId === null) {
-      return;
-    }
-    const conversation = conversations.get(sessionId);
-    if (conversation === undefined) {
-      return;
-    }
-    conversation.events.append(line);
-    markDirty();
-  };
-
   let controlPlaneOps = Promise.resolve();
   const queueControlPlaneOp = (task: () => Promise<void>): void => {
     controlPlaneOps = controlPlaneOps
       .then(task)
       .catch((error: unknown) => {
-        appendEventLine(
-          `${new Date().toISOString()} control-plane error ${
-            error instanceof Error ? error.message : String(error)
-          }`
+        process.stderr.write(
+          `[mux] control-plane error ${error instanceof Error ? error.message : String(error)}\n`
         );
       });
   };
@@ -1483,12 +1659,11 @@ async function main(): Promise<number> {
     await attachConversation(sessionId);
     schedulePtyResize(
       {
-        cols: layout.leftCols,
+        cols: layout.rightCols,
         rows: layout.paneRows
       },
       true
     );
-    appendEventLine(`${new Date().toISOString()} switched ${sessionId}`, sessionId);
     markDirty();
   };
 
@@ -1526,7 +1701,7 @@ async function main(): Promise<number> {
     }
 
     const active = activeConversation();
-    const leftFrame = active.oracle.snapshot();
+    const rightFrame = active.oracle.snapshot();
     const renderSelection =
       selectionDrag !== null && selectionDrag.hasDragged
         ? {
@@ -1535,14 +1710,20 @@ async function main(): Promise<number> {
             text: ''
           }
         : selection;
-    const selectionRows = selectionVisibleRows(leftFrame, renderSelection);
+    const selectionRows = selectionVisibleRows(rightFrame, renderSelection);
+    const orderedIds = conversationOrder(conversations);
+    const railRows = buildRailRows(
+      layout,
+      conversations,
+      orderedIds,
+      activeConversationId,
+      gitSummary,
+      processUsageBySessionId
+    );
     const rows = buildRenderRows(
       layout,
-      leftFrame,
-      active.events,
-      conversationOrder(conversations)
-        .map((sessionId) => conversations.get(sessionId))
-        .flatMap((conversation) => (conversation === undefined ? [] : [conversationSummary(conversation)])),
+      railRows,
+      rightFrame,
       activeConversationId,
       renderSelection !== null,
       ctrlCExits
@@ -1571,33 +1752,33 @@ async function main(): Promise<number> {
       }
     }
 
-    const shouldEnableBracketedPaste = leftFrame.modes.bracketedPaste;
+    const shouldEnableBracketedPaste = rightFrame.modes.bracketedPaste;
     if (renderedBracketedPaste !== shouldEnableBracketedPaste) {
       output += shouldEnableBracketedPaste ? '\u001b[?2004h' : '\u001b[?2004l';
       renderedBracketedPaste = shouldEnableBracketedPaste;
     }
 
-    if (!cursorStyleEqual(renderedCursorStyle, leftFrame.cursor.style)) {
-      output += cursorStyleToDecscusr(leftFrame.cursor.style);
-      renderedCursorStyle = leftFrame.cursor.style;
+    if (!cursorStyleEqual(renderedCursorStyle, rightFrame.cursor.style)) {
+      output += cursorStyleToDecscusr(rightFrame.cursor.style);
+      renderedCursorStyle = rightFrame.cursor.style;
     }
 
-    output += renderSelectionOverlay(leftFrame, renderSelection);
+    output += renderSelectionOverlay(layout, rightFrame, renderSelection);
 
     const shouldShowCursor =
-      leftFrame.viewport.followOutput &&
-      leftFrame.cursor.visible &&
-      leftFrame.cursor.row >= 0 &&
-      leftFrame.cursor.row < layout.paneRows &&
-      leftFrame.cursor.col >= 0 &&
-      leftFrame.cursor.col < layout.leftCols;
+      rightFrame.viewport.followOutput &&
+      rightFrame.cursor.visible &&
+      rightFrame.cursor.row >= 0 &&
+      rightFrame.cursor.row < layout.paneRows &&
+      rightFrame.cursor.col >= 0 &&
+      rightFrame.cursor.col < layout.rightCols;
 
     if (shouldShowCursor) {
       if (renderedCursorVisible !== true) {
         output += '\u001b[?25h';
         renderedCursorVisible = true;
       }
-      output += `\u001b[${String(leftFrame.cursor.row + 1)};${String(leftFrame.cursor.col + 1)}H`;
+      output += `\u001b[${String(rightFrame.cursor.row + 1)};${String(layout.rightStartCol + rightFrame.cursor.col)}H`;
     } else {
       if (renderedCursorVisible !== false) {
         output += '\u001b[?25l';
@@ -1610,10 +1791,10 @@ async function main(): Promise<number> {
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
         const canonicalFrame = renderCanonicalFrameAnsi(
           rows,
-          leftFrame.cursor.style,
+          rightFrame.cursor.style,
           shouldShowCursor,
-          leftFrame.cursor.row,
-          leftFrame.cursor.col
+          rightFrame.cursor.row,
+          layout.rightStartCol + rightFrame.cursor.col - 1
         );
         muxRecordingOracle.ingest(canonicalFrame);
         try {
@@ -1627,12 +1808,12 @@ async function main(): Promise<number> {
       kind: 'render',
       changedRows: diff.changedRows,
       overlayResetRows,
-      leftViewportTop: leftFrame.viewport.top,
-      leftViewportFollow: leftFrame.viewport.followOutput,
-      leftViewportTotalRows: leftFrame.viewport.totalRows,
-      leftCursorRow: leftFrame.cursor.row,
-      leftCursorCol: leftFrame.cursor.col,
-      leftCursorVisible: leftFrame.cursor.visible,
+      rightViewportTop: rightFrame.viewport.top,
+      rightViewportFollow: rightFrame.viewport.followOutput,
+      rightViewportTotalRows: rightFrame.viewport.totalRows,
+      rightCursorRow: rightFrame.cursor.row,
+      rightCursorCol: rightFrame.cursor.col,
+      rightCursorVisible: rightFrame.cursor.visible,
       shouldShowCursor
     });
 
@@ -1667,7 +1848,6 @@ async function main(): Promise<number> {
       const normalized = mapSessionEventToNormalizedEvent(envelope.event, conversation.scope, idFactory);
       if (normalized !== null) {
         store.appendEvents([normalized]);
-        appendEventLine(summarizeEvent(normalized), envelope.sessionId);
       }
       if (envelope.event.type === 'attention-required') {
         conversation.status = 'needs-input';
@@ -1792,7 +1972,6 @@ async function main(): Promise<number> {
     if (selection !== null && isCopyShortcutInput(focusExtraction.sanitized)) {
       const selectedFrame = activeConversation().oracle.snapshot();
       const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
-      appendEventLine(`${new Date().toISOString()} selection ${copied ? 'copied' : 'copy-failed'}`);
       appendDebugRecord(debugPath, {
         kind: 'selection-copy-shortcut',
         copied,
@@ -1827,26 +2006,21 @@ async function main(): Promise<number> {
       }
 
       const target = classifyPaneAt(layout, token.event.col, token.event.row);
-      const isLeftTarget = target === 'left';
+      const isMainPaneTarget = target === 'right';
       const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
       if (wheelDelta !== null) {
-        if (target === 'left') {
+        if (target === 'right') {
           inputConversation.oracle.scrollViewport(wheelDelta);
           snapshotForInput = inputConversation.oracle.snapshot();
           markDirty();
           continue;
         }
-        if (target === 'right') {
-          inputConversation.events.scrollBy(wheelDelta, layout.rightCols, layout.paneRows);
-          markDirty();
-          continue;
-        }
       }
       const point = pointFromMouseEvent(layout, snapshotForInput, token.event);
-      const startSelection = isLeftTarget && isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code);
+      const startSelection = isMainPaneTarget && isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code);
       const updateSelection =
         selectionDrag !== null &&
-        isLeftTarget &&
+        isMainPaneTarget &&
         isSelectionDrag(token.event.code, token.event.final) &&
         !hasAltModifier(token.event.code);
       const releaseSelection = selectionDrag !== null && isMouseRelease(token.event.final);
@@ -1924,18 +2098,33 @@ async function main(): Promise<number> {
       routedTokens.push(token);
     }
 
-    const routed = routeMuxInputTokens(routedTokens, layout);
-    if (routed.leftPaneScrollRows !== 0) {
-      inputConversation.oracle.scrollViewport(routed.leftPaneScrollRows);
-      markDirty();
+    let mainPaneScrollRows = 0;
+    const forwardToSession: Buffer[] = [];
+    for (const token of routedTokens) {
+      if (token.kind === 'passthrough') {
+        if (token.text.length > 0) {
+          forwardToSession.push(Buffer.from(token.text, 'utf8'));
+        }
+        continue;
+      }
+      if (classifyPaneAt(layout, token.event.col, token.event.row) !== 'right') {
+        continue;
+      }
+      const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
+      if (wheelDelta !== null) {
+        mainPaneScrollRows += wheelDelta;
+        continue;
+      }
+      forwardToSession.push(Buffer.from(token.event.sequence, 'utf8'));
     }
-    if (routed.rightPaneScrollRows !== 0) {
-      inputConversation.events.scrollBy(routed.rightPaneScrollRows, layout.rightCols, layout.paneRows);
+
+    if (mainPaneScrollRows !== 0) {
+      inputConversation.oracle.scrollViewport(mainPaneScrollRows);
       markDirty();
     }
 
-    for (const forwardChunk of routed.forwardToSession) {
-      streamClient.sendInput(inputConversation.sessionId, Buffer.from(forwardChunk));
+    for (const forwardChunk of forwardToSession) {
+      streamClient.sendInput(inputConversation.sessionId, forwardChunk);
     }
 
     appendDebugRecord(debugPath, {
@@ -1947,9 +2136,8 @@ async function main(): Promise<number> {
       tokenCount: parsed.tokens.length,
       routedTokenCount: routedTokens.length,
       remainderLength: inputRemainder.length,
-      routedForwardCount: routed.forwardToSession.length,
-      leftPaneScrollRows: routed.leftPaneScrollRows,
-      rightPaneScrollRows: routed.rightPaneScrollRows
+      routedForwardCount: forwardToSession.length,
+      mainPaneScrollRows
     });
   };
 
@@ -1979,6 +2167,8 @@ async function main(): Promise<number> {
       });
     }
   } finally {
+    clearInterval(processUsageTimer);
+    clearInterval(gitSummaryTimer);
     if (resizeTimer !== null) {
       clearTimeout(resizeTimer);
       resizeTimer = null;

@@ -495,11 +495,12 @@ Design constraints:
 
 ### TUI (v1)
 - Current verified implementation:
-  - left pane: live steerable PTY session
-  - right rail: conversation selector/status UI
-- Next target layout (Codex/Claude-inspired, ASCII-first, no raw event pane):
-  - left rail: directories -> conversations -> background processes (+ git/process stats)
-  - main pane: active live steerable PTY session
+  - left rail: directories -> conversations -> process telemetry -> git stats
+  - right pane: active live steerable PTY session
+- Next target layout iterations:
+  - first-class directory/worktree actions in rail (`add/select/archive`) via control-plane commands
+  - explicit background-process rows beyond conversation-host process telemetry
+  - rail interactions for focus/switch without breaking PTY pass-through invariants
 - Global shortcuts:
   - switch workspace/worktree/conversation
   - attach terminal
@@ -949,6 +950,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - optional shared-token auth is enforced before non-auth commands when configured.
     - per-connection output buffering is bounded; slow consumers are disconnected once buffered output exceeds configured limits.
     - session runtime status tracking is exposed through `session.status` (`running`, `needs-input`, `completed`, `exited`) with attention reason and last-exit details.
+    - session summaries now include PTY `processId` for per-session telemetry in operator clients.
     - exited sessions are tombstoned with TTL-based cleanup to avoid unbounded daemon memory growth while preserving short-lived post-exit status/snapshot queries.
     - control-plane wrappers now include `attention.list`, `session.respond`, `session.interrupt`, and `session.remove` to provide parity-safe steering and explicit tombstone cleanup.
   - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
@@ -958,25 +960,26 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - non-loopback bind now requires an auth token (`--auth-token` or `HARNESS_CONTROL_PLANE_AUTH_TOKEN`).
   - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
     - launcher mode sets local-exit policy so `Ctrl+C` cleanly tears down both mux client and daemon.
-  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed) with:
+  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: workspace rail, right: live steerable Codex session rendered via shared snapshot oracle) with:
     - control operations routed over the control-plane stream (`pty.start`, `pty.attach`, `pty.input`, `pty.resize`, `pty.signal`, `pty.close`) instead of direct in-process session calls
     - remote-server mode via `--harness-server-host` and `--harness-server-port` for exact two-pane behavior against an external daemon
     - dirty-row diff rendering (no full-screen repaint loop)
     - event-driven render scheduling on dirty state (no fixed 60fps polling timer)
-    - pane-local event viewport state (`live` vs `scroll`) with independent right-pane scrollback
     - SGR mouse wheel routing for right-pane scrollback without leaking events into the live Codex PTY stream
     - VTE-driven cursor parity (position, visibility, and DECSCUSR shape/blink style)
     - VTE-driven bracketed paste mode parity (`?2004`) mirrored to host terminal mode
     - first-party gesture-based in-pane selection with visual highlight and keyboard-triggered copy, with modifier-based passthrough for app mouse input
     - multi-conversation rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new conversation creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
-    - first-party styled selector rendering (badges + active row highlight) built from low-level terminal UI primitives rather than framework-driven VDOM
+    - left rail composition includes directories, conversations, process telemetry (CPU/memory sampled from `ps` via `processId`), and git summary
+    - first-party styled rail rendering built from low-level terminal UI primitives rather than framework-driven VDOM
     - per-conversation notify sink isolation to keep status routing correct when multiple sessions run concurrently
     - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
     - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
-  - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, event viewport state, and row-diff rendering.
+  - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.
+  - `src/mux/workspace-rail.ts` provides left-rail section rendering for directories, conversations, processes, and git telemetry.
   - `src/ui/surface.ts` provides reusable immediate-mode terminal UI primitives (cell surface, row fill, text draw, ANSI row render) to compose panes, selectors, and future modal/splitter widgets.
   - `test/mux-dual-pane-core.test.ts` deterministically verifies mux layout, mouse routing, viewport follow/pin transitions, and row-diff behavior.
   - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.
