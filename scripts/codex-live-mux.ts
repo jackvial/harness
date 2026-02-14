@@ -453,8 +453,7 @@ async function main(): Promise<number> {
   let inputRemainder = '';
   let previousRows: readonly string[] = [];
   let forceFullClear = true;
-  let lastInputAt = 0;
-  let lastOutputAt = 0;
+  let renderedCursorVisible: boolean | null = null;
 
   const recalcLayout = (): void => {
     size = terminalSize();
@@ -483,29 +482,29 @@ async function main(): Promise<number> {
     if (forceFullClear) {
       output += '\u001b[?25l\u001b[H\u001b[2J';
       forceFullClear = false;
+      renderedCursorVisible = false;
     }
     output += diff.output;
 
-    const now = Date.now();
-    const promptBandTop = Math.max(0, layout.paneRows - 3);
-    const cursorInPromptBand = leftFrame.cursor.row >= promptBandTop;
-    const cursorSuppressedWhileStreaming =
-      leftFrame.viewport.followOutput &&
-      !cursorInPromptBand &&
-      lastOutputAt > lastInputAt &&
-      now - lastOutputAt < 250;
-    if (
+    const shouldShowCursor =
       leftFrame.viewport.followOutput &&
       leftFrame.cursor.visible &&
       leftFrame.cursor.row >= 0 &&
       leftFrame.cursor.row < layout.paneRows &&
       leftFrame.cursor.col >= 0 &&
-      leftFrame.cursor.col < layout.leftCols &&
-      !cursorSuppressedWhileStreaming
-    ) {
-      output += `\u001b[?25h\u001b[${String(leftFrame.cursor.row + 1)};${String(leftFrame.cursor.col + 1)}H`;
+      leftFrame.cursor.col < layout.leftCols;
+
+    if (shouldShowCursor) {
+      if (renderedCursorVisible !== true) {
+        output += '\u001b[?25h';
+        renderedCursorVisible = true;
+      }
+      output += `\u001b[${String(leftFrame.cursor.row + 1)};${String(leftFrame.cursor.col + 1)}H`;
     } else {
-      output += '\u001b[?25l';
+      if (renderedCursorVisible !== false) {
+        output += '\u001b[?25l';
+        renderedCursorVisible = false;
+      }
     }
 
     if (output.length > 0) {
@@ -520,7 +519,7 @@ async function main(): Promise<number> {
       leftCursorRow: leftFrame.cursor.row,
       leftCursorCol: leftFrame.cursor.col,
       leftCursorVisible: leftFrame.cursor.visible,
-      cursorSuppressedWhileStreaming
+      shouldShowCursor
     });
 
     previousRows = diff.nextRows;
@@ -537,7 +536,6 @@ async function main(): Promise<number> {
     }
 
     if (event.type === 'terminal-output') {
-      lastOutputAt = Date.now();
       dirty = true;
     }
 
@@ -578,9 +576,6 @@ async function main(): Promise<number> {
     inputRemainder = parsed.remainder;
 
     const routed = routeMuxInputTokens(parsed.tokens, layout);
-    if (routed.forwardToSession.length > 0) {
-      lastInputAt = Date.now();
-    }
     if (routed.leftPaneScrollRows !== 0) {
       liveSession.scrollViewport(routed.leftPaneScrollRows);
       dirty = true;
