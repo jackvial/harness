@@ -37,6 +37,14 @@ class FakeCodexTransport implements CodexTransport {
   }
 }
 
+class FakeClosableCodexTransport extends FakeCodexTransport {
+  closeCount = 0;
+
+  close(): void {
+    this.closeCount += 1;
+  }
+}
+
 function createAdapter(transport: FakeCodexTransport): CodexAdapter {
   let idCounter = 0;
   return new CodexAdapter(transport, {
@@ -56,7 +64,7 @@ function createAdapter(transport: FakeCodexTransport): CodexAdapter {
 
 void test('codex adapter issues lifecycle requests and uses response thread id', async () => {
   const transport = new FakeCodexTransport();
-  transport.enqueueResponse({ threadId: 'thread-1' });
+  transport.enqueueResponse({ thread: { id: 'thread-1' } });
   const adapter = createAdapter(transport);
 
   const ref = await adapter.startConversation({
@@ -78,7 +86,7 @@ void test('codex adapter issues lifecycle requests and uses response thread id',
   assert.deepEqual(transport.requests, [
     {
       method: 'thread/start',
-      params: { conversationId: 'conversation-1', prompt: 'hello' }
+      params: { experimentalRawEvents: false }
     },
     {
       method: 'thread/resume',
@@ -86,7 +94,16 @@ void test('codex adapter issues lifecycle requests and uses response thread id',
     },
     {
       method: 'turn/start',
-      params: { threadId: 'thread-1', turnId: 'turn-1', message: 'run tests' }
+      params: {
+        threadId: 'thread-1',
+        input: [
+          {
+            type: 'text',
+            text: 'run tests',
+            text_elements: []
+          }
+        ]
+      }
     },
     {
       method: 'turn/interrupt',
@@ -99,17 +116,27 @@ void test('codex adapter issues lifecycle requests and uses response thread id',
 
 void test('codex adapter falls back when thread id is not present in response', async () => {
   const transport = new FakeCodexTransport();
+  transport.enqueueResponse({ thread: { id: 1 } });
   transport.enqueueResponse('invalid-response');
   const adapter = createAdapter(transport);
 
-  const ref = await adapter.startConversation({
+  const refWithInvalidNestedThreadId = await adapter.startConversation({
     conversationId: 'conversation-fallback',
     prompt: 'hello'
   });
 
-  assert.deepEqual(ref, {
+  assert.deepEqual(refWithInvalidNestedThreadId, {
     conversationId: 'conversation-fallback',
     threadId: 'conversation-fallback'
+  });
+
+  const refWithInvalidResponseType = await adapter.startConversation({
+    conversationId: 'conversation-fallback-2',
+    prompt: 'hello'
+  });
+  assert.deepEqual(refWithInvalidResponseType, {
+    conversationId: 'conversation-fallback-2',
+    threadId: 'conversation-fallback-2'
   });
 
   adapter.close();
@@ -117,7 +144,8 @@ void test('codex adapter falls back when thread id is not present in response', 
 
 void test('codex adapter emits mapped events and supports listener unsubscribe', async () => {
   const transport = new FakeCodexTransport();
-  transport.enqueueResponse({ threadId: 'thread-1' });
+  transport.enqueueResponse({ thread: { id: 'thread-1' } });
+  transport.enqueueResponse({ turn: { id: 'turn-2' } });
   const adapter = createAdapter(transport);
 
   const events: NormalizedEventEnvelope[] = [];
@@ -136,19 +164,19 @@ void test('codex adapter emits mapped events and supports listener unsubscribe',
 
   transport.emit({
     method: 'turn/started',
-    params: { threadId: 'thread-1', turnId: 'turn-1' }
+    params: { threadId: 'thread-1', turn: { id: 'turn-2' } }
   });
   transport.emit({
     method: 'item/agentMessage/delta',
-    params: { threadId: 'thread-1', turnId: 'turn-1', delta: 'partial' }
+    params: { threadId: 'thread-1', turnId: 'turn-2', delta: 'partial' }
   });
   transport.emit({
     method: 'item/tool/requestUserInput',
-    params: { threadId: 'thread-1', turnId: 'turn-1' }
+    params: { threadId: 'thread-1', turnId: 'turn-2' }
   });
   transport.emit({
     method: 'turn/completed',
-    params: { threadId: 'thread-1', turnId: 'turn-1' }
+    params: { threadId: 'thread-1', turn: { id: 'turn-2' } }
   });
 
   assert.equal(events.length, 5);
@@ -210,4 +238,11 @@ void test('codex adapter interrupt falls back to empty turn id when no turn is a
   ]);
 
   adapter.close();
+});
+
+void test('codex adapter close calls transport close when available', () => {
+  const transport = new FakeClosableCodexTransport();
+  const adapter = createAdapter(transport);
+  adapter.close();
+  assert.equal(transport.closeCount, 1);
 });

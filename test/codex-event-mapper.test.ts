@@ -31,14 +31,14 @@ function mapOne(notification: CodexNotification) {
 void test('maps thread and turn lifecycle notifications', () => {
   const threadEvents = mapOne({
     method: 'thread/started',
-    params: { threadId: 'thread-1' }
+    params: { thread: { id: 'thread-1' } }
   });
   assert.equal(threadEvents.length, 1);
   assert.equal(threadEvents[0]?.type, 'provider-thread-started');
 
   const startedEvents = mapOne({
     method: 'turn/started',
-    params: { threadId: 'thread-1', turnId: 'turn-1' }
+    params: { threadId: 'thread-1', turn: { id: 'turn-1' } }
   });
   assert.equal(startedEvents[0]?.type, 'provider-turn-started');
   assert.equal(startedEvents[0]?.scope.turnId, 'turn-1');
@@ -59,7 +59,7 @@ void test('maps thread and turn lifecycle notifications', () => {
 
   const failedEvents = mapOne({
     method: 'turn/failed',
-    params: { threadId: 'thread-1', turnId: 'turn-1' }
+    params: { thread: { id: 'thread-1' }, turn: { id: 'turn-1' } }
   });
   assert.equal(failedEvents[0]?.type, 'provider-turn-failed');
 });

@@ -1,4 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { NormalizedEventEnvelope } from '../events/normalized-events.ts';
 
 interface EventRow {
@@ -96,7 +98,8 @@ export class SqliteEventStore {
   private readonly db: DatabaseSync;
 
   constructor(filePath = ':memory:') {
-    this.db = new DatabaseSync(filePath);
+    const dbPath = this.preparePath(filePath);
+    this.db = new DatabaseSync(dbPath);
     this.initializeSchema();
   }
 
@@ -234,5 +237,14 @@ export class SqliteEventStore {
       CREATE INDEX IF NOT EXISTS idx_events_scope_cursor
       ON events (tenant_id, user_id, conversation_id, row_id);
     `);
+  }
+
+  private preparePath(filePath: string): string {
+    if (filePath === ':memory:') {
+      return filePath;
+    }
+
+    mkdirSync(dirname(filePath), { recursive: true });
+    return filePath;
   }
 }

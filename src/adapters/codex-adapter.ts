@@ -26,6 +26,7 @@ interface SendTurnInput {
 export interface CodexTransport {
   request(method: string, params: StringMap): Promise<unknown>;
   subscribe(handler: (notification: CodexNotification) => void): () => void;
+  close?(): void;
 }
 
 interface CodexAdapterOptions {
@@ -44,6 +45,25 @@ function asObject(value: unknown): StringMap {
 function readString(response: unknown, key: string, fallback: string): string {
   const objectValue = asObject(response);
   const candidate = objectValue[key];
+  if (typeof candidate === 'string' && candidate.length > 0) {
+    return candidate;
+  }
+  return fallback;
+}
+
+function readNestedString(
+  response: unknown,
+  parentKey: string,
+  nestedKey: string,
+  fallback: string
+): string {
+  const objectValue = asObject(response);
+  const parentValue = objectValue[parentKey];
+  if (typeof parentValue !== 'object' || parentValue === null) {
+    return fallback;
+  }
+  const nestedValue = parentValue as StringMap;
+  const candidate = nestedValue[nestedKey];
   if (typeof candidate === 'string' && candidate.length > 0) {
     return candidate;
   }
@@ -74,6 +94,7 @@ export class CodexAdapter {
 
   close(): void {
     this.unsubscribeTransport();
+    this.transport.close?.();
   }
 
   onEvent(listener: (event: NormalizedEventEnvelope) => void): () => void {
@@ -85,10 +106,13 @@ export class CodexAdapter {
 
   async startConversation(input: StartConversationInput): Promise<ConversationRef> {
     const response = await this.transport.request('thread/start', {
-      conversationId: input.conversationId,
-      prompt: input.prompt
+      experimentalRawEvents: false
     });
-    const threadId = readString(response, 'threadId', input.conversationId);
+    const threadId = readString(
+      response,
+      'threadId',
+      readNestedString(response, 'thread', 'id', input.conversationId)
+    );
     this.conversationId = input.conversationId;
     this.threadId = threadId;
 
@@ -107,12 +131,17 @@ export class CodexAdapter {
   }
 
   async sendTurn(ref: ConversationRef, input: SendTurnInput): Promise<void> {
-    await this.transport.request('turn/start', {
+    const response = await this.transport.request('turn/start', {
       threadId: ref.threadId,
-      turnId: input.turnId,
-      message: input.message
+      input: [
+        {
+          type: 'text',
+          text: input.message,
+          text_elements: []
+        }
+      ]
     });
-    this.activeTurnId = input.turnId;
+    this.activeTurnId = readNestedString(response, 'turn', 'id', input.turnId);
   }
 
   async interrupt(ref: ConversationRef): Promise<void> {
@@ -129,6 +158,16 @@ export class CodexAdapter {
   }
 
   private handleNotification(notification: CodexNotification): void {
+    const params = asObject(notification.params);
+    const turnIdFromNotification = readString(
+      params,
+      'turnId',
+      readNestedString(params, 'turn', 'id', '')
+    );
+    if (turnIdFromNotification.length > 0) {
+      this.activeTurnId = turnIdFromNotification;
+    }
+
     const baseScope: Omit<EventScope, 'conversationId' | 'turnId'> & {
       conversationId: string;
     } = {

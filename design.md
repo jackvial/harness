@@ -240,6 +240,7 @@ Capabilities validated locally:
 - Diff update events and approval requests.
 
 Representative client request methods:
+- `initialize` (required handshake)
 - `thread/start`
 - `thread/resume`
 - `thread/fork`
@@ -247,6 +248,9 @@ Representative client request methods:
 - `thread/read`
 - `turn/start`
 - `turn/interrupt`
+
+Representative client notifications:
+- `initialized` (sent after `initialize` response)
 
 Representative server notifications:
 - `thread/started`
@@ -709,10 +713,12 @@ Milestone 5: Agent Operator Parity (Wake, Query, Interact)
 - Single-session attach/detach/reconnect baseline is implemented via `src/pty/session-broker.ts` with cursor-based replay for reattached clients.
 - Latency benchmark gate is implemented and runnable via `npm run benchmark:latency`, reporting direct-framed vs harness overhead at p50/p95/p99 with configurable thresholds.
 - Codex milestone-2 skeleton is implemented with:
-  - adapter transport/request skeleton in `src/adapters/codex-adapter.ts`
+  - stdio transport in `src/adapters/codex-stdio-transport.ts` with required `initialize`/`initialized` handshake and JSON-RPC request/notification handling
+  - v2-compatible thread/turn request shaping in `src/adapters/codex-adapter.ts` with backward-compatible response parsing
   - provider/meta normalized mapping in `src/adapters/codex-event-mapper.ts`
   - canonical event envelope in `src/events/normalized-events.ts`
   - transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads)
+  - runnable Codex event smoke path (`npm run codex:events -- "<prompt>"`) that emits normalized JSONL and persists event history
 
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/

@@ -24,10 +24,23 @@ function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+function nestedString(object: RawEventObject, parentKey: string, key: string): string {
+  const parent = object[parentKey];
+  if (typeof parent !== 'object' || parent === null) {
+    return '';
+  }
+  const nested = parent as RawEventObject;
+  return asString(nested[key]);
+}
+
 function requiredTurnId(params: RawEventObject, fallback: string): string {
   const turnId = asString(params.turnId);
   if (turnId.length > 0) {
     return turnId;
+  }
+  const nestedTurnId = nestedString(params, 'turn', 'id');
+  if (nestedTurnId.length > 0) {
+    return nestedTurnId;
   }
   return fallback;
 }
@@ -46,7 +59,9 @@ export function mapCodexNotificationToEvents(
   idFactory?: () => string
 ): NormalizedEventEnvelope[] {
   const params = asObject(notification.params);
-  const threadId = asString(params.threadId, scope.conversationId);
+  const nestedThreadId = nestedString(params, 'thread', 'id');
+  const fallbackThreadId = nestedThreadId.length > 0 ? nestedThreadId : scope.conversationId;
+  const threadId = asString(params.threadId, fallbackThreadId);
   const turnId = requiredTurnId(params, scope.turnId ?? 'turn-unknown');
 
   if (notification.method === 'thread/started') {
