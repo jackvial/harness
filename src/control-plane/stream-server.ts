@@ -5,6 +5,7 @@ import {
   type CodexLiveEvent
 } from '../codex/live-session.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
+import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 import {
   consumeJsonLines,
   encodeStreamEnvelope,
@@ -32,6 +33,7 @@ interface LiveSessionLike {
   latestCursorValue(): number;
   write(data: string | Uint8Array): void;
   resize(cols: number, rows: number): void;
+  snapshot(): TerminalSnapshotFrame;
   close(): void;
   onEvent(listener: (event: CodexLiveEvent) => void): () => void;
 }
@@ -51,22 +53,38 @@ interface StartControlPlaneStreamServerOptions {
   host?: string;
   port?: number;
   startSession?: StartControlPlaneSession;
+  authToken?: string;
+  maxConnectionBufferedBytes?: number;
 }
 
 interface ConnectionState {
   id: string;
   socket: Socket;
   remainder: string;
+  authenticated: boolean;
   attachedSessionIds: Set<string>;
   eventSessionIds: Set<string>;
+  queuedPayloads: string[];
+  queuedPayloadBytes: number;
+  writeBlocked: boolean;
 }
 
+type SessionRuntimeStatus = 'running' | 'needs-input' | 'completed' | 'exited';
+
 interface SessionState {
+  id: string;
   session: LiveSessionLike;
   eventSubscriberConnectionIds: Set<string>;
   attachmentByConnectionId: Map<string, string>;
   unsubscribe: () => void;
+  status: SessionRuntimeStatus;
+  attentionReason: string | null;
+  lastEventAt: string | null;
+  lastExit: PtyExit | null;
+  startedAt: string;
 }
+
+const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 
 function mapNotifyRecord(record: { ts: string; payload: NotifyPayload }): {
   ts: string;
@@ -114,6 +132,8 @@ function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
 export class ControlPlaneStreamServer {
   private readonly host: string;
   private readonly port: number;
+  private readonly authToken: string | null;
+  private readonly maxConnectionBufferedBytes: number;
   private readonly startSession: StartControlPlaneSession;
   private readonly server: Server;
   private readonly connections = new Map<string, ConnectionState>();
@@ -123,6 +143,9 @@ export class ControlPlaneStreamServer {
   constructor(options: StartControlPlaneStreamServerOptions = {}) {
     this.host = options.host ?? '127.0.0.1';
     this.port = options.port ?? 0;
+    this.authToken = options.authToken ?? null;
+    this.maxConnectionBufferedBytes =
+      options.maxConnectionBufferedBytes ?? DEFAULT_MAX_CONNECTION_BUFFERED_BYTES;
     if (options.startSession === undefined) {
       throw new Error('startSession is required');
     }
@@ -190,14 +213,27 @@ export class ControlPlaneStreamServer {
       id: connectionId,
       socket,
       remainder: '',
+      authenticated: this.authToken === null,
       attachedSessionIds: new Set<string>(),
-      eventSessionIds: new Set<string>()
+      eventSessionIds: new Set<string>(),
+      queuedPayloads: [],
+      queuedPayloadBytes: 0,
+      writeBlocked: false
     };
 
     this.connections.set(connectionId, state);
 
     socket.on('data', (chunk: Buffer) => {
       this.handleSocketData(state, chunk);
+    });
+
+    socket.on('drain', () => {
+      state.writeBlocked = false;
+      this.flushConnectionWrites(connectionId);
+    });
+
+    socket.on('error', () => {
+      this.cleanupConnection(connectionId);
     });
 
     socket.on('close', () => {
@@ -220,6 +256,20 @@ export class ControlPlaneStreamServer {
   }
 
   private handleClientEnvelope(connection: ConnectionState, envelope: StreamClientEnvelope): void {
+    if (envelope.kind === 'auth') {
+      this.handleAuth(connection, envelope.token);
+      return;
+    }
+
+    if (!connection.authenticated) {
+      this.sendToConnection(connection.id, {
+        kind: 'auth.error',
+        error: 'authentication required'
+      });
+      connection.socket.destroy();
+      return;
+    }
+
     if (envelope.kind === 'command') {
       this.handleCommand(connection, envelope.commandId, envelope.command);
       return;
@@ -236,6 +286,30 @@ export class ControlPlaneStreamServer {
     }
 
     this.handleSignal(envelope.sessionId, envelope.signal);
+  }
+
+  private handleAuth(connection: ConnectionState, token: string): void {
+    if (this.authToken === null) {
+      connection.authenticated = true;
+      this.sendToConnection(connection.id, {
+        kind: 'auth.ok'
+      });
+      return;
+    }
+
+    if (token !== this.authToken) {
+      this.sendToConnection(connection.id, {
+        kind: 'auth.error',
+        error: 'invalid auth token'
+      });
+      connection.socket.destroy();
+      return;
+    }
+
+    connection.authenticated = true;
+    this.sendToConnection(connection.id, {
+      kind: 'auth.ok'
+    });
   }
 
   private handleCommand(connection: ConnectionState, commandId: string, command: StreamCommand): void {
@@ -261,6 +335,25 @@ export class ControlPlaneStreamServer {
   }
 
   private executeCommand(connection: ConnectionState, command: StreamCommand): Record<string, unknown> {
+    if (command.type === 'session.list') {
+      return {
+        sessions: [...this.sessions.values()].map((state) => this.sessionSummaryRecord(state))
+      };
+    }
+
+    if (command.type === 'session.status') {
+      const state = this.requireSession(command.sessionId);
+      return this.sessionSummaryRecord(state);
+    }
+
+    if (command.type === 'session.snapshot') {
+      const state = this.requireSession(command.sessionId);
+      return {
+        sessionId: command.sessionId,
+        snapshot: this.snapshotRecordFromFrame(state.session.snapshot())
+      };
+    }
+
     if (command.type === 'pty.start') {
       if (this.sessions.has(command.sessionId)) {
         throw new Error(`session already exists: ${command.sessionId}`);
@@ -288,10 +381,16 @@ export class ControlPlaneStreamServer {
       });
 
       this.sessions.set(command.sessionId, {
+        id: command.sessionId,
         session,
         eventSubscriberConnectionIds: new Set<string>(),
         attachmentByConnectionId: new Map<string, string>(),
-        unsubscribe
+        unsubscribe,
+        status: 'running',
+        attentionReason: null,
+        lastEventAt: null,
+        lastExit: null,
+        startedAt: new Date().toISOString()
       });
 
       return {
@@ -373,17 +472,25 @@ export class ControlPlaneStreamServer {
     if (state === undefined) {
       return;
     }
+    if (state.status === 'exited') {
+      return;
+    }
 
     const data = Buffer.from(dataBase64, 'base64');
     if (data.length === 0 && dataBase64.length > 0) {
       return;
     }
     state.session.write(data);
+    state.status = 'running';
+    state.attentionReason = null;
   }
 
   private handleResize(sessionId: string, cols: number, rows: number): void {
     const state = this.sessions.get(sessionId);
     if (state === undefined) {
+      return;
+    }
+    if (state.status === 'exited') {
       return;
     }
     state.session.resize(cols, rows);
@@ -394,14 +501,21 @@ export class ControlPlaneStreamServer {
     if (state === undefined) {
       return;
     }
+    if (state.status === 'exited') {
+      return;
+    }
 
     if (signal === 'interrupt') {
       state.session.write('\u0003');
+      state.status = 'running';
+      state.attentionReason = null;
       return;
     }
 
     if (signal === 'eof') {
       state.session.write('\u0004');
+      state.status = 'running';
+      state.attentionReason = null;
       return;
     }
 
@@ -409,7 +523,10 @@ export class ControlPlaneStreamServer {
   }
 
   private handleSessionEvent(sessionId: string, event: CodexLiveEvent): void {
-    const sessionState = this.sessions.get(sessionId)!;
+    const sessionState = this.sessions.get(sessionId);
+    if (sessionState === undefined) {
+      return;
+    }
 
     const mapped = mapSessionEvent(event);
     if (mapped !== null && event.type !== 'terminal-output') {
@@ -422,8 +539,30 @@ export class ControlPlaneStreamServer {
       }
     }
 
+    if (event.type === 'attention-required') {
+      sessionState.status = 'needs-input';
+      sessionState.attentionReason = event.reason;
+      sessionState.lastEventAt = event.record.ts;
+      return;
+    }
+
+    if (event.type === 'turn-completed') {
+      sessionState.status = 'completed';
+      sessionState.attentionReason = null;
+      sessionState.lastEventAt = event.record.ts;
+      return;
+    }
+
+    if (event.type === 'notify') {
+      sessionState.lastEventAt = event.record.ts;
+      return;
+    }
+
     if (event.type === 'session-exit') {
-      this.destroySession(sessionId, false);
+      sessionState.status = 'exited';
+      sessionState.attentionReason = null;
+      sessionState.lastExit = event.exit;
+      sessionState.lastEventAt = new Date().toISOString();
     }
   }
 
@@ -469,7 +608,10 @@ export class ControlPlaneStreamServer {
   }
 
   private destroySession(sessionId: string, closeSession: boolean): void {
-    const state = this.sessions.get(sessionId)!;
+    const state = this.sessions.get(sessionId);
+    if (state === undefined) {
+      return;
+    }
 
     state.unsubscribe();
 
@@ -495,9 +637,74 @@ export class ControlPlaneStreamServer {
     this.sessions.delete(sessionId);
   }
 
+  private sessionSummaryRecord(state: SessionState): Record<string, unknown> {
+    return {
+      sessionId: state.id,
+      status: state.status,
+      attentionReason: state.attentionReason,
+      latestCursor: state.session.latestCursorValue(),
+      attachedClients: state.attachmentByConnectionId.size,
+      eventSubscribers: state.eventSubscriberConnectionIds.size,
+      startedAt: state.startedAt,
+      lastEventAt: state.lastEventAt,
+      lastExit: state.lastExit
+    };
+  }
+
+  private snapshotRecordFromFrame(frame: TerminalSnapshotFrame): Record<string, unknown> {
+    return {
+      rows: frame.rows,
+      cols: frame.cols,
+      activeScreen: frame.activeScreen,
+      modes: frame.modes,
+      cursor: frame.cursor,
+      viewport: frame.viewport,
+      lines: frame.lines,
+      frameHash: frame.frameHash
+    };
+  }
+
   private sendToConnection(connectionId: string, envelope: StreamServerEnvelope): void {
-    const connection = this.connections.get(connectionId)!;
-    connection.socket.write(encodeStreamEnvelope(envelope));
+    const connection = this.connections.get(connectionId);
+    if (connection === undefined) {
+      return;
+    }
+
+    const payload = encodeStreamEnvelope(envelope);
+    connection.queuedPayloads.push(payload);
+    connection.queuedPayloadBytes += Buffer.byteLength(payload);
+
+    if (this.connectionBufferedBytes(connection) > this.maxConnectionBufferedBytes) {
+      connection.socket.destroy(new Error('connection output buffer exceeded configured maximum'));
+      return;
+    }
+
+    this.flushConnectionWrites(connectionId);
+  }
+
+  private flushConnectionWrites(connectionId: string): void {
+    const connection = this.connections.get(connectionId);
+    if (connection === undefined || connection.writeBlocked) {
+      return;
+    }
+
+    while (connection.queuedPayloads.length > 0) {
+      const payload = connection.queuedPayloads.shift()!;
+      connection.queuedPayloadBytes -= Buffer.byteLength(payload);
+      const writeResult = connection.socket.write(payload);
+      if (!writeResult) {
+        connection.writeBlocked = true;
+        break;
+      }
+    }
+
+    if (this.connectionBufferedBytes(connection) > this.maxConnectionBufferedBytes) {
+      connection.socket.destroy(new Error('connection output buffer exceeded configured maximum'));
+    }
+  }
+
+  private connectionBufferedBytes(connection: ConnectionState): number {
+    return connection.queuedPayloadBytes + connection.socket.writableLength;
   }
 }
 

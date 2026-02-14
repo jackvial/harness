@@ -253,3 +253,101 @@ void test('stream client handles parse-ignore, socket error close, and connect f
     })
   );
 });
+
+void test('stream client supports auth handshake and globally unique command ids', async () => {
+  const commandIds: string[] = [];
+  const harness = await startHarnessServer((socket, envelope) => {
+    if (envelope.kind === 'auth') {
+      if (envelope.token === 'good-token') {
+        socket.write(
+          encodeStreamEnvelope({
+            kind: 'auth.ok'
+          })
+        );
+      } else {
+        socket.write(
+          encodeStreamEnvelope({
+            kind: 'auth.error',
+            error: 'invalid auth token'
+          })
+        );
+        socket.end();
+      }
+      return;
+    }
+
+    if (envelope.kind !== 'command') {
+      return;
+    }
+    commandIds.push(envelope.commandId);
+    socket.write(
+      encodeStreamEnvelope({
+        kind: 'command.accepted',
+        commandId: envelope.commandId
+      })
+    );
+    socket.write(
+      encodeStreamEnvelope({
+        kind: 'command.completed',
+        commandId: envelope.commandId,
+        result: {
+          ok: true
+        }
+      })
+    );
+  });
+
+  try {
+    const client = await connectControlPlaneStreamClient({
+      host: harness.address.address,
+      port: harness.address.port,
+      authToken: 'good-token'
+    });
+    try {
+      const first = await client.sendCommand({
+        type: 'session.list'
+      });
+      assert.deepEqual(first, { ok: true });
+      const second = await client.sendCommand({
+        type: 'session.list'
+      });
+      assert.deepEqual(second, { ok: true });
+      assert.equal(commandIds.length, 2);
+      assert.notEqual(commandIds[0], commandIds[1]);
+      assert.match(commandIds[0]!, /^command-[0-9a-f-]{36}$/);
+    } finally {
+      client.close();
+    }
+
+    await assert.rejects(
+      connectControlPlaneStreamClient({
+        host: harness.address.address,
+        port: harness.address.port,
+        authToken: 'bad-token'
+      }),
+      /invalid auth token|closed/
+    );
+  } finally {
+    await harness.stop();
+  }
+});
+
+void test('stream client auth rejects when closed or already pending', async () => {
+  const harness = await startHarnessServer(() => {
+    // Intentionally do not respond to auth so pending-auth branches can be exercised.
+  });
+  const client = await connectControlPlaneStreamClient({
+    host: harness.address.address,
+    port: harness.address.port
+  });
+
+  try {
+    const pendingAuth = client.authenticate('pending-token');
+    await assert.rejects(client.authenticate('duplicate-token'), /already pending/);
+    client.close();
+    await assert.rejects(pendingAuth, /closed/);
+    await assert.rejects(client.authenticate('after-close'), /closed/);
+  } finally {
+    await harness.stop();
+  }
+});

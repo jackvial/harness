@@ -17,6 +17,7 @@ import {
 } from '../src/control-plane/stream-protocol.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
+import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -36,12 +37,14 @@ class FakeLiveSession {
   private readonly attachments = new Map<string, SessionAttachHandlers>();
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
   private readonly backlog: SessionDataEvent[];
+  private readonly snapshotOracle: TerminalSnapshotOracle;
   private closed = false;
   private nextAttachmentId = 1;
   private latestCursor = 0;
 
   constructor(input: StartControlPlaneSessionInput) {
     this.input = input;
+    this.snapshotOracle = new TerminalSnapshotOracle(input.initialCols, input.initialRows);
     this.backlog = [
       {
         cursor: 1,
@@ -53,6 +56,9 @@ class FakeLiveSession {
       }
     ];
     this.latestCursor = 2;
+    for (const entry of this.backlog) {
+      this.snapshotOracle.ingest(entry.chunk);
+    }
   }
 
   attach(handlers: SessionAttachHandlers, sinceCursor = 0): string {
@@ -84,6 +90,7 @@ class FakeLiveSession {
   write(data: string | Uint8Array): void {
     const chunk = Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(data);
     this.writes.push(chunk);
+    this.snapshotOracle.ingest(chunk);
 
     this.latestCursor += 1;
     const event = {
@@ -97,6 +104,11 @@ class FakeLiveSession {
 
   resize(cols: number, rows: number): void {
     this.resizeCalls.push({ cols, rows });
+    this.snapshotOracle.resize(cols, rows);
+  }
+
+  snapshot() {
+    return this.snapshotOracle.snapshot();
   }
 
   close(): void {
@@ -185,6 +197,8 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   });
 
   try {
+    await clientA.authenticate('ignored-token');
+
     const observedA = collectEnvelopes(clientA);
     const observedB = collectEnvelopes(clientB);
 
@@ -317,13 +331,26 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
     true
   );
 
-  await assert.rejects(
-    clientA.sendCommand({
-      type: 'pty.close',
-      sessionId: 'session-1'
-    }),
-    /session not found/
-  );
+  const statusAfterExit = await clientA.sendCommand({
+    type: 'session.status',
+    sessionId: 'session-1'
+  });
+  assert.equal(statusAfterExit['status'], 'exited');
+
+  const writesBeforeExitedInput = created[0]!.writes.length;
+  const resizeBeforeExitedInput = created[0]!.resizeCalls.length;
+  clientA.sendInput('session-1', Buffer.from('ignored-after-exit', 'utf8'));
+  clientA.sendResize('session-1', 200, 50);
+  clientA.sendSignal('session-1', 'interrupt');
+  await delay(10);
+  assert.equal(created[0]!.writes.length, writesBeforeExitedInput);
+  assert.equal(created[0]!.resizeCalls.length, resizeBeforeExitedInput);
+
+  const closeAfterExit = await clientA.sendCommand({
+    type: 'pty.close',
+    sessionId: 'session-1'
+  });
+  assert.equal(closeAfterExit['closed'], true);
 
   await clientA.sendCommand({
     type: 'pty.start',
@@ -392,6 +419,60 @@ void test('startControlPlaneStreamServer helper starts a ready server', async ()
   await server.close();
 });
 
+void test('stream server supports session.list, session.status, and session.snapshot', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    const initialList = await client.sendCommand({
+      type: 'session.list'
+    });
+    assert.deepEqual(initialList['sessions'], []);
+
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-list',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+
+    const listed = await client.sendCommand({
+      type: 'session.list'
+    });
+    assert.equal(Array.isArray(listed['sessions']), true);
+    const sessionEntries = listed['sessions'] as Array<Record<string, unknown>>;
+    assert.equal(sessionEntries.length, 1);
+    assert.equal(sessionEntries[0]?.['sessionId'], 'session-list');
+    assert.equal(sessionEntries[0]?.['status'], 'running');
+
+    const status = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-list'
+    });
+    assert.equal(status['sessionId'], 'session-list');
+    assert.equal(status['status'], 'running');
+
+    const snapshot = await client.sendCommand({
+      type: 'session.snapshot',
+      sessionId: 'session-list'
+    });
+    assert.equal(snapshot['sessionId'], 'session-list');
+    const snapshotRecord = snapshot['snapshot'] as Record<string, unknown>;
+    assert.equal(typeof snapshotRecord['frameHash'], 'string');
+    assert.equal(Array.isArray(snapshotRecord['lines']), true);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('stream server surfaces listen failures', async () => {
   const startSession = (input: StartControlPlaneSessionInput): FakeLiveSession => new FakeLiveSession(input);
   const first = new ControlPlaneStreamServer({
@@ -410,6 +491,54 @@ void test('stream server surfaces listen failures', async () => {
 
   await assert.rejects(second.start());
   await first.close();
+});
+
+void test('stream server enforces optional auth token on all operations', async () => {
+  const server = await startControlPlaneStreamServer({
+    authToken: 'secret-token',
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  const address = server.address();
+
+  const unauthenticatedClient = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await assert.rejects(
+      unauthenticatedClient.sendCommand({
+        type: 'session.list'
+      }),
+      /authentication required|closed/
+    );
+
+    await assert.rejects(
+      connectControlPlaneStreamClient({
+        host: address.address,
+        port: address.port,
+        authToken: 'wrong-token'
+      }),
+      /invalid auth token|closed/
+    );
+
+    const authenticatedClient = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port,
+      authToken: 'secret-token'
+    });
+    try {
+      const listed = await authenticatedClient.sendCommand({
+        type: 'session.list'
+      });
+      assert.deepEqual(listed['sessions'], []);
+    } finally {
+      authenticatedClient.close();
+    }
+  } finally {
+    unauthenticatedClient.close();
+    await server.close();
+  }
 });
 
 void test('stream server covers detach/cleanup and missing-session stream operations', async () => {
@@ -547,6 +676,121 @@ void test('stream server command failure serializes thrown errors', async () => 
     );
   } finally {
     client.close();
+    await server.close();
+  }
+});
+
+void test('stream server bounds per-connection output buffering under backpressure', async () => {
+  const server = await startControlPlaneStreamServer({
+    maxConnectionBufferedBytes: 256,
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-buffer',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    await client.sendCommand({
+      type: 'pty.attach',
+      sessionId: 'session-buffer',
+      sinceCursor: 2
+    });
+
+    const internals = server as unknown as {
+      connections: Map<string, { socket: Socket }>;
+    };
+    const [connectionState] = [...internals.connections.values()];
+    assert.notEqual(connectionState, undefined);
+    connectionState!.socket.write = (() => false) as unknown as Socket['write'];
+    connectionState!.socket.emit('drain');
+
+    for (let idx = 0; idx < 20; idx += 1) {
+      client.sendInput('session-buffer', Buffer.from(`payload-${String(idx).padStart(2, '0')}`, 'utf8'));
+    }
+
+    await delay(20);
+    assert.equal(internals.connections.size, 0);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server internal guard branches remain safe for missing ids', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  try {
+    const internals = server as unknown as {
+      connections: Map<
+        string,
+        {
+          id: string;
+          socket: Socket;
+          remainder: string;
+          authenticated: boolean;
+          attachedSessionIds: Set<string>;
+          eventSessionIds: Set<string>;
+          queuedPayloads: string[];
+          queuedPayloadBytes: number;
+          writeBlocked: boolean;
+        }
+      >;
+      handleSessionEvent: (sessionId: string, event: CodexLiveEvent) => void;
+      destroySession: (sessionId: string, closeSession: boolean) => void;
+      sendToConnection: (connectionId: string, envelope: StreamServerEnvelope) => void;
+      flushConnectionWrites: (connectionId: string) => void;
+    };
+
+    let destroyed = false;
+    const fakeSocket = {
+      writableLength: Number.MAX_SAFE_INTEGER,
+      write: () => true,
+      destroy: () => {
+        destroyed = true;
+      }
+    } as unknown as Socket;
+    internals.connections.set('fake-connection', {
+      id: 'fake-connection',
+      socket: fakeSocket,
+      remainder: '',
+      authenticated: true,
+      attachedSessionIds: new Set<string>(),
+      eventSessionIds: new Set<string>(),
+      queuedPayloads: [],
+      queuedPayloadBytes: 0,
+      writeBlocked: false
+    });
+
+    internals.handleSessionEvent('missing-session', {
+      type: 'notify',
+      record: {
+        ts: new Date(0).toISOString(),
+        payload: {
+          type: 'missing'
+        }
+      }
+    });
+    internals.destroySession('missing-session', true);
+    internals.sendToConnection('missing-connection', {
+      kind: 'auth.ok'
+    });
+
+    const fakeConnection = internals.connections.get('fake-connection')!;
+    fakeConnection.queuedPayloads.push('payload');
+    fakeConnection.queuedPayloadBytes = 7;
+    internals.flushConnectionWrites('fake-connection');
+    assert.equal(destroyed, true);
+  } finally {
     await server.close();
   }
 });

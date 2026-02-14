@@ -1,4 +1,5 @@
 import { connect, type Socket } from 'node:net';
+import { randomUUID } from 'node:crypto';
 import {
   consumeJsonLines,
   encodeStreamEnvelope,
@@ -12,6 +13,7 @@ import {
 interface ControlPlaneStreamClientOptions {
   host: string;
   port: number;
+  authToken?: string;
 }
 
 interface PendingCommand {
@@ -24,7 +26,12 @@ export class ControlPlaneStreamClient {
   private readonly listeners = new Set<(envelope: StreamServerEnvelope) => void>();
   private readonly pending = new Map<string, PendingCommand>();
   private remainder = '';
-  private nextCommandId = 1;
+  private pendingAuth:
+    | {
+        resolve: () => void;
+        reject: (error: Error) => void;
+      }
+    | null = null;
   private closed = false;
 
   constructor(socket: Socket) {
@@ -51,8 +58,7 @@ export class ControlPlaneStreamClient {
   }
 
   sendCommand(command: StreamCommand): Promise<Record<string, unknown>> {
-    const commandId = `command-${this.nextCommandId}`;
-    this.nextCommandId += 1;
+    const commandId = `command-${randomUUID()}`;
 
     return new Promise<Record<string, unknown>>((resolve, reject) => {
       if (this.closed) {
@@ -71,6 +77,30 @@ export class ControlPlaneStreamClient {
         command
       };
       this.socket.write(encodeStreamEnvelope(envelope));
+    });
+  }
+
+  authenticate(token: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (this.closed) {
+        reject(new Error('control-plane stream is closed'));
+        return;
+      }
+      if (this.pendingAuth !== null) {
+        reject(new Error('auth is already pending'));
+        return;
+      }
+
+      this.pendingAuth = {
+        resolve,
+        reject
+      };
+      this.socket.write(
+        encodeStreamEnvelope({
+          kind: 'auth',
+          token
+        })
+      );
     });
   }
 
@@ -140,6 +170,24 @@ export class ControlPlaneStreamClient {
   }
 
   private handleEnvelope(envelope: StreamServerEnvelope): void {
+    if (envelope.kind === 'auth.ok') {
+      const pendingAuth = this.pendingAuth;
+      if (pendingAuth !== null) {
+        this.pendingAuth = null;
+        pendingAuth.resolve();
+      }
+      return;
+    }
+
+    if (envelope.kind === 'auth.error') {
+      const pendingAuth = this.pendingAuth;
+      if (pendingAuth !== null) {
+        this.pendingAuth = null;
+        pendingAuth.reject(new Error(envelope.error));
+      }
+      return;
+    }
+
     if (envelope.kind === 'command.accepted') {
       return;
     }
@@ -178,6 +226,11 @@ export class ControlPlaneStreamClient {
   }
 
   private rejectPending(error: Error): void {
+    const pendingAuth = this.pendingAuth;
+    if (pendingAuth !== null) {
+      this.pendingAuth = null;
+      pendingAuth.reject(error);
+    }
     for (const pending of this.pending.values()) {
       pending.reject(error);
     }
@@ -203,5 +256,9 @@ export async function connectControlPlaneStreamClient(
     client.once('connect', onConnect);
   });
 
-  return new ControlPlaneStreamClient(socket);
+  const client = new ControlPlaneStreamClient(socket);
+  if (typeof options.authToken === 'string') {
+    await client.authenticate(options.authToken);
+  }
+  return client;
 }

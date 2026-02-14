@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
-import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
+import { openCodexControlPlaneSession } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import type { StreamSessionEvent } from '../src/control-plane/stream-protocol.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
@@ -35,6 +35,7 @@ interface MuxOptions {
   turnId: string;
   controlPlaneHost: string | null;
   controlPlanePort: number | null;
+  controlPlaneAuthToken: string | null;
   scope: EventScope;
 }
 
@@ -464,6 +465,7 @@ function parseArgs(argv: string[]): MuxOptions {
   const codexArgs: string[] = [];
   let controlPlaneHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? null;
   let controlPlanePortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? null;
+  let controlPlaneAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
 
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx]!;
@@ -483,6 +485,16 @@ function parseArgs(argv: string[]): MuxOptions {
         throw new Error('missing value for --harness-server-port');
       }
       controlPlanePortRaw = value;
+      idx += 1;
+      continue;
+    }
+
+    if (arg === '--harness-server-token') {
+      const value = argv[idx + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --harness-server-token');
+      }
+      controlPlaneAuthToken = value;
       idx += 1;
       continue;
     }
@@ -513,6 +525,7 @@ function parseArgs(argv: string[]): MuxOptions {
     turnId,
     controlPlaneHost,
     controlPlanePort,
+    controlPlaneAuthToken,
     scope: {
       tenantId: process.env.HARNESS_TENANT_ID ?? 'tenant-local',
       userId: process.env.HARNESS_USER_ID ?? 'user-local',
@@ -836,31 +849,19 @@ async function main(): Promise<number> {
   process.stdin.resume();
 
   const probedPalette = await probeTerminalPalette();
-  let streamServer: Awaited<ReturnType<typeof startControlPlaneStreamServer>> | null = null;
-  if (options.controlPlaneHost === null || options.controlPlanePort === null) {
-    streamServer = await startControlPlaneStreamServer({
-      startSession: (input) =>
-        startCodexLiveSession({
-          args: input.args,
-          env: input.env,
-          initialCols: input.initialCols,
-          initialRows: input.initialRows,
-          terminalForegroundHex: input.terminalForegroundHex,
-          terminalBackgroundHex: input.terminalBackgroundHex
-        })
-    });
-  }
-
-  const controlPlaneHost = options.controlPlaneHost ?? '127.0.0.1';
-  const controlPlanePort = options.controlPlanePort ?? streamServer!.address().port;
-  const streamClient = await connectControlPlaneStreamClient({
-    host: controlPlaneHost,
-    port: controlPlanePort
-  });
-
   const terminalSnapshotOracle = new TerminalSnapshotOracle(layout.leftCols, layout.paneRows);
-  const startResult = await streamClient.sendCommand({
-    type: 'pty.start',
+  const controlPlaneSession = await openCodexControlPlaneSession({
+    controlPlane:
+      options.controlPlaneHost !== null && options.controlPlanePort !== null
+        ? {
+            mode: 'remote',
+            host: options.controlPlaneHost,
+            port: options.controlPlanePort,
+            authToken: options.controlPlaneAuthToken ?? undefined
+          }
+        : {
+            mode: 'embedded'
+          },
     sessionId: options.conversationId,
     args: options.codexArgs,
     env: {
@@ -871,19 +872,21 @@ async function main(): Promise<number> {
     initialRows: layout.paneRows,
     terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
     terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex
+  }, {
+    startEmbeddedServer: async () =>
+      await startControlPlaneStreamServer({
+        startSession: (input) =>
+          startCodexLiveSession({
+            args: input.args,
+            env: input.env,
+            initialCols: input.initialCols,
+            initialRows: input.initialRows,
+            terminalForegroundHex: input.terminalForegroundHex,
+            terminalBackgroundHex: input.terminalBackgroundHex
+          })
+      })
   });
-  if (startResult['sessionId'] !== options.conversationId) {
-    throw new Error('control-plane pty.start returned unexpected session id');
-  }
-  await streamClient.sendCommand({
-    type: 'pty.subscribe-events',
-    sessionId: options.conversationId
-  });
-  await streamClient.sendCommand({
-    type: 'pty.attach',
-    sessionId: options.conversationId,
-    sinceCursor: 0
-  });
+  const streamClient = controlPlaneSession.client;
 
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
@@ -1471,16 +1474,9 @@ async function main(): Promise<number> {
     process.off('SIGTERM', requestStop);
     removeEnvelopeListener();
     try {
-      await streamClient.sendCommand({
-        type: 'pty.close',
-        sessionId: options.conversationId
-      });
+      await controlPlaneSession.close();
     } catch {
       // Best-effort shutdown only.
-    }
-    streamClient.close();
-    if (streamServer !== null) {
-      await streamServer.close();
     }
     store.close();
     restoreTerminalState(true);

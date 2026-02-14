@@ -907,9 +907,16 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time, including notify-discovery mode (`--only-notify`).
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
   - `src/control-plane/stream-protocol.ts` defines typed newline-delimited TCP stream envelopes for command lifecycle, PTY pass-through signals, and async event delivery.
+    - protocol now includes `auth`, `auth.ok`, `auth.error` envelopes and session query commands (`session.list`, `session.status`, `session.snapshot`).
   - `src/control-plane/stream-server.ts` provides a session-aware control-plane server that executes PTY/session operations and broadcasts output/events to subscribed clients.
+    - optional shared-token auth is enforced before non-auth commands when configured.
+    - per-connection output buffering is bounded; slow consumers are disconnected once buffered output exceeds configured limits.
+    - session runtime status tracking is exposed through `session.status` (`running`, `needs-input`, `completed`, `exited`) with attention reason and last-exit details.
   - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
+    - command ids are UUID-based and auth handshake is supported in `connectControlPlaneStreamClient`.
+  - `src/control-plane/codex-session-stream.ts` extracts mux/session control-plane wiring into reusable infrastructure (embedded or remote transport).
   - `scripts/control-plane-daemon.ts` provides a standalone control-plane process (`npm run control-plane:daemon`) for split client/server operation.
+    - non-loopback bind now requires an auth token (`--auth-token` or `HARNESS_CONTROL_PLANE_AUTH_TOKEN`).
   - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
     - launcher mode sets local-exit policy so `Ctrl+C` cleanly tears down both mux client and daemon.
   - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed) with:

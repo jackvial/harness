@@ -24,8 +24,35 @@ void test('stream protocol encodes envelopes and consumes newline-delimited json
 void test('parseClientEnvelope accepts valid command and stream envelopes', () => {
   const validClientEnvelopes: unknown[] = [
     {
+      kind: 'auth',
+      token: 'token-local'
+    },
+    {
       kind: 'command',
       commandId: 'c1',
+      command: {
+        type: 'session.list'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c1b',
+      command: {
+        type: 'session.status',
+        sessionId: 's1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c1c',
+      command: {
+        type: 'session.snapshot',
+        sessionId: 's1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c1d',
       command: {
         type: 'pty.start',
         sessionId: 's1',
@@ -41,7 +68,7 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
-      commandId: 'c2',
+      commandId: 'c2a',
       command: {
         type: 'pty.attach',
         sessionId: 's1',
@@ -50,7 +77,7 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
-      commandId: 'c3',
+      commandId: 'c3a',
       command: {
         type: 'pty.detach',
         sessionId: 's1'
@@ -58,7 +85,7 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
-      commandId: 'c4',
+      commandId: 'c4a',
       command: {
         type: 'pty.subscribe-events',
         sessionId: 's1'
@@ -66,7 +93,7 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
-      commandId: 'c5',
+      commandId: 'c5a',
       command: {
         type: 'pty.unsubscribe-events',
         sessionId: 's1'
@@ -74,7 +101,7 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
-      commandId: 'c6',
+      commandId: 'c6a',
       command: {
         type: 'pty.close',
         sessionId: 's1'
@@ -128,6 +155,9 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       }
     },
     {
+      kind: 'auth'
+    },
+    {
       kind: 'command',
       commandId: 'c1',
       command: {
@@ -154,6 +184,13 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
     },
     {
       kind: 'command',
+      commandId: 'c2',
+      command: {
+        type: 'session.status'
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c3',
       command: {
         type: 'pty.attach',
@@ -167,6 +204,13 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'unknown',
         sessionId: 's1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c4b',
+      command: {
+        type: 'pty.close'
       }
     },
     {
@@ -193,6 +237,13 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
 
 void test('parseServerEnvelope accepts valid server envelopes', () => {
   const validServerEnvelopes: unknown[] = [
+    {
+      kind: 'auth.ok'
+    },
+    {
+      kind: 'auth.error',
+      error: 'invalid auth token'
+    },
     {
       kind: 'command.accepted',
       commandId: 'c1'
@@ -285,6 +336,10 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
 void test('parseServerEnvelope rejects malformed envelopes', () => {
   const invalidValues: unknown[] = [
     null,
+    {
+      kind: 'auth.error',
+      error: 1
+    },
     {
       kind: 'command.accepted',
       commandId: 1

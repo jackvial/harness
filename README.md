@@ -20,7 +20,11 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - PTY passthrough verified with `vim` interaction tests.
 - Codex live session hosted through PTY with notify-hook ingestion.
 - Control-plane TCP stream baseline (`src/control-plane/*`) with typed command/event envelopes.
+- Control-plane auth handshake (`auth` / `auth.ok` / `auth.error`) with optional shared-token enforcement.
+- Control-plane session discovery/state commands: `session.list`, `session.status`, `session.snapshot`.
+- Control-plane output fanout now enforces per-connection backpressure limits (bounded buffering).
 - Mux control path now runs through the same stream API primitives (`pty.start/attach/input/resize/signal/close`) used for programmatic clients.
+- Mux control-plane attach/start wiring is extracted into reusable `src/control-plane/codex-session-stream.ts` so local/remote transport is swappable.
 - Stream isolation: PTY bytes never mixed with structured event output.
 - Deterministic terminal snapshot oracle (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`).
 - Scroll-region/origin correctness for pinned UI areas (`DECSTBM`, `DECOM`, `IND`/`NEL`/`RI`, `IL`/`DL`).
@@ -53,6 +57,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - `npm run codex:live:mux -- <codex-args>`
 - `npm run codex:live:mux:launch -- <codex-args>`
 - `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
+- `HARNESS_CONTROL_PLANE_AUTH_TOKEN=secret npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
 - `npm run codex:live:mux:client -- <codex-args>`
 - `npm run codex:live:tail -- --conversation-id <id> [--from-now] [--only-notify] [--include-text-deltas]`
 - `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
@@ -65,7 +70,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
     - in this mode, `Ctrl+C` cleanly exits mux + daemon together
   - client/server mode:
     - terminal 1: `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
-    - terminal 2: `npm run codex:live:mux:client -- <codex-args>`
+    - terminal 2: `HARNESS_CONTROL_PLANE_AUTH_TOKEN=secret npm run codex:live:mux:client -- --harness-server-token secret <codex-args>`
   - confirm left pane remains interactive while right pane updates event feed
   - scroll wheel in left pane should switch status from `pty=live` to `pty=scroll(...)`
   - confirm right pane scroll wheel enters `events=scroll(...)` mode in status and does not type into Codex

@@ -4,14 +4,17 @@ import { startControlPlaneStreamServer } from '../src/control-plane/stream-serve
 interface DaemonOptions {
   host: string;
   port: number;
+  authToken: string | null;
 }
 
 function parseArgs(argv: string[]): DaemonOptions {
   const defaultHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? '127.0.0.1';
   const defaultPortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? '7777';
+  const defaultAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
 
   let host = defaultHost;
   let portRaw = defaultPortRaw;
+  let authToken = defaultAuthToken;
 
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx]!;
@@ -34,6 +37,16 @@ function parseArgs(argv: string[]): DaemonOptions {
       idx += 1;
       continue;
     }
+
+    if (arg === '--auth-token') {
+      const value = argv[idx + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --auth-token');
+      }
+      authToken = value;
+      idx += 1;
+      continue;
+    }
   }
 
   const port = Number.parseInt(portRaw, 10);
@@ -41,9 +54,15 @@ function parseArgs(argv: string[]): DaemonOptions {
     throw new Error(`invalid --port value: ${portRaw}`);
   }
 
+  const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1']);
+  if (!loopbackHosts.has(host) && authToken === null) {
+    throw new Error('non-loopback hosts require --auth-token or HARNESS_CONTROL_PLANE_AUTH_TOKEN');
+  }
+
   return {
     host,
-    port
+    port,
+    authToken
   };
 }
 
@@ -53,6 +72,7 @@ async function main(): Promise<number> {
   const server = await startControlPlaneStreamServer({
     host: options.host,
     port: options.port,
+    authToken: options.authToken ?? undefined,
     startSession: (input) =>
       startCodexLiveSession({
         args: input.args,
@@ -66,7 +86,7 @@ async function main(): Promise<number> {
 
   const address = server.address();
   process.stdout.write(
-    `[control-plane] listening host=${address.address} port=${String(address.port)}\n`
+    `[control-plane] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'}\n`
   );
 
   let stopRequested = false;

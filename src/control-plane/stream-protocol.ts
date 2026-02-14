@@ -2,6 +2,20 @@ import type { PtyExit } from '../pty/pty_host.ts';
 
 export type StreamSignal = 'interrupt' | 'eof' | 'terminate';
 
+interface SessionListCommand {
+  type: 'session.list';
+}
+
+interface SessionStatusCommand {
+  type: 'session.status';
+  sessionId: string;
+}
+
+interface SessionSnapshotCommand {
+  type: 'session.snapshot';
+  sessionId: string;
+}
+
 interface PtyStartCommand {
   type: 'pty.start';
   sessionId: string;
@@ -40,6 +54,9 @@ interface PtyCloseCommand {
 }
 
 export type StreamCommand =
+  | SessionListCommand
+  | SessionStatusCommand
+  | SessionSnapshotCommand
   | PtyStartCommand
   | PtyAttachCommand
   | PtyDetachCommand
@@ -51,6 +68,11 @@ export interface StreamCommandEnvelope {
   kind: 'command';
   commandId: string;
   command: StreamCommand;
+}
+
+interface StreamAuthEnvelope {
+  kind: 'auth';
+  token: string;
 }
 
 interface StreamInputEnvelope {
@@ -73,6 +95,7 @@ interface StreamSignalEnvelope {
 }
 
 export type StreamClientEnvelope =
+  | StreamAuthEnvelope
   | StreamCommandEnvelope
   | StreamInputEnvelope
   | StreamResizeEnvelope
@@ -107,6 +130,15 @@ interface StreamCommandAcceptedEnvelope {
   commandId: string;
 }
 
+interface StreamAuthOkEnvelope {
+  kind: 'auth.ok';
+}
+
+interface StreamAuthErrorEnvelope {
+  kind: 'auth.error';
+  error: string;
+}
+
 interface StreamCommandCompletedEnvelope {
   kind: 'command.completed';
   commandId: string;
@@ -139,6 +171,8 @@ interface StreamPtyEventEnvelope {
 }
 
 export type StreamServerEnvelope =
+  | StreamAuthOkEnvelope
+  | StreamAuthErrorEnvelope
   | StreamCommandAcceptedEnvelope
   | StreamCommandCompletedEnvelope
   | StreamCommandFailedEnvelope
@@ -231,8 +265,29 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
   }
 
   const type = readString(record['type']);
+  if (type === null) {
+    return null;
+  }
+
+  if (type === 'session.list') {
+    return {
+      type
+    };
+  }
+
+  if (type === 'session.status' || type === 'session.snapshot') {
+    const sessionId = readString(record['sessionId']);
+    if (sessionId === null) {
+      return null;
+    }
+    return {
+      type,
+      sessionId
+    };
+  }
+
   const sessionId = readString(record['sessionId']);
-  if (type === null || sessionId === null) {
+  if (sessionId === null) {
     return null;
   }
 
@@ -327,6 +382,17 @@ export function parseClientEnvelope(value: unknown): StreamClientEnvelope | null
   const kind = readString(record['kind']);
   if (kind === null) {
     return null;
+  }
+
+  if (kind === 'auth') {
+    const token = readString(record['token']);
+    if (token === null) {
+      return null;
+    }
+    return {
+      kind,
+      token
+    };
   }
 
   if (kind === 'command') {
@@ -470,6 +536,23 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
   const kind = readString(record['kind']);
   if (kind === null) {
     return null;
+  }
+
+  if (kind === 'auth.ok') {
+    return {
+      kind
+    };
+  }
+
+  if (kind === 'auth.error') {
+    const error = readString(record['error']);
+    if (error === null) {
+      return null;
+    }
+    return {
+      kind,
+      error
+    };
   }
 
   if (kind === 'command.accepted') {

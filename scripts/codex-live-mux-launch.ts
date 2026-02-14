@@ -3,6 +3,7 @@ import { createServer } from 'node:net';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DAEMON_SCRIPT = resolve(SCRIPT_DIR, 'control-plane-daemon.ts');
@@ -54,13 +55,16 @@ async function reservePort(host: string): Promise<number> {
   });
 }
 
-function spawnDaemon(host: string, port: number): ChildProcess {
+function spawnDaemon(host: string, port: number, authToken: string): ChildProcess {
   return spawn(
     process.execPath,
     ['--experimental-strip-types', DAEMON_SCRIPT, '--host', host, '--port', String(port)],
     {
       stdio: ['ignore', 'pipe', 'inherit'],
-      env: process.env
+      env: {
+        ...process.env,
+        HARNESS_CONTROL_PLANE_AUTH_TOKEN: authToken
+      }
     }
   );
 }
@@ -121,7 +125,12 @@ async function waitForDaemonReady(daemon: ChildProcess): Promise<void> {
   });
 }
 
-function spawnMuxClient(host: string, port: number, codexArgs: readonly string[]): ChildProcess {
+function spawnMuxClient(
+  host: string,
+  port: number,
+  authToken: string,
+  codexArgs: readonly string[]
+): ChildProcess {
   return spawn(
     process.execPath,
     [
@@ -137,7 +146,8 @@ function spawnMuxClient(host: string, port: number, codexArgs: readonly string[]
       stdio: 'inherit',
       env: {
         ...process.env,
-        HARNESS_MUX_CTRL_C_EXITS: '1'
+        HARNESS_MUX_CTRL_C_EXITS: '1',
+        HARNESS_CONTROL_PLANE_AUTH_TOKEN: authToken
       }
     }
   );
@@ -170,8 +180,9 @@ async function main(): Promise<number> {
   const codexArgs = process.argv.slice(2);
   const host = DEFAULT_HOST;
   const port = await reservePort(host);
+  const authToken = `token-${randomUUID()}`;
 
-  const daemon = spawnDaemon(host, port);
+  const daemon = spawnDaemon(host, port, authToken);
   try {
     await waitForDaemonReady(daemon);
   } catch (error: unknown) {
@@ -179,7 +190,7 @@ async function main(): Promise<number> {
     throw error;
   }
 
-  const muxClient = spawnMuxClient(host, port, codexArgs);
+  const muxClient = spawnMuxClient(host, port, authToken, codexArgs);
   let shuttingDown = false;
 
   const shutdown = async (): Promise<void> => {
