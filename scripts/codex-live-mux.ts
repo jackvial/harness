@@ -45,6 +45,7 @@ interface RenderCursorStyle {
 
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
 const DISABLE_INPUT_MODES = '\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
+const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 
 function restoreTerminalState(newline: boolean): void {
   try {
@@ -244,6 +245,17 @@ function terminalSize(): { cols: number; rows: number } {
     return { cols, rows };
   }
   return { cols: 120, rows: 40 };
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
 }
 
 function parseOscRgbHex(value: string): string | null {
@@ -473,6 +485,10 @@ async function main(): Promise<number> {
 
   let size = terminalSize();
   let layout = computeDualPaneLayout(size.cols, size.rows);
+  const resizeMinIntervalMs = parsePositiveInt(
+    process.env.HARNESS_MUX_RESIZE_MIN_INTERVAL_MS,
+    DEFAULT_RESIZE_MIN_INTERVAL_MS
+  );
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
@@ -499,6 +515,9 @@ async function main(): Promise<number> {
   let renderedCursorVisible: boolean | null = null;
   let renderedCursorStyle: RenderCursorStyle | null = null;
   let renderScheduled = false;
+  let resizeTimer: NodeJS.Timeout | null = null;
+  let pendingSize: { cols: number; rows: number } | null = null;
+  let lastResizeApplyAtMs = 0;
 
   const scheduleRender = (): void => {
     if (renderScheduled) {
@@ -519,13 +538,57 @@ async function main(): Promise<number> {
     scheduleRender();
   };
 
-  const recalcLayout = (): void => {
-    size = terminalSize();
-    layout = computeDualPaneLayout(size.cols, size.rows);
+  const applyLayout = (nextSize: { cols: number; rows: number }): void => {
+    const nextLayout = computeDualPaneLayout(nextSize.cols, nextSize.rows);
+    if (
+      nextLayout.cols === layout.cols &&
+      nextLayout.rows === layout.rows &&
+      nextLayout.leftCols === layout.leftCols &&
+      nextLayout.rightCols === layout.rightCols &&
+      nextLayout.paneRows === layout.paneRows
+    ) {
+      return;
+    }
+    size = nextSize;
+    layout = nextLayout;
     liveSession.resize(layout.leftCols, layout.paneRows);
-    previousRows = [];
-    forceFullClear = true;
+    // Keep previous rows and diff incrementally to avoid full-screen clear jank on rapid resize.
     markDirty();
+  };
+
+  const flushPendingResize = (): void => {
+    resizeTimer = null;
+    const nextSize = pendingSize;
+    if (nextSize === null) {
+      return;
+    }
+
+    const nowMs = Date.now();
+    const elapsedMs = nowMs - lastResizeApplyAtMs;
+    if (elapsedMs < resizeMinIntervalMs) {
+      resizeTimer = setTimeout(flushPendingResize, resizeMinIntervalMs - elapsedMs);
+      return;
+    }
+
+    pendingSize = null;
+    applyLayout(nextSize);
+    lastResizeApplyAtMs = Date.now();
+
+    if (pendingSize !== null && resizeTimer === null) {
+      resizeTimer = setTimeout(flushPendingResize, resizeMinIntervalMs);
+    }
+  };
+
+  const queueResize = (nextSize: { cols: number; rows: number }): void => {
+    pendingSize = nextSize;
+    if (resizeTimer !== null) {
+      return;
+    }
+
+    const nowMs = Date.now();
+    const elapsedMs = nowMs - lastResizeApplyAtMs;
+    const delayMs = elapsedMs >= resizeMinIntervalMs ? 0 : resizeMinIntervalMs - elapsedMs;
+    resizeTimer = setTimeout(flushPendingResize, delayMs);
   };
 
   const appendEventLine = (line: string): void => {
@@ -674,14 +737,14 @@ async function main(): Promise<number> {
   };
 
   const onResize = (): void => {
-    recalcLayout();
+    queueResize(terminalSize());
   };
 
   process.stdin.on('data', onInput);
   process.stdout.on('resize', onResize);
 
   process.stdout.write(ENABLE_INPUT_MODES);
-  recalcLayout();
+  applyLayout(size);
   scheduleRender();
 
   try {
@@ -691,6 +754,10 @@ async function main(): Promise<number> {
       });
     }
   } finally {
+    if (resizeTimer !== null) {
+      clearTimeout(resizeTimer);
+      resizeTimer = null;
+    }
     process.stdin.off('data', onInput);
     process.stdout.off('resize', onResize);
     liveSession.close();
