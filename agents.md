@@ -47,3 +47,4 @@ This project has two core documents:
 - If behavior is not tested, it is not done.
 - If docs do not match behavior, the change is not done.
 - Code style must be minimal, functional, and beautiful: simple structure, clear names, and no ornamental complexity.
+- Remove dead concepts immediately once a replacement is verified; do not keep parallel legacy paths.

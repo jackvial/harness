@@ -58,7 +58,7 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
                   - SQLite Event/State Store
                   - PTY Manager (attach/detach)
                      |                 |
-                     |                 +--> [tmux/pty-host sessions for raw passthrough]
+                     |                 +--> [pty-host sessions for raw passthrough]
                      |
                      +--> [Codex Live Adapter -> pty-hosted codex CLI]
                      |      +--> [Codex Notify Tap (raw + classified lifecycle hints)]
@@ -265,7 +265,7 @@ This keeps live steering universal across agents while still taking advantage of
 - Default to PTY-backed sessions for universal pass-through.
 - Layer structured control/event channels when adapter supports them.
 - Preserve attach/detach behavior so users can jump into any live conversation terminal instantly.
-- Optional tmux integration for durable session hosting and external inspection.
+- First-party terminal multiplexer UI is the active split-view path.
 
 ## Git and Editor Integration
 
@@ -719,8 +719,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events, including raw `meta-notify-observed`.
   - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time, including notify-discovery mode (`--only-notify`).
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
-  - `scripts/codex-live-mux.ts` provides a first-party split UI (left: live steerable Codex session, right: event feed) to replace tmux split dependency.
-  - `scripts/codex-live-dual.ts` launches a tmux split view (live Codex pane + event tail pane).
+  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session, right: event feed).
 
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/

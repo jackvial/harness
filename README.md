@@ -25,11 +25,6 @@ Terminal-first multi-agent harness focused on low-latency human control, with ag
 - `npm run codex:live:mux -- <codex-args>` (first-party split: live session + event feed)
 - `npm run codex:live:tail -- --conversation-id <id> [--from-now] [--only-notify] [--include-text-deltas]`
 - `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
-- `npm run codex:live:dual -- <codex-args>` (tmux split: live session + tail)
-
-Debug:
-- `HARNESS_TMUX_DEBUG=1 npm run codex:live:dual -- <codex-args>`
-- `HARNESS_TMUX_CAPTURE_DIR=.harness/tmux-capture npm run codex:live:dual -- <codex-args>`
 
 ## License
 - `UNLICENSE`
