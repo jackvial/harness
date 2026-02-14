@@ -218,6 +218,28 @@ void test('pty-host resize updates terminal size seen by shell', async () => {
   assert.match(collector.read(), /40 120/);
 });
 
+void test('pty-host applies initial terminal size before first command', async () => {
+  const session = startPtySession({
+    command: '/bin/sh',
+    commandArgs: ['-i'],
+    env: {
+      ...process.env,
+      PS1: ''
+    },
+    initialCols: 67,
+    initialRows: 23
+  });
+  const collector = createCollector();
+  session.on('data', collector.onData);
+
+  session.write('stty size\n');
+  session.write('exit\n');
+
+  const exit = await waitForExit(session);
+  assert.equal(exit.code, 0);
+  assert.match(collector.read(), /23 67/);
+});
+
 void test('pty-host close command exits default interactive shell session', async () => {
   const session = startPtySession();
   session.close();

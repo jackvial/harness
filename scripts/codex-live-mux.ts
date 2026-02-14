@@ -1779,6 +1779,7 @@ async function main(): Promise<number> {
         cols: layout.rightCols,
         rows: layout.paneRows
       });
+      streamClient.sendResize(sessionId, layout.rightCols, layout.paneRows);
       if (startupFirstPaintTargetSessionId === sessionId) {
         endStartupActiveStartCommandSpan({
           alreadyLive: false,
@@ -2016,25 +2017,43 @@ async function main(): Promise<number> {
     }
   }, 1500);
 
-  const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
-    const conversation = activeConversation();
-    const currentPtySize = ptySizeByConversationId.get(conversation.sessionId);
-    if (currentPtySize !== undefined && currentPtySize.cols === ptySize.cols && currentPtySize.rows === ptySize.rows) {
+  const applyPtyResizeToSession = (
+    sessionId: string,
+    ptySize: { cols: number; rows: number },
+    force = false
+  ): void => {
+    const conversation = conversations.get(sessionId);
+    if (conversation === undefined || !conversation.live) {
       return;
     }
-    ptySizeByConversationId.set(conversation.sessionId, {
+    const currentPtySize = ptySizeByConversationId.get(sessionId);
+    if (
+      !force &&
+      currentPtySize !== undefined &&
+      currentPtySize.cols === ptySize.cols &&
+      currentPtySize.rows === ptySize.rows
+    ) {
+      return;
+    }
+    ptySizeByConversationId.set(sessionId, {
       cols: ptySize.cols,
       rows: ptySize.rows
     });
     conversation.oracle.resize(ptySize.cols, ptySize.rows);
-    streamClient.sendResize(conversation.sessionId, ptySize.cols, ptySize.rows);
+    streamClient.sendResize(sessionId, ptySize.cols, ptySize.rows);
     appendDebugRecord(debugPath, {
       kind: 'resize-pty-apply',
-      sessionId: conversation.sessionId,
+      sessionId,
       ptyCols: ptySize.cols,
-      ptyRows: ptySize.rows
+      ptyRows: ptySize.rows,
+      force
     });
     markDirty();
+  };
+
+  const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
+    const conversation = activeConversation();
+    applyPtyResizeToSession(conversation.sessionId, ptySize, false);
   };
 
   const flushPendingPtyResize = (): void => {
@@ -2093,6 +2112,16 @@ async function main(): Promise<number> {
     layout = nextLayout;
     for (const conversation of conversations.values()) {
       conversation.oracle.resize(nextLayout.rightCols, nextLayout.paneRows);
+      if (conversation.live) {
+        applyPtyResizeToSession(
+          conversation.sessionId,
+          {
+            cols: nextLayout.rightCols,
+            rows: nextLayout.paneRows
+          },
+          true
+        );
+      }
     }
     if (muxRecordingOracle !== null) {
       muxRecordingOracle.resize(nextLayout.cols, nextLayout.rows);

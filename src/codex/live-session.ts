@@ -14,6 +14,8 @@ interface StartPtySessionOptions {
   command?: string;
   commandArgs?: string[];
   env?: NodeJS.ProcessEnv;
+  initialCols?: number;
+  initialRows?: number;
 }
 
 interface SessionBrokerLike {
@@ -88,10 +90,29 @@ const DEFAULT_NOTIFY_POLL_MS = 100;
 const DEFAULT_RELAY_SCRIPT_PATH = join(process.cwd(), 'scripts/codex-notify-relay.ts');
 const DEFAULT_TERMINAL_FOREGROUND_HEX = 'd0d7de';
 const DEFAULT_TERMINAL_BACKGROUND_HEX = '0f1419';
+const DEFAULT_INDEXED_TERMINAL_HEX_BY_CODE: Readonly<Record<number, string>> = {
+  0: '0f1419',
+  1: 'f47067',
+  2: '8ccf7e',
+  3: 'e6c07b',
+  4: '6cb6ff',
+  5: 'd38aea',
+  6: '39c5cf',
+  7: 'd0d7de',
+  8: '5c6370',
+  9: 'ff938a',
+  10: 'a4e98c',
+  11: 'f4d399',
+  12: '8bc5ff',
+  13: 'e2a7f3',
+  14: '56d4dd',
+  15: 'f5f7fa'
+};
 
 interface TerminalPalette {
   foregroundOsc: string;
   backgroundOsc: string;
+  indexedOscByCode: Readonly<Record<number, string>>;
 }
 
 export function normalizeTerminalColorHex(value: string | undefined, fallbackHex: string): string {
@@ -125,22 +146,40 @@ function buildTerminalPalette(options: StartCodexLiveSessionOptions): TerminalPa
   );
   const foreground = normalizeTerminalColorHex(options.terminalForegroundHex, fallbackForeground);
   const background = normalizeTerminalColorHex(options.terminalBackgroundHex, fallbackBackground);
+  const indexedOscByCode: Record<number, string> = {};
+  for (const [codeText, defaultHex] of Object.entries(DEFAULT_INDEXED_TERMINAL_HEX_BY_CODE)) {
+    const code = Number(codeText);
+    indexedOscByCode[code] = terminalHexToOscColor(defaultHex);
+  }
   return {
     foregroundOsc: terminalHexToOscColor(foreground),
-    backgroundOsc: terminalHexToOscColor(background)
+    backgroundOsc: terminalHexToOscColor(background),
+    indexedOscByCode
   };
 }
 
-type OscParserMode = 'normal' | 'esc' | 'osc' | 'osc-esc';
+type TerminalQueryParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc';
 
-class OscQueryResponder {
-  private mode: OscParserMode = 'normal';
+const DEFAULT_DA1_REPLY = '\u001b[?62;4;6;22c';
+const DEFAULT_DA2_REPLY = '\u001b[>1;10;0c';
+const CELL_PIXEL_HEIGHT = 16;
+const CELL_PIXEL_WIDTH = 8;
+
+class TerminalQueryResponder {
+  private mode: TerminalQueryParserMode = 'normal';
   private oscPayload = '';
+  private csiPayload = '';
   private readonly palette: TerminalPalette;
+  private readonly readFrame: () => TerminalSnapshotFrame;
   private readonly writeReply: (reply: string) => void;
 
-  constructor(palette: TerminalPalette, writeReply: (reply: string) => void) {
+  constructor(
+    palette: TerminalPalette,
+    readFrame: () => TerminalSnapshotFrame,
+    writeReply: (reply: string) => void
+  ) {
     this.palette = palette;
+    this.readFrame = readFrame;
     this.writeReply = writeReply;
   }
 
@@ -163,9 +202,29 @@ class OscQueryResponder {
       if (char === ']') {
         this.mode = 'osc';
         this.oscPayload = '';
+      } else if (char === '[') {
+        this.mode = 'csi';
+        this.csiPayload = '';
       } else {
         this.mode = 'normal';
       }
+      return;
+    }
+
+    if (this.mode === 'csi') {
+      const code = char.charCodeAt(0);
+      if (code >= 0x40 && code <= 0x7e) {
+        this.respondToCsiQuery(`${this.csiPayload}${char}`);
+        this.mode = 'normal';
+        this.csiPayload = '';
+        return;
+      }
+      if (char === '\u001b') {
+        this.mode = 'esc';
+        this.csiPayload = '';
+        return;
+      }
+      this.csiPayload += char;
       return;
     }
 
@@ -205,6 +264,65 @@ class OscQueryResponder {
 
     if (trimmedPayload === '11;?') {
       this.writeReply(`\u001b]11;${this.palette.backgroundOsc}${terminator}`);
+      return;
+    }
+
+    if (trimmedPayload.startsWith('4;') && trimmedPayload.endsWith(';?')) {
+      const parts = trimmedPayload.split(';');
+      if (parts.length !== 3) {
+        return;
+      }
+      const code = Number.parseInt(parts[1]!, 10);
+      if (!Number.isInteger(code)) {
+        return;
+      }
+      const color = this.palette.indexedOscByCode[code];
+      if (typeof color !== 'string') {
+        return;
+      }
+      this.writeReply(`\u001b]4;${String(code)};${color}${terminator}`);
+    }
+  }
+
+  private respondToCsiQuery(payload: string): void {
+    const frame = this.readFrame();
+
+    if (payload === 'c' || payload === '0c') {
+      this.writeReply(DEFAULT_DA1_REPLY);
+      return;
+    }
+
+    if (payload === '>c' || payload === '>0c') {
+      this.writeReply(DEFAULT_DA2_REPLY);
+      return;
+    }
+
+    if (payload === '5n') {
+      this.writeReply('\u001b[0n');
+      return;
+    }
+
+    if (payload === '6n') {
+      const row = Math.max(1, Math.floor(frame.cursor.row + 1));
+      const col = Math.max(1, Math.floor(frame.cursor.col + 1));
+      this.writeReply(`\u001b[${String(row)};${String(col)}R`);
+      return;
+    }
+
+    if (payload === '14t') {
+      const pixelHeight = Math.max(1, frame.rows * CELL_PIXEL_HEIGHT);
+      const pixelWidth = Math.max(1, frame.cols * CELL_PIXEL_WIDTH);
+      this.writeReply(`\u001b[4;${String(pixelHeight)};${String(pixelWidth)}t`);
+      return;
+    }
+
+    if (payload === '16t') {
+      this.writeReply(`\u001b[6;${String(CELL_PIXEL_HEIGHT)};${String(CELL_PIXEL_WIDTH)}t`);
+      return;
+    }
+
+    if (payload === '18t') {
+      this.writeReply(`\u001b[8;${String(frame.rows)};${String(frame.cols)}t`);
     }
   }
 }
@@ -274,7 +392,7 @@ class CodexLiveSession {
   private readonly notifyFilePath: string;
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
   private readonly snapshotOracle: TerminalSnapshotOracle;
-  private readonly oscQueryResponder: OscQueryResponder;
+  private readonly terminalQueryResponder: TerminalQueryResponder;
   private readonly brokerAttachmentId: string;
   private readonly notifyTimer: NodeJS.Timeout | null;
   private notifyOffset = 0;
@@ -318,20 +436,26 @@ class CodexLiveSession {
 
     const startOptions: StartPtySessionOptions = {
       command,
-      commandArgs
+      commandArgs,
+      initialCols,
+      initialRows
     };
     if (options.env !== undefined) {
       startOptions.env = options.env;
     }
 
     this.broker = startBroker(startOptions, options.maxBacklogBytes);
-    this.oscQueryResponder = new OscQueryResponder(buildTerminalPalette(options), (reply) => {
-      this.broker.write(reply);
-    });
+    this.terminalQueryResponder = new TerminalQueryResponder(
+      buildTerminalPalette(options),
+      () => this.snapshotOracle.snapshot(),
+      (reply) => {
+        this.broker.write(reply);
+      }
+    );
 
     this.brokerAttachmentId = this.broker.attach({
       onData: (event: BrokerDataEvent) => {
-        this.oscQueryResponder.ingest(event.chunk);
+        this.terminalQueryResponder.ingest(event.chunk);
         this.snapshotOracle.ingest(event.chunk);
         this.emit({
           type: 'terminal-output',

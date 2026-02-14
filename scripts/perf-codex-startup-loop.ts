@@ -28,6 +28,8 @@ function parseArgs(argv: readonly string[]): {
   readonly settleMs: number;
   readonly timeoutMs: number;
   readonly readyPattern: string | null;
+  readonly useNotifyHook: boolean;
+  readonly useNoAltScreen: boolean;
   readonly json: boolean;
   readonly codexArgs: readonly string[];
 } {
@@ -37,12 +39,14 @@ function parseArgs(argv: readonly string[]): {
   let settleMs = 300;
   let timeoutMs = 15_000;
   let readyPattern: string | null = null;
+  let useNotifyHook = false;
+  let useNoAltScreen = true;
   let json = false;
   const codexArgs: string[] = [];
 
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx]!;
-    if (arg === '--iterations') {
+    if (arg === '--iterations' || arg === '--runs') {
       iterations = Math.max(1, parseIntArg(argv[idx + 1], iterations));
       idx += 1;
       continue;
@@ -75,6 +79,14 @@ function parseArgs(argv: readonly string[]): {
       idx += 1;
       continue;
     }
+    if (arg === '--use-notify-hook') {
+      useNotifyHook = true;
+      continue;
+    }
+    if (arg === '--no-no-alt-screen') {
+      useNoAltScreen = false;
+      continue;
+    }
     if (arg === '--json') {
       json = true;
       continue;
@@ -89,6 +101,8 @@ function parseArgs(argv: readonly string[]): {
     settleMs,
     timeoutMs,
     readyPattern,
+    useNotifyHook,
+    useNoAltScreen,
     json,
     codexArgs
   };
@@ -145,12 +159,15 @@ async function runOne(
   rows: number,
   settleMs: number,
   timeoutMs: number,
-  readyPattern: string | null
+  readyPattern: string | null,
+  useNotifyHook: boolean,
+  useNoAltScreen: boolean
 ): Promise<RunMetrics> {
   const startedNs = nowNs();
   const session = startCodexLiveSession({
     args: [...codexArgs],
-    useNotifyHook: false,
+    useNotifyHook,
+    baseArgs: useNoAltScreen ? ['--no-alt-screen'] : [],
     initialCols: cols,
     initialRows: rows
   });
@@ -236,7 +253,9 @@ async function main(): Promise<number> {
       args.rows,
       args.settleMs,
       args.timeoutMs,
-      args.readyPattern
+      args.readyPattern,
+      args.useNotifyHook,
+      args.useNoAltScreen
     );
     runs.push(metrics);
   }

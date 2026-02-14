@@ -310,17 +310,204 @@ void test('codex live session replies to OSC terminal color queries', () => {
   broker.emitData(4, Buffer.from('\u001b]11;?', 'utf8'));
   broker.emitData(5, Buffer.from('\u001b', 'utf8'));
   broker.emitData(6, Buffer.from('\\', 'utf8'));
+  broker.emitData(6, Buffer.from('\u001b]4;12;?\u0007', 'utf8'));
+  broker.emitData(6, Buffer.from('\u001b]4;999;?\u0007', 'utf8'));
+  broker.emitData(6, Buffer.from('\u001b]4;12;13;?\u0007', 'utf8'));
+  broker.emitData(6, Buffer.from('\u001b]4;bad;?\u0007', 'utf8'));
   broker.emitData(7, Buffer.from('\u001b]12;?\u0007', 'utf8'));
   broker.emitData(8, Buffer.from('\u001b]10;?\u001bX\u0007', 'utf8'));
+  broker.emitData(9, Buffer.from('\u001b[c', 'utf8'));
+  broker.emitData(10, Buffer.from('\u001b[>c', 'utf8'));
+  broker.emitData(10, Buffer.from('\u001b[0c', 'utf8'));
+  broker.emitData(10, Buffer.from('\u001b[>0c', 'utf8'));
+  broker.emitData(11, Buffer.from('\u001b[5n', 'utf8'));
+  broker.emitData(12, Buffer.from('\u001b[6n', 'utf8'));
+  broker.emitData(13, Buffer.from('\u001b[14t', 'utf8'));
+  broker.emitData(14, Buffer.from('\u001b[16t', 'utf8'));
+  broker.emitData(15, Buffer.from('\u001b[18t', 'utf8'));
+  broker.emitData(16, Buffer.from('\u001bX', 'utf8'));
+  broker.emitData(17, Buffer.from('\u001b[12\u001b', 'utf8'));
+  broker.emitData(18, Buffer.from('\u001b[19t', 'utf8'));
 
-  assert.deepEqual(
-    broker.writes.map((entry) => String(entry)),
-    [
-      '\u001b]10;rgb:a0a0/b1b1/c2c2\u0007',
-      '\u001b]11;rgb:0d0d/0e0e/0f0f\u001b\\'
-    ]
+  const writes = broker.writes.map((entry) => String(entry));
+  const isCursorReply = (value: string): boolean => {
+    if (!value.startsWith('\u001b[') || !value.endsWith('R')) {
+      return false;
+    }
+    return /^\d+;\d+$/.test(value.slice(2, -1));
+  };
+  const cursorReplies = writes.filter((value) => isCursorReply(value));
+  assert.equal(cursorReplies.length, 1);
+  const cursorPayload = (cursorReplies[0] ?? '').slice(2, -1);
+  const [cursorRow] = cursorPayload.split(';');
+  assert.equal(cursorRow, '1');
+
+  const nonCursorReplies = writes.filter((value) => !isCursorReply(value));
+  assert.deepEqual(nonCursorReplies, [
+    '\u001b]10;rgb:a0a0/b1b1/c2c2\u0007',
+    '\u001b]11;rgb:0d0d/0e0e/0f0f\u001b\\',
+    '\u001b]4;12;rgb:8b8b/c5c5/ffff\u0007',
+    '\u001b[?62;4;6;22c',
+    '\u001b[>1;10;0c',
+    '\u001b[?62;4;6;22c',
+    '\u001b[>1;10;0c',
+    '\u001b[0n',
+    '\u001b[4;384;640t',
+    '\u001b[6;16;8t',
+    '\u001b[8;24;80t'
+  ]);
+
+  session.close();
+});
+
+void test('codex live session ignores OSC indexed queries with non-numeric indices', () => {
+  const broker = new FakeBroker();
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: false
+    },
+    {
+      startBroker: () => broker,
+      readFile: () => '',
+      setIntervalFn: () => {
+        throw new Error('notify polling should be disabled');
+      },
+      clearIntervalFn: () => {
+        // no-op
+      }
+    }
   );
 
+  broker.emitData(1, Buffer.from('\u001b]4;bad;?\u0007', 'utf8'));
+  assert.deepEqual(broker.writes, []);
+  session.close();
+});
+
+void test('codex live session e2e completes terminal query handshake with configured size', async () => {
+  const startupScript = [
+    "const required = [",
+    "  '\\u001b]10;rgb:1111/2222/3333\\u0007',",
+    "  '\\u001b]11;rgb:4444/5555/6666\\u0007',",
+    "  '\\u001b]4;12;rgb:8b8b/c5c5/ffff\\u0007',",
+    "  '\\u001b[?62;4;6;22c',",
+    "  '\\u001b[>1;10;0c',",
+    "  '\\u001b[0n',",
+    "  '\\u001b[1;1R',",
+    "  '\\u001b[8;29;91t'",
+    '];',
+    "let observed = '';",
+    "const finish = (ok) => {",
+    "  process.stdout.write(ok ? 'READY\\n' : `MISSING:${JSON.stringify(observed)}\\n`);",
+    '  process.exit(ok ? 0 : 2);',
+    '};',
+    'const timeout = setTimeout(() => finish(false), 1200);',
+    "process.stdin.setEncoding('utf8');",
+    'if (process.stdin.isTTY) { process.stdin.setRawMode(true); }',
+    'process.stdin.resume();',
+    'process.stdin.on(\'data\', (chunk) => {',
+    '  observed += chunk;',
+    '  if (required.every((token) => observed.includes(token))) {',
+    '    clearTimeout(timeout);',
+    '    finish(true);',
+    '  }',
+    '});',
+    "process.stdout.write('\\u001b]10;?\\u0007\\u001b]11;?\\u0007\\u001b]4;12;?\\u0007\\u001b[c\\u001b[>c\\u001b[5n\\u001b[6n\\u001b[18t');"
+  ].join('\n');
+
+  const session = startCodexLiveSession({
+    command: process.execPath,
+    baseArgs: [],
+    args: ['-e', startupScript],
+    useNotifyHook: false,
+    initialCols: 91,
+    initialRows: 29,
+    terminalForegroundHex: '#112233',
+    terminalBackgroundHex: '#445566'
+  });
+
+  const startedAt = process.hrtime.bigint();
+  const handshakeDurationMs = await new Promise<number>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('timed out waiting for startup handshake output'));
+    }, 2500);
+    let output = '';
+    const attachmentId = session.attach({
+      onData: (event) => {
+        output += event.chunk.toString('utf8');
+        if (!/READY\r?\n/.test(output)) {
+          return;
+        }
+        clearTimeout(timeout);
+        session.detach(attachmentId);
+        const elapsedNs = process.hrtime.bigint() - startedAt;
+        resolve(Number(elapsedNs) / 1_000_000);
+      },
+      onExit: (exit) => {
+        if (exit.code === 0 && /READY\r?\n/.test(output)) {
+          return;
+        }
+        clearTimeout(timeout);
+        reject(
+          new Error(
+            `startup handshake exited with code ${String(exit.code)} output=${JSON.stringify(output)}`
+          )
+        );
+      }
+    });
+  });
+
+  assert.ok(handshakeDurationMs < 2000, `expected fast handshake, got ${String(handshakeDurationMs)}ms`);
+  session.close();
+});
+
+void test('codex live session e2e preserves terminal width across startup and resize', async () => {
+  const command = '/bin/sh';
+  const commandScript =
+    'stty size; while IFS= read -r line; do if [ "$line" = "size" ]; then stty size; fi; done';
+
+  const session = startCodexLiveSession({
+    command,
+    baseArgs: [],
+    args: ['-lc', commandScript],
+    useNotifyHook: false,
+    initialCols: 91,
+    initialRows: 29
+  });
+
+  let exited: PtyExit | null = null;
+  const attachmentId = session.attach({
+    onData: () => {
+      // handled below via polling snapshot
+    },
+    onExit: (exit) => {
+      exited = exit;
+    }
+  });
+
+  const waitForLine = async (pattern: RegExp, timeoutMs: number): Promise<void> => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      if (exited !== null) {
+        throw new Error(`session exited early: code=${String(exited.code)} signal=${String(exited.signal)}`);
+      }
+      const frame = session.snapshot();
+      if (frame.lines.some((line) => pattern.test(line))) {
+        return;
+      }
+      await new Promise((resolve) => {
+        setTimeout(resolve, 25);
+      });
+    }
+    throw new Error(`timed out waiting for line: ${String(pattern)}`);
+  };
+
+  await waitForLine(/^29 91$/, 2500);
+
+  session.resize(73, 21);
+  session.write('size\n');
+  await waitForLine(/^21 73$/, 2500);
+
+  session.detach(attachmentId);
   session.close();
 });
 
@@ -455,7 +642,15 @@ void test('codex live session supports default dependency paths', async () => {
 
 void test('codex live session supports custom base args without notify hook', () => {
   const broker = new FakeBroker();
-  let startOptions: { command?: string; commandArgs?: string[]; env?: NodeJS.ProcessEnv } | undefined;
+  let startOptions:
+    | {
+        command?: string;
+        commandArgs?: string[];
+        env?: NodeJS.ProcessEnv;
+        initialCols?: number;
+        initialRows?: number;
+      }
+    | undefined;
 
   const session = startCodexLiveSession(
     {
@@ -480,6 +675,8 @@ void test('codex live session supports custom base args without notify hook', ()
   );
 
   assert.deepEqual(startOptions?.commandArgs, ['--no-alt-screen', '--search']);
+  assert.equal(startOptions?.initialCols, 120);
+  assert.equal(startOptions?.initialRows, 35);
   const snapshot = session.snapshot();
   assert.equal(snapshot.cols, 120);
   assert.equal(snapshot.rows, 35);

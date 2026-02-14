@@ -26,6 +26,8 @@ interface StartPtySessionOptions {
   commandArgs?: string[];
   env?: NodeJS.ProcessEnv;
   helperPath?: string;
+  initialCols?: number;
+  initialRows?: number;
 }
 
 export interface PtyExit {
@@ -176,5 +178,17 @@ export function startPtySession(options: StartPtySessionOptions = {}): PtySessio
     }
   );
 
-  return new PtySession(child);
+  const session = new PtySession(child);
+  if (
+    typeof options.initialCols === 'number' &&
+    Number.isFinite(options.initialCols) &&
+    options.initialCols > 0 &&
+    typeof options.initialRows === 'number' &&
+    Number.isFinite(options.initialRows) &&
+    options.initialRows > 0
+  ) {
+    session.resize(Math.floor(options.initialCols), Math.floor(options.initialRows));
+  }
+
+  return session;
 }
