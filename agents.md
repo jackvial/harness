@@ -6,6 +6,7 @@ This project has two core documents:
 
 ## Documentation Rules
 - Keep `design.md` and `agents.md` continuously aligned with reality.
+- Keep `README.md` continuously aligned with reality.
 - Update `design.md` whenever architecture, principles, or major behavior changes.
 - Prefer principles and system design over implementation trivia.
 - Do not create competing “source of truth” docs for core architecture/rules.
@@ -23,6 +24,7 @@ This project has two core documents:
 - Commit often, but only after verified output.
 - Every commit must correspond to a concrete, demonstrated checkpoint (tests, benchmark gate, or acceptance check).
 - Do not batch unrelated changes into a single commit.
+- Push whenever you commit unless explicitly told not to push.
 
 ## Architecture Laws
 - Code is strict, actually typed TypeScript. Avoid `any`; type safety is required.
@@ -44,3 +46,4 @@ This project has two core documents:
 ## Quality Bar
 - If behavior is not tested, it is not done.
 - If docs do not match behavior, the change is not done.
+- Code style must be minimal, functional, and beautiful: simple structure, clear names, and no ornamental complexity.

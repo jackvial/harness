@@ -34,7 +34,7 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
 - `coder/mux`: performant workspace/session abstraction and server/client split.
 - `vibetunnel`: remote terminal proxy and notification-style activity routing.
 - Claude Code hooks: explicit lifecycle/tool notification model.
-- Codex app-server: structured thread/turn API and event stream (locally validated in this environment).
+- Codex notify/app-server surfaces: notification hooks and structured thread/turn APIs that can enrich a live PTY session.
 
 ## Core Architecture
 
@@ -60,7 +60,9 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
                      |                 |
                      |                 +--> [tmux/pty-host sessions for raw passthrough]
                      |
-                     +--> [Codex Adapter -> codex app-server]
+                     +--> [Codex Live Adapter -> pty-hosted codex CLI]
+                     |      +--> [Codex Notify Tap (attention/lifecycle hints)]
+                     |      +--> [Codex App-Server Sidecar (optional structured enrichment)]
                      +--> [Claude Adapter -> hooks + CLI]
                      +--> [Generic Adapter -> PTY parser fallback]
 ```
@@ -229,59 +231,51 @@ Notification policy:
 - Optionally focus/switch to target tab/session.
 - De-duplicate repeated alerts for same turn.
 
-## Codex-First Integration (v1)
+## Codex Live-Steering Integration (v1)
 
-Use `codex app-server` as primary structured integration path, not screen scraping.
+Use a PTY-hosted interactive `codex` session as the primary integration path. Human live steering is the first principle.
 
-Capabilities validated locally:
-- Transport: `stdio://` and `ws://`.
-- Generated protocol artifacts: JSON Schema and TypeScript bindings.
-- Thread and turn APIs (start/resume/fork/list/read/interrupt).
-- Diff update events and approval requests.
+Layer optional enrichment channels on top of the same live session:
+- `codex notify`-style hook/event surfaces for attention and lifecycle hints.
+- `codex app-server` sidecar for structured thread/turn events and tool fidelity where needed.
 
-Representative client request methods:
-- `initialize` (required handshake)
+This ordering ensures terminal reality is authoritative while still allowing high-fidelity instrumentation.
+
+Primary live-session capabilities:
+- launch/attach/detach/re-attach a running `codex` terminal session with no privileged bypass
+- human steering in-session (`prompt`, interrupt, continue, context edits) with PTY parity
+- event stream derived from live session + notify hook emissions + optional structured sidecar
+
+Structured sidecar capabilities validated locally:
+- transport: `stdio://` and `ws://`
+- required handshake: `initialize` -> client `initialized`
+- thread/turn APIs and notifications for enrichment and correlation
+
+Representative sidecar request methods:
+- `initialize`
 - `thread/start`
 - `thread/resume`
-- `thread/fork`
-- `thread/list`
-- `thread/read`
 - `turn/start`
 - `turn/interrupt`
 
-Representative client notifications:
-- `initialized` (sent after `initialize` response)
-
-Representative server notifications:
+Representative sidecar notifications:
 - `thread/started`
 - `turn/started`
 - `turn/completed`
 - `turn/diff/updated`
-- `item/started`
-- `item/completed`
 - `item/agentMessage/delta`
-- `item/commandExecution/outputDelta`
 - `item/commandExecution/terminalInteraction`
-
-Representative server requests requiring user decision:
-- `item/commandExecution/requestApproval`
-- `item/fileChange/requestApproval`
-- `item/tool/requestUserInput`
-
-Codex enums map cleanly into harness status:
-- Turn status: `inProgress | completed | failed | interrupted`
-- Command/file-change status: includes `declined`
-- Approval responses: `accept | acceptForSession | decline | cancel` (plus exec-policy amendment variant for commands)
 
 ## Model-Agnostic Strategy
 
 Integration tiers:
 
-1. Structured adapter (best): official API/hook stream and typed events.
-2. Semi-structured adapter: CLI + known machine-readable logs/events.
-3. Raw PTY adapter (fallback): pass-through terminal with heuristic parsing and manual controls.
+1. Live PTY adapter (primary): human-steerable terminal session with attach/detach and low-latency control.
+2. Hook/notify enrichment: provider-native notification channels for attention and lifecycle hints.
+3. Structured sidecar enrichment: official APIs/hook streams for typed event fidelity and correlation.
+4. Heuristic parser fallback: parse terminal output only when no richer signal exists.
 
-This keeps the harness useful for any terminal agent while maximizing reliability where structured APIs exist.
+This keeps live steering universal across agents while still taking advantage of structured provider signals when available.
 
 ## Terminal Compatibility Strategy
 
@@ -517,17 +511,30 @@ Output 2: Daemon Core
   - persist and replay synthetic normalized events
   - rebuild in-memory status from SQLite `events` table after restart
 
-Output 3: Codex Structured Adapter
-- Uses `codex app-server` for thread/turn lifecycle, diff updates, and approval handling.
+Output 3: Codex Live-Steering Session + Event Stream
+- Uses a PTY-hosted interactive `codex` session as the control source of truth.
 - Demonstration:
-  - start conversation
-  - send turn
-  - observe `turn/started`, streaming item events, and `turn/completed`
-  - capture `turn/diff/updated` into harness diff panel data model
-  - handle one approval request and return decision
-  - verify provider-fidelity and canonical/meta events are both available for the same turn
+  - launch and attach to one live `codex` session from the harness
+  - steer the session directly as a human (message, interrupt, continue)
+  - observe normalized stream events emitted from live session activity
+  - verify event persistence and replay for the steered session
 
-Output 4: Multi-Conversation Control in TUI
+Output 4: Codex Notify + Structured Enrichment
+- Adds provider-native notification surfaces on top of the same live session.
+- Demonstration:
+  - wire `codex notify` signals into attention/lifecycle event mapping
+  - correlate notify signals with terminal and normalized event stream ids
+  - optionally attach `codex app-server` sidecar and enrich with structured thread/turn events
+  - verify no loss of live-session authority when sidecar is unavailable
+
+Output 5: Programmatic Steering on Live Session
+- Uses the same control-plane commands as human steering against the same live session.
+- Demonstration:
+  - issue steering commands over stream API (`send-input`, interrupt, queue-next)
+  - verify resulting PTY state and event trail match equivalent human actions
+  - verify agent can monitor progress and steer without computer-use emulation
+
+Output 6: Multi-Conversation Control in TUI
 - Lists workspaces, worktrees, and active conversations with live status badges.
 - Demonstration:
   - run 6 concurrent Codex conversations
@@ -536,28 +543,28 @@ Output 4: Multi-Conversation Control in TUI
   - queue and steer a turn in a selected conversation
   - interrupt and resume selected conversation
 
-Output 5: Attention and Notification Loop
+Output 7: Attention and Notification Loop
 - Notification service emits deterministic alerts from state transitions.
 - Demonstration:
   - trigger `needs_input`, `completed`, and `failed` states
   - verify one notification per transition (deduped)
   - verify attention queue ordering and clear-on-action behavior
 
-Output 6: Diff + Open Actions
+Output 8: Diff + Open Actions
 - Every conversation exposes file/project open actions and a diff summary.
 - Demonstration:
   - verify Git-derived diff is canonical
   - use adapter diff updates only as optional preview hints
   - open selected file and repo root from harness action handlers
 
-Output 7: Model-Agnostic Fallback Path
+Output 9: Model-Agnostic Fallback Path
 - Generic PTY adapter supports arbitrary terminal agents.
 - Demonstration:
   - launch non-Codex terminal app via PTY adapter
   - retain attach/detach and manual attention controls
   - keep conversation indexed under workspace/worktree model
 
-Output 8: Optional Remote Client Contract
+Output 10: Optional Remote Client Contract
 - Authenticated event subscription and status snapshot API from daemon.
 - Demonstration:
   - connect second client process
@@ -566,7 +573,7 @@ Output 8: Optional Remote Client Contract
   - reconnect using resume token/cursor and continue event consumption without duplication
   - render same conversation status as TUI for a shared session
 
-Output 9: Human/API Parity Contract
+Output 11: Human/API Parity Contract
 - No operation is available exclusively through TUI internals.
 - Demonstration:
   - execute a parity test matrix where each human action is invoked via API:
@@ -578,7 +585,7 @@ Output 9: Human/API Parity Contract
     - resume/fork/archive conversation
   - verify resulting state/events match equivalent TUI-triggered actions
 
-Output 10: Event Fidelity + Meta-Orchestration Contract
+Output 12: Event Fidelity + Meta-Orchestration Contract
 - Harness exposes provider-fidelity events and separate orchestration/meta events without collapsing either stream.
 - Demonstration:
   - subscribe to provider-fidelity stream and verify ordered delta/tool/compaction events for a tool-heavy turn
@@ -586,7 +593,7 @@ Output 10: Event Fidelity + Meta-Orchestration Contract
   - correlate both streams by workspace/worktree/conversation/turn ids
   - verify no event loss across compaction boundaries
 
-Output 11: Replay-Grade Logging Contract
+Output 13: Replay-Grade Logging Contract
 - Structured and pretty logs are emitted from one shared logger abstraction and support reproducible replay.
 - Demonstration:
   - verify all modules log through `log-core` only
@@ -594,7 +601,7 @@ Output 11: Replay-Grade Logging Contract
   - replay a captured session from structured logs and reproduce turn/order/decision flow
   - verify correlation ids link commands, events, queue transitions, approvals, and terminal interactions
 
-Output 12: Global Instrumentation Contract
+Output 14: Global Instrumentation Contract
 - One shared instrumentation abstraction (`perf-core`) is used everywhere and writes trace-grade events to the canonical structured file.
 - Demonstration:
   - verify all modules emit performance events only through `perf-core`
@@ -602,7 +609,7 @@ Output 12: Global Instrumentation Contract
   - verify keystroke round-trip latency is captured with trace correlation to scheduler/PTY/render spans
   - verify disabling instrumentation via single boolean yields near-no-op behavior with no code removal
 
-Output 13: Single Config Contract
+Output 15: Single Config Contract
 - One config file (`harness.config.jsonc`) and one shared abstraction (`config-core`) govern runtime behavior.
 - Demonstration:
   - verify no subsystem reads config outside `config-core`
@@ -639,21 +646,29 @@ Milestone 1 execution plan:
   - Deliverable: CI suite for protocol correctness + latency regression + reconnect stability.
   - Verification: Milestone 1 marked complete only when all gates pass and results are committed.
 
-Milestone 2: Codex Self-Hosting with Full Event Instrumentation
-- Goal: self-host Codex with provider-fidelity and meta event emitters firing correctly across all core paths.
+Milestone 2: Codex Live-Steering Session (Human-First)
+- Goal: self-host an interactive `codex` session inside the harness where human steering is first-class and event streaming is continuous.
 - Exit criteria:
-  - lifecycle, tool, approval, diff, and compaction events are emitted, persisted, and queryable
-  - event matrix coverage passes for success, failure, interrupt, approval, and tool-heavy turns
-  - no dropped events; ordering constraints hold per conversation/turn stream
+  - one live Codex session can be launched, attached, detached, and reattached with state continuity
+  - human steering actions (message, interrupt, continue) flow through PTY with no privileged bypass
+  - normalized event stream is emitted and persisted from live session activity
+  - `codex notify`-style signals are ingested when available and mapped into attention/lifecycle events
 
-Milestone 3: Multi-Conversation Model (Directories > Conversations)
+Milestone 3: Programmatic Steering Parity on the Same Live Session
+- Goal: expose the same live steering operations to agents/API clients without creating a separate control path.
+- Exit criteria:
+  - stream API can invoke the same steering operations used by the human client
+  - command/event parity matrix passes for message, interrupt, queue, and steer operations
+  - no divergence between human-driven and API-driven outcomes for the same conversation
+
+Milestone 4: Multi-Conversation Model (Directories > Conversations)
 - Goal: support multiple directories with multiple conversations per directory, with deterministic switching and control.
 - Exit criteria:
   - stable mapping among tenant/user/workspace/worktree/conversation/turn
   - queue, steer, interrupt, resume, and diff actions function per conversation without cross-talk
   - concurrent activity preserves correct status, diff, and attention routing
 
-Milestone 4: Remote Local-Gateway Access
+Milestone 5: Remote Local-Gateway Access
 - Goal: connect to the harness daemon remotely through an authenticated local gateway.
 - Exit criteria:
   - authenticated login/session establishment is required and enforced
@@ -661,7 +676,7 @@ Milestone 4: Remote Local-Gateway Access
   - remote clients can execute control commands over the same stream protocol with lifecycle envelopes
   - gateway path does not violate hot-path latency guarantees for local interaction
 
-Milestone 5: Agent Operator Parity (Wake, Query, Interact)
+Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - Goal: allow an automation agent to control live sessions with the same operational capabilities as a human client.
 - Exit criteria:
   - agent can wake, query, and interact with conversations through the Control Plane Stream API
@@ -692,6 +707,7 @@ Milestone 5: Agent Operator Parity (Wake, Query, Interact)
 - Strict TypeScript + lint gates pass with zero warnings/errors.
 - Dependency boundary policy is enforced: no third-party imports in declared hot-path modules.
 - Single-session terminal pass-through meets direct-terminal parity thresholds (p50 <= 1 ms, p95 <= 3 ms, p99 <= 5 ms overhead) and passes blind A/B perception test.
+- Live-steered Codex session operates via PTY as primary control path, with continuous event emission.
 - Provider-fidelity and meta event streams are both available, correlated by ids, and lossless across tool-heavy/compaction turns.
 - Replay-grade logging is operational: one canonical structured log + one sibling pretty log, both emitted via `log-core`.
 - Replay-grade instrumentation is operational: `perf-core` spans are present in the canonical structured file and support flamegraph-style analysis.
@@ -712,13 +728,14 @@ Milestone 5: Agent Operator Parity (Wake, Query, Interact)
   - terminal control-sequence pass-through test coverage (alternate screen, cursor, bracketed paste, mouse mode, color sequences)
 - Single-session attach/detach/reconnect baseline is implemented via `src/pty/session-broker.ts` with cursor-based replay for reattached clients.
 - Latency benchmark gate is implemented and runnable via `npm run benchmark:latency`, reporting direct-framed vs harness overhead at p50/p95/p99 with configurable thresholds.
-- Codex milestone-2 skeleton is implemented with:
+- Codex structured sidecar baseline is implemented with:
   - stdio transport in `src/adapters/codex-stdio-transport.ts` with required `initialize`/`initialized` handshake and JSON-RPC request/notification handling
   - v2-compatible thread/turn request shaping in `src/adapters/codex-adapter.ts` with backward-compatible response parsing
   - provider/meta normalized mapping in `src/adapters/codex-event-mapper.ts`
   - canonical event envelope in `src/events/normalized-events.ts`
   - transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads)
   - runnable Codex event smoke path (`npm run codex:events -- "<prompt>"`) that emits normalized JSONL and persists event history
+- Primary Milestone 2 work (live-steered PTY-hosted Codex session with notify-driven event enrichment) is intentionally next and not yet complete.
 
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/
