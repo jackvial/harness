@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build:ptyd": "export PATH=\"$HOME/.cargo/bin:$PATH\" && cargo build --manifest-path native/ptyd/Cargo.toml --release && mkdir -p bin && cp native/ptyd/target/release/ptyd bin/ptyd",
+    "previm:passthrough": "npm run build:ptyd",
+    "vim:passthrough": "node --experimental-strip-types scripts/vim-passthrough.ts",
     "prebenchmark:latency": "npm run build:ptyd",
     "benchmark:latency": "node --experimental-strip-types scripts/benchmark-pty-latency.ts",
     "deadcode": "node --experimental-strip-types scripts/check-dead-code.ts",
