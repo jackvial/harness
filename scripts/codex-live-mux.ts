@@ -17,7 +17,8 @@ import {
   diffRenderedRows,
   padOrTrimDisplay,
   parseMuxInputChunk,
-  routeMuxInputTokens
+  routeMuxInputTokens,
+  wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
 
 interface MuxOptions {
@@ -45,13 +46,14 @@ interface RenderCursorStyle {
 }
 
 interface SelectionPoint {
-  readonly row: number;
+  readonly rowAbs: number;
   readonly col: number;
 }
 
 interface PaneSelection {
   readonly anchor: SelectionPoint;
   readonly focus: SelectionPoint;
+  readonly text: string;
 }
 
 interface PaneSelectionDrag {
@@ -491,14 +493,14 @@ function cursorStyleEqual(left: RenderCursorStyle | null, right: RenderCursorSty
 }
 
 function compareSelectionPoints(left: SelectionPoint, right: SelectionPoint): number {
-  if (left.row !== right.row) {
-    return left.row - right.row;
+  if (left.rowAbs !== right.rowAbs) {
+    return left.rowAbs - right.rowAbs;
   }
   return left.col - right.col;
 }
 
 function selectionPointsEqual(left: SelectionPoint, right: SelectionPoint): boolean {
-  return left.row === right.row && left.col === right.col;
+  return left.rowAbs === right.rowAbs && left.col === right.col;
 }
 
 function normalizeSelection(selection: PaneSelection): { start: SelectionPoint; end: SelectionPoint } {
@@ -514,18 +516,26 @@ function normalizeSelection(selection: PaneSelection): { start: SelectionPoint; 
   };
 }
 
-function clampPanePoint(layout: ReturnType<typeof computeDualPaneLayout>, row: number, col: number): SelectionPoint {
+function clampPanePoint(
+  layout: ReturnType<typeof computeDualPaneLayout>,
+  frame: TerminalSnapshotFrame,
+  rowAbs: number,
+  col: number
+): SelectionPoint {
+  const maxRowAbs = Math.max(0, frame.viewport.totalRows - 1);
   return {
-    row: Math.max(0, Math.min(layout.paneRows - 1, row)),
+    rowAbs: Math.max(0, Math.min(maxRowAbs, rowAbs)),
     col: Math.max(0, Math.min(layout.leftCols - 1, col))
   };
 }
 
 function pointFromMouseEvent(
   layout: ReturnType<typeof computeDualPaneLayout>,
+  frame: TerminalSnapshotFrame,
   event: { col: number; row: number }
 ): SelectionPoint {
-  return clampPanePoint(layout, event.row - 1, event.col - 1);
+  const rowViewport = Math.max(0, Math.min(layout.paneRows - 1, event.row - 1));
+  return clampPanePoint(layout, frame, frame.viewport.top + rowViewport, event.col - 1);
 }
 
 function isWheelMouseCode(code: number): boolean {
@@ -582,10 +592,19 @@ function renderSelectionOverlay(
   }
 
   const { start, end } = normalizeSelection(selection);
+  const visibleStartAbs = frame.viewport.top;
+  const visibleEndAbs = frame.viewport.top + frame.rows - 1;
+  const paintStartAbs = Math.max(start.rowAbs, visibleStartAbs);
+  const paintEndAbs = Math.min(end.rowAbs, visibleEndAbs);
+  if (paintEndAbs < paintStartAbs) {
+    return '';
+  }
+
   let output = '';
-  for (let row = start.row; row <= end.row; row += 1) {
-    const rowStartCol = row === start.row ? start.col : 0;
-    const rowEndCol = row === end.row ? end.col : frame.cols - 1;
+  for (let rowAbs = paintStartAbs; rowAbs <= paintEndAbs; rowAbs += 1) {
+    const row = rowAbs - frame.viewport.top;
+    const rowStartCol = rowAbs === start.rowAbs ? start.col : 0;
+    const rowEndCol = rowAbs === end.rowAbs ? end.col : frame.cols - 1;
     if (rowEndCol < rowStartCol) {
       continue;
     }
@@ -600,16 +619,69 @@ function renderSelectionOverlay(
   return output;
 }
 
+function selectionVisibleRows(
+  frame: TerminalSnapshotFrame,
+  selection: PaneSelection | null
+): readonly number[] {
+  if (selection === null) {
+    return [];
+  }
+
+  const { start, end } = normalizeSelection(selection);
+  const visibleStartAbs = frame.viewport.top;
+  const visibleEndAbs = frame.viewport.top + frame.rows - 1;
+  const paintStartAbs = Math.max(start.rowAbs, visibleStartAbs);
+  const paintEndAbs = Math.min(end.rowAbs, visibleEndAbs);
+  if (paintEndAbs < paintStartAbs) {
+    return [];
+  }
+
+  const rows: number[] = [];
+  for (let rowAbs = paintStartAbs; rowAbs <= paintEndAbs; rowAbs += 1) {
+    rows.push(rowAbs - frame.viewport.top);
+  }
+  return rows;
+}
+
+function mergeUniqueRows(
+  left: readonly number[],
+  right: readonly number[]
+): readonly number[] {
+  if (left.length === 0) {
+    return right;
+  }
+  if (right.length === 0) {
+    return left;
+  }
+  const merged = new Set<number>();
+  for (const row of left) {
+    merged.add(row);
+  }
+  for (const row of right) {
+    merged.add(row);
+  }
+  return [...merged].sort((a, b) => a - b);
+}
+
 function selectionText(frame: TerminalSnapshotFrame, selection: PaneSelection | null): string {
   if (selection === null) {
     return '';
   }
 
+  if (selection.text.length > 0) {
+    return selection.text;
+  }
+
   const { start, end } = normalizeSelection(selection);
   const rows: string[] = [];
-  for (let row = start.row; row <= end.row; row += 1) {
-    const rowStartCol = row === start.row ? start.col : 0;
-    const rowEndCol = row === end.row ? end.col : frame.cols - 1;
+  const visibleStartAbs = frame.viewport.top;
+  const visibleEndAbs = frame.viewport.top + frame.rows - 1;
+  const readStartAbs = Math.max(start.rowAbs, visibleStartAbs);
+  const readEndAbs = Math.min(end.rowAbs, visibleEndAbs);
+  for (let rowAbs = readStartAbs; rowAbs <= readEndAbs; rowAbs += 1) {
+    const row = rowAbs - frame.viewport.top;
+    const rowStartCol = rowAbs === start.rowAbs ? start.col : 0;
+    const rowEndCol = rowAbs === end.rowAbs ? end.col : frame.cols - 1;
     if (rowEndCol < rowStartCol) {
       rows.push('');
       continue;
@@ -701,6 +773,7 @@ async function main(): Promise<number> {
   let renderedCursorVisible: boolean | null = null;
   let renderedCursorStyle: RenderCursorStyle | null = null;
   let renderedBracketedPaste: boolean | null = null;
+  let previousSelectionRows: readonly number[] = [];
   let renderScheduled = false;
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
@@ -889,11 +962,14 @@ async function main(): Promise<number> {
       selectionDrag !== null && selectionDrag.hasDragged
         ? {
             anchor: selectionDrag.anchor,
-            focus: selectionDrag.focus
+            focus: selectionDrag.focus,
+            text: ''
           }
         : selection;
+    const selectionRows = selectionVisibleRows(leftFrame, renderSelection);
     const rows = buildRenderRows(layout, leftFrame, events, options.conversationId, renderSelection !== null);
     const diff = diffRenderedRows(rows, previousRows);
+    const overlayResetRows = mergeUniqueRows(previousSelectionRows, selectionRows);
 
     let output = '';
     if (forceFullClear) {
@@ -904,6 +980,17 @@ async function main(): Promise<number> {
       renderedBracketedPaste = null;
     }
     output += diff.output;
+
+    if (overlayResetRows.length > 0) {
+      const changedRows = new Set<number>(diff.changedRows);
+      for (const row of overlayResetRows) {
+        if (row < 0 || row >= layout.paneRows || changedRows.has(row)) {
+          continue;
+        }
+        const rowContent = rows[row] ?? '';
+        output += `\u001b[${String(row + 1)};1H\u001b[2K${rowContent}`;
+      }
+    }
 
     const shouldEnableBracketedPaste = leftFrame.modes.bracketedPaste;
     if (renderedBracketedPaste !== shouldEnableBracketedPaste) {
@@ -945,6 +1032,7 @@ async function main(): Promise<number> {
     appendDebugRecord(debugPath, {
       kind: 'render',
       changedRows: diff.changedRows,
+      overlayResetRows,
       leftViewportTop: leftFrame.viewport.top,
       leftViewportFollow: leftFrame.viewport.followOutput,
       leftViewportTotalRows: leftFrame.viewport.totalRows,
@@ -955,6 +1043,7 @@ async function main(): Promise<number> {
     });
 
     previousRows = diff.nextRows;
+    previousSelectionRows = selectionRows;
     dirty = false;
   };
 
@@ -1034,6 +1123,7 @@ async function main(): Promise<number> {
     const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
 
+    let snapshotForInput = liveSession.snapshot();
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
     for (const token of parsed.tokens) {
       if (token.kind !== 'mouse') {
@@ -1052,7 +1142,21 @@ async function main(): Promise<number> {
 
       const target = classifyPaneAt(layout, token.event.col, token.event.row);
       const isLeftTarget = target === 'left';
-      const point = pointFromMouseEvent(layout, token.event);
+      const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
+      if (wheelDelta !== null) {
+        if (target === 'left') {
+          liveSession.scrollViewport(wheelDelta);
+          snapshotForInput = liveSession.snapshot();
+          markDirty();
+          continue;
+        }
+        if (target === 'right') {
+          events.scrollBy(wheelDelta, layout.rightCols, layout.paneRows);
+          markDirty();
+          continue;
+        }
+      }
+      const point = pointFromMouseEvent(layout, snapshotForInput, token.event);
       const startSelection = isLeftTarget && isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code);
       const updateSelection =
         selectionDrag !== null &&
@@ -1071,7 +1175,7 @@ async function main(): Promise<number> {
         };
         appendDebugRecord(debugPath, {
           kind: 'selection-start',
-          row: point.row,
+          rowAbs: point.rowAbs,
           col: point.col
         });
         markDirty();
@@ -1094,18 +1198,25 @@ async function main(): Promise<number> {
           focus: point,
           hasDragged: selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point)
         };
-        selection = finalized.hasDragged
-          ? {
-              anchor: finalized.anchor,
-              focus: finalized.focus
-            }
-          : null;
+        if (finalized.hasDragged) {
+          const completedSelection: PaneSelection = {
+            anchor: finalized.anchor,
+            focus: finalized.focus,
+            text: ''
+          };
+          selection = {
+            ...completedSelection,
+            text: selectionText(snapshotForInput, completedSelection)
+          };
+        } else {
+          selection = null;
+        }
         if (!finalized.hasDragged) {
           releaseViewportPinForSelection();
         }
         appendDebugRecord(debugPath, {
           kind: 'selection-release',
-          row: point.row,
+          rowAbs: point.rowAbs,
           col: point.col,
           hasDragged: finalized.hasDragged
         });
