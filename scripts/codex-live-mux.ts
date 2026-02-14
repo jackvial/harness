@@ -301,6 +301,20 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+    return true;
+  }
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  return fallback;
+}
+
 function parseOscRgbHex(value: string): string | null {
   if (!value.startsWith('rgb:')) {
     return null;
@@ -515,7 +529,8 @@ function buildRenderRows(
   leftFrame: TerminalSnapshotFrame,
   events: EventPaneViewport,
   conversationId: string,
-  selectionActive: boolean
+  selectionActive: boolean,
+  ctrlCExits: boolean
 ): string[] {
   const rightView = events.view(layout.rightCols, layout.paneRows);
 
@@ -533,8 +548,9 @@ function buildRenderRows(
     ? 'pty=live'
     : `pty=scroll(${String(leftFrame.viewport.top + 1)}/${String(leftFrame.viewport.totalRows)})`;
   const selection = selectionActive ? 'select=drag' : 'select=idle';
+  const quitHint = ctrlCExits ? 'ctrl-c/ctrl-] quit' : 'ctrl-] quit';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} drag copy alt-pass ctrl-] quit`,
+    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} drag copy alt-pass ${quitHint}`,
     layout.cols
   );
   rows.push(status);
@@ -814,6 +830,7 @@ async function main(): Promise<number> {
     process.env.HARNESS_MUX_PTY_RESIZE_SETTLE_MS,
     DEFAULT_PTY_RESIZE_SETTLE_MS
   );
+  const ctrlCExits = parseBooleanEnv(process.env.HARNESS_MUX_CTRL_C_EXITS, false);
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
@@ -889,6 +906,15 @@ async function main(): Promise<number> {
   let ptyResizeTimer: NodeJS.Timeout | null = null;
   let pendingPtySize: { cols: number; rows: number } | null = null;
   let currentPtySize: { cols: number; rows: number } | null = null;
+
+  const requestStop = (): void => {
+    if (stop) {
+      return;
+    }
+    stop = true;
+    streamClient.sendSignal(options.conversationId, 'terminate');
+    markDirty();
+  };
 
   const scheduleRender = (): void => {
     if (renderScheduled) {
@@ -1073,7 +1099,14 @@ async function main(): Promise<number> {
           }
         : selection;
     const selectionRows = selectionVisibleRows(leftFrame, renderSelection);
-    const rows = buildRenderRows(layout, leftFrame, events, options.conversationId, renderSelection !== null);
+    const rows = buildRenderRows(
+      layout,
+      leftFrame,
+      events,
+      options.conversationId,
+      renderSelection !== null,
+      ctrlCExits
+    );
     const diff = diffRenderedRows(rows, previousRows);
     const overlayResetRows = mergeUniqueRows(previousSelectionRows, selectionRows);
 
@@ -1195,9 +1228,13 @@ async function main(): Promise<number> {
   });
 
   const onInput = (chunk: Buffer): void => {
+    if (ctrlCExits && selection === null && selectionDrag === null && chunk.length === 1 && chunk[0] === 0x03) {
+      requestStop();
+      return;
+    }
+
     if (chunk.length === 1 && chunk[0] === 0x1d) {
-      stop = true;
-      streamClient.sendSignal(options.conversationId, 'terminate');
+      requestStop();
       return;
     }
 
@@ -1406,6 +1443,8 @@ async function main(): Promise<number> {
 
   process.stdin.on('data', onInput);
   process.stdout.on('resize', onResize);
+  process.once('SIGINT', requestStop);
+  process.once('SIGTERM', requestStop);
 
   process.stdout.write(ENABLE_INPUT_MODES);
   applyLayout(size, true);
@@ -1428,6 +1467,8 @@ async function main(): Promise<number> {
     }
     process.stdin.off('data', onInput);
     process.stdout.off('resize', onResize);
+    process.off('SIGINT', requestStop);
+    process.off('SIGTERM', requestStop);
     removeEnvelopeListener();
     try {
       await streamClient.sendCommand({

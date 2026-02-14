@@ -62,6 +62,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux paint correctness:
   - embedded mode: run `npm run codex:live:mux --`
   - one-command client/server mode: `npm run codex:live:mux:launch -- <codex-args>`
+    - in this mode, `Ctrl+C` cleanly exits mux + daemon together
   - client/server mode:
     - terminal 1: `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
     - terminal 2: `npm run codex:live:mux:client -- <codex-args>`

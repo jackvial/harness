@@ -9,6 +9,7 @@ const DAEMON_SCRIPT = resolve(SCRIPT_DIR, 'control-plane-daemon.ts');
 const MUX_SCRIPT = resolve(SCRIPT_DIR, 'codex-live-mux.ts');
 const DEFAULT_HOST = '127.0.0.1';
 const START_TIMEOUT_MS = 5000;
+const STOP_TIMEOUT_MS = 1500;
 
 function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
   if (signal === null) {
@@ -134,7 +135,10 @@ function spawnMuxClient(host: string, port: number, codexArgs: readonly string[]
     ],
     {
       stdio: 'inherit',
-      env: process.env
+      env: {
+        ...process.env,
+        HARNESS_MUX_CTRL_C_EXITS: '1'
+      }
     }
   );
 }
@@ -144,6 +148,21 @@ async function terminateChild(child: ChildProcess, signal: NodeJS.Signals): Prom
     return;
   }
   child.kill(signal);
+  const exited = await Promise.race<boolean>([
+    once(child, 'exit').then(() => true),
+    new Promise<boolean>((resolve) => {
+      setTimeout(() => {
+        resolve(false);
+      }, STOP_TIMEOUT_MS);
+    })
+  ]);
+  if (exited) {
+    return;
+  }
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  child.kill('SIGKILL');
   await once(child, 'exit');
 }
 
