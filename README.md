@@ -89,4 +89,4 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - `agents.md`: execution laws and quality rules for humans and agents working in this repo.
 
 ## License
-- `UNLICENSE`
+- `MIT` (`LICENSE`)
