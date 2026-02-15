@@ -3855,25 +3855,31 @@ async function main(): Promise<number> {
     if (targetConversation?.directoryId !== undefined) {
       noteGitActivity(targetConversation.directoryId, 'focus');
     }
-    if (targetConversation !== undefined && !targetConversation.live) {
+    if (
+      targetConversation !== undefined &&
+      !targetConversation.live &&
+      targetConversation.status !== 'exited'
+    ) {
       await startConversation(sessionId);
     }
-    try {
-      await attachConversation(sessionId);
-    } catch (error: unknown) {
-      if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
-        throw error;
-      }
-      if (targetConversation !== undefined) {
-        targetConversation.live = false;
-        targetConversation.attached = false;
-        if (targetConversation.status === 'running' || targetConversation.status === 'needs-input') {
-          targetConversation.status = 'completed';
-          targetConversation.attentionReason = null;
+    if (targetConversation?.status !== 'exited') {
+      try {
+        await attachConversation(sessionId);
+      } catch (error: unknown) {
+        if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
+          throw error;
         }
+        if (targetConversation !== undefined) {
+          targetConversation.live = false;
+          targetConversation.attached = false;
+          if (targetConversation.status === 'running' || targetConversation.status === 'needs-input') {
+            targetConversation.status = 'completed';
+            targetConversation.attentionReason = null;
+          }
+        }
+        await startConversation(sessionId);
+        await attachConversation(sessionId);
       }
-      await startConversation(sessionId);
-      await attachConversation(sessionId);
     }
     schedulePtyResize(
       {
@@ -4510,17 +4516,6 @@ async function main(): Promise<number> {
         conversation.exitedAt = new Date().toISOString();
         conversation.attached = false;
         ptySizeByConversationId.delete(envelope.sessionId);
-        if (activeConversationId === envelope.sessionId) {
-          const fallback = conversationOrder(conversations).find((sessionId) => {
-            const candidate = conversations.get(sessionId);
-            return candidate !== undefined && candidate.live;
-          });
-          if (fallback !== undefined) {
-            queueControlPlaneOp(async () => {
-              await activateConversation(fallback);
-            }, 'fallback-activate-from-session-event');
-          }
-        }
       }
       markDirty();
       return;
@@ -4541,17 +4536,6 @@ async function main(): Promise<number> {
         conversation.exitedAt = new Date().toISOString();
         conversation.attached = false;
         ptySizeByConversationId.delete(envelope.sessionId);
-        if (activeConversationId === envelope.sessionId) {
-          const fallback = conversationOrder(conversations).find((sessionId) => {
-            const candidate = conversations.get(sessionId);
-            return candidate !== undefined && candidate.live;
-          });
-          if (fallback !== undefined) {
-            queueControlPlaneOp(async () => {
-              await activateConversation(fallback);
-            }, 'fallback-activate-from-pty-exit');
-          }
-        }
       }
       markDirty();
     }

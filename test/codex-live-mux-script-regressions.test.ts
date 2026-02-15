@@ -64,6 +64,15 @@ void test('codex-live-mux enforces selection-gated close/archive shortcuts and i
   assert.equal(source.includes('isConversationNotFoundError'), true);
 });
 
+void test('codex-live-mux keeps exited threads selectable without auto-fallback reactivation', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes("targetConversation.status !== 'exited'"), true);
+  assert.equal(source.includes('fallback-activate-from-session-event'), false);
+  assert.equal(source.includes('fallback-activate-from-pty-exit'), false);
+});
+
 void test('codex-live-mux creates threads through a type-selection modal and supports terminal threads', () => {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const source = readFileSync(scriptPath, 'utf8');
