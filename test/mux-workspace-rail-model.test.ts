@@ -235,6 +235,8 @@ void test('workspace rail model supports idle normalization custom shortcuts and
 
   assert.equal(rows.some((row) => row.text.includes('◍ idle')), true);
   assert.equal(rows.some((row) => row.text.includes('ctrl+j/k switch')), true);
+  assert.equal(rows.some((row) => row.text.includes('x archive conversation')), true);
+  assert.equal(rows.some((row) => row.text.includes('🗑 archive conversation')), false);
   assert.equal(rows.some((row) => row.text.includes('add directory')), true);
   const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
   assert.equal(shortcutHeaderRowIndex >= 0, true);
@@ -275,13 +277,13 @@ void test('workspace rail model supports newline-delimited shortcut hint rows', 
       conversations: [],
       processes: [],
       activeConversationId: null,
-      shortcutHint: 'ctrl+t new\nctrl+n/p switch\nctrl+c x2 quit'
+      shortcutHint: 'ctrl+t new\nctrl+n/p switch\nctrl+c quit'
     },
     10
   );
 
   assert.equal(rows.some((row) => row.text.includes('ctrl+n/p switch')), true);
-  assert.equal(rows.some((row) => row.text.includes('ctrl+c x2 quit')), true);
+  assert.equal(rows.some((row) => row.text.includes('ctrl+c quit')), true);
 });
 
 void test('workspace rail model treats running sessions with missing last event as working', () => {

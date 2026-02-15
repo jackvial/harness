@@ -103,7 +103,7 @@ void test('workspace rail keeps shortcut actions pinned to bottom rows when vert
 
   assert.equal(rows.length, 6);
   assert.equal(rows[0]?.includes('ctrl+j/k switch conversation'), true);
-  assert.equal(rows[1]?.includes('ctrl+c x2 quit mux'), true);
+  assert.equal(rows[1]?.includes('ctrl+c quit mux'), true);
   assert.equal(rows[5]?.includes('close directory'), true);
 });
 
@@ -130,7 +130,7 @@ void test('workspace rail keeps full height when shortcut hint text is provided'
       conversations: [],
       processes: [],
       activeConversationId: null,
-      shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+c x2 quit',
+      shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+c quit',
       nowMs: Date.parse('2026-01-01T00:00:00.000Z')
     },
     40,

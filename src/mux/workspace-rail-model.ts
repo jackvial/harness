@@ -268,7 +268,7 @@ function shortcutDescriptionRows(shortcutHint: string | undefined): readonly str
       'ctrl+o add directory',
       'ctrl+w close directory',
       'ctrl+j/k switch conversation',
-      'ctrl+c x2 quit mux'
+      'ctrl+c quit mux'
     ];
   }
   if (normalized.includes('\n')) {
@@ -311,28 +311,28 @@ function shortcutRows(
   rows.push(
     {
       kind: 'action',
-      text: '│  ➕ new conversation',
+      text: '│  + new conversation',
       active: false,
       conversationSessionId: null,
       railAction: 'conversation.new'
     },
     {
       kind: 'action',
-      text: '│  🗑 archive conversation',
+      text: '│  x archive conversation',
       active: false,
       conversationSessionId: null,
       railAction: 'conversation.delete'
     },
     {
       kind: 'action',
-      text: '│  📁 add directory',
+      text: '│  > add directory',
       active: false,
       conversationSessionId: null,
       railAction: 'directory.add'
     },
     {
       kind: 'action',
-      text: '│  📂 close directory',
+      text: '│  < close directory',
       active: false,
       conversationSessionId: null,
       railAction: 'directory.close'

@@ -107,6 +107,16 @@ interface RenderCursorStyle {
   readonly blinking: boolean;
 }
 
+interface MuxPerfStatusRow {
+  readonly fps: number;
+  readonly kbPerSecond: number;
+  readonly renderAvgMs: number;
+  readonly renderMaxMs: number;
+  readonly outputHandleAvgMs: number;
+  readonly outputHandleMaxMs: number;
+  readonly eventLoopP95Ms: number;
+}
+
 interface SelectionPoint {
   readonly rowAbs: number;
   readonly col: number;
@@ -187,7 +197,6 @@ const DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS = 1500;
 const DEFAULT_BACKGROUND_START_MAX_WAIT_MS = 5000;
 const DEFAULT_BACKGROUND_RESUME_PERSISTED = false;
 const DEFAULT_BACKGROUND_PROBES_ENABLED = false;
-const DEFAULT_INTERRUPT_EXIT_WINDOW_MS = 1500;
 const STARTUP_TERMINAL_MIN_COLS = 40;
 const STARTUP_TERMINAL_MIN_ROWS = 10;
 const STARTUP_TERMINAL_PROBE_TIMEOUT_MS = 250;
@@ -1061,7 +1070,7 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${deleteConversation} archive  ${addDirectory}/${closeDirectory} dirs  ${switchHint} switch  ${interrupt} x2 quit`;
+  return `${newConversation} new  ${deleteConversation} archive  ${addDirectory}/${closeDirectory} dirs  ${switchHint} switch  ${interrupt} quit`;
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
@@ -1162,9 +1171,7 @@ function buildRenderRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
   railRows: readonly string[],
   rightFrame: TerminalSnapshotFrameCore,
-  activeConversationId: string | null,
-  selectionActive: boolean,
-  shortcutBindings: ResolvedMuxShortcutBindings
+  perf: MuxPerfStatusRow
 ): string[] {
   const rows: string[] = [];
   const separatorAnchor = `\u001b[${String(layout.separatorCol)}G`;
@@ -1174,20 +1181,8 @@ function buildRenderRows(
     const right = renderSnapshotAnsiRow(rightFrame, row, layout.rightCols);
     rows.push(`${left}\u001b[0m${separatorAnchor}│${rightAnchor}${right}`);
   }
-
-  const mainMode = rightFrame.viewport.followOutput
-    ? 'pty=live'
-    : `pty=scroll(${String(rightFrame.viewport.top + 1)}/${String(rightFrame.viewport.totalRows)})`;
-  const selection = selectionActive ? 'select=drag' : 'select=idle';
-  const interruptKey = firstShortcutText(shortcutBindings, 'mux.app.interrupt-all') || 'ctrl+c';
-  const newKey = firstShortcutText(shortcutBindings, 'mux.conversation.new') || 'ctrl+t';
-  const deleteKey = firstShortcutText(shortcutBindings, 'mux.conversation.delete') || 'ctrl+x';
-  const addDirectoryKey = firstShortcutText(shortcutBindings, 'mux.directory.add') || 'ctrl+o';
-  const closeDirectoryKey = firstShortcutText(shortcutBindings, 'mux.directory.close') || 'ctrl+w';
-  const nextKey = firstShortcutText(shortcutBindings, 'mux.conversation.next') || 'ctrl+j';
-  const previousKey = firstShortcutText(shortcutBindings, 'mux.conversation.previous') || 'ctrl+k';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${activeConversationId ?? '-'} ${mainMode} ${selection} ${newKey} new ${deleteKey} archive ${addDirectoryKey}/${closeDirectoryKey} dirs ${nextKey}/${previousKey} switch drag copy alt-pass ${interruptKey} x2 quit`,
+    `[mux] fps=${perf.fps.toFixed(1)} kb/s=${perf.kbPerSecond.toFixed(1)} render=${perf.renderAvgMs.toFixed(2)}/${perf.renderMaxMs.toFixed(2)}ms output=${perf.outputHandleAvgMs.toFixed(2)}/${perf.outputHandleMaxMs.toFixed(2)}ms loop.p95=${perf.eventLoopP95Ms.toFixed(1)}ms`,
     layout.cols
   );
   rows.push(status);
@@ -2195,7 +2190,6 @@ async function main(): Promise<number> {
   let addDirectoryPrompt: { value: string; error: string | null } | null = null;
   let paneDividerDragActive = false;
   let ansiValidationReported = false;
-  let lastInterruptShortcutAtMs: number | null = null;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -2214,6 +2208,7 @@ async function main(): Promise<number> {
         if (conversation === undefined || !conversation.live) {
           continue;
         }
+        streamClient.sendSignal(sessionId, 'interrupt');
         streamClient.sendSignal(sessionId, 'terminate');
         try {
           await streamClient.sendCommand({
@@ -2395,29 +2390,59 @@ async function main(): Promise<number> {
   let renderSampleTotalMs = 0;
   let renderSampleMaxMs = 0;
   let renderSampleChangedRows = 0;
+  let perfStatusRow: MuxPerfStatusRow = {
+    fps: 0,
+    kbPerSecond: 0,
+    renderAvgMs: 0,
+    renderMaxMs: 0,
+    outputHandleAvgMs: 0,
+    outputHandleMaxMs: 0,
+    eventLoopP95Ms: 0
+  };
   const outputSampleSessionIds = new Set<string>();
   const outputLoadSampleTimer = setInterval(() => {
     const totalChunks = outputSampleActiveChunks + outputSampleInactiveChunks;
     const hasRenderSamples = renderSampleCount > 0;
+    const nowMs = Date.now();
+    const windowMs = Math.max(1, nowMs - outputSampleWindowStartedAtMs);
+    const eventLoopP95Ms = Number(eventLoopDelayMonitor.percentile(95)) / 1e6;
+    const eventLoopMaxMs = Number(eventLoopDelayMonitor.max) / 1e6;
+    const outputHandleAvgMs =
+      outputHandleSampleCount === 0 ? 0 : outputHandleSampleTotalMs / outputHandleSampleCount;
+    const renderAvgMs = renderSampleCount === 0 ? 0 : renderSampleTotalMs / renderSampleCount;
+    const nextPerfStatusRow: MuxPerfStatusRow = {
+      fps: Number(((renderSampleCount * 1000) / windowMs).toFixed(1)),
+      kbPerSecond: Number((((outputSampleActiveBytes + outputSampleInactiveBytes) * 1000) / windowMs / 1024).toFixed(1)),
+      renderAvgMs: Number(renderAvgMs.toFixed(2)),
+      renderMaxMs: Number(renderSampleMaxMs.toFixed(2)),
+      outputHandleAvgMs: Number(outputHandleAvgMs.toFixed(2)),
+      outputHandleMaxMs: Number(outputHandleSampleMaxMs.toFixed(2)),
+      eventLoopP95Ms: Number(eventLoopP95Ms.toFixed(1))
+    };
+    if (
+      nextPerfStatusRow.fps !== perfStatusRow.fps ||
+      nextPerfStatusRow.kbPerSecond !== perfStatusRow.kbPerSecond ||
+      nextPerfStatusRow.renderAvgMs !== perfStatusRow.renderAvgMs ||
+      nextPerfStatusRow.renderMaxMs !== perfStatusRow.renderMaxMs ||
+      nextPerfStatusRow.outputHandleAvgMs !== perfStatusRow.outputHandleAvgMs ||
+      nextPerfStatusRow.outputHandleMaxMs !== perfStatusRow.outputHandleMaxMs ||
+      nextPerfStatusRow.eventLoopP95Ms !== perfStatusRow.eventLoopP95Ms
+    ) {
+      perfStatusRow = nextPerfStatusRow;
+      markDirty();
+    }
     if (totalChunks > 0 || hasRenderSamples) {
-      const nowMs = Date.now();
-      const eventLoopP95Ms = Number(eventLoopDelayMonitor.percentile(95)) / 1e6;
-      const eventLoopMaxMs = Number(eventLoopDelayMonitor.max) / 1e6;
       recordPerfEvent('mux.output-load.sample', {
-        windowMs: Math.max(1, nowMs - outputSampleWindowStartedAtMs),
+        windowMs,
         activeChunks: outputSampleActiveChunks,
         inactiveChunks: outputSampleInactiveChunks,
         activeBytes: outputSampleActiveBytes,
         inactiveBytes: outputSampleInactiveBytes,
         outputHandleCount: outputHandleSampleCount,
-        outputHandleAvgMs:
-          outputHandleSampleCount === 0
-            ? 0
-            : Number((outputHandleSampleTotalMs / outputHandleSampleCount).toFixed(3)),
+        outputHandleAvgMs: Number(outputHandleAvgMs.toFixed(3)),
         outputHandleMaxMs: Number(outputHandleSampleMaxMs.toFixed(3)),
         renderCount: renderSampleCount,
-        renderAvgMs:
-          renderSampleCount === 0 ? 0 : Number((renderSampleTotalMs / renderSampleCount).toFixed(3)),
+        renderAvgMs: Number(renderAvgMs.toFixed(3)),
         renderMaxMs: Number(renderSampleMaxMs.toFixed(3)),
         renderChangedRows: renderSampleChangedRows,
         eventLoopP95Ms: Number(eventLoopP95Ms.toFixed(3)),
@@ -2429,21 +2454,21 @@ async function main(): Promise<number> {
         backgroundQueued: backgroundControlPlaneQueue.length,
         controlPlaneOpRunning: controlPlaneOpRunning ? 1 : 0
       });
-      outputSampleWindowStartedAtMs = nowMs;
-      outputSampleActiveBytes = 0;
-      outputSampleInactiveBytes = 0;
-      outputSampleActiveChunks = 0;
-      outputSampleInactiveChunks = 0;
-      outputHandleSampleCount = 0;
-      outputHandleSampleTotalMs = 0;
-      outputHandleSampleMaxMs = 0;
-      renderSampleCount = 0;
-      renderSampleTotalMs = 0;
-      renderSampleMaxMs = 0;
-      renderSampleChangedRows = 0;
-      outputSampleSessionIds.clear();
-      eventLoopDelayMonitor.reset();
     }
+    outputSampleWindowStartedAtMs = nowMs;
+    outputSampleActiveBytes = 0;
+    outputSampleInactiveBytes = 0;
+    outputSampleActiveChunks = 0;
+    outputSampleInactiveChunks = 0;
+    outputHandleSampleCount = 0;
+    outputHandleSampleTotalMs = 0;
+    outputHandleSampleMaxMs = 0;
+    renderSampleCount = 0;
+    renderSampleTotalMs = 0;
+    renderSampleMaxMs = 0;
+    renderSampleChangedRows = 0;
+    outputSampleSessionIds.clear();
+    eventLoopDelayMonitor.reset();
   }, 1000);
 
   const applyPtyResizeToSession = (
@@ -3080,9 +3105,7 @@ async function main(): Promise<number> {
       layout,
       rail.ansiRows,
       rightFrame,
-      activeConversationId,
-      renderSelection !== null,
-      shortcutBindings
+      perfStatusRow
     );
     if (addDirectoryPrompt !== null) {
       const promptPrefix = '[mux] add directory path: ';
@@ -3566,15 +3589,8 @@ async function main(): Promise<number> {
 
     const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized, shortcutBindings);
     if (globalShortcut === 'mux.app.interrupt-all') {
-      const nowMs = Date.now();
-      if (
-        lastInterruptShortcutAtMs !== null &&
-        nowMs - lastInterruptShortcutAtMs <= DEFAULT_INTERRUPT_EXIT_WINDOW_MS
-      ) {
-        requestStop();
-        return;
-      }
-      lastInterruptShortcutAtMs = nowMs;
+      requestStop();
+      return;
     }
     if (globalShortcut === 'mux.app.quit') {
       requestStop();
@@ -3636,11 +3652,7 @@ async function main(): Promise<number> {
       return;
     }
 
-    if (
-      selection !== null &&
-      globalShortcut !== 'mux.app.interrupt-all' &&
-      isCopyShortcutInput(focusExtraction.sanitized)
-    ) {
+    if (selection !== null && isCopyShortcutInput(focusExtraction.sanitized)) {
       if (activeConversationId === null) {
         return;
       }
