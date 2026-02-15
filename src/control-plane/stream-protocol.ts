@@ -125,6 +125,7 @@ interface PtyStartCommand {
   sessionId: string;
   args: string[];
   env?: Record<string, string>;
+  cwd?: string;
   initialCols: number;
   initialRows: number;
   terminalForegroundHex?: string;
@@ -882,6 +883,10 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
       }
       env = parsedEnv;
     }
+    const cwd = readString(record['cwd']);
+    if (record['cwd'] !== undefined && cwd === null) {
+      return null;
+    }
 
     const terminalForegroundHex = record['terminalForegroundHex'];
     if (terminalForegroundHex !== undefined && typeof terminalForegroundHex !== 'string') {
@@ -918,6 +923,9 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
     };
     if (env !== undefined) {
       command.env = env;
+    }
+    if (cwd !== null) {
+      command.cwd = cwd;
     }
     if (terminalForegroundHex !== undefined) {
       command.terminalForegroundHex = terminalForegroundHex;

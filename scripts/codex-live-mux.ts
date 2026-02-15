@@ -575,6 +575,25 @@ function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean 
   return fallback;
 }
 
+function expandHomePath(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === '~') {
+    const home = process.env.HOME;
+    return typeof home === 'string' && home.length > 0 ? home : trimmed;
+  }
+  if (trimmed.startsWith('~/')) {
+    const home = process.env.HOME;
+    if (typeof home === 'string' && home.length > 0) {
+      return join(home, trimmed.slice(2));
+    }
+  }
+  return trimmed;
+}
+
+function resolveWorkspacePath(invocationDirectory: string, value: string): string {
+  return resolve(invocationDirectory, expandHomePath(value));
+}
+
 async function runGitCommand(cwd: string, args: readonly string[]): Promise<string> {
   try {
     const result = await execFileAsync('git', [...args], {
@@ -1609,6 +1628,7 @@ async function main(): Promise<number> {
           startCodexLiveSession({
             args: input.args,
             env: input.env,
+            cwd: input.cwd,
             initialCols: input.initialCols,
             initialRows: input.initialRows,
             terminalForegroundHex: input.terminalForegroundHex,
@@ -1948,11 +1968,20 @@ async function main(): Promise<number> {
         options.codexArgs,
         targetConversation.adapterState
       );
+      const configuredDirectoryPath =
+        targetConversation.directoryId === null
+          ? null
+          : directories.get(targetConversation.directoryId)?.path ?? null;
+      const sessionCwd = resolveWorkspacePath(
+        options.invocationDirectory,
+        configuredDirectoryPath ?? options.invocationDirectory
+      );
       await streamClient.sendCommand({
         type: 'pty.start',
         sessionId,
         args: launchArgs,
         env: sessionEnv,
+        cwd: sessionCwd,
         initialCols: layout.rightCols,
         initialRows: layout.paneRows,
         terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
@@ -3078,7 +3107,7 @@ async function main(): Promise<number> {
   };
 
   const addDirectoryByPath = async (rawPath: string): Promise<void> => {
-    const normalizedPath = resolve(options.invocationDirectory, rawPath);
+    const normalizedPath = resolveWorkspacePath(options.invocationDirectory, rawPath);
     const directoryResult = await streamClient.sendCommand({
       type: 'directory.upsert',
       directoryId: `directory-${randomUUID()}`,

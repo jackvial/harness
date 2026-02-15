@@ -184,6 +184,25 @@ void test('pty-host forwards shell output and exits cleanly', async () => {
   assert.match(collector.read(), /ready/);
 });
 
+void test('pty-host runs command in provided cwd', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'harness-pty-cwd-'));
+  const session = startPtySession({
+    command: '/bin/sh',
+    commandArgs: ['-c', 'pwd'],
+    cwd
+  });
+  const collector = createCollector();
+  session.on('data', collector.onData);
+
+  try {
+    const exit = await waitForExit(session);
+    assert.equal(exit.code, 0);
+    assert.match(collector.read(), new RegExp(escapeRegExp(cwd)));
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 void test('pty-host forwards stderr output through data stream', async () => {
   const session = startPtySession({
     command: '/bin/sh',

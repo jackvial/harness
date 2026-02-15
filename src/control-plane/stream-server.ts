@@ -55,6 +55,7 @@ interface LiveSessionLike {
 export interface StartControlPlaneSessionInput {
   args: string[];
   env?: Record<string, string>;
+  cwd?: string;
   initialCols: number;
   initialRows: number;
   terminalForegroundHex?: string;
@@ -875,6 +876,9 @@ export class ControlPlaneStreamServer {
       };
       if (command.env !== undefined) {
         startInput.env = command.env;
+      }
+      if (command.cwd !== undefined) {
+        startInput.cwd = command.cwd;
       }
       if (command.terminalForegroundHex !== undefined) {
         startInput.terminalForegroundHex = command.terminalForegroundHex;

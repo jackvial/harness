@@ -25,6 +25,7 @@ interface StartPtySessionOptions {
   command?: string;
   commandArgs?: string[];
   env?: NodeJS.ProcessEnv;
+  cwd?: string;
   helperPath?: string;
   initialCols?: number;
   initialRows?: number;
@@ -167,12 +168,14 @@ export function startPtySession(options: StartPtySessionOptions = {}): PtySessio
   const command = options.command ?? DEFAULT_COMMAND;
   const commandArgs = options.commandArgs ?? DEFAULT_COMMAND_ARGS;
   const env = options.env ?? process.env;
+  const cwd = options.cwd;
   const helperPath = options.helperPath ?? DEFAULT_HELPER_PATH;
 
   const child = spawn(
     helperPath,
     [command, ...commandArgs],
     {
+      cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe']
     }

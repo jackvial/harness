@@ -225,6 +225,7 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
     type: 'pty.start',
     sessionId: 'session-1',
     args: ['--model', 'gpt-5.3-codex'],
+    cwd: '/tmp/session-1',
     initialCols: 90,
     initialRows: 30,
     env: {
@@ -236,6 +237,7 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
 
   assert.equal(created.length, 1);
   assert.equal(created[0]!.input.initialCols, 90);
+  assert.equal(created[0]!.input.cwd, '/tmp/session-1');
 
   await clientA.sendCommand({
     type: 'pty.subscribe-events',

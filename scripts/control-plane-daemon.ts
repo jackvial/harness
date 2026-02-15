@@ -154,6 +154,7 @@ async function main(): Promise<number> {
       startCodexLiveSession({
         args: input.args,
         env: input.env,
+        cwd: input.cwd,
         initialCols: input.initialCols,
         initialRows: input.initialRows,
         terminalForegroundHex: input.terminalForegroundHex,

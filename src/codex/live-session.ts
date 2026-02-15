@@ -19,6 +19,7 @@ interface StartPtySessionOptions {
   command?: string;
   commandArgs?: string[];
   env?: NodeJS.ProcessEnv;
+  cwd?: string;
   initialCols?: number;
   initialRows?: number;
 }
@@ -46,6 +47,7 @@ interface StartCodexLiveSessionOptions {
   command?: string;
   args?: string[];
   env?: NodeJS.ProcessEnv;
+  cwd?: string;
   baseArgs?: string[];
   useNotifyHook?: boolean;
   notifyFilePath?: string;
@@ -525,6 +527,9 @@ class CodexLiveSession {
     };
     if (options.env !== undefined) {
       startOptions.env = options.env;
+    }
+    if (options.cwd !== undefined) {
+      startOptions.cwd = options.cwd;
     }
 
     this.broker = startBroker(startOptions, options.maxBacklogBytes);

@@ -143,9 +143,13 @@ async function startMockHarnessServer(
 }
 
 void test('openCodexControlPlaneSession opens and closes a remote session', async () => {
+  const startedInputs: StartControlPlaneSessionInput[] = [];
   const server = await startControlPlaneStreamServer({
     authToken: 'remote-secret',
-    startSession: (input) => new TestLiveSession(input)
+    startSession: (input) => {
+      startedInputs.push(input);
+      return new TestLiveSession(input);
+    }
   });
   const address = server.address();
 
@@ -161,6 +165,7 @@ void test('openCodexControlPlaneSession opens and closes a remote session', asyn
     env: {
       TERM: 'xterm-256color'
     },
+    cwd: '/tmp/remote-session',
     initialCols: 80,
     initialRows: 24
   });
@@ -171,6 +176,7 @@ void test('openCodexControlPlaneSession opens and closes a remote session', asyn
       sessionId: 'remote-session'
     });
     assert.equal(status['sessionId'], 'remote-session');
+    assert.equal(startedInputs[0]?.cwd, '/tmp/remote-session');
   } finally {
     await opened.close();
     await server.close();

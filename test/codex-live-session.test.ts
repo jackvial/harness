@@ -143,13 +143,14 @@ void test('codex live session emits terminal and notify-derived events', () => {
   const clearHandles: Array<NodeJS.Timeout> = [];
   let notifyContent = '';
   const readFileCalls: string[] = [];
-  let startOptions: { command?: string; commandArgs?: string[]; env?: NodeJS.ProcessEnv } | undefined;
+  let startOptions: { command?: string; commandArgs?: string[]; env?: NodeJS.ProcessEnv; cwd?: string } | undefined;
 
   const session = startCodexLiveSession(
     {
       command: 'codex-custom',
       args: ['--model', 'gpt-5.3-codex'],
       env: { ...process.env, HARNESS_TEST: '1' },
+      cwd: '/tmp/harness-session',
       notifyFilePath: '/tmp/harness-notify.jsonl',
       notifyPollMs: 250,
       relayScriptPath: '/tmp/relay.ts'
@@ -224,6 +225,7 @@ void test('codex live session emits terminal and notify-derived events', () => {
     'gpt-5.3-codex'
   ]);
   assert.equal(startOptions?.env?.HARNESS_TEST, '1');
+  assert.equal(startOptions?.cwd, '/tmp/harness-session');
   assert.equal(readFileCalls.length, 1);
 
   // Re-poll with no new bytes to exercise empty-delta path.

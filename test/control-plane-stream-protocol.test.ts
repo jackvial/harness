@@ -215,6 +215,7 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         env: {
           TERM: 'xterm-256color'
         },
+        cwd: '/tmp/workspace',
         initialCols: 120,
         initialRows: 40,
         terminalForegroundHex: 'd0d7de',
@@ -562,6 +563,19 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
     {
       kind: 'command',
       commandId: 'c2f',
+      command: {
+        type: 'pty.start',
+        sessionId: 's1',
+        args: [],
+        initialCols: 80,
+        initialRows: 24,
+        cwd: 123,
+        tenantId: 'tenant-a'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2f0',
       command: {
         type: 'pty.start',
         sessionId: 's1',

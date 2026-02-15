@@ -24,6 +24,7 @@ interface OpenCodexControlPlaneSessionOptions {
   sessionId: string;
   args: string[];
   env: Record<string, string>;
+  cwd?: string;
   initialCols: number;
   initialRows: number;
   terminalForegroundHex?: string;
@@ -110,6 +111,7 @@ export async function openCodexControlPlaneSession(
       sessionId: string;
       args: string[];
       env: Record<string, string>;
+      cwd?: string;
       initialCols: number;
       initialRows: number;
       terminalForegroundHex?: string;
@@ -122,6 +124,9 @@ export async function openCodexControlPlaneSession(
       initialCols: options.initialCols,
       initialRows: options.initialRows
     };
+    if (options.cwd !== undefined) {
+      startCommand.cwd = options.cwd;
+    }
     if (options.terminalForegroundHex !== undefined) {
       startCommand.terminalForegroundHex = options.terminalForegroundHex;
     }
