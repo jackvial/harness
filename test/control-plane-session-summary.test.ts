@@ -22,7 +22,15 @@ const validSummary = {
   lastEventAt: '2026-01-01T00:01:00.000Z',
   lastExit: null,
   exitedAt: null,
-  live: true
+  live: true,
+  controller: null,
+  telemetry: {
+    source: 'otlp-log',
+    eventName: 'codex.api_request',
+    severity: 'INFO',
+    summary: 'codex.api_request (ok)',
+    observedAt: '2026-01-01T00:01:00.000Z'
+  }
 };
 
 void test('parseSessionSummaryRecord accepts valid summary and nullable fields', () => {
@@ -32,6 +40,7 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
   assert.equal(parsed?.directoryId, 'directory-1');
   assert.equal(parsed?.live, true);
   assert.equal(parsed?.processId, 51000);
+  assert.equal(parsed?.telemetry?.source, 'otlp-log');
 
   const exited = parseSessionSummaryRecord({
     ...validSummary,
@@ -49,6 +58,7 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
   });
   assert.equal(exited?.status, 'exited');
   assert.equal(exited?.lastExit?.signal, 'SIGTERM');
+  assert.equal(exited?.telemetry?.eventName, 'codex.api_request');
 
   const needsInput = parseSessionSummaryRecord({
     ...validSummary,
@@ -61,6 +71,23 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
     status: 'completed'
   });
   assert.equal(completed?.status, 'completed');
+
+  const controlled = parseSessionSummaryRecord({
+    ...validSummary,
+    controller: {
+      controllerId: 'agent-1',
+      controllerType: 'agent',
+      controllerLabel: 'agent one',
+      claimedAt: '2026-01-01T00:01:30.000Z'
+    }
+  });
+  assert.equal(controlled?.controller?.controllerId, 'agent-1');
+
+  const withoutTelemetry = parseSessionSummaryRecord({
+    ...validSummary,
+    telemetry: null
+  });
+  assert.equal(withoutTelemetry?.telemetry, null);
 });
 
 void test('parseSessionSummaryRecord rejects malformed summaries', () => {
@@ -135,6 +162,56 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
     }),
     null
   );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      telemetry: {
+        source: 'bad',
+        eventName: null,
+        severity: null,
+        summary: null,
+        observedAt: new Date(0).toISOString()
+      }
+    }),
+    null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      telemetry: 'bad'
+    }),
+    null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      controller: 'bad-controller'
+    }),
+    null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      controller: {
+        controllerId: 'agent-1',
+        controllerType: 'invalid',
+        controllerLabel: 'agent one',
+        claimedAt: new Date(0).toISOString()
+      }
+    }),
+    null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      controller: {
+        controllerId: 'agent-1',
+        controllerType: 'agent',
+        controllerLabel: 'agent one'
+      }
+    }),
+    null
+  );
 });
 
 void test('parseSessionSummaryRecord rejects missing nullable fields when absent', () => {
@@ -205,6 +282,20 @@ void test('parseSessionSummaryRecord rejects missing nullable fields when absent
     parseSessionSummaryRecord({
       ...validSummary,
       exitedAt: undefined
+    }),
+    null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      telemetry: undefined
+    }),
+    null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      controller: undefined
     }),
     null
   );

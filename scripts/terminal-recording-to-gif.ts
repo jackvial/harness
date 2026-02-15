@@ -103,17 +103,20 @@ function parseArgs(argv: string[]): CliOptions {
 
 async function main(): Promise<number> {
   const options = parseArgs(process.argv.slice(2));
-  const result = await renderTerminalRecordingToGif({
+  const renderOptions: Parameters<typeof renderTerminalRecordingToGif>[0] = {
     recordingPath: options.inputPath,
     outputPath: options.outputPath,
     cellWidthPx: options.cellWidthPx,
     cellHeightPx: options.cellHeightPx,
     fontSizePx: options.fontSizePx,
-    fontFamily: options.fontFamily ?? undefined,
     defaultFrameDurationMs: options.frameMs,
     maxColors: options.maxColors,
     includeCursor: options.includeCursor
-  });
+  };
+  if (options.fontFamily !== null) {
+    renderOptions.fontFamily = options.fontFamily;
+  }
+  const result = await renderTerminalRecordingToGif(renderOptions);
 
   process.stdout.write(
     `[recording->gif] input=${result.recordingPath} output=${result.outputPath} frames=${String(result.frameCount)} size=${String(result.width)}x${String(result.height)} bytes=${String(result.bytes)}\n`

@@ -1,9 +1,15 @@
 import { createServer, type AddressInfo, type Server, type Socket } from 'node:net';
-import { randomUUID } from 'node:crypto';
 import {
-  type NotifyPayload,
-  type CodexLiveEvent
-} from '../codex/live-session.ts';
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type Server as HttpServer,
+  type ServerResponse
+} from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { resolve } from 'node:path';
+import { type CodexLiveEvent } from '../codex/live-session.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 import {
@@ -11,6 +17,7 @@ import {
   encodeStreamEnvelope,
   parseClientEnvelope,
   type StreamObservedEvent,
+  type StreamSessionController,
   type StreamSessionListSort,
   type StreamSessionRuntimeStatus,
   type StreamClientEnvelope,
@@ -22,13 +29,25 @@ import {
 import {
   SqliteControlPlaneStore,
   type ControlPlaneConversationRecord,
-  type ControlPlaneDirectoryRecord
+  type ControlPlaneDirectoryRecord,
+  type ControlPlaneTelemetrySummary
 } from '../store/control-plane-store.ts';
 import {
-  mergeAdapterStateFromSessionEvent,
+  codexResumeSessionIdFromAdapterState,
   normalizeAdapterState
 } from '../adapters/agent-session-state.ts';
 import { recordPerfEvent, startPerfSpan } from '../perf/perf-core.ts';
+import {
+  buildCodexTelemetryConfigArgs,
+  parseCodexHistoryLine,
+  parseOtlpLogEvents,
+  parseOtlpMetricEvents,
+  parseOtlpTraceEvents,
+  telemetryFingerprint,
+  type ParsedCodexTelemetryEvent
+} from './codex-telemetry.ts';
+import type { HarnessLifecycleHooksConfig } from '../config/config-core.ts';
+import { LifecycleHooksRuntime } from './lifecycle-hooks.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -64,6 +83,22 @@ export interface StartControlPlaneSessionInput {
 
 type StartControlPlaneSession = (input: StartControlPlaneSessionInput) => LiveSessionLike;
 
+interface CodexTelemetryServerConfig {
+  readonly enabled: boolean;
+  readonly host: string;
+  readonly port: number;
+  readonly logUserPrompt: boolean;
+  readonly captureLogs: boolean;
+  readonly captureMetrics: boolean;
+  readonly captureTraces: boolean;
+}
+
+interface CodexHistoryIngestConfig {
+  readonly enabled: boolean;
+  readonly filePath: string;
+  readonly pollMs: number;
+}
+
 interface StartControlPlaneStreamServerOptions {
   host?: string;
   port?: number;
@@ -74,6 +109,9 @@ interface StartControlPlaneStreamServerOptions {
   maxStreamJournalEntries?: number;
   stateStorePath?: string;
   stateStore?: SqliteControlPlaneStore;
+  codexTelemetry?: CodexTelemetryServerConfig;
+  codexHistory?: CodexHistoryIngestConfig;
+  lifecycleHooks?: HarnessLifecycleHooksConfig;
 }
 
 interface ConnectionState {
@@ -111,6 +149,12 @@ interface SessionState {
   exitedAt: string | null;
   tombstoneTimer: NodeJS.Timeout | null;
   lastObservedOutputCursor: number;
+  latestTelemetry: ControlPlaneTelemetrySummary | null;
+  controller: SessionControllerState | null;
+}
+
+interface SessionControllerState extends StreamSessionController {
+  connectionId: string;
 }
 
 interface StreamSubscriptionFilter {
@@ -142,6 +186,11 @@ interface StreamJournalEntry {
   event: StreamObservedEvent;
 }
 
+interface OtlpEndpointTarget {
+  readonly kind: 'logs' | 'metrics' | 'traces';
+  readonly token: string;
+}
+
 const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
@@ -163,15 +212,6 @@ function compareIsoDesc(left: string | null, right: string | null): number {
   return right.localeCompare(left);
 }
 
-function inputContainsTurnSubmission(data: Uint8Array): boolean {
-  for (const byte of data) {
-    if (byte === 0x0a || byte === 0x0d) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function sessionPriority(status: StreamSessionRuntimeStatus): number {
   if (status === 'needs-input') {
     return 0;
@@ -185,39 +225,59 @@ function sessionPriority(status: StreamSessionRuntimeStatus): number {
   return 3;
 }
 
-function mapNotifyRecord(record: { ts: string; payload: NotifyPayload }): {
-  ts: string;
-  payload: Record<string, unknown>;
-} {
+function normalizeCodexTelemetryConfig(
+  input: CodexTelemetryServerConfig | undefined
+): CodexTelemetryServerConfig {
   return {
-    ts: record.ts,
-    payload: record.payload
+    enabled: input?.enabled ?? false,
+    host: input?.host ?? '127.0.0.1',
+    port: input?.port ?? 0,
+    logUserPrompt: input?.logUserPrompt ?? true,
+    captureLogs: input?.captureLogs ?? true,
+    captureMetrics: input?.captureMetrics ?? true,
+    captureTraces: input?.captureTraces ?? true
   };
 }
 
+function normalizeCodexHistoryConfig(
+  input: CodexHistoryIngestConfig | undefined
+): CodexHistoryIngestConfig {
+  return {
+    enabled: input?.enabled ?? false,
+    filePath: input?.filePath ?? '~/.codex/history.jsonl',
+    pollMs: Math.max(25, input?.pollMs ?? 500)
+  };
+}
+
+function parseOtlpEndpoint(urlPath: string): OtlpEndpointTarget | null {
+  const [pathPart = ''] = urlPath.trim().split('?');
+  const match = /^\/v1\/(logs|metrics|traces)\/([^/]+)$/u.exec(pathPart);
+  if (match === null) {
+    return null;
+  }
+  let decodedToken = '';
+  try {
+    decodedToken = decodeURIComponent(match[2] as string);
+  } catch {
+    return null;
+  }
+  return {
+    kind: match[1] as 'logs' | 'metrics' | 'traces',
+    token: decodedToken
+  };
+}
+
+function expandTildePath(pathValue: string): string {
+  if (pathValue === '~') {
+    return homedir();
+  }
+  if (pathValue.startsWith('~/')) {
+    return resolve(homedir(), pathValue.slice(2));
+  }
+  return pathValue;
+}
+
 function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
-  if (event.type === 'notify') {
-    return {
-      type: 'notify',
-      record: mapNotifyRecord(event.record)
-    };
-  }
-
-  if (event.type === 'turn-completed') {
-    return {
-      type: 'turn-completed',
-      record: mapNotifyRecord(event.record)
-    };
-  }
-
-  if (event.type === 'attention-required') {
-    return {
-      type: 'attention-required',
-      reason: event.reason,
-      record: mapNotifyRecord(event.record)
-    };
-  }
-
   if (event.type === 'session-exit') {
     return {
       type: 'session-exit',
@@ -226,6 +286,28 @@ function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
   }
 
   return null;
+}
+
+function toPublicSessionController(
+  controller: SessionControllerState | null | undefined
+): StreamSessionController | null {
+  if (controller === null || controller === undefined) {
+    return null;
+  }
+  return {
+    controllerId: controller.controllerId,
+    controllerType: controller.controllerType,
+    controllerLabel: controller.controllerLabel,
+    claimedAt: controller.claimedAt
+  };
+}
+
+function controllerDisplayName(controller: SessionControllerState): string {
+  const label = controller.controllerLabel?.trim() ?? '';
+  if (label.length > 0) {
+    return label;
+  }
+  return `${controller.controllerType}:${controller.controllerId}`;
 }
 
 export class ControlPlaneStreamServer {
@@ -238,7 +320,16 @@ export class ControlPlaneStreamServer {
   private readonly startSession: StartControlPlaneSession;
   private readonly stateStore: SqliteControlPlaneStore;
   private readonly ownsStateStore: boolean;
+  private readonly codexTelemetry: CodexTelemetryServerConfig;
+  private readonly codexHistory: CodexHistoryIngestConfig;
   private readonly server: Server;
+  private readonly telemetryServer: HttpServer | null;
+  private telemetryAddress: AddressInfo | null = null;
+  private readonly telemetryTokenToSessionId = new Map<string, string>();
+  private readonly lifecycleHooks: LifecycleHooksRuntime;
+  private historyPollTimer: NodeJS.Timeout | null = null;
+  private historyOffset = 0;
+  private historyRemainder = '';
   private readonly connections = new Map<string, ConnectionState>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly streamSubscriptions = new Map<string, StreamSubscriptionState>();
@@ -268,9 +359,33 @@ export class ControlPlaneStreamServer {
       this.stateStore = new SqliteControlPlaneStore(options.stateStorePath ?? ':memory:');
       this.ownsStateStore = true;
     }
+    this.codexTelemetry = normalizeCodexTelemetryConfig(options.codexTelemetry);
+    this.codexHistory = normalizeCodexHistoryConfig(options.codexHistory);
+    this.lifecycleHooks = new LifecycleHooksRuntime(
+      options.lifecycleHooks ?? {
+        enabled: false,
+        providers: {
+          codex: true,
+          claude: true,
+          controlPlane: true
+        },
+        peonPing: {
+          enabled: false,
+          baseUrl: 'http://127.0.0.1:19998',
+          timeoutMs: 1200,
+          eventCategoryMap: {}
+        },
+        webhooks: []
+      }
+    );
     this.server = createServer((socket) => {
       this.handleConnection(socket);
     });
+    this.telemetryServer = this.codexTelemetry.enabled
+      ? createHttpServer((request, response) => {
+          this.handleTelemetryHttpRequest(request, response);
+        })
+      : null;
   }
 
   async start(): Promise<void> {
@@ -293,6 +408,11 @@ export class ControlPlaneStreamServer {
       this.server.once('listening', onListening);
       this.server.listen(this.port, this.host);
     });
+
+    if (this.telemetryServer !== null) {
+      await this.startTelemetryServer();
+    }
+    this.startHistoryPollingIfEnabled();
   }
 
   address(): AddressInfo {
@@ -303,7 +423,20 @@ export class ControlPlaneStreamServer {
     return value;
   }
 
+  telemetryAddressInfo(): AddressInfo | null {
+    if (this.telemetryAddress === null) {
+      return null;
+    }
+    return {
+      address: this.telemetryAddress.address,
+      family: this.telemetryAddress.family,
+      port: this.telemetryAddress.port
+    };
+  }
+
   async close(): Promise<void> {
+    this.stopHistoryPolling();
+
     for (const sessionId of [...this.sessions.keys()]) {
       this.destroySession(sessionId, true);
     }
@@ -316,6 +449,7 @@ export class ControlPlaneStreamServer {
     this.streamJournal.length = 0;
 
     if (!this.listening) {
+      await this.closeTelemetryServerIfOpen();
       this.closeOwnedStateStore();
       return;
     }
@@ -323,10 +457,12 @@ export class ControlPlaneStreamServer {
     await new Promise<void>((resolve) => {
       this.server.close(() => {
         this.listening = false;
-        this.closeOwnedStateStore();
         resolve();
       });
     });
+    await this.closeTelemetryServerIfOpen();
+    await this.lifecycleHooks.close();
+    this.closeOwnedStateStore();
   }
 
   private closeOwnedStateStore(): void {
@@ -335,6 +471,367 @@ export class ControlPlaneStreamServer {
     }
     this.stateStore.close();
     this.stateStoreClosed = true;
+  }
+
+  private async startTelemetryServer(): Promise<void> {
+    if (this.telemetryServer === null || this.telemetryAddress !== null) {
+      return;
+    }
+    await new Promise<void>((resolveStart, rejectStart) => {
+      const onError = (error: Error): void => {
+        this.telemetryServer?.off('listening', onListening);
+        rejectStart(error);
+      };
+      const onListening = (): void => {
+        this.telemetryServer?.off('error', onError);
+        const telemetryServer = this.telemetryServer;
+        this.telemetryAddress = telemetryServer!.address() as AddressInfo;
+        resolveStart();
+      };
+      this.telemetryServer?.once('error', onError);
+      this.telemetryServer?.once('listening', onListening);
+      this.telemetryServer?.listen(this.codexTelemetry.port, this.codexTelemetry.host);
+    });
+  }
+
+  private async closeTelemetryServerIfOpen(): Promise<void> {
+    if (this.telemetryServer === null) {
+      return;
+    }
+    const telemetryServer = this.telemetryServer;
+    await new Promise<void>((resolveClose) => {
+      if (!telemetryServer.listening) {
+        this.telemetryAddress = null;
+        resolveClose();
+        return;
+      }
+      telemetryServer.close(() => {
+        this.telemetryAddress = null;
+        resolveClose();
+      });
+    });
+  }
+
+  private startHistoryPollingIfEnabled(): void {
+    if (!this.codexHistory.enabled || this.historyPollTimer !== null) {
+      return;
+    }
+    this.historyPollTimer = setInterval(() => {
+      this.pollHistoryFile();
+    }, this.codexHistory.pollMs);
+    this.historyPollTimer.unref();
+  }
+
+  private stopHistoryPolling(): void {
+    if (this.historyPollTimer === null) {
+      return;
+    }
+    clearInterval(this.historyPollTimer);
+    this.historyPollTimer = null;
+  }
+
+  private codexLaunchArgsForSession(sessionId: string, agentType: string): readonly string[] {
+    if (agentType !== 'codex') {
+      return [];
+    }
+    const endpointBaseUrl = this.telemetryEndpointBaseUrl();
+    if (endpointBaseUrl === null) {
+      if (!this.codexHistory.enabled) {
+        return [];
+      }
+      return ['-c', 'history.persistence="save-all"'];
+    }
+    const token = randomUUID();
+    this.telemetryTokenToSessionId.set(token, sessionId);
+    return buildCodexTelemetryConfigArgs({
+      endpointBaseUrl,
+      token,
+      logUserPrompt: this.codexTelemetry.logUserPrompt,
+      captureLogs: this.codexTelemetry.captureLogs,
+      captureMetrics: this.codexTelemetry.captureMetrics,
+      captureTraces: this.codexTelemetry.captureTraces,
+      historyPersistence: this.codexHistory.enabled ? 'save-all' : 'none'
+    });
+  }
+
+  private telemetryEndpointBaseUrl(): string | null {
+    if (this.telemetryAddress === null) {
+      return null;
+    }
+    const host =
+      this.telemetryAddress.family === 'IPv6'
+        ? `[${this.telemetryAddress.address}]`
+        : this.telemetryAddress.address;
+    return `http://${host}:${String(this.telemetryAddress.port)}`;
+  }
+
+  private handleTelemetryHttpRequest(request: IncomingMessage, response: ServerResponse): void {
+    void this.handleTelemetryHttpRequestAsync(request, response);
+  }
+
+  private async handleTelemetryHttpRequestAsync(
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void> {
+    if (request.method !== 'POST') {
+      response.statusCode = 405;
+      response.end();
+      return;
+    }
+    const target = parseOtlpEndpoint(request.url ?? '');
+    if (target === null) {
+      response.statusCode = 404;
+      response.end();
+      return;
+    }
+    const sessionId = this.telemetryTokenToSessionId.get(target.token);
+    if (sessionId === undefined) {
+      response.statusCode = 404;
+      response.end();
+      return;
+    }
+
+    const bodyText = await this.readHttpBody(request);
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(bodyText);
+    } catch {
+      response.statusCode = 400;
+      response.end();
+      return;
+    }
+
+    this.ingestOtlpPayload(target.kind, sessionId, payload);
+    response.statusCode = 200;
+    response.setHeader('content-type', 'application/json');
+    response.end('{"partialSuccess":{}}');
+  }
+
+  private async readHttpBody(request: IncomingMessage): Promise<string> {
+    const chunks: Uint8Array[] = [];
+    for await (const rawChunk of request) {
+      const chunk = rawChunk as Uint8Array;
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  }
+
+  private ingestOtlpPayload(kind: 'logs' | 'metrics' | 'traces', sessionId: string, payload: unknown): void {
+    const now = new Date().toISOString();
+    const parsed =
+      kind === 'logs'
+        ? parseOtlpLogEvents(payload, now)
+        : kind === 'metrics'
+          ? parseOtlpMetricEvents(payload, now)
+          : parseOtlpTraceEvents(payload, now);
+    if (parsed.length === 0) {
+      const sourceByKind: Record<'logs' | 'metrics' | 'traces', 'otlp-log' | 'otlp-metric' | 'otlp-trace'> = {
+        logs: 'otlp-log',
+        metrics: 'otlp-metric',
+        traces: 'otlp-trace'
+      };
+      const source = sourceByKind[kind];
+      this.ingestParsedTelemetryEvent(sessionId, {
+        source,
+        observedAt: now,
+        eventName: null,
+        severity: null,
+        summary: `${source} batch`,
+        providerThreadId: null,
+        statusHint: null,
+        payload: {
+          batch: payload
+        }
+      });
+      return;
+    }
+    for (const entry of parsed) {
+      this.ingestParsedTelemetryEvent(sessionId, entry);
+    }
+  }
+
+  private ingestParsedTelemetryEvent(
+    fallbackSessionId: string | null,
+    event: ParsedCodexTelemetryEvent
+  ): void {
+    const resolvedSessionId =
+      fallbackSessionId ??
+      (event.providerThreadId === null ? null : this.resolveSessionIdByThreadId(event.providerThreadId));
+    const fingerprint = telemetryFingerprint({
+      source: event.source,
+      sessionId: resolvedSessionId,
+      providerThreadId: event.providerThreadId,
+      eventName: event.eventName,
+      observedAt: event.observedAt,
+      payload: event.payload
+    });
+
+    const inserted = this.stateStore.appendTelemetry({
+      source: event.source,
+      sessionId: resolvedSessionId,
+      providerThreadId: event.providerThreadId,
+      eventName: event.eventName,
+      severity: event.severity,
+      summary: event.summary,
+      observedAt: event.observedAt,
+      payload: event.payload,
+      fingerprint
+    });
+    if (!inserted || resolvedSessionId === null) {
+      return;
+    }
+
+    const sessionState = this.sessions.get(resolvedSessionId);
+    if (sessionState !== undefined) {
+      sessionState.latestTelemetry = this.stateStore.latestTelemetrySummary(resolvedSessionId);
+      if (event.providerThreadId !== null) {
+        this.updateSessionThreadId(sessionState, event.providerThreadId, event.observedAt);
+      }
+      let statusPublished = false;
+      if (event.statusHint !== null && sessionState.status !== 'exited' && sessionState.session !== null) {
+        if (event.statusHint === 'needs-input') {
+          this.setSessionStatus(sessionState, 'needs-input', 'telemetry', event.observedAt);
+        } else {
+          this.setSessionStatus(sessionState, event.statusHint, null, event.observedAt);
+        }
+        statusPublished = true;
+      }
+      if (!statusPublished) {
+        this.publishStatusObservedEvent(sessionState);
+      }
+    }
+
+    const observedScope = this.observedScopeForSessionId(resolvedSessionId);
+    if (observedScope !== null) {
+      this.publishObservedEvent(
+        observedScope,
+        {
+          type: 'session-key-event',
+          sessionId: resolvedSessionId,
+          keyEvent: {
+            source: event.source,
+            eventName: event.eventName,
+            severity: event.severity,
+            summary: event.summary,
+            observedAt: event.observedAt,
+            statusHint: event.statusHint
+          },
+          ts: new Date().toISOString(),
+          directoryId: observedScope.directoryId,
+          conversationId: observedScope.conversationId
+        }
+      );
+    }
+  }
+
+  private observedScopeForSessionId(sessionId: string): StreamObservedScope | null {
+    const liveState = this.sessions.get(sessionId);
+    if (liveState !== undefined) {
+      return this.sessionScope(liveState);
+    }
+    const persisted = this.stateStore.getConversation(sessionId);
+    if (persisted === null) {
+      return null;
+    }
+    return {
+      tenantId: persisted.tenantId,
+      userId: persisted.userId,
+      workspaceId: persisted.workspaceId,
+      directoryId: persisted.directoryId,
+      conversationId: persisted.conversationId
+    };
+  }
+
+  private updateSessionThreadId(state: SessionState, threadId: string, observedAt: string): void {
+    if (state.agentType !== 'codex') {
+      return;
+    }
+    const currentThreadId = codexResumeSessionIdFromAdapterState(state.adapterState);
+    if (currentThreadId === threadId) {
+      return;
+    }
+    const currentCodex =
+      typeof state.adapterState['codex'] === 'object' &&
+      state.adapterState['codex'] !== null &&
+      !Array.isArray(state.adapterState['codex'])
+        ? (state.adapterState['codex'] as Record<string, unknown>)
+        : {};
+    state.adapterState = {
+      ...state.adapterState,
+      codex: {
+        ...currentCodex,
+        resumeSessionId: threadId,
+        lastObservedAt: observedAt
+      }
+    };
+    this.stateStore.updateConversationAdapterState(state.id, state.adapterState);
+  }
+
+  private resolveSessionIdByThreadId(threadId: string): string | null {
+    const normalized = threadId.trim();
+    if (normalized.length === 0) {
+      return null;
+    }
+    for (const state of this.sessions.values()) {
+      const stateThreadId = codexResumeSessionIdFromAdapterState(state.adapterState);
+      if (stateThreadId === normalized) {
+        return state.id;
+      }
+    }
+    return this.stateStore.findConversationIdByCodexThreadId(normalized);
+  }
+
+  private pollHistoryFile(): void {
+    try {
+      this.pollHistoryFileUnsafe();
+    } catch {
+      // History ingestion is best-effort and should never crash the control-plane runtime.
+    }
+  }
+
+  private pollHistoryFileUnsafe(): void {
+    if (!this.codexHistory.enabled) {
+      return;
+    }
+    const resolvedHistoryPath = expandTildePath(this.codexHistory.filePath);
+    let content: string;
+    try {
+      content = readFileSync(resolvedHistoryPath, 'utf8');
+    } catch (error) {
+      const errorWithCode = error as { code?: unknown };
+      if (errorWithCode.code === 'ENOENT') {
+        return;
+      }
+      throw error;
+    }
+
+    if (content.length < this.historyOffset) {
+      this.historyOffset = 0;
+      this.historyRemainder = '';
+    }
+    const delta = content.slice(this.historyOffset);
+    if (delta.length === 0) {
+      return;
+    }
+    this.historyOffset = content.length;
+
+    const buffered = `${this.historyRemainder}${delta}`;
+    const lines = buffered.split('\n');
+    this.historyRemainder = lines.pop() as string;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) {
+        continue;
+      }
+      const parsed = parseCodexHistoryLine(trimmed, new Date().toISOString());
+      if (parsed === null) {
+        continue;
+      }
+      const sessionId =
+        parsed.providerThreadId === null ? null : this.resolveSessionIdByThreadId(parsed.providerThreadId);
+      this.ingestParsedTelemetryEvent(sessionId, parsed);
+    }
   }
 
   private handleConnection(socket: Socket): void {
@@ -416,16 +913,16 @@ export class ControlPlaneStreamServer {
     }
 
     if (envelope.kind === 'pty.input') {
-      this.handleInput(envelope.sessionId, envelope.dataBase64);
+      this.handleInput(connection.id, envelope.sessionId, envelope.dataBase64);
       return;
     }
 
     if (envelope.kind === 'pty.resize') {
-      this.handleResize(envelope.sessionId, envelope.cols, envelope.rows);
+      this.handleResize(connection.id, envelope.sessionId, envelope.cols, envelope.rows);
       return;
     }
 
-    this.handleSignal(envelope.sessionId, envelope.signal);
+    this.handleSignal(connection.id, envelope.sessionId, envelope.signal);
   }
 
   private handleAuth(connection: ConnectionState, token: string): void {
@@ -574,7 +1071,7 @@ export class ControlPlaneStreamServer {
         {
           type: 'directory-archived',
           directoryId: archived.directoryId,
-          ts: archived.archivedAt ?? new Date().toISOString()
+          ts: archived.archivedAt as string
         }
       );
       return {
@@ -657,7 +1154,7 @@ export class ControlPlaneStreamServer {
         {
           type: 'conversation-archived',
           conversationId: archived.conversationId,
-          ts: archived.archivedAt ?? new Date().toISOString()
+          ts: archived.archivedAt as string
         }
       );
       return {
@@ -842,8 +1339,92 @@ export class ControlPlaneStreamServer {
       };
     }
 
+    if (command.type === 'session.claim') {
+      const state = this.requireSession(command.sessionId);
+      const claimedAt = new Date().toISOString();
+      const previousController = state.controller;
+      const nextController: SessionControllerState = {
+        controllerId: command.controllerId,
+        controllerType: command.controllerType,
+        controllerLabel: command.controllerLabel ?? null,
+        claimedAt,
+        connectionId: connection.id
+      };
+      if (previousController === null) {
+        state.controller = nextController;
+        this.publishSessionControlObservedEvent(
+          state,
+          'claimed',
+          toPublicSessionController(nextController),
+          null,
+          command.reason ?? null
+        );
+        this.publishStatusObservedEvent(state);
+        return {
+          sessionId: command.sessionId,
+          action: 'claimed',
+          controller: toPublicSessionController(nextController)
+        };
+      }
+      if (
+        previousController.connectionId !== connection.id &&
+        command.takeover !== true
+      ) {
+        throw new Error(
+          `session is already claimed by ${controllerDisplayName(previousController)}`
+        );
+      }
+      state.controller = nextController;
+      const action = previousController.connectionId === connection.id ? 'claimed' : 'taken-over';
+      this.publishSessionControlObservedEvent(
+        state,
+        action,
+        toPublicSessionController(nextController),
+        toPublicSessionController(previousController),
+        command.reason ?? null
+      );
+      this.publishStatusObservedEvent(state);
+      return {
+        sessionId: command.sessionId,
+        action,
+        controller: toPublicSessionController(nextController)
+      };
+    }
+
+    if (command.type === 'session.release') {
+      const state = this.requireSession(command.sessionId);
+      if (state.controller === null) {
+        return {
+          sessionId: command.sessionId,
+          released: false,
+          controller: null
+        };
+      }
+      if (state.controller.connectionId !== connection.id) {
+        throw new Error(
+          `session is claimed by ${controllerDisplayName(state.controller)}`
+        );
+      }
+      const previousController = state.controller;
+      state.controller = null;
+      this.publishSessionControlObservedEvent(
+        state,
+        'released',
+        null,
+        toPublicSessionController(previousController),
+        command.reason ?? null
+      );
+      this.publishStatusObservedEvent(state);
+      return {
+        sessionId: command.sessionId,
+        released: true,
+        controller: null
+      };
+    }
+
     if (command.type === 'session.respond') {
       const state = this.requireLiveSession(command.sessionId);
+      this.assertConnectionCanMutateSession(connection.id, state);
       state.session.write(command.text);
       this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return {
@@ -854,6 +1435,7 @@ export class ControlPlaneStreamServer {
 
     if (command.type === 'session.interrupt') {
       const state = this.requireLiveSession(command.sessionId);
+      this.assertConnectionCanMutateSession(connection.id, state);
       state.session.write('\u0003');
       this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return {
@@ -862,6 +1444,8 @@ export class ControlPlaneStreamServer {
     }
 
     if (command.type === 'session.remove') {
+      const state = this.requireSession(command.sessionId);
+      this.assertConnectionCanMutateSession(connection.id, state);
       this.destroySession(command.sessionId, true);
       return {
         removed: true
@@ -874,12 +1458,15 @@ export class ControlPlaneStreamServer {
         if (existing.status === 'exited' && existing.session === null) {
           this.destroySession(command.sessionId, false);
         } else {
-        throw new Error(`session already exists: ${command.sessionId}`);
+          throw new Error(`session already exists: ${command.sessionId}`);
         }
       }
 
+      const persistedConversation = this.stateStore.getConversation(command.sessionId);
+      const agentType = persistedConversation?.agentType ?? 'codex';
+      const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
       const startInput: StartControlPlaneSessionInput = {
-        args: command.args,
+        args: [...codexLaunchArgs, ...command.args],
         initialCols: command.initialCols,
         initialRows: command.initialRows
       };
@@ -902,7 +1489,6 @@ export class ControlPlaneStreamServer {
         this.handleSessionEvent(command.sessionId, event);
       });
 
-      const persistedConversation = this.stateStore.getConversation(command.sessionId);
       const persistedRuntimeStatus = persistedConversation?.runtimeStatus;
       const initialStatus: StreamSessionRuntimeStatus =
         persistedRuntimeStatus === undefined ||
@@ -915,7 +1501,7 @@ export class ControlPlaneStreamServer {
       this.sessions.set(command.sessionId, {
         id: command.sessionId,
         directoryId: persistedConversation?.directoryId ?? null,
-        agentType: persistedConversation?.agentType ?? 'codex',
+        agentType,
         adapterState: normalizeAdapterState(persistedConversation?.adapterState ?? {}),
         tenantId: persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID,
         userId: persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID,
@@ -933,7 +1519,9 @@ export class ControlPlaneStreamServer {
         startedAt: new Date().toISOString(),
         exitedAt: null,
         tombstoneTimer: null,
-        lastObservedOutputCursor: session.latestCursorValue()
+        lastObservedOutputCursor: session.latestCursorValue(),
+        latestTelemetry: this.stateStore.latestTelemetrySummary(command.sessionId),
+        controller: null
       });
 
       const state = this.sessions.get(command.sessionId);
@@ -1028,16 +1616,20 @@ export class ControlPlaneStreamServer {
       };
     }
 
-    this.requireLiveSession(command.sessionId);
+    const state = this.requireLiveSession(command.sessionId);
+    this.assertConnectionCanMutateSession(connection.id, state);
     this.destroySession(command.sessionId, true);
     return {
       closed: true
     };
   }
 
-  private handleInput(sessionId: string, dataBase64: string): void {
+  private handleInput(connectionId: string, sessionId: string, dataBase64: string): void {
     const state = this.sessions.get(sessionId);
     if (state === undefined) {
+      return;
+    }
+    if (!this.connectionCanMutateSession(connectionId, state)) {
       return;
     }
     if (state.status === 'exited' || state.session === null) {
@@ -1049,14 +1641,14 @@ export class ControlPlaneStreamServer {
       return;
     }
     state.session.write(data);
-    if (inputContainsTurnSubmission(data)) {
-      this.setSessionStatus(state, 'running', null, new Date().toISOString());
-    }
   }
 
-  private handleResize(sessionId: string, cols: number, rows: number): void {
+  private handleResize(connectionId: string, sessionId: string, cols: number, rows: number): void {
     const state = this.sessions.get(sessionId);
     if (state === undefined) {
+      return;
+    }
+    if (!this.connectionCanMutateSession(connectionId, state)) {
       return;
     }
     if (state.status === 'exited' || state.session === null) {
@@ -1065,9 +1657,12 @@ export class ControlPlaneStreamServer {
     state.session.resize(cols, rows);
   }
 
-  private handleSignal(sessionId: string, signal: StreamSignal): void {
+  private handleSignal(connectionId: string, sessionId: string, signal: StreamSignal): void {
     const state = this.sessions.get(sessionId);
     if (state === undefined) {
+      return;
+    }
+    if (!this.connectionCanMutateSession(connectionId, state)) {
       return;
     }
     if (state.status === 'exited' || state.session === null) {
@@ -1076,13 +1671,11 @@ export class ControlPlaneStreamServer {
 
     if (signal === 'interrupt') {
       state.session.write('\u0003');
-      this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return;
     }
 
     if (signal === 'eof') {
       state.session.write('\u0004');
-      this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return;
     }
 
@@ -1097,18 +1690,6 @@ export class ControlPlaneStreamServer {
 
     const mapped = mapSessionEvent(event);
     if (mapped !== null && event.type !== 'terminal-output') {
-      const observedAt =
-        mapped.type === 'session-exit' ? new Date().toISOString() : mapped.record.ts;
-      const updatedAdapterState = mergeAdapterStateFromSessionEvent(
-        sessionState.agentType,
-        sessionState.adapterState,
-        mapped,
-        observedAt
-      );
-      if (updatedAdapterState !== null) {
-        sessionState.adapterState = updatedAdapterState;
-        this.stateStore.updateConversationAdapterState(sessionState.id, updatedAdapterState);
-      }
       for (const connectionId of sessionState.eventSubscriberConnectionIds) {
         this.sendToConnection(connectionId, {
           kind: 'pty.event',
@@ -1127,21 +1708,6 @@ export class ControlPlaneStreamServer {
           conversationId: sessionState.id
         }
       );
-    }
-
-    if (event.type === 'attention-required') {
-      this.setSessionStatus(sessionState, 'needs-input', event.reason, event.record.ts);
-      return;
-    }
-
-    if (event.type === 'turn-completed') {
-      this.setSessionStatus(sessionState, 'completed', null, event.record.ts);
-      return;
-    }
-
-    if (event.type === 'notify') {
-      this.setSessionStatus(sessionState, sessionState.status, sessionState.attentionReason, event.record.ts);
-      return;
     }
 
     if (event.type === 'session-exit') {
@@ -1188,6 +1754,31 @@ export class ControlPlaneStreamServer {
         status: state.status,
         attentionReason: state.attentionReason,
         live: state.session !== null,
+        ts: new Date().toISOString(),
+        directoryId: state.directoryId,
+        conversationId: state.id,
+        telemetry: state.latestTelemetry,
+        controller: toPublicSessionController(state.controller)
+      }
+    );
+  }
+
+  private publishSessionControlObservedEvent(
+    state: SessionState,
+    action: 'claimed' | 'released' | 'taken-over',
+    controller: StreamSessionController | null,
+    previousController: StreamSessionController | null,
+    reason: string | null
+  ): void {
+    this.publishObservedEvent(
+      this.sessionScope(state),
+      {
+        type: 'session-control',
+        sessionId: state.id,
+        action,
+        controller,
+        previousController,
+        reason,
         ts: new Date().toISOString(),
         directoryId: state.directoryId,
         conversationId: state.id
@@ -1254,6 +1845,7 @@ export class ControlPlaneStreamServer {
         event: entry.event
       });
     }
+    this.lifecycleHooks.publish(scope, event, entry.cursor);
   }
 
   private directoryRecord(directory: ControlPlaneDirectoryRecord): Record<string, unknown> {
@@ -1305,6 +1897,21 @@ export class ControlPlaneStreamServer {
     return state as SessionState & { session: LiveSessionLike };
   }
 
+  private connectionCanMutateSession(connectionId: string, state: SessionState): boolean {
+    return state.controller === null || state.controller.connectionId === connectionId;
+  }
+
+  private assertConnectionCanMutateSession(connectionId: string, state: SessionState): void {
+    if (this.connectionCanMutateSession(connectionId, state)) {
+      return;
+    }
+    const controller = state.controller;
+    if (controller === null) {
+      return;
+    }
+    throw new Error(`session is claimed by ${controllerDisplayName(controller)}`);
+  }
+
   private detachConnectionFromSession(connectionId: string, sessionId: string): void {
     const state = this.sessions.get(sessionId);
     if (state === undefined) {
@@ -1341,6 +1948,22 @@ export class ControlPlaneStreamServer {
 
     for (const subscriptionId of connection.streamSubscriptionIds) {
       this.streamSubscriptions.delete(subscriptionId);
+    }
+
+    for (const state of this.sessions.values()) {
+      if (state.controller?.connectionId !== connectionId) {
+        continue;
+      }
+      const previousController = state.controller;
+      state.controller = null;
+      this.publishSessionControlObservedEvent(
+        state,
+        'released',
+        null,
+        toPublicSessionController(previousController),
+        'controller-disconnected'
+      );
+      this.publishStatusObservedEvent(state);
     }
 
     this.connections.delete(connectionId);
@@ -1437,6 +2060,11 @@ export class ControlPlaneStreamServer {
     }
 
     this.sessions.delete(sessionId);
+    for (const [token, mappedSessionId] of this.telemetryTokenToSessionId.entries()) {
+      if (mappedSessionId === sessionId) {
+        this.telemetryTokenToSessionId.delete(token);
+      }
+    }
   }
 
   private sortSessionSummaries(
@@ -1497,7 +2125,9 @@ export class ControlPlaneStreamServer {
       lastEventAt: state.lastEventAt,
       lastExit: state.lastExit,
       exitedAt: state.exitedAt,
-      live: state.session !== null
+      live: state.session !== null,
+      telemetry: state.latestTelemetry,
+      controller: toPublicSessionController(state.controller)
     };
   }
 

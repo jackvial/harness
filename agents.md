@@ -16,6 +16,8 @@ This project has two core documents:
 - 100% code coverage is required across the project.
 - Coverage compliance must be continuously verified (local + CI), not assumed.
 - Unit tests, integration tests, and end-to-end tests are all required.
+- Every bug fix must add a negative test that fails before the fix and passes after it.
+- Prefer a unit-level negative test when possible; if not sufficient, add an integration/E2E reproduction; for performance bugs, add or update a performance-harness regression check.
 - Linting must pass at 100% (zero warnings, zero errors) before completion.
 - Dead code is prohibited and must be verified by tooling in local + CI gates.
 - No artificial test skipping: no `skip`, `only`, quarantined suites, or silent exclusions.

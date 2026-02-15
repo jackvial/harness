@@ -5,7 +5,7 @@ import process from 'node:process';
 import {
   TerminalSnapshotOracle,
   renderSnapshotAnsiRow,
-  type TerminalSnapshotFrame
+  type TerminalSnapshotFrameCore
 } from '../src/terminal/snapshot-oracle.ts';
 import {
   computeDualPaneLayout,
@@ -403,7 +403,7 @@ function makeSyntheticChunkPool(profile: Profile, bytesPerChunk: number): readon
 
 function buildRenderRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
-  frame: TerminalSnapshotFrame,
+  frame: TerminalSnapshotFrameCore,
   activeSessionIndex: number
 ): readonly string[] {
   const rows: string[] = [];

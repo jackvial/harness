@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { PtyExit } from '../pty/pty_host.ts';
 import type { StreamSessionRuntimeStatus } from '../control-plane/stream-protocol.ts';
+import type { CodexTelemetrySource } from '../control-plane/codex-telemetry.ts';
 
 export interface ControlPlaneDirectoryRecord {
   readonly directoryId: string;
@@ -31,6 +32,28 @@ export interface ControlPlaneConversationRecord {
   readonly runtimeLastEventAt: string | null;
   readonly runtimeLastExit: PtyExit | null;
   readonly adapterState: Record<string, unknown>;
+}
+
+export interface ControlPlaneTelemetryRecord {
+  readonly telemetryId: number;
+  readonly source: CodexTelemetrySource;
+  readonly sessionId: string | null;
+  readonly providerThreadId: string | null;
+  readonly eventName: string | null;
+  readonly severity: string | null;
+  readonly summary: string | null;
+  readonly observedAt: string;
+  readonly ingestedAt: string;
+  readonly payload: Record<string, unknown>;
+  readonly fingerprint: string;
+}
+
+export interface ControlPlaneTelemetrySummary {
+  readonly source: CodexTelemetrySource;
+  readonly eventName: string | null;
+  readonly severity: string | null;
+  readonly summary: string | null;
+  readonly observedAt: string;
 }
 
 interface UpsertDirectoryInput {
@@ -73,6 +96,18 @@ interface ConversationRuntimeUpdate {
   processId: number | null;
   lastEventAt: string | null;
   lastExit: PtyExit | null;
+}
+
+interface AppendTelemetryInput {
+  source: CodexTelemetrySource;
+  sessionId: string | null;
+  providerThreadId: string | null;
+  eventName: string | null;
+  severity: string | null;
+  summary: string | null;
+  observedAt: string;
+  payload: Record<string, unknown>;
+  fingerprint: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -198,6 +233,46 @@ function normalizeConversationRow(value: unknown): ControlPlaneConversationRecor
 
 export function normalizeStoredConversationRow(value: unknown): ControlPlaneConversationRecord {
   return normalizeConversationRow(value);
+}
+
+function normalizeTelemetrySource(value: unknown): CodexTelemetrySource {
+  const source = asString(value, 'source');
+  if (source === 'otlp-log' || source === 'otlp-metric' || source === 'otlp-trace' || source === 'history') {
+    return source;
+  }
+  throw new Error('expected telemetry source enum value');
+}
+
+function normalizePayloadJson(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'string') {
+    throw new Error('expected string for payload_json');
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeTelemetryRow(value: unknown): ControlPlaneTelemetryRecord {
+  const row = asRecord(value);
+  return {
+    telemetryId: asNumberOrNull(row.telemetry_id, 'telemetry_id') as number,
+    source: normalizeTelemetrySource(row.source),
+    sessionId: asStringOrNull(row.session_id, 'session_id'),
+    providerThreadId: asStringOrNull(row.provider_thread_id, 'provider_thread_id'),
+    eventName: asStringOrNull(row.event_name, 'event_name'),
+    severity: asStringOrNull(row.severity, 'severity'),
+    summary: asStringOrNull(row.summary, 'summary'),
+    observedAt: asString(row.observed_at, 'observed_at'),
+    ingestedAt: asString(row.ingested_at, 'ingested_at'),
+    payload: normalizePayloadJson(row.payload_json),
+    fingerprint: asString(row.fingerprint, 'fingerprint')
+  };
 }
 
 export class SqliteControlPlaneStore {
@@ -685,6 +760,141 @@ export class SqliteControlPlaneStore {
     return this.getConversation(conversationId);
   }
 
+  appendTelemetry(input: AppendTelemetryInput): boolean {
+    const ingestedAt = new Date().toISOString();
+    const result = this.db
+      .prepare(
+        `
+        INSERT INTO session_telemetry (
+          source,
+          session_id,
+          provider_thread_id,
+          event_name,
+          severity,
+          summary,
+          observed_at,
+          ingested_at,
+          payload_json,
+          fingerprint
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(fingerprint) DO NOTHING
+      `
+      )
+      .run(
+        input.source,
+        input.sessionId,
+        input.providerThreadId,
+        input.eventName,
+        input.severity,
+        input.summary,
+        input.observedAt,
+        ingestedAt,
+        JSON.stringify(input.payload),
+        input.fingerprint
+      );
+    return Number(result.changes) > 0;
+  }
+
+  latestTelemetrySummary(sessionId: string): ControlPlaneTelemetrySummary | null {
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          source,
+          event_name,
+          severity,
+          summary,
+          observed_at
+        FROM session_telemetry
+        WHERE session_id = ?
+        ORDER BY observed_at DESC, telemetry_id DESC
+        LIMIT 1
+      `
+      )
+      .get(sessionId);
+    if (row === undefined) {
+      return null;
+    }
+    const asRow = asRecord(row);
+    return {
+      source: normalizeTelemetrySource(asRow.source),
+      eventName: asStringOrNull(asRow.event_name, 'event_name'),
+      severity: asStringOrNull(asRow.severity, 'severity'),
+      summary: asStringOrNull(asRow.summary, 'summary'),
+      observedAt: asString(asRow.observed_at, 'observed_at')
+    };
+  }
+
+  listTelemetryForSession(sessionId: string, limit = 200): readonly ControlPlaneTelemetryRecord[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          telemetry_id,
+          source,
+          session_id,
+          provider_thread_id,
+          event_name,
+          severity,
+          summary,
+          observed_at,
+          ingested_at,
+          payload_json,
+          fingerprint
+        FROM session_telemetry
+        WHERE session_id = ?
+        ORDER BY observed_at DESC, telemetry_id DESC
+        LIMIT ?
+      `
+      )
+      .all(sessionId, limit);
+    return rows.map((row) => normalizeTelemetryRow(row));
+  }
+
+  findConversationIdByCodexThreadId(threadId: string): string | null {
+    const normalized = threadId.trim();
+    if (normalized.length === 0) {
+      return null;
+    }
+
+    try {
+      const direct = this.db
+        .prepare(
+          `
+          SELECT conversation_id
+          FROM conversations
+          WHERE json_extract(adapter_state_json, '$.codex.resumeSessionId') = ?
+          ORDER BY created_at DESC, conversation_id DESC
+          LIMIT 1
+        `
+        )
+        .get(normalized);
+      if (direct !== undefined) {
+        const row = asRecord(direct);
+        return asString(row.conversation_id, 'conversation_id');
+      }
+    } catch {
+      // Best-effort index lookup; fallback scan handles environments without json_extract.
+    }
+
+    const rows = this.listConversations({
+      includeArchived: true,
+      limit: 10000
+    });
+    for (let idx = rows.length - 1; idx >= 0; idx -= 1) {
+      const conversation = rows[idx]!;
+      const codex = conversation.adapterState['codex'];
+      if (typeof codex !== 'object' || codex === null || Array.isArray(codex)) {
+        continue;
+      }
+      const resumeSessionId = (codex as Record<string, unknown>)['resumeSessionId'];
+      if (typeof resumeSessionId === 'string' && resumeSessionId.trim() === normalized) {
+        return conversation.conversationId;
+      }
+    }
+    return null;
+  }
+
   private findDirectoryByScopePath(
     tenantId: string,
     userId: string,
@@ -764,6 +974,29 @@ export class SqliteControlPlaneStore {
       'adapter_state_json',
       `adapter_state_json TEXT NOT NULL DEFAULT '{}'`
     );
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_telemetry (
+        telemetry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        session_id TEXT,
+        provider_thread_id TEXT,
+        event_name TEXT,
+        severity TEXT,
+        summary TEXT,
+        observed_at TEXT NOT NULL,
+        ingested_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        fingerprint TEXT NOT NULL UNIQUE
+      );
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_session_telemetry_session
+      ON session_telemetry (session_id, observed_at DESC, telemetry_id DESC);
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_session_telemetry_thread
+      ON session_telemetry (provider_thread_id, observed_at DESC, telemetry_id DESC);
+    `);
   }
 
   private configureConnection(): void {

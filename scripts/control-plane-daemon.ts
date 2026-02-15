@@ -145,23 +145,39 @@ async function main(): Promise<number> {
   const listenSpan = startPerfSpan('daemon.startup.listen', {
     process: 'daemon'
   });
-  const server = await startControlPlaneStreamServer({
+  const serverOptions: Parameters<typeof startControlPlaneStreamServer>[0] = {
     host: options.host,
     port: options.port,
-    authToken: options.authToken ?? undefined,
     stateStorePath: options.stateDbPath,
-    startSession: (input) =>
-      startCodexLiveSession({
+    codexTelemetry: loadedConfig.config.codex.telemetry,
+    codexHistory: loadedConfig.config.codex.history,
+    lifecycleHooks: loadedConfig.config.hooks.lifecycle,
+    startSession: (input) => {
+      const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {
         args: input.args,
-        env: input.env,
-        cwd: input.cwd,
         initialCols: input.initialCols,
         initialRows: input.initialRows,
-        terminalForegroundHex: input.terminalForegroundHex,
-        terminalBackgroundHex: input.terminalBackgroundHex,
         enableSnapshotModel: serverSnapshotModelEnabled
-      })
-  });
+      };
+      if (input.env !== undefined) {
+        sessionOptions.env = input.env;
+      }
+      if (input.cwd !== undefined) {
+        sessionOptions.cwd = input.cwd;
+      }
+      if (input.terminalForegroundHex !== undefined) {
+        sessionOptions.terminalForegroundHex = input.terminalForegroundHex;
+      }
+      if (input.terminalBackgroundHex !== undefined) {
+        sessionOptions.terminalBackgroundHex = input.terminalBackgroundHex;
+      }
+      return startCodexLiveSession(sessionOptions);
+    }
+  };
+  if (options.authToken !== null) {
+    serverOptions.authToken = options.authToken;
+  }
+  const server = await startControlPlaneStreamServer(serverOptions);
   listenSpan.end({ listening: true });
 
   const address = server.address();

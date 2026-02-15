@@ -25,11 +25,18 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Run multiple conversations concurrently and switch active control instantly.
 - Persist directory/conversation metadata across reconnects via the control-plane SQLite state store.
 - Persist adapter state required for provider-native thread continuity (Codex resume path).
+- Capture Codex observability data end-to-end (OTLP logs/metrics/traces + `~/.codex/history.jsonl`) into the control-plane SQLite store for durable session diagnostics and richer runtime state.
+- Stream typed key status/telemetry events from the control plane (`session-status` + `session-key-event`) through a reusable internal subscription API for UI consumers.
+- Normalize provider/control-plane lifecycle transitions into one hook event model (`thread.*`, `session.*`, `turn.*`, `tool.*`, `input.required`) for automation and notification adapters.
+- Dispatch lifecycle hooks from config (`harness.config.jsonc`) with connector adapters (`peon-ping` sound categories and generic outbound webhooks).
 - Keep startup focused on the selected conversation by default; persisted non-selected conversations are not auto-resumed unless explicitly enabled.
 - Show a directory-scoped left rail with conversation status, git summary, and per-session telemetry.
+- Drive thread bubble state and second-line "last known work" text from control-plane key events instead of local input heuristics.
 - Normalize actionable session states for operators (`working`, `needs action`, `idle`, `complete`, `exited`).
 - Support keyboard and mouse-driven conversation selection in the mux.
 - Support keyboard and clickable left-rail actions for new conversation, archive conversation, add directory, and close directory.
+- Select directories directly from the rail to open a project-focused pane (tree preview) and scope directory actions explicitly.
+- Scope `new conversation`/`close directory` to the selected directory in project view, while conversation selection keeps `new conversation` in that conversation's directory.
 - Soft-delete conversations in the mux by archiving them; permanent delete remains a control-plane API command.
 - Add and close directories from the mux without leaving the TUI.
 - Render prompt workflows (directory add, title edit) as immediate-mode modal overlays built from first-party UI-kit primitives.
@@ -37,8 +44,10 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Keep one protocol path for both human UI and API clients through the control-plane stream.
 - Prioritize interactive control actions over background warm-start work so switching and selection stay responsive under multi-session load.
 - Keep PTY/event subscriptions scoped to the active conversation and reattach with cursor continuity to avoid replay storms on conversation switches.
-- Keep expensive left-rail probes (git/process telemetry) opt-in (`HARNESS_MUX_BACKGROUND_PROBES=1`) so output/render/input stay responsive by default.
+- Keep process-usage probing opt-in (`HARNESS_MUX_BACKGROUND_PROBES=1`) while Git status runs through an adaptive per-project scheduler (`mux.git.*` in `harness.config.jsonc`) to stay fresh without spiking resources.
 - Expose stream subscriptions with scoped replay for automation clients monitoring live session state/output.
+- Ship a public TypeScript realtime client (`HarnessAgentRealtimeClient`) for external automation adapters with typed event handlers and command wrappers.
+- Support explicit session ownership semantics (`session.claim`/`session.release`) including takeover handoff so humans and agents can coordinate control safely.
 - Record terminal frames and export deterministic GIF artifacts.
 - Measure startup repeatably with loop tooling (`perf:codex:startup:loop`) and mux `perf-core` timeline reports (`perf:mux:startup`).
 - Compare direct Codex startup versus `codex:live:mux:launch` through first output, first paint, and settled (`mux.startup.active-settled`) with one `perf-core` stream (`perf:mux:launch:startup:loop`).
@@ -77,7 +86,9 @@ Key toggles:
 - Stream protocol as the primary interface for control and observability.
 - SQLite append-only events store for persistent, tenanted state.
 - One config system (`harness.config.jsonc`), one logger, one perf instrumentation surface.
+- Lifecycle hook behavior is config-first (`hooks.lifecycle.*`): provider filters, connector enablement, event filters, and connector-specific settings are all file-governed.
 - Debug/perf knobs live in `harness.config.jsonc` (`debug.*`) with overwrite-on-start artifact control.
+- Mux Git freshness controls are config-first (`mux.git.*`) with active/idle/burst poll tuning and bounded concurrency.
 - Verification gates are mandatory: lint, typecheck, dead-code checks, and full coverage.
 
 ## Spirit

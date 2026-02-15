@@ -28,7 +28,6 @@ async function main(): Promise<number> {
   const session = startCodexLiveSession({
     args: codexArgs,
     baseArgs: [],
-    useNotifyHook: false,
     env: {
       ...process.env,
       TERM: process.env.TERM ?? 'xterm-256color'

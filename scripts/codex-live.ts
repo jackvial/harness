@@ -18,10 +18,6 @@ function getInitialSize(): { cols: number; rows: number } {
   return { cols: 80, rows: 24 };
 }
 
-function asString(value: unknown, fallback: string): string {
-  return typeof value === 'string' ? value : fallback;
-}
-
 function normalizeExitCode(exit: PtyExit): number {
   if (exit.code !== null) {
     return exit.code;
@@ -47,57 +43,6 @@ function mapToNormalizedEvent(
         threadId: scope.conversationId,
         turnId: scope.turnId ?? 'turn-live',
         delta: event.chunk.toString('utf8')
-      },
-      () => new Date(),
-      idFactory
-    );
-  }
-
-  if (event.type === 'turn-completed') {
-    const payloadObject = event.record.payload;
-    return createNormalizedEvent(
-      'provider',
-      'provider-turn-completed',
-      scope,
-      {
-        kind: 'turn',
-        threadId: asString(payloadObject['thread-id'], scope.conversationId),
-        turnId: asString(payloadObject['turn-id'], scope.turnId ?? 'turn-live'),
-        status: 'completed'
-      },
-      () => new Date(),
-      idFactory
-    );
-  }
-
-  if (event.type === 'attention-required') {
-    const payloadObject = event.record.payload;
-    return createNormalizedEvent(
-      'meta',
-      'meta-attention-raised',
-      scope,
-      {
-        kind: 'attention',
-        threadId: asString(payloadObject['thread-id'], scope.conversationId),
-        turnId: asString(payloadObject['turn-id'], scope.turnId ?? 'turn-live'),
-        reason: event.reason,
-        detail: asString(payloadObject.type, 'notify')
-      },
-      () => new Date(),
-      idFactory
-    );
-  }
-
-  if (event.type === 'notify') {
-    const payloadObject = event.record.payload;
-    return createNormalizedEvent(
-      'meta',
-      'meta-notify-observed',
-      scope,
-      {
-        kind: 'notify',
-        notifyType: asString(payloadObject.type, 'unknown'),
-        raw: payloadObject
       },
       () => new Date(),
       idFactory

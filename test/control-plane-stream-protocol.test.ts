@@ -191,6 +191,39 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c1caa',
+      command: {
+        type: 'session.claim',
+        sessionId: 's1',
+        controllerId: 'agent-1',
+        controllerType: 'agent',
+        controllerLabel: 'agent one',
+        reason: 'claim test',
+        takeover: true
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c1caa2',
+      command: {
+        type: 'session.claim',
+        sessionId: 's1',
+        controllerId: 'automation-1',
+        controllerType: 'automation',
+        reason: 'automation claim'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c1cab',
+      command: {
+        type: 'session.release',
+        sessionId: 's1',
+        reason: 'release test'
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c1cb',
       command: {
         type: 'session.interrupt',
@@ -638,6 +671,34 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
     },
     {
       kind: 'command',
+      commandId: 'c2a-claim',
+      command: {
+        type: 'session.claim',
+        sessionId: 's1',
+        controllerId: 'agent-1',
+        controllerType: 'invalid'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2a-claimb',
+      command: {
+        type: 'session.claim',
+        sessionId: 's1',
+        controllerId: 'agent-1',
+        controllerType: 'agent',
+        takeover: 'yes'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2a-release',
+      command: {
+        type: 'session.release'
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c2b',
       command: {
         type: 'session.respond',
@@ -733,46 +794,6 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
       kind: 'pty.event',
       sessionId: 's1',
       event: {
-        type: 'notify',
-        record: {
-          ts: new Date(0).toISOString(),
-          payload: {
-            type: 'x'
-          }
-        }
-      }
-    },
-    {
-      kind: 'pty.event',
-      sessionId: 's1',
-      event: {
-        type: 'turn-completed',
-        record: {
-          ts: new Date(0).toISOString(),
-          payload: {
-            type: 'agent-turn-complete'
-          }
-        }
-      }
-    },
-    {
-      kind: 'pty.event',
-      sessionId: 's1',
-      event: {
-        type: 'attention-required',
-        reason: 'approval',
-        record: {
-          ts: new Date(0).toISOString(),
-          payload: {
-            type: 'approval'
-          }
-        }
-      }
-    },
-    {
-      kind: 'pty.event',
-      sessionId: 's1',
-      event: {
         type: 'session-exit',
         exit: {
           code: null,
@@ -792,7 +813,14 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: 'directory-1',
-        conversationId: 'conversation-1'
+        conversationId: 'conversation-1',
+        telemetry: {
+          source: 'otlp-log',
+          eventName: 'codex.api_request',
+          severity: 'INFO',
+          summary: 'codex.api_request (ok)',
+          observedAt: new Date(0).toISOString()
+        }
       }
     },
     {
@@ -804,6 +832,22 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         sessionId: 's1',
         status: 'needs-input',
         attentionReason: 'approval',
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: 'directory-1',
+        conversationId: 'conversation-1',
+        telemetry: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12.15,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: 'directory-1',
@@ -822,7 +866,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         live: false,
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
+        conversationId: null,
+        telemetry: null
       }
     },
     {
@@ -835,6 +880,69 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         status: 'exited',
         attentionReason: null,
         live: false,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+        telemetry: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12.35,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+        controller: {
+          controllerId: 'automation-1',
+          controllerType: 'automation',
+          controllerLabel: null,
+          claimedAt: new Date(0).toISOString()
+        },
+        telemetry: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12.4,
+      event: {
+        type: 'session-key-event',
+        sessionId: 's1',
+        keyEvent: {
+          source: 'otlp-log',
+          eventName: 'codex.sse_event',
+          severity: 'INFO',
+          summary: 'response.completed',
+          observedAt: new Date(0).toISOString(),
+          statusHint: 'completed'
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12.45,
+      event: {
+        type: 'session-key-event',
+        sessionId: 's1',
+        keyEvent: {
+          source: 'history',
+          eventName: null,
+          severity: null,
+          summary: 'history.entry',
+          observedAt: new Date(0).toISOString(),
+          statusHint: null
+        },
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null
@@ -926,14 +1034,59 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         type: 'session-event',
         sessionId: 's1',
         event: {
-          type: 'notify',
-          record: {
-            ts: new Date(0).toISOString(),
-            payload: {
-              type: 'notify-test'
-            }
+          type: 'session-exit',
+          exit: {
+            code: 0,
+            signal: null
           }
         },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 17.5,
+      event: {
+        type: 'session-control',
+        sessionId: 's1',
+        action: 'taken-over',
+        controller: {
+          controllerId: 'human-1',
+          controllerType: 'human',
+          controllerLabel: 'operator',
+          claimedAt: new Date(0).toISOString()
+        },
+        previousController: {
+          controllerId: 'agent-1',
+          controllerType: 'agent',
+          controllerLabel: 'agent one',
+          claimedAt: new Date(0).toISOString()
+        },
+        reason: 'manual takeover',
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 17.6,
+      event: {
+        type: 'session-control',
+        sessionId: 's1',
+        action: 'claimed',
+        controller: {
+          controllerId: 'automation-1',
+          controllerType: 'automation',
+          controllerLabel: null,
+          claimedAt: new Date(0).toISOString()
+        },
+        previousController: null,
+        reason: null,
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null
@@ -1002,6 +1155,14 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           ts: new Date(0).toISOString(),
           payload: {}
         }
+      }
+    },
+    {
+      kind: 'pty.event',
+      sessionId: 's1',
+      event: {
+        type: 'session-exit',
+        exit: null
       }
     },
     {
@@ -1085,6 +1246,24 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: null,
+        conversationId: null,
+        telemetry: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        telemetry: null,
+        controller: 'bad-controller',
+        ts: new Date(0).toISOString(),
+        directoryId: null,
         conversationId: null
       }
     },
@@ -1112,6 +1291,64 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: null,
+        conversationId: null,
+        telemetry: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-control',
+        sessionId: 's1',
+        action: 'claimed',
+        controller: {
+          controllerId: 'agent-1',
+          controllerType: 'agent',
+          controllerLabel: 'agent one',
+          claimedAt: new Date(0).toISOString()
+        },
+        previousController: null,
+        reason: null,
+        ts: new Date(0).toISOString(),
+        directoryId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-control',
+        sessionId: 's1',
+        action: 'claimed',
+        controller: {
+          controllerId: 'agent-1',
+          controllerType: 'bad-type',
+          controllerLabel: 'agent one',
+          claimedAt: new Date(0).toISOString()
+        },
+        previousController: null,
+        reason: null,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-control',
+        sessionId: 's1',
+        action: 'invalid-action',
+        controller: null,
+        previousController: null,
+        reason: null,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
         conversationId: null
       }
     },
@@ -1126,6 +1363,26 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         chunkBase64: 'x',
         ts: new Date(0).toISOString(),
         directoryId: 4,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-key-event',
+        sessionId: 's1',
+        keyEvent: {
+          source: 'unknown-source',
+          eventName: null,
+          severity: null,
+          summary: 'bad source',
+          observedAt: new Date(0).toISOString(),
+          statusHint: null
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
         conversationId: null
       }
     },
@@ -1205,6 +1462,141 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         status: 'bad',
         attentionReason: null,
         live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+        telemetry: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+        telemetry: 'bad'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+        telemetry: {
+          source: 'otlp-log',
+          eventName: 123,
+          severity: null,
+          summary: null,
+          observedAt: new Date(0).toISOString()
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+        telemetry: {
+          source: 'otlp-log',
+          eventName: null,
+          severity: null,
+          summary: 123,
+          observedAt: new Date(0).toISOString()
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+        telemetry: {
+          source: 'invalid-source',
+          eventName: null,
+          severity: null,
+          summary: 'bad source',
+          observedAt: new Date(0).toISOString()
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-key-event',
+        sessionId: 's1',
+        keyEvent: {
+          source: 'otlp-log',
+          eventName: 'codex.sse_event',
+          severity: null,
+          summary: null,
+          observedAt: new Date(0).toISOString(),
+          statusHint: 'bad'
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-key-event',
+        sessionId: 's1',
+        keyEvent: 'bad',
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-key-event',
+        sessionId: 's1',
+        keyEvent: {
+          source: 'history',
+          eventName: null,
+          severity: null,
+          summary: 'history.entry',
+          observedAt: new Date(0).toISOString()
+        },
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null

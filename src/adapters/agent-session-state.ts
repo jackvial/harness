@@ -7,16 +7,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function codexRecord(state: Record<string, unknown>): Record<string, unknown> {
-  const existing = asRecord(state['codex']);
-  if (existing !== null) {
-    return {
-      ...existing
-    };
-  }
-  return {};
-}
-
 function readString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
@@ -30,24 +20,6 @@ function firstNonOptionArg(args: readonly string[]): string | null {
       continue;
     }
     return arg;
-  }
-  return null;
-}
-
-function codexThreadIdFromPayload(payload: Record<string, unknown>): string | null {
-  const candidates = [
-    payload['thread-id'],
-    payload['thread_id'],
-    payload['threadId'],
-    payload['session-id'],
-    payload['session_id'],
-    payload['sessionId']
-  ];
-  for (const candidate of candidates) {
-    const id = readString(candidate);
-    if (id !== null && id.trim().length > 0) {
-      return id.trim();
-    }
   }
   return null;
 }
@@ -82,40 +54,17 @@ export function codexResumeSessionIdFromAdapterState(
 
 export function mergeAdapterStateFromSessionEvent(
   agentType: string,
-  currentState: Record<string, unknown>,
-  event: StreamSessionEvent,
-  observedAt: string
+  _currentState?: Record<string, unknown>,
+  _event?: StreamSessionEvent,
+  _observedAt?: string
 ): Record<string, unknown> | null {
+  void _currentState;
+  void _event;
+  void _observedAt;
   if (agentType !== 'codex') {
     return null;
   }
-
-  if (
-    event.type !== 'notify' &&
-    event.type !== 'turn-completed' &&
-    event.type !== 'attention-required'
-  ) {
-    return null;
-  }
-
-  const threadId = codexThreadIdFromPayload(event.record.payload);
-  if (threadId === null) {
-    return null;
-  }
-
-  const currentResumeId = codexResumeSessionIdFromAdapterState(currentState);
-  if (currentResumeId === threadId) {
-    return null;
-  }
-
-  const updatedCodex = codexRecord(currentState);
-  updatedCodex['resumeSessionId'] = threadId;
-  updatedCodex['lastObservedAt'] = observedAt;
-
-  return {
-    ...currentState,
-    codex: updatedCodex
-  };
+  return null;
 }
 
 export function buildAgentStartArgs(

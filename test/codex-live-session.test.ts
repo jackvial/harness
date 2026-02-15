@@ -1,16 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
-  buildTomlStringArray,
-  classifyNotifyRecord,
   normalizeTerminalColorHex,
-  parseNotifyRecordLine,
   startCodexLiveSession,
-  terminalHexToOscColor,
-  type NotifyPayload
+  terminalHexToOscColor
 } from '../src/codex/live-session.ts';
 import type { BrokerAttachmentHandlers } from '../src/pty/session-broker.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
@@ -70,16 +66,6 @@ class FakeBroker {
   }
 }
 
-void test('buildTomlStringArray escapes quotes and backslashes', () => {
-  const value = buildTomlStringArray([
-    '/usr/bin/env',
-    'node',
-    'a"b',
-    'c\\d'
-  ]);
-  assert.equal(value, '["/usr/bin/env","node","a\\"b","c\\\\d"]');
-});
-
 void test('terminal color normalization and OSC formatting are deterministic', () => {
   assert.equal(normalizeTerminalColorHex(undefined, '112233'), '112233');
   assert.equal(normalizeTerminalColorHex('#A1b2C3', '112233'), 'a1b2c3');
@@ -88,95 +74,28 @@ void test('terminal color normalization and OSC formatting are deterministic', (
   assert.equal(terminalHexToOscColor('nope'), 'rgb:d0d0/d7d7/dede');
 });
 
-void test('parseNotifyRecordLine validates json structure', () => {
-  assert.equal(parseNotifyRecordLine('not-json'), null);
-  assert.equal(parseNotifyRecordLine('1'), null);
-  assert.equal(parseNotifyRecordLine('{"ts":1}'), null);
-  assert.equal(parseNotifyRecordLine('{"ts":"x","payload":"bad"}'), null);
-
-  const parsed = parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00Z","payload":{"type":"agent-turn-complete"}}');
-  assert.deepEqual(parsed, {
-    ts: '2026-01-01T00:00:00Z',
-    payload: {
-      type: 'agent-turn-complete'
-    }
-  });
-});
-
-void test('classifyNotifyRecord maps completion and attention', () => {
-  const completion = classifyNotifyRecord({
-    ts: 't',
-    payload: {
-      type: 'agent-turn-complete'
-    }
-  });
-  assert.deepEqual(completion, { type: 'turn-completed' });
-  const completionVariant = classifyNotifyRecord({
-    ts: 't',
-    payload: {
-      type: 'agent.turn-completed'
-    }
-  });
-  assert.deepEqual(completionVariant, { type: 'turn-completed' });
-
-  const approval = classifyNotifyRecord({
-    ts: 't',
-    payload: {
-      type: 'item/file-change/request-approval'
-    }
-  });
-  assert.deepEqual(approval, { type: 'attention-required', reason: 'approval' });
-
-  const input = classifyNotifyRecord({
-    ts: 't',
-    payload: {
-      type: 'item/tool/request-input'
-    }
-  });
-  assert.deepEqual(input, { type: 'attention-required', reason: 'user-input' });
-
-  const unknown = classifyNotifyRecord({
-    ts: 't',
-    payload: {
-      message: 'none'
-    }
-  });
-  assert.equal(unknown, null);
-});
-
-void test('codex live session emits terminal and notify-derived events', () => {
+void test('codex live session emits terminal and exit events', () => {
   const broker = new FakeBroker();
-  const setIntervalCalls: Array<{ callback: () => void; interval: number }> = [];
-  const clearHandles: Array<NodeJS.Timeout> = [];
-  let notifyContent = '';
-  const readFileCalls: string[] = [];
-  let startOptions: { command?: string; commandArgs?: string[]; env?: NodeJS.ProcessEnv; cwd?: string } | undefined;
+  let startOptions:
+    | {
+        command?: string;
+        commandArgs?: string[];
+        env?: NodeJS.ProcessEnv;
+        cwd?: string;
+      }
+    | undefined;
 
   const session = startCodexLiveSession(
     {
       command: 'codex-custom',
       args: ['--model', 'gpt-5.3-codex'],
       env: { ...process.env, HARNESS_TEST: '1' },
-      cwd: '/tmp/harness-session',
-      notifyFilePath: '/tmp/harness-notify.jsonl',
-      notifyPollMs: 250,
-      relayScriptPath: '/tmp/relay.ts'
+      cwd: '/tmp/harness-session'
     },
     {
       startBroker: (options) => {
         startOptions = options;
         return broker;
-      },
-      readFile: (path) => {
-        readFileCalls.push(path);
-        return notifyContent;
-      },
-      setIntervalFn: (callback, intervalMs) => {
-        setIntervalCalls.push({ callback, interval: intervalMs });
-        return { hasRef: () => true } as unknown as NodeJS.Timeout;
-      },
-      clearIntervalFn: (handle) => {
-        clearHandles.push(handle);
       }
     }
   );
@@ -193,64 +112,12 @@ void test('codex live session emits terminal and notify-derived events', () => {
   assert.equal(firstSnapshot.lines[0], 'hello');
   assert.equal(firstSnapshot.activeScreen, 'primary');
 
-  notifyContent = [
-    JSON.stringify({
-      ts: '2026-02-14T04:00:00.000Z',
-      payload: {
-        type: 'agent-turn-complete'
-      } satisfies NotifyPayload
-    }),
-    JSON.stringify({
-      ts: '2026-02-14T04:00:01.000Z',
-      payload: {
-        type: 'item/tool/request-input'
-      } satisfies NotifyPayload
-    }),
-    ''
-  ].join('\n');
-
-  const poll = setIntervalCalls[0];
-  assert.ok(poll !== undefined);
-  assert.equal(poll?.interval, 250);
-  poll?.callback();
-
-  assert.deepEqual(events, [
-    'terminal-output',
-    'session-exit',
-    'notify',
-    'turn-completed',
-    'notify',
-    'attention-required'
-  ]);
+  assert.deepEqual(events, ['terminal-output', 'session-exit']);
 
   assert.equal(startOptions?.command, 'codex-custom');
-  assert.deepEqual(startOptions?.commandArgs, [
-    '--no-alt-screen',
-    '-c',
-    'notify=["/usr/bin/env","' + process.execPath + '","--experimental-strip-types","/tmp/relay.ts","/tmp/harness-notify.jsonl"]',
-    '--model',
-    'gpt-5.3-codex'
-  ]);
+  assert.deepEqual(startOptions?.commandArgs, ['--no-alt-screen', '--model', 'gpt-5.3-codex']);
   assert.equal(startOptions?.env?.HARNESS_TEST, '1');
   assert.equal(startOptions?.cwd, '/tmp/harness-session');
-  assert.equal(readFileCalls.length, 1);
-
-  // Re-poll with no new bytes to exercise empty-delta path.
-  poll?.callback();
-
-  // Truncated file plus invalid lines should be tolerated.
-  notifyContent = [
-    '',
-    'not-json',
-    JSON.stringify({
-      ts: '2026-02-14T04:00:03.000Z',
-      payload: {
-        type: 'item/unknown'
-      } satisfies NotifyPayload
-    }),
-    ''
-  ].join('\n');
-  poll?.callback();
 
   const attachmentId = session.attach({
     onData: () => {
@@ -286,14 +153,12 @@ void test('codex live session emits terminal and notify-derived events', () => {
   session.close();
   assert.equal(broker.closeCount, 1);
   assert.equal(broker.detachCount, 2);
-  assert.equal(clearHandles.length, 1);
 });
 
 void test('codex live session can disable snapshot ingest while preserving output events', () => {
   const broker = new FakeBroker();
   const session = startCodexLiveSession(
     {
-      useNotifyHook: false,
       enableSnapshotModel: false
     },
     {
@@ -329,7 +194,6 @@ void test('codex live session replies to OSC terminal color queries', () => {
   });
   const session = startCodexLiveSession(
     {
-      useNotifyHook: false,
       env: {
         ...process.env,
         HARNESS_TERM_FG: '#010203',
@@ -339,14 +203,7 @@ void test('codex live session replies to OSC terminal color queries', () => {
       terminalBackgroundHex: '0d0e0f'
     },
     {
-      startBroker: () => broker,
-      readFile: () => '',
-      setIntervalFn: () => {
-        throw new Error('notify polling should be disabled');
-      },
-      clearIntervalFn: () => {
-        // no-op
-      }
+      startBroker: () => broker
     }
   );
 
@@ -475,18 +332,9 @@ void test('codex live session replies to OSC terminal color queries', () => {
 void test('codex live session ignores OSC indexed queries with non-numeric indices', () => {
   const broker = new FakeBroker();
   const session = startCodexLiveSession(
+    {},
     {
-      useNotifyHook: false
-    },
-    {
-      startBroker: () => broker,
-      readFile: () => '',
-      setIntervalFn: () => {
-        throw new Error('notify polling should be disabled');
-      },
-      clearIntervalFn: () => {
-        // no-op
-      }
+      startBroker: () => broker
     }
   );
 
@@ -516,7 +364,7 @@ void test('codex live session e2e completes terminal query handshake with config
     "process.stdin.setEncoding('utf8');",
     'if (process.stdin.isTTY) { process.stdin.setRawMode(true); }',
     'process.stdin.resume();',
-    'process.stdin.on(\'data\', (chunk) => {',
+    "process.stdin.on('data', (chunk) => {",
     '  observed += chunk;',
     '  if (required.every((token) => observed.includes(token))) {',
     '    clearTimeout(timeout);',
@@ -530,7 +378,6 @@ void test('codex live session e2e completes terminal query handshake with config
     command: process.execPath,
     baseArgs: [],
     args: ['-e', startupScript],
-    useNotifyHook: false,
     initialCols: 91,
     initialRows: 29,
     terminalForegroundHex: '#112233',
@@ -581,7 +428,6 @@ void test('codex live session e2e preserves terminal width across startup and re
     command,
     baseArgs: [],
     args: ['-lc', commandScript],
-    useNotifyHook: false,
     initialCols: 91,
     initialRows: 29
   });
@@ -623,124 +469,10 @@ void test('codex live session e2e preserves terminal width across startup and re
   session.close();
 });
 
-void test('codex live session handles disabled notify hook and poll edge cases', () => {
-  const broker = new FakeBroker();
-  let callCount = 0;
-  const clearHandles: Array<NodeJS.Timeout> = [];
-
-  const session = startCodexLiveSession(
-    {
-      useNotifyHook: false,
-      notifyFilePath: '/tmp/notify-disabled.jsonl'
-    },
-    {
-      startBroker: () => broker,
-      readFile: () => {
-        callCount += 1;
-        if (callCount === 1) {
-          const enoent = new Error('missing') as Error & { code: string };
-          enoent.code = 'ENOENT';
-          throw enoent;
-        }
-        if (callCount === 2) {
-          return '{"ts":"x","payload":{"type":"agent-turn-complete"}}\n';
-        }
-        return '';
-      },
-      setIntervalFn: () => {
-        throw new Error('setInterval should not be called when notify is disabled');
-      },
-      clearIntervalFn: (handle) => {
-        clearHandles.push(handle);
-      }
-    }
-  );
-
-  const events: string[] = [];
-  session.onEvent((event) => {
-    events.push(event.type);
-  });
-
-  // No notify timer should exist; exercise event path directly.
-  broker.emitData(1, Buffer.from('x', 'utf8'));
-
-  session.close();
-  assert.deepEqual(events, ['terminal-output']);
-  assert.equal(clearHandles.length, 0);
-});
-
-void test('codex live session propagate non-ENOENT notify read errors', () => {
-  const broker = new FakeBroker();
-  const setIntervalCalls: Array<{ callback: () => void; interval: number }> = [];
-
-  startCodexLiveSession(
-    {
-      notifyFilePath: '/tmp/notify-error.jsonl'
-    },
-    {
-      startBroker: () => broker,
-      readFile: () => {
-        throw new Error('boom');
-      },
-      setIntervalFn: (callback, intervalMs) => {
-        setIntervalCalls.push({ callback, interval: intervalMs });
-        return { hasRef: () => true } as unknown as NodeJS.Timeout;
-      },
-      clearIntervalFn: () => {
-        // no-op
-      }
-    }
-  );
-
-  const poll = setIntervalCalls[0];
-  assert.ok(poll !== undefined);
-  assert.throws(() => {
-    poll?.callback();
-  }, /boom/);
-});
-
-void test('codex live session ignores ENOENT notify read errors', () => {
-  const broker = new FakeBroker();
-  const setIntervalCalls: Array<{ callback: () => void; interval: number }> = [];
-
-  startCodexLiveSession(
-    {
-      notifyFilePath: '/tmp/notify-enoent.jsonl'
-    },
-    {
-      startBroker: () => broker,
-      readFile: () => {
-        const enoent = new Error('missing') as Error & { code: string };
-        enoent.code = 'ENOENT';
-        throw enoent;
-      },
-      setIntervalFn: (callback, intervalMs) => {
-        setIntervalCalls.push({ callback, interval: intervalMs });
-        return { hasRef: () => true } as unknown as NodeJS.Timeout;
-      },
-      clearIntervalFn: () => {
-        // no-op
-      }
-    }
-  );
-
-  const poll = setIntervalCalls[0];
-  assert.ok(poll !== undefined);
-  assert.doesNotThrow(() => {
-    poll?.callback();
-  });
-});
-
 void test('codex live session supports default dependency paths', async () => {
-  const dirPath = mkdtempSync(join(tmpdir(), 'harness-codex-live-defaults-'));
-  const notifyPath = join(dirPath, 'notify.jsonl');
-  writeFileSync(notifyPath, '', 'utf8');
-
   const session = startCodexLiveSession({
     command: '/bin/echo',
-    args: ['hello'],
-    notifyFilePath: notifyPath,
-    notifyPollMs: 5
+    args: ['hello']
   });
 
   await new Promise((resolve) => {
@@ -748,11 +480,9 @@ void test('codex live session supports default dependency paths', async () => {
   });
   session.close();
   assert.equal(session.latestCursorValue() >= 0, true);
-
-  rmSync(dirPath, { recursive: true, force: true });
 });
 
-void test('codex live session supports custom base args without notify hook', () => {
+void test('codex live session supports custom base args', () => {
   const broker = new FakeBroker();
   let startOptions:
     | {
@@ -767,7 +497,6 @@ void test('codex live session supports custom base args without notify hook', ()
   const session = startCodexLiveSession(
     {
       baseArgs: ['--no-alt-screen', '--search'],
-      useNotifyHook: false,
       initialCols: 120,
       initialRows: 35
     },
@@ -775,13 +504,6 @@ void test('codex live session supports custom base args without notify hook', ()
       startBroker: (options) => {
         startOptions = options;
         return broker;
-      },
-      readFile: () => '',
-      setIntervalFn: () => {
-        throw new Error('setInterval should not be called when notify is disabled');
-      },
-      clearIntervalFn: () => {
-        // no-op
       }
     }
   );
@@ -793,61 +515,4 @@ void test('codex live session supports custom base args without notify hook', ()
   assert.equal(snapshot.cols, 120);
   assert.equal(snapshot.rows, 35);
   session.close();
-});
-
-void test('codex live session uses unique default notify file per session', () => {
-  const brokerA = new FakeBroker();
-  const brokerB = new FakeBroker();
-  const startOptions: Array<{ command?: string; commandArgs?: string[]; env?: NodeJS.ProcessEnv }> = [];
-  const intervalCallbacks: Array<() => void> = [];
-  const intervalHandles: NodeJS.Timeout[] = [];
-
-  const startSession = (broker: FakeBroker) =>
-    startCodexLiveSession(
-      {},
-      {
-        startBroker: (options) => {
-          startOptions.push(options ?? {});
-          return broker;
-        },
-        readFile: () => '',
-        setIntervalFn: (callback) => {
-          intervalCallbacks.push(callback);
-          const handle = { hasRef: () => true } as unknown as NodeJS.Timeout;
-          intervalHandles.push(handle);
-          return handle;
-        },
-        clearIntervalFn: () => {
-          // no-op
-        }
-      }
-    );
-
-  const sessionA = startSession(brokerA);
-  const sessionB = startSession(brokerB);
-
-  const extractNotifyPath = (
-    args: readonly string[] | undefined
-  ): string | null => {
-    if (args === undefined) {
-      return null;
-    }
-    const configArg = args.find((value) => value.startsWith('notify=['));
-    if (configArg === undefined) {
-      return null;
-    }
-    const match = /"([^"]+\.jsonl)"/.exec(configArg);
-    return match?.[1] ?? null;
-  };
-
-  const notifyPathA = extractNotifyPath(startOptions[0]?.commandArgs);
-  const notifyPathB = extractNotifyPath(startOptions[1]?.commandArgs);
-  assert.notEqual(notifyPathA, null);
-  assert.notEqual(notifyPathB, null);
-  assert.notEqual(notifyPathA, notifyPathB);
-  assert.equal(intervalCallbacks.length, 2);
-  assert.equal(intervalHandles.length, 2);
-
-  sessionA.close();
-  sessionB.close();
 });

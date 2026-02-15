@@ -71,6 +71,19 @@ interface UiModalOverlay {
   readonly rows: readonly string[];
 }
 
+interface UiButtonContent {
+  readonly label: string;
+  readonly prefixIcon?: string;
+  readonly suffixIcon?: string;
+  readonly paddingX?: number;
+}
+
+interface UiTrailingLabelRowOptions {
+  readonly col?: number;
+  readonly width?: number;
+  readonly gap?: number;
+}
+
 const MODAL_FRAME_FG: UiColor = { kind: 'indexed', index: 252 };
 const MODAL_TITLE_FG: UiColor = { kind: 'indexed', index: 231 };
 const MODAL_BODY_FG: UiColor = { kind: 'indexed', index: 253 };
@@ -176,6 +189,25 @@ export function truncateUiText(text: string, width: number): string {
   return `${consumed.map((entry) => entry.glyph).join('')}…`;
 }
 
+export function formatUiButton(content: UiButtonContent): string {
+  const label = content.label.trim();
+  const prefixIcon = content.prefixIcon?.trim();
+  const suffixIcon = content.suffixIcon?.trim();
+  const paddingX = clamp(Math.floor(content.paddingX ?? 1), 0, 8);
+
+  const segments: string[] = [];
+  if (prefixIcon !== undefined && prefixIcon.length > 0) {
+    segments.push(prefixIcon);
+  }
+  segments.push(label.length > 0 ? label : 'button');
+  if (suffixIcon !== undefined && suffixIcon.length > 0) {
+    segments.push(suffixIcon);
+  }
+
+  const padded = `${' '.repeat(paddingX)}${segments.join(' ')}${' '.repeat(paddingX)}`;
+  return `[${padded}]`;
+}
+
 export function drawUiAlignedText(
   surface: UiSurface,
   col: number,
@@ -211,6 +243,37 @@ export function paintUiRow(
 ): void {
   fillUiRow(surface, row, fillStyle);
   drawUiText(surface, col, row, text, textStyle);
+}
+
+export function paintUiRowWithTrailingLabel(
+  surface: UiSurface,
+  row: number,
+  leftText: string,
+  trailingLabel: string,
+  leftStyle: UiStyle,
+  trailingStyle: UiStyle,
+  fillStyle: UiStyle = leftStyle,
+  options: UiTrailingLabelRowOptions = {}
+): void {
+  const col = Math.max(0, Math.floor(options.col ?? 0));
+  const width = Math.max(0, Math.floor(options.width ?? (surface.cols - col)));
+  const gap = clamp(Math.floor(options.gap ?? 1), 0, width);
+  fillUiRow(surface, row, fillStyle);
+  if (width === 0) {
+    return;
+  }
+
+  const clippedTrailing = truncateUiText(trailingLabel, width);
+  const trailingWidth = Math.max(0, measureDisplayWidth(clippedTrailing));
+  const reservedGap = trailingWidth > 0 ? gap : 0;
+  const leftWidth = Math.max(0, width - trailingWidth - reservedGap);
+  const clippedLeft = truncateUiText(leftText, leftWidth);
+  if (clippedLeft.length > 0) {
+    drawUiText(surface, col, row, clippedLeft, leftStyle);
+  }
+  if (clippedTrailing.length > 0) {
+    drawUiText(surface, col + width - trailingWidth, row, clippedTrailing, trailingStyle);
+  }
 }
 
 export function fillUiRect(surface: UiSurface, rect: UiRect, style: UiStyle): void {
@@ -413,4 +476,22 @@ export function buildUiModalOverlay(options: UiModalOverlayOptions): UiModalOver
     height: rect.height,
     rows: renderUiSurfaceAnsiRows(surface)
   };
+}
+
+export function isUiModalOverlayHit(
+  overlay: UiModalOverlay,
+  col: number,
+  row: number
+): boolean {
+  if (col < 1 || row < 1) {
+    return false;
+  }
+  const colZero = col - 1;
+  const rowZero = row - 1;
+  return (
+    colZero >= overlay.left &&
+    colZero < overlay.left + overlay.width &&
+    rowZero >= overlay.top &&
+    rowZero < overlay.top + overlay.height
+  );
 }

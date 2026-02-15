@@ -137,12 +137,10 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
           kind: 'pty.event',
           sessionId: 'session-1',
           event: {
-            type: 'notify',
-            record: {
-              ts: new Date(0).toISOString(),
-              payload: {
-                type: 'notify'
-              }
+            type: 'session-exit',
+            exit: {
+              code: 0,
+              signal: null
             }
           }
         })
@@ -206,12 +204,8 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
   await delay(10);
 
   assert.equal(
-    observed.some((envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'notify'),
-    true
-  );
-  assert.equal(
     observed.some((envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'session-exit'),
-    false
+    true
   );
 
   await assert.rejects(

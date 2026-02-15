@@ -1,7 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import {
   startSingleSessionBroker,
   type BrokerAttachmentHandlers,
@@ -34,25 +30,12 @@ interface SessionBrokerLike {
   processId(): number | null;
 }
 
-interface NotifyRecord {
-  ts: string;
-  payload: NotifyPayload;
-}
-
-export interface NotifyPayload {
-  [key: string]: unknown;
-}
-
 interface StartCodexLiveSessionOptions {
   command?: string;
   args?: string[];
   env?: NodeJS.ProcessEnv;
   cwd?: string;
   baseArgs?: string[];
-  useNotifyHook?: boolean;
-  notifyFilePath?: string;
-  notifyPollMs?: number;
-  relayScriptPath?: string;
   maxBacklogBytes?: number;
   initialCols?: number;
   initialRows?: number;
@@ -68,34 +51,16 @@ export type CodexLiveEvent =
       chunk: Buffer;
     }
   | {
-      type: 'notify';
-      record: NotifyRecord;
-    }
-  | {
-      type: 'turn-completed';
-      record: NotifyRecord;
-    }
-  | {
-      type: 'attention-required';
-      reason: string;
-      record: NotifyRecord;
-    }
-  | {
       type: 'session-exit';
       exit: PtyExit;
     };
 
 interface LiveSessionDependencies {
   startBroker?: (options?: StartPtySessionOptions, maxBacklogBytes?: number) => SessionBrokerLike;
-  readFile?: (path: string) => string;
-  setIntervalFn?: (callback: () => void, intervalMs: number) => NodeJS.Timeout;
-  clearIntervalFn?: (handle: NodeJS.Timeout) => void;
 }
 
 const DEFAULT_COMMAND = 'codex';
 const DEFAULT_BASE_ARGS = ['--no-alt-screen'];
-const DEFAULT_NOTIFY_POLL_MS = 100;
-const DEFAULT_RELAY_SCRIPT_PATH = join(process.cwd(), 'scripts/codex-notify-relay.ts');
 const DEFAULT_TERMINAL_FOREGROUND_HEX = 'd0d7de';
 const DEFAULT_TERMINAL_BACKGROUND_HEX = '0f1419';
 const DEFAULT_INDEXED_TERMINAL_HEX_BY_CODE: Readonly<Record<number, string>> = {
@@ -410,83 +375,13 @@ class TerminalQueryResponder {
   }
 }
 
-export function buildTomlStringArray(values: string[]): string {
-  const escaped = values.map((value) => {
-    const withBackslashEscaped = value.replaceAll('\\', '\\\\');
-    const withQuoteEscaped = withBackslashEscaped.replaceAll('"', '\\"');
-    return `"${withQuoteEscaped}"`;
-  });
-  return `[${escaped.join(',')}]`;
-}
-
-export function parseNotifyRecordLine(line: string): NotifyRecord | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== 'object' || parsed === null) {
-    return null;
-  }
-  const record = parsed as { ts?: unknown; payload?: unknown };
-  if (typeof record.ts !== 'string') {
-    return null;
-  }
-  if (typeof record.payload !== 'object' || record.payload === null) {
-    return null;
-  }
-
-  return {
-    ts: record.ts,
-    payload: record.payload as NotifyPayload
-  };
-}
-
-export function classifyNotifyRecord(record: NotifyRecord):
-| { type: 'turn-completed' }
-| { type: 'attention-required'; reason: string }
-| null {
-  const eventType = record.payload.type;
-  if (typeof eventType !== 'string') {
-    return null;
-  }
-  const normalizedEventType = eventType.toLowerCase();
-
-  if (
-    normalizedEventType === 'agent-turn-complete' ||
-    normalizedEventType.includes('turn-complete') ||
-    normalizedEventType.includes('turn.complete') ||
-    normalizedEventType.includes('turn_completed')
-  ) {
-    return { type: 'turn-completed' };
-  }
-
-  if (normalizedEventType.includes('approval')) {
-    return { type: 'attention-required', reason: 'approval' };
-  }
-
-  if (normalizedEventType.includes('input')) {
-    return { type: 'attention-required', reason: 'user-input' };
-  }
-
-  return null;
-}
-
 class CodexLiveSession {
   private readonly broker: SessionBrokerLike;
-  private readonly readFile: (path: string) => string;
-  private readonly clearIntervalFn: (handle: NodeJS.Timeout) => void;
-  private readonly notifyFilePath: string;
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
   private readonly snapshotOracle: TerminalSnapshotOracle;
   private readonly snapshotModelEnabled: boolean;
   private readonly terminalQueryResponder: TerminalQueryResponder;
   private readonly brokerAttachmentId: string;
-  private readonly notifyTimer: NodeJS.Timeout | null;
-  private notifyOffset = 0;
-  private notifyRemainder = '';
   private closed = false;
 
   constructor(
@@ -499,31 +394,12 @@ class CodexLiveSession {
     this.snapshotModelEnabled = options.enableSnapshotModel ?? true;
 
     const command = options.command ?? DEFAULT_COMMAND;
-    const useNotifyHook = options.useNotifyHook ?? true;
-    const notifyPollMs = options.notifyPollMs ?? DEFAULT_NOTIFY_POLL_MS;
-    this.notifyFilePath =
-      options.notifyFilePath ??
-      join(tmpdir(), `harness-codex-notify-${process.pid}-${randomUUID()}.jsonl`);
-
-    const relayScriptPath = resolve(options.relayScriptPath ?? DEFAULT_RELAY_SCRIPT_PATH);
-    const notifyCommand = [
-      '/usr/bin/env',
-      process.execPath,
-      '--experimental-strip-types',
-      relayScriptPath,
-      this.notifyFilePath
-    ];
-
     const commandArgs = [
       ...(options.baseArgs ?? DEFAULT_BASE_ARGS),
-      ...(useNotifyHook ? ['-c', `notify=${buildTomlStringArray(notifyCommand)}`] : []),
       ...(options.args ?? [])
     ];
 
     const startBroker = dependencies.startBroker ?? startSingleSessionBroker;
-    this.readFile = dependencies.readFile ?? ((path) => readFileSync(path, 'utf8'));
-    const setIntervalFn = dependencies.setIntervalFn ?? setInterval;
-    this.clearIntervalFn = dependencies.clearIntervalFn ?? clearInterval;
 
     const startOptions: StartPtySessionOptions = {
       command,
@@ -566,14 +442,6 @@ class CodexLiveSession {
         });
       }
     });
-
-    if (useNotifyHook) {
-      this.notifyTimer = setIntervalFn(() => {
-        this.pollNotifyFile();
-      }, notifyPollMs);
-    } else {
-      this.notifyTimer = null;
-    }
   }
 
   onEvent(listener: (event: CodexLiveEvent) => void): () => void {
@@ -626,74 +494,8 @@ class CodexLiveSession {
     }
 
     this.closed = true;
-    if (this.notifyTimer !== null) {
-      this.clearIntervalFn(this.notifyTimer);
-    }
     this.broker.detach(this.brokerAttachmentId);
     this.broker.close();
-  }
-
-  private pollNotifyFile(): void {
-    let content: string;
-    try {
-      content = this.readFile(this.notifyFilePath);
-    } catch (error) {
-      const errorWithCode = error as { code?: unknown };
-      if (errorWithCode.code === 'ENOENT') {
-        return;
-      }
-      throw error;
-    }
-
-    if (content.length < this.notifyOffset) {
-      this.notifyOffset = 0;
-      this.notifyRemainder = '';
-    }
-
-    const delta = content.slice(this.notifyOffset);
-    if (delta.length === 0) {
-      return;
-    }
-    this.notifyOffset = content.length;
-
-    const buffered = `${this.notifyRemainder}${delta}`;
-    const lines = buffered.split('\n');
-    this.notifyRemainder = lines.pop()!;
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.length === 0) {
-        continue;
-      }
-
-      const record = parseNotifyRecordLine(trimmed);
-      if (record === null) {
-        continue;
-      }
-      this.emit({
-        type: 'notify',
-        record
-      });
-
-      const classification = classifyNotifyRecord(record);
-      if (classification === null) {
-        continue;
-      }
-
-      if (classification.type === 'turn-completed') {
-        this.emit({
-          type: 'turn-completed',
-          record
-        });
-        continue;
-      }
-
-      this.emit({
-        type: 'attention-required',
-        reason: classification.reason,
-        record
-      });
-    }
   }
 
   private emit(event: CodexLiveEvent): void {

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { connect, type Socket } from 'node:net';
+import { createServer, request as httpRequest } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -177,10 +178,182 @@ async function writeRaw(address: { host: string; port: number }, lines: string):
   });
 }
 
+async function postJson(
+  address: { host: string; port: number },
+  path: string,
+  payload: unknown
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload);
+    const req = httpRequest(
+      {
+        host: address.host,
+        port: address.port,
+        path,
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(body)
+        }
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString('utf8')
+          });
+        });
+      }
+    );
+    req.once('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+async function postRaw(
+  address: { host: string; port: number },
+  path: string,
+  method: string,
+  body: string
+): Promise<{ statusCode: number; body: string }> {
+  return await new Promise((resolve, reject) => {
+    const req = httpRequest(
+      {
+        host: address.host,
+        port: address.port,
+        path,
+        method,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(body)
+        }
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString('utf8')
+          });
+        });
+      }
+    );
+    req.once('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 function makeTempStateStorePath(): string {
   const dir = mkdtempSync(join(tmpdir(), 'harness-stream-server-'));
   return join(dir, 'control-plane.sqlite');
 }
+
+void test('stream server dispatches lifecycle hooks from observed events', async () => {
+  const webhookEvents: string[] = [];
+  const webhookServer = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
+      if (body.length > 0) {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        const eventType = parsed['eventType'];
+        if (typeof eventType === 'string') {
+          webhookEvents.push(eventType);
+        }
+      }
+      response.statusCode = 200;
+      response.end('ok');
+    });
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    webhookServer.once('error', rejectListen);
+    webhookServer.listen(0, '127.0.0.1', () => resolveListen());
+  });
+  const webhookAddress = webhookServer.address();
+  if (webhookAddress === null || typeof webhookAddress === 'string') {
+    await new Promise<void>((resolveClose) => {
+      webhookServer.close(() => resolveClose());
+    });
+    throw new Error('webhook server missing tcp address');
+  }
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    lifecycleHooks: {
+      enabled: true,
+      providers: {
+        codex: true,
+        claude: true,
+        controlPlane: true
+      },
+      peonPing: {
+        enabled: false,
+        baseUrl: 'http://127.0.0.1:19998',
+        timeoutMs: 1200,
+        eventCategoryMap: {}
+      },
+      webhooks: [
+        {
+          name: 'test-hook',
+          enabled: true,
+          url: `http://127.0.0.1:${String(webhookAddress.port)}/lifecycle`,
+          method: 'POST',
+          timeoutMs: 1200,
+          headers: {},
+          eventTypes: []
+        }
+      ]
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-hooks',
+      path: '/tmp/hooks'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-hooks',
+      directoryId: 'directory-hooks',
+      title: 'hooks',
+      agentType: 'codex'
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-hooks',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    await delay(25);
+  } finally {
+    client.close();
+    await server.close();
+    await new Promise<void>((resolveClose) => {
+      webhookServer.close(() => resolveClose());
+    });
+  }
+
+  assert.equal(webhookEvents.includes('thread.created'), true);
+  assert.equal(webhookEvents.includes('session.started'), true);
+});
 
 void test('stream server supports start/attach/io/events/cleanup over one protocol path', async () => {
   const created: FakeLiveSession[] = [];
@@ -203,6 +376,7 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   await coldServer.start();
   await coldServer.start();
   const coldAddress = coldServer.address();
+  assert.equal(coldServer.telemetryAddressInfo(), null);
 
   const clientA = await connectControlPlaneStreamClient({
     host: coldAddress.address,
@@ -296,44 +470,13 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   });
 
   created[0]!.emitEvent({
-    type: 'notify',
-    record: {
-      ts: new Date(0).toISOString(),
-      payload: {
-        type: 'notify-test'
-      }
-    }
-  });
-  created[0]!.emitEvent({
-    type: 'attention-required',
-    reason: 'approval',
-    record: {
-      ts: new Date(0).toISOString(),
-      payload: {
-        type: 'approval-needed'
-      }
-    }
-  });
-  created[0]!.emitEvent({
-    type: 'turn-completed',
-    record: {
-      ts: new Date(0).toISOString(),
-      payload: {
-        type: 'agent-turn-complete'
-      }
-    }
-  });
-  created[0]!.emitEvent({
     type: 'terminal-output',
     cursor: 99,
     chunk: Buffer.from('ignored', 'utf8')
   });
 
   await delay(10);
-  assert.equal(
-    observedA.some((envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'notify'),
-    true
-  );
+  assert.equal(observedA.some((envelope) => envelope.kind === 'pty.event'), false);
   assert.equal(
     observedB.some((envelope) => envelope.kind === 'pty.event'),
     false
@@ -579,6 +722,293 @@ void test('stream server supports session.list, session.status, and session.snap
   }
 });
 
+void test(
+  'stream server list/query options apply tenant scoping and snapshot replay covers stale/null branches',
+  async () => {
+    const server = await startControlPlaneStreamServer({
+      startSession: (input) => new FakeLiveSession(input)
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port
+    });
+    const observed = collectEnvelopes(client);
+
+    try {
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-scope-a',
+        tenantId: 'tenant-scope',
+        userId: 'user-scope',
+        workspaceId: 'workspace-scope',
+        path: '/tmp/scope-a'
+      });
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-scope-b',
+        tenantId: 'tenant-other',
+        userId: 'user-other',
+        workspaceId: 'workspace-other',
+        path: '/tmp/scope-b'
+      });
+
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId: 'conversation-scope-a',
+        directoryId: 'directory-scope-a',
+        title: 'scope-a',
+        agentType: 'codex'
+      });
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId: 'conversation-scope-b',
+        directoryId: 'directory-scope-b',
+        title: 'scope-b',
+        agentType: 'codex'
+      });
+      const generatedDirectory = await client.sendCommand({
+        type: 'directory.upsert',
+        path: '/tmp/scope-generated'
+      });
+      const generatedDirectoryId = (generatedDirectory['directory'] as Record<string, unknown>)[
+        'directoryId'
+      ] as string;
+      assert.equal(generatedDirectoryId.startsWith('directory-'), true);
+      const generatedConversation = await client.sendCommand({
+        type: 'conversation.create',
+        directoryId: generatedDirectoryId,
+        title: 'scope-generated',
+        agentType: 'codex'
+      });
+      const generatedConversationId = (generatedConversation['conversation'] as Record<string, unknown>)[
+        'conversationId'
+      ] as string;
+      assert.equal(generatedConversationId.startsWith('conversation-'), true);
+
+      const scopedDirectories = await client.sendCommand({
+        type: 'directory.list',
+        tenantId: 'tenant-scope',
+        userId: 'user-scope',
+        workspaceId: 'workspace-scope',
+        limit: 1
+      });
+      const directoryRows = scopedDirectories['directories'] as Array<Record<string, unknown>>;
+      assert.equal(directoryRows.length, 1);
+      assert.equal(directoryRows[0]?.['directoryId'], 'directory-scope-a');
+
+      const scopedConversations = await client.sendCommand({
+        type: 'conversation.list',
+        directoryId: 'directory-scope-a',
+        tenantId: 'tenant-scope',
+        userId: 'user-scope',
+        workspaceId: 'workspace-scope',
+        limit: 1
+      });
+      const conversationRows = scopedConversations['conversations'] as Array<Record<string, unknown>>;
+      assert.equal(conversationRows.length, 1);
+      assert.equal(conversationRows[0]?.['conversationId'], 'conversation-scope-a');
+
+      const replaySubscription = await client.sendCommand({
+        type: 'stream.subscribe',
+        includeOutput: false,
+        directoryId: 'directory-scope-a',
+        afterCursor: Number.MAX_SAFE_INTEGER
+      });
+      const replaySubscriptionId = replaySubscription['subscriptionId'];
+      assert.equal(typeof replaySubscriptionId, 'string');
+      await delay(20);
+      assert.equal(
+        observed.some(
+          (envelope) =>
+            envelope.kind === 'stream.event' && envelope.subscriptionId === replaySubscriptionId
+        ),
+        false
+      );
+      const defaultSubscription = await client.sendCommand({
+        type: 'stream.subscribe',
+        conversationId: 'conversation-scope-a'
+      });
+      const defaultSubscriptionId = defaultSubscription['subscriptionId'];
+      assert.equal(typeof defaultSubscriptionId, 'string');
+      await client.sendCommand({
+        type: 'stream.unsubscribe',
+        subscriptionId: defaultSubscriptionId as string
+      });
+
+      await client.sendCommand({
+        type: 'pty.start',
+        sessionId: 'session-duplicate-running',
+        args: [],
+        initialCols: 80,
+        initialRows: 24
+      });
+      await assert.rejects(
+        () =>
+          client.sendCommand({
+            type: 'pty.start',
+            sessionId: 'session-duplicate-running',
+            args: [],
+            initialCols: 80,
+            initialRows: 24
+          }),
+        /session already exists: session-duplicate-running/
+      );
+
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId: 'conversation-needs-input-seed',
+        directoryId: 'directory-scope-a',
+        title: 'needs-input seed',
+        agentType: 'codex'
+      });
+      const statefulInternals = server as unknown as {
+        stateStore: {
+          updateConversationRuntime: (
+            conversationId: string,
+            runtime: {
+              status: 'needs-input';
+              live: boolean;
+              attentionReason: string | null;
+              processId: number | null;
+              lastEventAt: string | null;
+              lastExit: null;
+            }
+          ) => void;
+        };
+      };
+      statefulInternals.stateStore.updateConversationRuntime('conversation-needs-input-seed', {
+        status: 'needs-input',
+        live: false,
+        attentionReason: 'approval needed',
+        processId: null,
+        lastEventAt: null,
+        lastExit: null
+      });
+      await client.sendCommand({
+        type: 'pty.start',
+        sessionId: 'conversation-needs-input-seed',
+        args: [],
+        initialCols: 80,
+        initialRows: 24
+      });
+      const seededNeedsInputStatus = await client.sendCommand({
+        type: 'session.status',
+        sessionId: 'conversation-needs-input-seed'
+      });
+      assert.equal(seededNeedsInputStatus['status'], 'needs-input');
+      assert.equal(seededNeedsInputStatus['attentionReason'], 'approval needed');
+
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId: 'conversation-needs-input-null-reason',
+        directoryId: 'directory-scope-a',
+        title: 'needs-input null reason',
+        agentType: 'codex'
+      });
+      statefulInternals.stateStore.updateConversationRuntime('conversation-needs-input-null-reason', {
+        status: 'needs-input',
+        live: false,
+        attentionReason: null,
+        processId: null,
+        lastEventAt: null,
+        lastExit: null
+      });
+      await client.sendCommand({
+        type: 'pty.start',
+        sessionId: 'conversation-needs-input-null-reason',
+        args: [],
+        initialCols: 80,
+        initialRows: 24
+      });
+      const seededNeedsInputNullReason = await client.sendCommand({
+        type: 'session.status',
+        sessionId: 'conversation-needs-input-null-reason'
+      });
+      assert.equal(seededNeedsInputNullReason['status'], 'needs-input');
+      assert.equal(seededNeedsInputNullReason['attentionReason'], null);
+
+      const internals = server as unknown as {
+        sessions: Map<
+          string,
+          {
+            id: string;
+            directoryId: string | null;
+            agentType: string;
+            adapterState: Record<string, unknown>;
+            tenantId: string;
+            userId: string;
+            workspaceId: string;
+            worktreeId: string;
+            session: null;
+            eventSubscriberConnectionIds: Set<string>;
+            attachmentByConnectionId: Map<string, string>;
+            unsubscribe: null;
+            status: 'completed';
+            attentionReason: null;
+            lastEventAt: string | null;
+            lastExit: null;
+            lastSnapshot: Record<string, unknown> | null;
+            startedAt: string;
+            exitedAt: string | null;
+            tombstoneTimer: NodeJS.Timeout | null;
+            lastObservedOutputCursor: number;
+            latestTelemetry: null;
+          }
+        >;
+      };
+      internals.sessions.set('session-snapshot-missing', {
+        id: 'session-snapshot-missing',
+        directoryId: 'directory-scope-a',
+        agentType: 'codex',
+        adapterState: {},
+        tenantId: 'tenant-scope',
+        userId: 'user-scope',
+        workspaceId: 'workspace-scope',
+        worktreeId: 'worktree-scope',
+        session: null,
+        eventSubscriberConnectionIds: new Set<string>(),
+        attachmentByConnectionId: new Map<string, string>(),
+        unsubscribe: null,
+        status: 'completed',
+        attentionReason: null,
+        lastEventAt: null,
+        lastExit: null,
+        lastSnapshot: null,
+        startedAt: new Date(0).toISOString(),
+        exitedAt: new Date(0).toISOString(),
+        tombstoneTimer: null,
+        lastObservedOutputCursor: 0,
+        latestTelemetry: null
+      });
+      await assert.rejects(
+        () =>
+          client.sendCommand({
+            type: 'session.snapshot',
+            sessionId: 'session-snapshot-missing'
+          }),
+        /session snapshot unavailable: session-snapshot-missing/
+      );
+
+      internals.sessions.get('session-snapshot-missing')!.lastSnapshot = {
+        lines: [],
+        frameHash: 'stale-hash',
+        cursorRow: 0,
+        cursorCol: 0
+      };
+      const staleSnapshot = await client.sendCommand({
+        type: 'session.snapshot',
+        sessionId: 'session-snapshot-missing'
+      });
+      assert.equal(staleSnapshot['sessionId'], 'session-snapshot-missing');
+      assert.equal(staleSnapshot['stale'], true);
+    } finally {
+      client.close();
+      await server.close();
+    }
+  }
+);
+
 void test('stream server persists directories and conversations and replays scoped stream subscriptions', async () => {
   const stateStorePath = makeTempStateStorePath();
   const sessions: FakeLiveSession[] = [];
@@ -663,16 +1093,6 @@ void test('stream server persists directories and conversations and replays scop
       sessionId: 'conversation-1',
       sinceCursor: 2
     });
-    sessions[0]!.emitEvent({
-      type: 'notify',
-      record: {
-        ts: new Date(0).toISOString(),
-        payload: {
-          type: 'agent-turn-complete',
-          'thread-id': 'thread-updated'
-        }
-      }
-    });
     client.sendInput('conversation-1', Buffer.from('hello-stream', 'utf8'));
     await delay(20);
 
@@ -753,8 +1173,7 @@ void test('stream server persists directories and conversations and replays scop
     const updatedRows = listedAfterUpdate['conversations'] as Array<Record<string, unknown>>;
     assert.deepEqual(updatedRows[0]?.['adapterState'], {
       codex: {
-        resumeSessionId: 'thread-updated',
-        lastObservedAt: new Date(0).toISOString()
+        resumeSessionId: 'thread-seed'
       }
     });
 
@@ -913,7 +1332,7 @@ void test('stream server archives directories and excludes archived rows from de
   }
 });
 
-void test('stream server attention-first sorting prioritizes needs-input sessions', async () => {
+void test('stream server attention-first sorting falls back to recency when statuses tie', async () => {
   const sessions: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     startSession: (input) => {
@@ -945,17 +1364,6 @@ void test('stream server attention-first sorting prioritizes needs-input session
       initialRows: 24
     });
 
-    sessions[1]!.emitEvent({
-      type: 'attention-required',
-      reason: 'approval',
-      record: {
-        ts: new Date(0).toISOString(),
-        payload: {
-          type: 'approval-needed'
-        }
-      }
-    });
-
     const listed = await client.sendCommand({
       type: 'session.list',
       sort: 'attention-first'
@@ -963,7 +1371,7 @@ void test('stream server attention-first sorting prioritizes needs-input session
     const entries = listed['sessions'] as Array<Record<string, unknown>>;
     assert.equal(entries.length, 2);
     assert.equal(entries[0]?.['sessionId'], 'conversation-b');
-    assert.equal(entries[0]?.['status'], 'needs-input');
+    assert.equal(entries[0]?.['status'], 'completed');
     assert.equal(entries[1]?.['sessionId'], 'conversation-a');
   } finally {
     client.close();
@@ -1051,25 +1459,32 @@ void test('stream server internal sort helper covers tie-break branches', async 
         status: 'running',
         startedAt: '2026-01-03T00:00:00.000Z',
         lastEventAt: null
+      },
+      {
+        ...base,
+        id: 'session-e',
+        status: 'needs-input',
+        startedAt: '2026-01-04T00:00:00.000Z',
+        lastEventAt: '2026-01-04T00:00:00.000Z'
       }
     ];
 
     const startedAsc = internals.sortSessionSummaries(rows, 'started-asc');
     assert.deepEqual(
       startedAsc.map((entry) => entry['sessionId']),
-      ['session-a', 'session-c', 'session-b', 'session-d']
+      ['session-a', 'session-c', 'session-b', 'session-d', 'session-e']
     );
 
     const startedDesc = internals.sortSessionSummaries(rows, 'started-desc');
     assert.deepEqual(
       startedDesc.map((entry) => entry['sessionId']),
-      ['session-d', 'session-b', 'session-a', 'session-c']
+      ['session-e', 'session-d', 'session-b', 'session-a', 'session-c']
     );
 
     const attentionFirst = internals.sortSessionSummaries(rows, 'attention-first');
     assert.deepEqual(
       attentionFirst.map((entry) => entry['sessionId']),
-      ['session-d', 'session-a', 'session-c', 'session-b']
+      ['session-e', 'session-d', 'session-a', 'session-c', 'session-b']
     );
 
     const byLastEventRows: readonly InternalSessionState[] = [
@@ -1188,24 +1603,11 @@ void test('stream server exposes attention list and respond/interrupt wrappers',
       initialRows: 24
     });
 
-    sessions[0]!.emitEvent({
-      type: 'attention-required',
-      reason: 'approval',
-      record: {
-        ts: new Date(0).toISOString(),
-        payload: {
-          type: 'approval-needed'
-        }
-      }
-    });
-
     const attention = await client.sendCommand({
       type: 'attention.list'
     });
     const attentionSessions = attention['sessions'] as Array<Record<string, unknown>>;
-    assert.equal(attentionSessions.length, 1);
-    assert.equal(attentionSessions[0]?.['sessionId'], 'session-attention');
-    assert.equal(attentionSessions[0]?.['attentionReason'], 'approval');
+    assert.equal(attentionSessions.length, 0);
 
     const responded = await client.sendCommand({
       type: 'session.respond',
@@ -1228,7 +1630,121 @@ void test('stream server exposes attention list and respond/interrupt wrappers',
   }
 });
 
-void test('stream server marks sessions running only after turn-submission input', async () => {
+void test('stream server blocks non-controller mutations until takeover claim succeeds', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const ownerClient = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const otherClient = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await ownerClient.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-claimed',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    await ownerClient.sendCommand({
+      type: 'session.claim',
+      sessionId: 'session-claimed',
+      controllerId: 'agent-owner',
+      controllerType: 'agent'
+    });
+
+    otherClient.sendInput('session-claimed', Buffer.from('blocked-input', 'utf8'));
+    otherClient.sendResize('session-claimed', 120, 40);
+    otherClient.sendSignal('session-claimed', 'interrupt');
+    otherClient.sendSignal('session-claimed', 'terminate');
+    await delay(10);
+    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'blocked-input'), false);
+    assert.equal(sessions[0]!.resizeCalls.length, 0);
+    assert.equal(sessions[0]!.isClosed(), false);
+    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'), false);
+
+    await assert.rejects(
+      otherClient.sendCommand({
+        type: 'session.respond',
+        sessionId: 'session-claimed',
+        text: 'blocked-command'
+      }),
+      /session is claimed by agent:agent-owner/
+    );
+
+    await assert.rejects(
+      otherClient.sendCommand({
+        type: 'session.release',
+        sessionId: 'session-claimed'
+      }),
+      /session is claimed by agent:agent-owner/
+    );
+
+    await otherClient.sendCommand({
+      type: 'session.claim',
+      sessionId: 'session-claimed',
+      controllerId: 'human-owner',
+      controllerType: 'human',
+      controllerLabel: 'human owner',
+      takeover: true
+    });
+    otherClient.sendInput('session-claimed', Buffer.from('allowed-input', 'utf8'));
+    await delay(10);
+    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'allowed-input'), true);
+
+    const releaseResult = await otherClient.sendCommand({
+      type: 'session.release',
+      sessionId: 'session-claimed',
+      reason: 'manual done'
+    });
+    assert.equal(releaseResult['released'], true);
+
+    const releaseAgainResult = await otherClient.sendCommand({
+      type: 'session.release',
+      sessionId: 'session-claimed'
+    });
+    assert.equal(releaseAgainResult['released'], false);
+  } finally {
+    ownerClient.close();
+    otherClient.close();
+    await server.close();
+  }
+});
+
+void test('stream server assertConnectionCanMutateSession tolerates stale null-controller branch', async () => {
+  const server = new ControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  try {
+    const mutableServer = server as unknown as {
+      connectionCanMutateSession: (connectionId: string, state: { controller: null }) => boolean;
+      assertConnectionCanMutateSession: (connectionId: string, state: { controller: null }) => void;
+    };
+    const original = mutableServer.connectionCanMutateSession;
+    mutableServer.connectionCanMutateSession = () => false;
+    assert.doesNotThrow(() => {
+      mutableServer.assertConnectionCanMutateSession('connection-local', {
+        controller: null
+      });
+    });
+    mutableServer.connectionCanMutateSession = original;
+  } finally {
+    await server.close();
+  }
+});
+
+void test('stream server keeps status completed while typing until runtime events arrive', async () => {
   const sessions: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     startSession: (input) => {
@@ -1273,14 +1789,14 @@ void test('stream server marks sessions running only after turn-submission input
       type: 'session.status',
       sessionId: 'session-typing'
     });
-    assert.equal(afterSubmit['status'], 'running');
+    assert.equal(afterSubmit['status'], 'completed');
   } finally {
     client.close();
     await server.close();
   }
 });
 
-void test('stream server restores persisted needs-input status on restart', async () => {
+void test('stream server emits session-exit events for subscribed non-attached sessions', async () => {
   const sessions: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     startSession: (input) => {
@@ -1294,65 +1810,77 @@ void test('stream server restores persisted needs-input status on restart', asyn
     host: address.address,
     port: address.port
   });
+  const observed = collectEnvelopes(client);
 
   try {
     await client.sendCommand({
-      type: 'directory.upsert',
-      directoryId: 'directory-restart',
-      path: '/tmp/harness-restart'
-    });
-    await client.sendCommand({
-      type: 'conversation.create',
-      conversationId: 'session-restart-needs-input',
-      directoryId: 'directory-restart',
-      title: 'needs-input restart',
-      agentType: 'codex',
-      adapterState: {}
-    });
-
-    await client.sendCommand({
       type: 'pty.start',
-      sessionId: 'session-restart-needs-input',
+      sessionId: 'session-active',
       args: [],
       initialCols: 80,
       initialRows: 24
     });
-    sessions[sessions.length - 1]!.emitEvent({
-      type: 'attention-required',
-      reason: 'approval',
-      record: {
-        ts: new Date(0).toISOString(),
-        payload: {
-          type: 'approval-needed'
-        }
-      }
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-background',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    assert.equal(sessions.length, 2);
+
+    await client.sendCommand({
+      type: 'pty.subscribe-events',
+      sessionId: 'session-active'
+    });
+    await client.sendCommand({
+      type: 'pty.subscribe-events',
+      sessionId: 'session-background'
+    });
+
+    await client.sendCommand({
+      type: 'pty.attach',
+      sessionId: 'session-active',
+      sinceCursor: 0
+    });
+    await client.sendCommand({
+      type: 'pty.attach',
+      sessionId: 'session-background',
+      sinceCursor: 0
+    });
+    await client.sendCommand({
+      type: 'pty.detach',
+      sessionId: 'session-background'
+    });
+
+    client.sendInput('session-background', Buffer.from('\r', 'utf8'));
+    await delay(10);
+    const runningStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-background'
+    });
+    assert.equal(runningStatus['status'], 'completed');
+
+    sessions[1]!.emitExit({
+      code: 0,
+      signal: null
     });
     await delay(10);
-    const needsInputBeforeClose = await client.sendCommand({
-      type: 'session.status',
-      sessionId: 'session-restart-needs-input'
-    });
-    assert.equal(needsInputBeforeClose['status'], 'needs-input');
-    assert.equal(needsInputBeforeClose['attentionReason'], 'approval');
 
-    await client.sendCommand({
-      type: 'pty.close',
-      sessionId: 'session-restart-needs-input'
-    });
-    await client.sendCommand({
-      type: 'pty.start',
-      sessionId: 'session-restart-needs-input',
-      args: [],
-      initialCols: 80,
-      initialRows: 24
-    });
-
-    const needsInputAfterRestart = await client.sendCommand({
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'pty.event' &&
+          envelope.sessionId === 'session-background' &&
+          envelope.event.type === 'session-exit'
+      ),
+      true
+    );
+    const completedStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'session-restart-needs-input'
+      sessionId: 'session-background'
     });
-    assert.equal(needsInputAfterRestart['status'], 'needs-input');
-    assert.equal(needsInputAfterRestart['attentionReason'], 'approval');
+    assert.equal(completedStatus['status'], 'exited');
   } finally {
     client.close();
     await server.close();
@@ -1691,12 +2219,10 @@ void test('stream server covers detach/cleanup and missing-session stream operat
     );
 
     sessions[0]!.emitEvent({
-      type: 'notify',
-      record: {
-        ts: new Date(0).toISOString(),
-        payload: {
-          type: 'post-exit'
-        }
+      type: 'session-exit',
+      exit: {
+        code: 0,
+        signal: null
       }
     });
 
@@ -1880,12 +2406,10 @@ void test('stream server internal guard branches remain safe for missing ids', a
     });
 
     internals.handleSessionEvent('missing-session', {
-      type: 'notify',
-      record: {
-        ts: new Date(0).toISOString(),
-        payload: {
-          type: 'missing'
-        }
+      type: 'session-exit',
+      exit: {
+        code: 0,
+        signal: null
       }
     });
     internals.destroySession('missing-session', true);
@@ -2116,7 +2640,7 @@ void test('stream server supports injected state store and observed filter/journ
     await server.close();
   }
 
-  injectedStore.upsertDirectory({
+injectedStore.upsertDirectory({
     directoryId: 'after-close-directory',
     tenantId: 'tenant-after',
     userId: 'user-after',
@@ -2124,4 +2648,918 @@ void test('stream server supports injected state store and observed filter/journ
     path: '/tmp/after-close'
   });
   injectedStore.close();
+});
+
+void test('stream server injects codex telemetry args, ingests otlp payloads, and updates runtime state', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50
+    }
+  });
+  const address = server.address();
+  const telemetryAddress = server.telemetryAddressInfo();
+  assert.notEqual(telemetryAddress, null);
+  const telemetryTarget = {
+    host: '127.0.0.1',
+    port: telemetryAddress!.port
+  };
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observedTelemetry = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-otel',
+      tenantId: 'tenant-otel',
+      userId: 'user-otel',
+      workspaceId: 'workspace-otel',
+      path: '/tmp/workspace-otel'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-otel',
+      directoryId: 'directory-otel',
+      title: 'otlp status',
+      agentType: 'codex'
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-otel',
+      args: ['--model', 'test-model'],
+      initialCols: 80,
+      initialRows: 24
+    });
+    const subscribed = await client.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-otel',
+      userId: 'user-otel',
+      workspaceId: 'workspace-otel',
+      conversationId: 'conversation-otel',
+      includeOutput: false
+    });
+    const telemetrySubscriptionId = subscribed['subscriptionId'];
+    assert.equal(typeof telemetrySubscriptionId, 'string');
+
+    assert.equal(created.length, 1);
+    const launchedArgs = created[0]!.input.args;
+    assert.equal(launchedArgs.includes('--model'), true);
+    assert.equal(launchedArgs.includes('test-model'), true);
+    assert.equal(launchedArgs.includes('otel.log_user_prompt=true'), true);
+
+    const exporterArg = launchedArgs.find((arg) => arg.includes('otel.exporter='));
+    assert.notEqual(exporterArg, undefined);
+    const tokenMatch = /\/v1\/logs\/([^"]+)/u.exec(exporterArg!);
+    assert.notEqual(tokenMatch, null);
+    const token = decodeURIComponent(tokenMatch?.[1] ?? '');
+    assert.notEqual(token.length, 0);
+
+    const unknownTokenResponse = await postJson(telemetryTarget, '/v1/logs/not-found', {});
+    assert.equal(unknownTokenResponse.statusCode, 404);
+    const malformedTokenResponse = await postJson(telemetryTarget, '/v1/logs/%E0', {});
+    assert.equal(malformedTokenResponse.statusCode, 404);
+    const invalidEndpointResponse = await postJson(telemetryTarget, '/unknown/path', {});
+    assert.equal(invalidEndpointResponse.statusCode, 404);
+    const wrongMethodResponse = await postRaw(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      'GET',
+      ''
+    );
+    assert.equal(wrongMethodResponse.statusCode, 405);
+    const invalidJsonResponse = await postRaw(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      'POST',
+      '{'
+    );
+    assert.equal(invalidJsonResponse.statusCode, 400);
+
+    const batchResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {});
+    assert.equal(batchResponse.statusCode, 200);
+
+    const runningResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  timeUnixNano: '1700000000000000000',
+                  attributes: [
+                    {
+                      key: 'event.name',
+                      value: {
+                        stringValue: 'codex.user_prompt'
+                      }
+                    },
+                    {
+                      key: 'thread-id',
+                      value: {
+                        stringValue: 'thread-otel'
+                      }
+                    }
+                  ],
+                  body: {
+                    stringValue: 'prompt accepted'
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(runningResponse.statusCode, 200);
+    const runningDuplicateResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  timeUnixNano: '1700000000000000000',
+                  attributes: [
+                    {
+                      key: 'event.name',
+                      value: {
+                        stringValue: 'codex.user_prompt'
+                      }
+                    },
+                    {
+                      key: 'thread-id',
+                      value: {
+                        stringValue: 'thread-otel'
+                      }
+                    }
+                  ],
+                  body: {
+                    stringValue: 'prompt accepted'
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(runningDuplicateResponse.statusCode, 200);
+
+    await delay(20);
+    const runningStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-otel'
+    });
+    assert.equal(runningStatus['status'], 'running');
+
+    client.sendInput('conversation-otel', Buffer.from('\n', 'utf8'));
+    await delay(10);
+    const stillRunning = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-otel'
+    });
+    assert.equal(stillRunning['status'], 'running');
+
+    const completedResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    {
+                      key: 'event.name',
+                      value: {
+                        stringValue: 'codex.sse_event'
+                      }
+                    },
+                    {
+                      key: 'kind',
+                      value: {
+                        stringValue: 'response.completed'
+                      }
+                    },
+                    {
+                      key: 'thread_id',
+                      value: {
+                        stringValue: 'thread-otel'
+                      }
+                    }
+                  ],
+                  body: {
+                    stringValue: 'response.completed'
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(completedResponse.statusCode, 200);
+    const needsInputResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    {
+                      key: 'event.name',
+                      value: {
+                        stringValue: 'needs-input'
+                      }
+                    }
+                  ],
+                  body: {
+                    stringValue: 'needs-input'
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(needsInputResponse.statusCode, 200);
+
+    const metricsResponse = await postJson(telemetryTarget, `/v1/metrics/${encodeURIComponent(token)}`, {
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: 'codex.turn.e2e_duration_ms',
+                  sum: {
+                    dataPoints: [{}]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(metricsResponse.statusCode, 200);
+
+    const tracesResponse = await postJson(telemetryTarget, `/v1/traces/${encodeURIComponent(token)}`, {
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  name: 'codex.websocket_event',
+                  attributes: [
+                    {
+                      key: 'thread-id',
+                      value: {
+                        stringValue: 'thread-otel'
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(tracesResponse.statusCode, 200);
+
+    await delay(20);
+    const completedStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-otel'
+    });
+    assert.equal(completedStatus['status'], 'needs-input');
+    assert.equal(
+      (completedStatus['telemetry'] as Record<string, unknown>)['source'],
+      'otlp-trace'
+    );
+    const observedKeyEvents = observedTelemetry.filter(
+      (envelope) =>
+        envelope.kind === 'stream.event' &&
+        envelope.subscriptionId === telemetrySubscriptionId &&
+        envelope.event.type === 'session-key-event'
+    );
+    assert.equal(observedKeyEvents.length > 0, true);
+    const observedStatusEvents = observedTelemetry.filter(
+      (envelope) =>
+        envelope.kind === 'stream.event' &&
+        envelope.subscriptionId === telemetrySubscriptionId &&
+        envelope.event.type === 'session-status'
+    );
+    assert.equal(observedStatusEvents.length > 0, true);
+    const latestStatus = observedStatusEvents[observedStatusEvents.length - 1];
+    assert.notEqual(latestStatus, undefined);
+    if (latestStatus !== undefined && latestStatus.kind === 'stream.event' && latestStatus.event.type === 'session-status') {
+      assert.equal(latestStatus.event.telemetry?.source, 'otlp-trace');
+    }
+
+    client.sendInput('conversation-otel', Buffer.from('\n', 'utf8'));
+    await delay(10);
+    const completedAfterInput = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-otel'
+    });
+    assert.equal(completedAfterInput['status'], 'needs-input');
+
+    const listedConversations = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId: 'directory-otel',
+      includeArchived: true
+    });
+    const conversationRow = (listedConversations['conversations'] as Array<Record<string, unknown>>)[0]!;
+    const adapterState = conversationRow['adapterState'] as Record<string, unknown>;
+    const codexState = adapterState['codex'] as Record<string, unknown>;
+    assert.equal(codexState['resumeSessionId'], 'thread-otel');
+    assert.equal(typeof codexState['lastObservedAt'], 'string');
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server ingests codex history lines and supports reset when file shrinks', async () => {
+  const historyDir = mkdtempSync(join(tmpdir(), 'harness-history-'));
+  const historyPath = join(historyDir, 'history.jsonl');
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: historyPath,
+      pollMs: 25
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-history',
+      tenantId: 'tenant-history',
+      userId: 'user-history',
+      workspaceId: 'workspace-history',
+      path: '/tmp/workspace-history'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-history',
+      directoryId: 'directory-history',
+      title: 'history status',
+      agentType: 'codex',
+      adapterState: {
+        codex: {
+          resumeSessionId: 'thread-history'
+        }
+      }
+    });
+    writeFileSync(
+      historyPath,
+      `\nnot-json\n${JSON.stringify({
+        timestamp: '2026-02-15T11:59:59.000Z',
+        type: 'response.completed',
+        message: 'seed',
+        session_id: 'thread-history'
+      })}\n`,
+      'utf8'
+    );
+    await delay(80);
+
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-history',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+
+    const seededStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-history'
+    });
+    assert.equal((seededStatus['telemetry'] as Record<string, unknown>)['source'], 'history');
+    assert.equal(
+      (seededStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'response.completed'
+    );
+
+    writeFileSync(
+      historyPath,
+      `${JSON.stringify({
+        timestamp: '2026-02-15T12:00:00.000Z',
+        type: 'user_prompt',
+        message: 'first',
+        session_id: 'thread-history'
+      })}\n`,
+      'utf8'
+    );
+    await delay(80);
+
+    const firstStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-history'
+    });
+    assert.equal(firstStatus['status'], 'running');
+    assert.equal((firstStatus['telemetry'] as Record<string, unknown>)['source'], 'history');
+
+    writeFileSync(
+      historyPath,
+      `${JSON.stringify({
+        timestamp: '2026-02-15T12:00:00.500Z',
+        type: 'heartbeat',
+        message: 'no-thread-id'
+      })}\n`,
+      'utf8'
+    );
+    await delay(80);
+
+    writeFileSync(historyPath, '', 'utf8');
+    await delay(40);
+
+    writeFileSync(
+      historyPath,
+      `${JSON.stringify({
+        timestamp: '2026-02-15T12:00:01.000Z',
+        type: 'response.completed',
+        message: 'done',
+        session_id: 'thread-history'
+      })}\n`,
+      'utf8'
+    );
+    await delay(80);
+    const secondStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-history'
+    });
+    assert.equal(secondStatus['status'], 'completed');
+    assert.equal(
+      (secondStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'response.completed'
+    );
+  } finally {
+    client.close();
+    await server.close();
+    rmSync(historyDir, { recursive: true, force: true });
+  }
+});
+
+void test('stream server skips codex telemetry arg injection for non-codex agents', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-non-codex',
+      tenantId: 'tenant-non-codex',
+      userId: 'user-non-codex',
+      workspaceId: 'workspace-non-codex',
+      path: '/tmp/non-codex'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-non-codex',
+      directoryId: 'directory-non-codex',
+      title: 'non-codex',
+      agentType: 'claude'
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-non-codex',
+      args: ['--foo', 'bar'],
+      initialCols: 80,
+      initialRows: 24
+    });
+    const launchedArgs = created[0]!.input.args;
+    assert.deepEqual(launchedArgs, ['--foo', 'bar']);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server telemetry/history private guard branches are stable', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/unused-history.jsonl',
+      pollMs: 25
+    }
+  });
+
+  try {
+    const internals = server as unknown as {
+      resolveSessionIdByThreadId: (threadId: string) => string | null;
+      updateSessionThreadId: (
+        state: {
+          id: string;
+          agentType: string;
+          adapterState: Record<string, unknown>;
+        },
+        threadId: string,
+        observedAt: string
+      ) => void;
+      codexLaunchArgsForSession: (
+        sessionId: string,
+        agentType: string,
+        existingArgs: readonly string[]
+      ) => string[];
+      telemetryEndpointBaseUrl: () => string | null;
+      telemetryAddress:
+        | {
+            address: string;
+            family: 'IPv4' | 'IPv6';
+            port: number;
+          }
+        | null;
+      handleTelemetryHttpRequestAsync: (
+        request: {
+          method?: string;
+          url?: string;
+        },
+        response: {
+          statusCode: number;
+          end: () => void;
+        }
+      ) => Promise<void>;
+      ingestOtlpPayload: (kind: 'logs' | 'metrics' | 'traces', sessionId: string, payload: unknown) => void;
+      ingestParsedTelemetryEvent: (
+        fallbackSessionId: string | null,
+        event: {
+          source: 'otlp-log' | 'otlp-metric' | 'otlp-trace' | 'history';
+          observedAt: string;
+          eventName: string | null;
+          severity: string | null;
+          summary: string | null;
+          providerThreadId: string | null;
+          statusHint: 'running' | 'completed' | 'needs-input' | null;
+          payload: Record<string, unknown>;
+        }
+      ) => void;
+      pollHistoryFileUnsafe: () => void;
+      startTelemetryServer: () => Promise<void>;
+    };
+    const coldServer = new ControlPlaneStreamServer({
+      startSession: (input) => new FakeLiveSession(input),
+      codexTelemetry: {
+        enabled: true,
+        host: '127.0.0.1',
+        port: 0,
+        logUserPrompt: true,
+        captureLogs: true,
+        captureMetrics: true,
+        captureTraces: true
+      },
+      codexHistory: {
+        enabled: false,
+        filePath: '~/unused-history.jsonl',
+        pollMs: 25
+      }
+    });
+    try {
+      const coldInternals = coldServer as unknown as {
+        codexLaunchArgsForSession: (
+          sessionId: string,
+          agentType: string,
+          existingArgs: readonly string[]
+        ) => string[];
+        telemetryEndpointBaseUrl: () => string | null;
+      };
+      assert.deepEqual(coldInternals.codexLaunchArgsForSession('session-no-otel', 'codex', []), []);
+      assert.equal(coldInternals.telemetryEndpointBaseUrl(), null);
+    } finally {
+      await coldServer.close();
+    }
+    await internals.startTelemetryServer();
+    const codexArgsWithOtel = internals.codexLaunchArgsForSession('session-with-otel', 'codex', ['--foo']);
+    assert.equal(codexArgsWithOtel.includes('history.persistence="none"'), true);
+    const originalTelemetryAddress = internals.telemetryAddress;
+    internals.telemetryAddress = {
+      address: '::1',
+      family: 'IPv6',
+      port: 4318
+    };
+    assert.equal(internals.telemetryEndpointBaseUrl(), 'http://[::1]:4318');
+    internals.telemetryAddress = originalTelemetryAddress;
+    const responseRecord = { statusCode: 0, ended: false };
+    await internals.handleTelemetryHttpRequestAsync(
+      {
+        method: 'POST'
+      },
+      {
+        get statusCode() {
+          return responseRecord.statusCode;
+        },
+        set statusCode(value: number) {
+          responseRecord.statusCode = value;
+        },
+        end() {
+          responseRecord.ended = true;
+        }
+      }
+    );
+    assert.equal(responseRecord.statusCode, 404);
+    assert.equal(responseRecord.ended, true);
+    internals.ingestOtlpPayload('metrics', 'missing-session', {});
+    internals.ingestOtlpPayload('traces', 'missing-session', {});
+    internals.ingestOtlpPayload('logs', 'missing-session', {});
+    internals.ingestParsedTelemetryEvent(null, {
+      source: 'otlp-log',
+      observedAt: '2026-02-15T00:00:00.000Z',
+      eventName: null,
+      severity: null,
+      summary: null,
+      providerThreadId: null,
+      statusHint: null,
+      payload: {}
+    });
+    internals.ingestParsedTelemetryEvent(null, {
+      source: 'otlp-log',
+      observedAt: '2026-02-15T00:00:01.000Z',
+      eventName: null,
+      severity: null,
+      summary: null,
+      providerThreadId: 'thread-missing',
+      statusHint: null,
+      payload: {}
+    });
+    assert.equal(internals.resolveSessionIdByThreadId('   '), null);
+    const nonCodexState = {
+      id: 'missing-conversation-id',
+      agentType: 'claude',
+      adapterState: {
+        codex: {
+          resumeSessionId: 'thread-keep'
+        }
+      }
+    };
+    internals.updateSessionThreadId(nonCodexState, 'thread-new', '2026-02-15T00:00:00.000Z');
+    assert.equal(
+      ((nonCodexState.adapterState['codex'] as Record<string, unknown>)['resumeSessionId'] as string),
+      'thread-keep'
+    );
+
+    const codexArrayState = {
+      id: 'missing-conversation-id-2',
+      agentType: 'codex',
+      adapterState: {
+        codex: []
+      }
+    };
+    internals.updateSessionThreadId(codexArrayState, 'thread-array', '2026-02-15T00:00:00.000Z');
+    assert.deepEqual(codexArrayState.adapterState['codex'], {
+      resumeSessionId: 'thread-array',
+      lastObservedAt: '2026-02-15T00:00:00.000Z'
+    });
+    const codexObjectState = {
+      id: 'missing-conversation-id-3',
+      agentType: 'codex',
+      adapterState: {
+        codex: {
+          existing: 'value'
+        }
+      }
+    };
+    internals.updateSessionThreadId(codexObjectState, 'thread-object', '2026-02-15T00:00:00.000Z');
+    assert.deepEqual(codexObjectState.adapterState['codex'], {
+      existing: 'value',
+      resumeSessionId: 'thread-object',
+      lastObservedAt: '2026-02-15T00:00:00.000Z'
+    });
+
+    internals.pollHistoryFileUnsafe();
+  } finally {
+    await server.close();
+  }
+
+  const historyErrorServer = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: '~',
+      pollMs: 25
+    }
+  });
+  try {
+    const internals = historyErrorServer as unknown as {
+      pollHistoryFile: () => void;
+      codexLaunchArgsForSession: (
+        sessionId: string,
+        agentType: string,
+        existingArgs: readonly string[]
+      ) => string[];
+    };
+    assert.deepEqual(internals.codexLaunchArgsForSession('history-only-session', 'codex', []), [
+      '-c',
+      'history.persistence="save-all"'
+    ]);
+    internals.pollHistoryFile();
+  } finally {
+    await historyErrorServer.close();
+  }
+
+  const historyAndTelemetryServer = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: '~/unused-history-with-otel.jsonl',
+      pollMs: 25
+    }
+  });
+  try {
+    const internals = historyAndTelemetryServer as unknown as {
+      codexLaunchArgsForSession: (
+        sessionId: string,
+        agentType: string,
+        existingArgs: readonly string[]
+      ) => string[];
+    };
+    const args = internals.codexLaunchArgsForSession('history-and-otel-session', 'codex', []);
+    assert.equal(args.includes('history.persistence="save-all"'), true);
+  } finally {
+    await historyAndTelemetryServer.close();
+  }
+
+  const historyTildeServer = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: '~/harness-missing-history-file.jsonl',
+      pollMs: 25
+    }
+  });
+  try {
+    const internals = historyTildeServer as unknown as {
+      pollHistoryFile: () => void;
+    };
+    internals.pollHistoryFile();
+  } finally {
+    await historyTildeServer.close();
+  }
+});
+
+void test('stream server telemetry listener handles close-before-start and port conflicts', async () => {
+  const cold = new ControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 25
+    }
+  });
+  await cold.close();
+
+  const first = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 25
+    }
+  });
+
+  const telemetryAddress = first.telemetryAddressInfo();
+  assert.notEqual(telemetryAddress, null);
+
+  const conflict = new ControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: telemetryAddress!.port,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 25
+    }
+  });
+
+  try {
+    await assert.rejects(conflict.start(), /EADDRINUSE|address already in use/i);
+  } finally {
+    await conflict.close();
+    await first.close();
+  }
 });

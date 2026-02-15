@@ -29,7 +29,7 @@
     "perf:codex:startup:loop": "node --experimental-strip-types scripts/perf-codex-startup-loop.ts",
     "loc": "node --experimental-strip-types scripts/loc-report.ts",
     "deadcode": "node --experimental-strip-types scripts/check-dead-code.ts",
-    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build:ptyd",
     "pretest:coverage": "npm run build:ptyd",

@@ -1,5 +1,10 @@
 import type { PtyExit } from '../pty/pty_host.ts';
-import type { StreamSessionRuntimeStatus } from './stream-protocol.ts';
+import type {
+  StreamSessionController,
+  StreamSessionControllerType,
+  StreamSessionRuntimeStatus,
+  StreamTelemetrySummary
+} from './stream-protocol.ts';
 
 interface StreamSessionSummary {
   readonly sessionId: string;
@@ -19,6 +24,8 @@ interface StreamSessionSummary {
   readonly lastExit: PtyExit | null;
   readonly exitedAt: string | null;
   readonly live: boolean;
+  readonly telemetry: StreamTelemetrySummary | null;
+  readonly controller: StreamSessionController | null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -91,6 +98,92 @@ function readExit(value: unknown): PtyExit | null | undefined {
   };
 }
 
+function readTelemetrySource(
+  value: unknown
+): 'otlp-log' | 'otlp-metric' | 'otlp-trace' | 'history' | null {
+  if (
+    value === 'otlp-log' ||
+    value === 'otlp-metric' ||
+    value === 'otlp-trace' ||
+    value === 'history'
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function readTelemetrySummary(value: unknown): StreamTelemetrySummary | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const record = asRecord(value);
+  if (record === null) {
+    return undefined;
+  }
+  const source = readTelemetrySource(record['source']);
+  const eventName = readNullableString(record['eventName']);
+  const severity = readNullableString(record['severity']);
+  const summary = readNullableString(record['summary']);
+  const observedAt = readString(record['observedAt']);
+  if (
+    source === null ||
+    eventName === undefined ||
+    severity === undefined ||
+    summary === undefined ||
+    observedAt === null
+  ) {
+    return undefined;
+  }
+  return {
+    source,
+    eventName,
+    severity,
+    summary,
+    observedAt
+  };
+}
+
+function readSessionControllerType(value: unknown): StreamSessionControllerType | null {
+  if (value === 'human' || value === 'agent' || value === 'automation') {
+    return value;
+  }
+  return null;
+}
+
+function readSessionController(value: unknown): StreamSessionController | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const record = asRecord(value);
+  if (record === null) {
+    return undefined;
+  }
+  const controllerId = readString(record['controllerId']);
+  const controllerType = readSessionControllerType(record['controllerType']);
+  const controllerLabel = readNullableString(record['controllerLabel']);
+  const claimedAt = readString(record['claimedAt']);
+  if (
+    controllerId === null ||
+    controllerType === null ||
+    controllerLabel === undefined ||
+    claimedAt === null
+  ) {
+    return undefined;
+  }
+  return {
+    controllerId,
+    controllerType,
+    controllerLabel,
+    claimedAt
+  };
+}
+
 function isRuntimeStatus(value: string): value is StreamSessionRuntimeStatus {
   return (
     value === 'running' ||
@@ -134,6 +227,8 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   const lastExit = readExit(record['lastExit']);
   const exitedAt = readNullableString(record['exitedAt']);
   const live = readBoolean(record['live']);
+  const telemetry = readTelemetrySummary(record['telemetry']);
+  const controller = readSessionController(record['controller']);
   if (attentionReason === undefined) {
     return null;
   }
@@ -164,6 +259,12 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   if (live === null) {
     return null;
   }
+  if (telemetry === undefined) {
+    return null;
+  }
+  if (controller === undefined) {
+    return null;
+  }
   return {
     sessionId,
     directoryId,
@@ -181,7 +282,9 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     lastEventAt,
     lastExit,
     exitedAt,
-    live
+    live,
+    telemetry: telemetry ?? null,
+    controller: controller ?? null
   };
 }
 

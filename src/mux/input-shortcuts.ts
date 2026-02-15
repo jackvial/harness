@@ -5,6 +5,7 @@ type MuxGlobalShortcutAction =
   | 'mux.conversation.next'
   | 'mux.conversation.previous'
   | 'mux.conversation.archive'
+  | 'mux.conversation.takeover'
   | 'mux.conversation.delete'
   | 'mux.directory.add'
   | 'mux.directory.close';
@@ -34,6 +35,7 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.conversation.next',
   'mux.conversation.previous',
   'mux.conversation.archive',
+  'mux.conversation.takeover',
   'mux.conversation.delete',
   'mux.directory.add',
   'mux.directory.close'
@@ -46,6 +48,7 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction
   'mux.conversation.next': ['ctrl+j'],
   'mux.conversation.previous': ['ctrl+k'],
   'mux.conversation.archive': [],
+  'mux.conversation.takeover': ['ctrl+l'],
   'mux.conversation.delete': ['ctrl+x'],
   'mux.directory.add': ['ctrl+o'],
   'mux.directory.close': ['ctrl+w']
@@ -420,6 +423,8 @@ function withDefaultBindings(
       overrides?.['mux.conversation.previous'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.previous'],
     'mux.conversation.archive':
       overrides?.['mux.conversation.archive'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.archive'],
+    'mux.conversation.takeover':
+      overrides?.['mux.conversation.takeover'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.takeover'],
     'mux.conversation.delete':
       overrides?.['mux.conversation.delete'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.delete'],
     'mux.directory.add':
@@ -442,6 +447,7 @@ export function resolveMuxShortcutBindings(
       'mux.conversation.next': parseBindingsForAction(rawByAction['mux.conversation.next']),
       'mux.conversation.previous': parseBindingsForAction(rawByAction['mux.conversation.previous']),
       'mux.conversation.archive': parseBindingsForAction(rawByAction['mux.conversation.archive']),
+      'mux.conversation.takeover': parseBindingsForAction(rawByAction['mux.conversation.takeover']),
       'mux.conversation.delete': parseBindingsForAction(rawByAction['mux.conversation.delete']),
       'mux.directory.add': parseBindingsForAction(rawByAction['mux.directory.add']),
       'mux.directory.close': parseBindingsForAction(rawByAction['mux.directory.close'])

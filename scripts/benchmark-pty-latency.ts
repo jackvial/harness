@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,9 @@ function percentile(values: readonly number[], quantile: number): number {
   const rawIndex = Math.ceil((quantile / 100) * sorted.length) - 1;
   const clampedIndex = Math.min(Math.max(rawIndex, 0), sorted.length - 1);
   const value = sorted[clampedIndex];
-  assert.notEqual(value, undefined);
+  if (value === undefined) {
+    throw new Error('percentile index was out of bounds');
+  }
   return value;
 }
 

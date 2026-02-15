@@ -317,7 +317,7 @@ function main(): number {
       process.stderr.write(`${usage()}\n`);
       return 1;
     }
-    return process.exitCode;
+    return typeof process.exitCode === 'number' ? process.exitCode : 1;
   }
 
   const report = buildReport(options.root);

@@ -34,7 +34,7 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
 - `coder/mux`: performant workspace/session abstraction and server/client split.
 - `vibetunnel`: remote terminal proxy and notification-style activity routing.
 - Claude Code hooks: explicit lifecycle/tool notification model.
-- Codex notify surfaces: notification hooks that can enrich a live PTY session.
+- Codex OpenTelemetry + history surfaces: structured lifecycle, tool, and thread continuity signals.
 
 ## Core Architecture
 
@@ -61,7 +61,7 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
                      |                 +--> [pty-host sessions for raw passthrough]
                      |
                      +--> [Codex Live Adapter -> pty-hosted codex CLI]
-                     |      +--> [Codex Notify Tap (raw + classified lifecycle hints)]
+                     |      +--> [Codex OTel + history ingestion (status + thread-id hints)]
                      +--> [Claude Adapter -> hooks + CLI]
                      +--> [Generic Adapter -> PTY parser fallback]
 ```
@@ -164,6 +164,8 @@ Pass-through stream invariants:
 - Conversation "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Directory lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
 - The left rail includes clickable action rows (new conversation, archive conversation, add directory, close directory) with keybind parity.
+- Directory rows in the left rail are selectable; selecting a directory switches the right pane into a project view and scopes directory actions to that explicit selection.
+- `new conversation` preserves conversation-directory affinity when a conversation row is selected; in project view it uses the selected directory.
 - Clicking the active conversation title row enters inline title-edit mode; edits update locally immediately and persist through debounced `conversation.update` control-plane commands.
 - The pane separator is draggable; divider moves recompute layout and PTY resize through the normal mux resize path.
 - The mux status row is performance-focused: live FPS and throughput (`KB/s`) plus render/output/event-loop timing stats.
@@ -196,15 +198,19 @@ Adapters publish two coordinated event classes:
 
 Canonical lifecycle events:
 
-- `thread.started`
+- `thread.created`
+- `thread.updated`
+- `thread.archived`
+- `thread.deleted`
+- `session.started`
+- `session.exited`
 - `turn.started`
 - `turn.completed`
 - `turn.failed`
-- `turn.interrupted`
-- `diff.updated`
-- `attention.required` (approval, user input, stalled prompt)
-- `output.delta` (agent text/tool/terminal output)
-- `conversation.archived`
+- `input.required` (approval/user-input required)
+- `tool.started`
+- `tool.completed`
+- `tool.failed`
 
 Provider-fidelity event families (examples):
 - `provider.text.delta`
@@ -224,6 +230,17 @@ Meta/orchestration event families (examples):
 - `meta.conversation.handoff`
 
 The daemon computes derived status from both classes without dropping provider-level detail.
+
+### Lifecycle Hook Adapter Model
+
+- Hooks are config-governed in `harness.config.jsonc` under `hooks.lifecycle.*`.
+- A normalized lifecycle envelope is produced from stream-observed events (`conversation-*`, `session-status`, `session-event`, `session-key-event`) with provider tagging (`codex`, `claude`, `control-plane`, `unknown`).
+- Provider filters are first-class (`hooks.lifecycle.providers.*`) so operators can enable/disable lifecycle dispatch per provider family without changing runtime code.
+- Hook dispatch runs asynchronously behind an internal queue so control-plane command/PTY hot paths are not blocked by connector IO.
+- Connector model is pluggable and currently includes:
+  - `peon-ping`: maps lifecycle event types to category playback requests (`GET /play?category=...`) for local sound-pack integration.
+  - `webhooks`: generic outbound HTTP connector with method/headers/timeout + optional event-type filtering.
+- Connector failures are non-fatal and recorded through `perf-core` lifecycle hook spans/events for diagnosis.
 
 ## Event Fidelity Rules
 
@@ -260,7 +277,7 @@ Notification policy:
 
 Status routing invariants:
 - Status is scoped to `(tenant_id, user_id, workspace_id, worktree_id, conversation_id)` and must never be inferred from shared process-level artifacts.
-- Adapter enrichment channels (for example notify hooks) must use per-session isolation (unique sink/file/socket) to prevent cross-conversation status contamination.
+- Adapter enrichment channels (telemetry, history, hooks) must retain per-thread and per-session correlation to prevent cross-conversation status contamination.
 - UI status badges must be driven from conversation-scoped events/state only; no global fallback that can mark sibling conversations as `completed`.
 
 ## Codex Live-Steering Integration (v1)
@@ -268,33 +285,31 @@ Status routing invariants:
 Use a PTY-hosted interactive `codex` session as the primary integration path. Human live steering is the first principle.
 
 Layer optional enrichment channels on top of the same live session:
-- `codex notify`-style hook/event surfaces for attention and lifecycle hints.
+- Codex OpenTelemetry logs/metrics/traces.
+- Codex `history.jsonl` ingestion for thread continuity and event backfill.
 
 This ordering ensures terminal reality is authoritative while still allowing high-fidelity instrumentation.
 
 Primary live-session capabilities:
 - launch/attach/detach/re-attach a running `codex` terminal session with no privileged bypass
 - human steering in-session (`prompt`, interrupt, continue, context edits) with PTY parity
-- event stream derived from live session + notify hook emissions
+- event stream derived from live session + Codex telemetry/history enrichment
 - pseudo-screenshot capture from PTY-derived output for integration/e2e assertions (text-rendered terminal snapshot, machine-readable output option)
-- raw notify discovery stream (`meta-notify-observed`) to inventory provider notify types in real sessions
-
-Notify hook payload shape validated locally:
-- Codex invokes notify command with a JSON payload argument (for example `agent-turn-complete` including `thread-id`, `turn-id`, `cwd`, and message fields).
+- status/key-event synthesis from structured provider events, with deterministic fallback to PTY lifecycle when enrichment is unavailable
 
 ## Model-Agnostic Strategy
 
 Integration tiers:
 
 1. Live PTY adapter (primary): human-steerable terminal session with attach/detach and low-latency control.
-2. Hook/notify enrichment: provider-native notification channels for attention and lifecycle hints.
+2. Telemetry/hook enrichment: provider-native structured channels for attention and lifecycle hints.
 3. Heuristic parser fallback: parse terminal output only when no richer signal exists.
 
 This keeps live steering universal across agents while still taking advantage of structured provider signals when available.
 
 Provider policy (Codex/Claude direct usage):
 - Prefer launching provider CLIs directly inside PTY (`codex`, `claude`) with no protocol translation in the hot path.
-- Adapter responsibilities are limited to launch config, optional hook ingestion, and event normalization.
+- Adapter responsibilities are limited to launch config, optional telemetry/history/hook ingestion, and event normalization.
 - If a provider offers richer APIs, they are optional enrichment channels and must not replace PTY-first steering for parity-critical flows.
 
 ## Terminal Compatibility Strategy
@@ -398,7 +413,7 @@ Verification ladder:
    - assert reply-engine responses for known query probes
 3. App-level conformance gates:
    - scripted Vim flows (insert/normal mode edits, splits, mouse, paste, resize)
-   - scripted Codex flows (startup, turns, notify-linked cycles, interrupt/continue)
+   - scripted Codex flows (startup, turns, telemetry-linked cycles, interrupt/continue)
 4. External compatibility gates:
    - vttest-driven checks for supported VT100/VT220/xterm behaviors in scope
 5. Differential gates:
@@ -692,14 +707,14 @@ Output 3: Codex Live-Steering Session + Event Stream
   - observe normalized stream events emitted from live session activity
   - verify event persistence and replay for the steered session
 
-Output 4: Codex Notify Discovery + Classification
-- Adds provider-native notification surfaces on top of the same live session.
+Output 4: Codex Telemetry + History Ingestion
+- Adds provider-native structured telemetry and transcript ingestion on top of the same live session.
 - Demonstration:
-  - persist raw `codex notify` payloads as `meta-notify-observed` events
-  - produce notify-type inventory directly from captured sessions
-  - wire known notify types into attention/lifecycle event mapping
-  - correlate notify signals with terminal and normalized event stream ids
-  - verify unknown notify types are preserved losslessly as raw discovery events
+  - receive OTLP logs/metrics/traces from live Codex sessions
+  - ingest Codex `history.jsonl` entries with thread-id correlation
+  - map telemetry/history hints into deterministic session status transitions
+  - correlate enriched status/key events with terminal and normalized event stream ids
+  - verify malformed telemetry/history payloads are ignored without process instability
 
 Output 5: Programmatic Steering on Live Session
 - Uses the same control-plane commands as human steering against the same live session.
@@ -877,7 +892,7 @@ Milestone 2: Codex Live-Steering Session (Human-First)
   - one live Codex session can be launched, attached, detached, and reattached with state continuity
   - human steering actions (message, interrupt, continue) flow through PTY with no privileged bypass
   - normalized event stream is emitted and persisted from live session activity
-  - `codex notify`-style signals are ingested when available and mapped into attention/lifecycle events
+  - Codex telemetry/history signals are ingested when enabled and mapped into attention/lifecycle events
 
 Milestone 3: Programmatic Steering Parity on the Same Live Session
 - Goal: expose the same live steering operations to agents/API clients without creating a separate control path.
@@ -955,31 +970,36 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - Latency benchmark gate is implemented and runnable via `npm run benchmark:latency`, reporting direct-framed vs harness overhead at p50/p95/p99 with configurable thresholds.
 - Canonical event envelope in `src/events/normalized-events.ts`.
 - Transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads).
-- Milestone 2 live-steered checkpoint is implemented:
+  - Milestone 2 live-steered checkpoint is implemented:
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
   - Live session now includes terminal query reply support for `OSC 10/11` and indexed palette `OSC 4` probes (0..15) to improve visual parity with direct terminal runs.
   - Live session now emits `perf-core` query-observation events (`codex.terminal-query`) for CSI/OSC/DCS startup-query attribution (handled vs unhandled).
   - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output, including DEC scroll-region/origin handling required for pinned-footer UIs.
   - Supported terminal semantics now include `DECSTBM` (`CSI t;b r`), `DECOM` (`CSI ? 6 h/l`), `IND`/`NEL`/`RI`, and region-scoped `IL`/`DL` behavior.
   - `src/terminal/parity-suite.ts` defines codex/vim/core parity scenes and a deterministic matrix runner with scene-level failures and frame-hash output.
-  - `scripts/codex-notify-relay.ts` captures Codex notify hook payloads into a local JSONL stream.
-  - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events, including raw `meta-notify-observed`.
+  - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events.
   - `scripts/codex-live.ts` enforces terminal stream isolation: PTY output remains on stdout while events persist to SQLite (no event JSON mixed into terminal output).
-  - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time, including notify-discovery mode (`--only-notify`).
+  - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time.
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
   - `src/control-plane/stream-protocol.ts` defines typed newline-delimited TCP stream envelopes for command lifecycle, PTY pass-through signals, and async event delivery.
     - protocol now includes `auth`, `auth.ok`, `auth.error` envelopes and session query commands (`session.list`, `session.status`, `session.snapshot`).
     - `session.list` now supports deterministic sort (`attention-first`, `started-desc`, `started-asc`) and scope/status/live filters for multi-conversation clients.
     - protocol now includes persisted directory/conversation operations (`directory.upsert`, `directory.list`, `conversation.create`, `conversation.list`, `conversation.archive`, `conversation.delete`) and scoped live subscriptions (`stream.subscribe`, `stream.unsubscribe`, `stream.event`).
+    - protocol now includes session ownership controls (`session.claim`, `session.release`) and ownership lifecycle envelopes (`session-control`) for explicit human/agent handoff and takeover.
+    - stream observed status events now carry latest telemetry summary (`session-status.telemetry`), and telemetry ingestion publishes dedicated key events (`session-key-event`) for real-time UI state enrichment.
   - `src/control-plane/stream-server.ts` provides a session-aware control-plane server that executes PTY/session operations and broadcasts output/events to subscribed clients.
     - optional shared-token auth is enforced before non-auth commands when configured.
     - per-connection output buffering is bounded; slow consumers are disconnected once buffered output exceeds configured limits.
     - session runtime status tracking is exposed through `session.status` (`running`, `needs-input`, `completed`, `exited`) with attention reason and last-exit details.
-    - `running` transitions now require turn-submission/control intent (for example newline-submit, `session.respond`, or explicit interrupt/eof control), avoiding false `working` state flips from raw pre-submit keystrokes.
+    - runtime status is now event-driven from provider signals (Codex telemetry/history) instead of local keystroke heuristics, preventing false `working` transitions from pre-submit typing and making background-session completion deterministic.
     - session summaries now include PTY `processId` for per-session telemetry in operator clients.
+    - when enabled in `harness.config.jsonc`, the server hosts a local OTLP HTTP receiver and appends Codex `-c` overrides on launch so logs/metrics/traces (including optional prompt text) stream directly into Harness.
+    - Codex `history.jsonl` tail ingestion is supported as a parallel enrichment path, with thread-id correlation into conversation ids and shared SQLite persistence.
     - exited sessions are tombstoned with TTL-based cleanup to avoid unbounded daemon memory growth while preserving short-lived post-exit status/snapshot queries.
     - control-plane wrappers now include `attention.list`, `session.respond`, `session.interrupt`, and `session.remove` to provide parity-safe steering and explicit tombstone cleanup.
     - stream subscriptions support scope filters (`tenant/user/workspace/directory/conversation`), optional output inclusion, and cursor replay backed by an in-memory bounded journal.
+    - normalized lifecycle-hook dispatch is attached to stream-observed events through `src/control-plane/lifecycle-hooks.ts` and runs asynchronously with bounded queueing so connector IO cannot block control-plane hot paths.
+    - lifecycle hook connectors are config-governed (`hooks.lifecycle.*`) with provider filters and adapter-specific controls; current adapters are `peon-ping` and generic outbound `webhooks`.
     - session runtime changes and directory/conversation mutations are persisted in `src/store/control-plane-store.ts` (tenanted SQLite state store) and published through the same stream.
     - conversation persistence now includes adapter-scoped state (`adapter_state_json`) so provider-native resume identifiers can survive daemon/client restarts.
     - per-session adapter state is updated from scoped provider events and reused on next launch, enabling conversation continuity (for Codex: `codex resume <session-id>`).
@@ -989,9 +1009,15 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - startup/operation attribution is captured via `perf-core` command RTT + connect-attempt events (`control-plane.command.rtt`, `control-plane.connect.*`) so mux startup command latency is directly measurable.
     - client/server role attribution is explicit in control-plane traces (`role: client|server`) with connection/auth lifecycle events (`control-plane.server.connection.*`, `control-plane.server.auth.*`) for negotiation-stage diagnosis.
   - `src/control-plane/codex-session-stream.ts` extracts mux/session control-plane wiring into reusable infrastructure (embedded or remote transport).
+    - includes `subscribeControlPlaneKeyEvents(...)`, a typed internal stream-subscription API that maps `stream.event` envelopes into key status/telemetry updates for UI consumers.
+  - `src/control-plane/agent-realtime-api.ts` exposes the public TypeScript realtime automation API.
+    - typed event handlers (`client.on(type, handler)`) over stream subscriptions, including wildcard listeners.
+    - wrapper methods for steering, PTY transport, and ownership claim/release/takeover flows.
+    - intended as the canonical API surface for external adapters while preserving control-plane parity with the human mux.
   - `scripts/control-plane-daemon.ts` provides a standalone control-plane process (`npm run control-plane:daemon`) for split client/server operation.
     - non-loopback bind now requires an auth token (`--auth-token` or `HARNESS_CONTROL_PLANE_AUTH_TOKEN`).
     - daemon state persistence path is configurable (`--state-db-path` / `HARNESS_CONTROL_PLANE_DB_PATH`).
+    - daemon passes `hooks.lifecycle` config through to the control-plane runtime; lifecycle connector behavior is file-configured, not env-configured.
   - `scripts/control-plane-daemon-fixture.ts` provides a deterministic fixture daemon path that runs a local command (default `/bin/sh`) instead of Codex, for startup paint/protocol isolation.
   - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
     - launcher mode sets local-exit policy so `Ctrl+C` cleanly tears down both mux client and daemon.
@@ -1008,13 +1034,17 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - VTE-driven bracketed paste mode parity (`?2004`) mirrored to host terminal mode
     - first-party gesture-based in-pane selection with visual highlight and keyboard-triggered copy, with modifier-based passthrough for app mouse input
     - multi-conversation rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new conversation creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
+    - explicit directory selection from rail rows, with a project-focused right-pane tree view when directory mode is active
+    - directory-scoped actions (`new conversation`, `close directory`) target the selected directory in project mode and preserve active-conversation directory affinity in conversation mode
     - left rail composition uses directory-wrapped conversation blocks with inline git summary and per-conversation telemetry (CPU/memory sampled from `ps` via `processId`)
-    - git summary and process-usage sampling run asynchronously in background tasks (`mux.background.git-summary`, `mux.background.process-usage`) and are disabled by default (`HARNESS_MUX_BACKGROUND_PROBES=1` to enable) so startup/render/input hot paths are not contended by probe subprocesses
+    - git summary uses an adaptive per-project scheduler (`mux.background.git-summary`) with config-driven active/idle/burst intervals and bounded concurrency (`mux.git.*`), while process-usage sampling (`mux.background.process-usage`) remains opt-in through `HARNESS_MUX_BACKGROUND_PROBES=1`
     - control-plane operations are scheduled with interactive-first priority, and persisted non-active conversation warm-start is opt-in (`HARNESS_MUX_BACKGROUND_RESUME=1`) so startup and interactivity are not taxed by non-selected sessions
     - terminal-output persistence is buffered and flushed in batches (`mux.events.flush`) so per-chunk SQLite writes do not execute directly in the PTY output hot path
     - active-session attach now resumes from the last observed PTY cursor and inactive-session event subscriptions are removed on detach, preventing full-history replay and non-selected event churn
+    - key-event subscription wiring (`session-status` + `session-key-event`) that drives thread bubble status and second-line "last known work" text from provider/telemetry signals rather than local keystroke heuristics
+    - takeover-aware interaction so humans can explicitly claim/take over sessions currently controlled by automation
     - first-party styled rail rendering built from low-level terminal UI primitives rather than framework-driven VDOM
-    - per-conversation notify sink isolation to keep status routing correct when multiple sessions run concurrently
+    - per-conversation thread-id correlation keeps status routing correct when multiple sessions run concurrently
     - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
     - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
     - startup performance spans/events for startup and conversation launch (`mux.startup.*`, `mux.conversation.start`) through `perf-core`
@@ -1038,9 +1068,22 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.
   - `scripts/terminal-parity.ts` exposes the parity matrix gate (`npm run terminal:parity`).
 
+## Codex Telemetry Completion TODO (Claude Parity Deferred)
+
+- [ ] Normalize explicit token-usage fields (prompt/completion/total/cache) from OTLP payloads into first-class typed columns and per-turn rollups.
+- [ ] Normalize tool-call lifecycle details (tool name, args summary, duration, success/failure, output snippet hash) for fast session timeline queries.
+- [ ] Normalize approval events (requested/approved/denied/aborted + source: config/user) into dedicated queryable records.
+- [ ] Normalize API/network reliability signals (attempt number, retry count, status code/class, error category, duration buckets).
+- [ ] Add turn-level telemetry materialization (`turn_telemetry_rollups`) to avoid repeated ad-hoc scans over raw telemetry payload JSON.
+- [ ] Expose a control-plane read surface for telemetry timelines and rollups (`telemetry.list`, `telemetry.summary`) scoped by tenant/user/workspace/directory/conversation.
+- [ ] Add retention/compaction policy controls for raw telemetry payloads (time horizon + max size + safe pruning workflow).
+- [ ] Add deterministic fixture/e2e tests that assert real-time state transitions and status text updates from telemetry key events when a thread is not selected.
+
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/
+- https://developers.openai.com/codex/config#advanced
 - https://docs.anthropic.com/en/docs/claude-code/hooks
+- https://github.com/PeonPing/peon-ping
 - https://github.com/ThePrimeagen/agent-of-empires
 - https://github.com/coder/mux
 - https://github.com/amacneil/vibetunnel

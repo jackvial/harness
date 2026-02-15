@@ -12,7 +12,6 @@ void test('ansi integrity checker accepts valid rail rows', () => {
           key: 'main',
           workspaceId: 'harness',
           worktreeId: 'main',
-          active: true,
           git: {
             branch: 'main',
             changedFiles: 0,
@@ -22,7 +21,9 @@ void test('ansi integrity checker accepts valid rail rows', () => {
         }
       ],
       conversations: [],
+      activeProjectId: 'main',
       activeConversationId: null,
+      projectSelectionEnabled: true,
       processes: [],
       nowMs: Date.parse('2026-01-01T00:00:00.000Z')
     },
@@ -38,6 +39,7 @@ void test('ansi integrity checker detects mangling from plain-width trimming ans
     {
       directories: [],
       conversations: [],
+      activeProjectId: null,
       activeConversationId: null,
       processes: [],
       nowMs: Date.parse('2026-01-01T00:00:00.000Z')

@@ -1,4 +1,6 @@
 import type { ConversationRailSessionSummary } from './conversation-rail.ts';
+import { formatUiButton } from '../ui/kit.ts';
+import type { StreamSessionController } from '../control-plane/stream-protocol.ts';
 
 interface WorkspaceRailGitSummary {
   readonly branch: string;
@@ -11,7 +13,6 @@ interface WorkspaceRailDirectorySummary {
   readonly key: string;
   readonly workspaceId: string;
   readonly worktreeId: string;
-  readonly active: boolean;
   readonly git: WorkspaceRailGitSummary;
 }
 
@@ -22,10 +23,12 @@ interface WorkspaceRailConversationSummary {
   readonly agentLabel: string;
   readonly cpuPercent: number | null;
   readonly memoryMb: number | null;
+  readonly lastKnownWork: string | null;
   readonly status: ConversationRailSessionSummary['status'];
   readonly attentionReason: string | null;
   readonly startedAt: string;
   readonly lastEventAt: string | null;
+  readonly controller?: StreamSessionController | null;
 }
 
 interface WorkspaceRailProcessSummary {
@@ -41,7 +44,10 @@ interface WorkspaceRailModel {
   readonly directories: readonly WorkspaceRailDirectorySummary[];
   readonly conversations: readonly WorkspaceRailConversationSummary[];
   readonly processes: readonly WorkspaceRailProcessSummary[];
+  readonly activeProjectId: string | null;
   readonly activeConversationId: string | null;
+  readonly localControllerId?: string | null;
+  readonly projectSelectionEnabled?: boolean;
   readonly shortcutHint?: string;
   readonly shortcutsCollapsed?: boolean;
   readonly nowMs?: number;
@@ -52,7 +58,7 @@ interface WorkspaceRailViewRow {
     | 'dir-header'
     | 'dir-meta'
     | 'conversation-title'
-    | 'conversation-meta'
+    | 'conversation-body'
     | 'process-title'
     | 'process-meta'
     | 'shortcut-header'
@@ -62,16 +68,23 @@ interface WorkspaceRailViewRow {
   readonly text: string;
   readonly active: boolean;
   readonly conversationSessionId: string | null;
+  readonly directoryKey: string | null;
   readonly railAction: WorkspaceRailAction | null;
+  readonly conversationStatus: NormalizedConversationStatus | null;
 }
 
 const INTER_DIRECTORY_SPACER_ROWS = 2;
+const NEW_THREAD_INLINE_LABEL = '[+ thread]';
+const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
+  label: 'add project',
+  prefixIcon: '>'
+});
 
 type WorkspaceRailAction =
   | 'conversation.new'
   | 'conversation.delete'
-  | 'directory.add'
-  | 'directory.close'
+  | 'project.add'
+  | 'project.close'
   | 'shortcuts.toggle';
 
 type NormalizedConversationStatus = 'needs-action' | 'working' | 'idle' | 'complete' | 'exited';
@@ -96,36 +109,20 @@ function normalizeConversationStatus(
   return 'working';
 }
 
-function statusGlyph(status: NormalizedConversationStatus): string {
+function statusGlyph(status: NormalizedConversationStatus, nowMs: number): string {
   if (status === 'needs-action') {
-    return '◐';
+    return '▲';
   }
   if (status === 'working') {
-    return '●';
+    return Math.floor(nowMs / 400) % 2 === 0 ? '◆' : '◇';
   }
   if (status === 'idle') {
-    return '◍';
-  }
-  if (status === 'complete') {
     return '○';
   }
-  return '◌';
-}
-
-function statusText(status: NormalizedConversationStatus): string {
-  if (status === 'needs-action') {
-    return 'needs action';
-  }
-  if (status === 'working') {
-    return 'working';
-  }
-  if (status === 'idle') {
-    return 'idle';
-  }
   if (status === 'complete') {
-    return 'complete';
+    return '◇';
   }
-  return 'exited';
+  return '■';
 }
 
 function processStatusText(status: WorkspaceRailProcessSummary['status']): string {
@@ -146,6 +143,51 @@ function formatMem(value: number | null): string {
   return `${String(Math.max(0, Math.round(value)))}MB`;
 }
 
+function summaryText(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  const normalized = value.replace(/\s+/gu, ' ').trim();
+  return normalized.length === 0 ? null : normalized;
+}
+
+function controllerDisplayText(
+  conversation: WorkspaceRailConversationSummary,
+  localControllerId: string | null
+): string | null {
+  const controller = conversation.controller;
+  if (controller === null || controller === undefined) {
+    return null;
+  }
+  if (controller.controllerType === 'human' && controller.controllerId === localControllerId) {
+    return null;
+  }
+  const label = controller.controllerLabel?.trim() ?? '';
+  if (label.length > 0) {
+    return `controlled by ${label}`;
+  }
+  return `controlled by ${controller.controllerType}:${controller.controllerId}`;
+}
+
+function conversationDetailText(
+  conversation: WorkspaceRailConversationSummary,
+  localControllerId: string | null
+): string {
+  const controllerText = controllerDisplayText(conversation, localControllerId);
+  if (controllerText !== null) {
+    return controllerText;
+  }
+  const lastKnownWork = summaryText(conversation.lastKnownWork);
+  if (lastKnownWork !== null) {
+    return lastKnownWork;
+  }
+  const attentionReason = summaryText(conversation.attentionReason);
+  if (attentionReason !== null) {
+    return attentionReason;
+  }
+  return `${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)}`;
+}
+
 function directoryDisplayName(directory: WorkspaceRailDirectorySummary): string {
   const name = directory.workspaceId.trim();
   if (name.length === 0) {
@@ -154,98 +196,123 @@ function directoryDisplayName(directory: WorkspaceRailDirectorySummary): string 
   return name;
 }
 
+function conversationDisplayTitle(conversation: WorkspaceRailConversationSummary): string {
+  const title = conversation.title.trim();
+  if (title.length === 0) {
+    return conversation.agentLabel;
+  }
+  return `${conversation.agentLabel} - ${conversation.title}`;
+}
+
 function pushRow(
   rows: WorkspaceRailViewRow[],
   kind: WorkspaceRailViewRow['kind'],
   text: string,
   active = false,
   conversationSessionId: string | null = null,
-  railAction: WorkspaceRailAction | null = null
+  directoryKey: string | null = null,
+  railAction: WorkspaceRailAction | null = null,
+  conversationStatus: NormalizedConversationStatus | null = null
 ): void {
   rows.push({
     kind,
     text,
     active,
     conversationSessionId,
-    railAction
+    directoryKey,
+    railAction,
+    conversationStatus
   });
 }
 
 function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
+  pushRow(rows, 'action', `│  ${ADD_PROJECT_BUTTON_LABEL}`, false, null, null, 'project.add');
+  pushRow(rows, 'muted', '│');
 
   if (model.directories.length === 0) {
-    pushRow(rows, 'dir-header', '┌─ 📁 no directories');
-    pushRow(rows, 'muted', '│  create one with ^t');
+    pushRow(rows, 'dir-header', '├─ 📁 no projects');
+    pushRow(rows, 'muted', '│  create one with ctrl+o');
     return rows;
   }
 
   for (let directoryIndex = 0; directoryIndex < model.directories.length; directoryIndex += 1) {
     const directory = model.directories[directoryIndex]!;
-    const connector = directoryIndex === 0 ? '┌' : '├';
+    const projectSelected =
+      (model.projectSelectionEnabled ?? false) && directory.key === model.activeProjectId;
+    const connector = '├';
     pushRow(
       rows,
       'dir-header',
-      `${connector}─ 📁 ${directoryDisplayName(directory)} ─ ${directory.git.branch}`
+      `${connector}─ 📁 ${directoryDisplayName(directory)} ─ ${directory.git.branch}  ${NEW_THREAD_INLINE_LABEL}`,
+      projectSelected,
+      null,
+      directory.key
     );
     pushRow(
       rows,
       'dir-meta',
-      `│  +${String(directory.git.additions)} -${String(directory.git.deletions)} │ ${String(directory.git.changedFiles)} files`
+      `│  +${String(directory.git.additions)} -${String(directory.git.deletions)} │ ${String(directory.git.changedFiles)} files`,
+      projectSelected,
+      null,
+      directory.key
     );
-    pushRow(rows, 'muted', '│');
+    pushRow(rows, 'muted', '│', false, null, directory.key);
 
     const conversations = model.conversations.filter(
       (conversation) => conversation.directoryKey === directory.key
     );
-    if (conversations.length === 0) {
-      pushRow(rows, 'muted', '│  (no conversations)');
-      pushRow(rows, 'action', '│  + new conversation', false, null, 'conversation.new');
-    } else {
+    if (conversations.length > 0) {
       for (let index = 0; index < conversations.length; index += 1) {
         const conversation = conversations[index]!;
-        const active = conversation.sessionId === model.activeConversationId;
-        const reason =
-          conversation.attentionReason !== null && conversation.attentionReason.trim().length > 0
-            ? ` · ${conversation.attentionReason.trim()}`
-            : '';
+        const active =
+          !(model.projectSelectionEnabled ?? false) && conversation.sessionId === model.activeConversationId;
         const normalizedStatus = normalizeConversationStatus(conversation, nowMs);
         pushRow(
           rows,
           'conversation-title',
-          `│  ${active ? '▸' : ' '} ${conversation.agentLabel} - ${conversation.title}`,
+          `│  ${active ? '▸' : ' '} ${statusGlyph(normalizedStatus, nowMs)} ${conversationDisplayTitle(conversation)}`,
           active,
-          conversation.sessionId
+          conversation.sessionId,
+          directory.key,
+          null,
+          normalizedStatus
         );
         pushRow(
           rows,
-          'conversation-meta',
-          `│    ${statusGlyph(normalizedStatus)} ${statusText(normalizedStatus)}${reason} · ${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)}`,
+          'conversation-body',
+          `│    ${conversationDetailText(conversation, model.localControllerId ?? null)}`,
           active,
-          conversation.sessionId
+          conversation.sessionId,
+          directory.key,
+          null,
+          normalizedStatus
         );
         if (index + 1 < conversations.length) {
-          pushRow(rows, 'muted', '│');
+          pushRow(rows, 'muted', '│', false, null, directory.key);
         }
       }
     }
 
     const processes = model.processes.filter((process) => process.directoryKey === directory.key);
     if (processes.length > 0) {
-      pushRow(rows, 'muted', '│');
+      pushRow(rows, 'muted', '│', false, null, directory.key);
       for (const process of processes) {
-        pushRow(rows, 'process-title', `│  ⚙ ${process.label}`);
+        pushRow(rows, 'process-title', `│  ⚙ ${process.label}`, false, null, directory.key);
         pushRow(
           rows,
           'process-meta',
-          `│    ${processStatusText(process.status)} · ${formatCpu(process.cpuPercent)} · ${formatMem(process.memoryMb)}`
+          `│    ${processStatusText(process.status)} · ${formatCpu(process.cpuPercent)} · ${formatMem(process.memoryMb)}`,
+          false,
+          null,
+          directory.key
         );
       }
     }
 
     if (directoryIndex + 1 < model.directories.length) {
       for (let spacerIndex = 0; spacerIndex < INTER_DIRECTORY_SPACER_ROWS; spacerIndex += 1) {
-        pushRow(rows, 'muted', '│');
+        pushRow(rows, 'muted', '│', false, null, directory.key);
       }
     }
   }
@@ -257,11 +324,12 @@ function shortcutDescriptionRows(shortcutHint: string | undefined): readonly str
   const normalized = shortcutHint?.trim();
   if (normalized === undefined || normalized.length === 0) {
     return [
-      'ctrl+t new conversation',
-      'ctrl+x archive conversation',
-      'ctrl+o add directory',
-      'ctrl+w close directory',
-      'ctrl+j/k switch conversation',
+      'ctrl+t new thread',
+      'ctrl+x archive thread',
+      'ctrl+l take over thread',
+      'ctrl+o add project',
+      'ctrl+w close project',
+      'ctrl+j/k switch thread',
       'ctrl+c quit mux'
     ];
   }
@@ -287,7 +355,9 @@ function shortcutRows(
       text: `├─ ⌨ shortcuts ${shortcutsCollapsed ? '[+]' : '[-]'}`,
       active: false,
       conversationSessionId: null,
-      railAction: 'shortcuts.toggle'
+      directoryKey: null,
+      railAction: 'shortcuts.toggle',
+      conversationStatus: null
     }
   ];
   if (!shortcutsCollapsed) {
@@ -298,40 +368,12 @@ function shortcutRows(
         text: `│  ${description}`,
         active: false,
         conversationSessionId: null,
-        railAction: null
+        directoryKey: null,
+        railAction: null,
+        conversationStatus: null
       });
     }
   }
-  rows.push(
-    {
-      kind: 'action',
-      text: '│  + new conversation',
-      active: false,
-      conversationSessionId: null,
-      railAction: 'conversation.new'
-    },
-    {
-      kind: 'action',
-      text: '│  x archive conversation',
-      active: false,
-      conversationSessionId: null,
-      railAction: 'conversation.delete'
-    },
-    {
-      kind: 'action',
-      text: '│  > add directory',
-      active: false,
-      conversationSessionId: null,
-      railAction: 'directory.add'
-    },
-    {
-      kind: 'action',
-      text: '│  < close directory',
-      active: false,
-      conversationSessionId: null,
-      railAction: 'directory.close'
-    }
-  );
   return rows;
 }
 
@@ -377,6 +419,47 @@ export function actionAtWorkspaceRailRow(
     return null;
   }
   return row.railAction;
+}
+
+export function actionAtWorkspaceRailCell(
+  rows: readonly WorkspaceRailViewRow[],
+  rowIndex: number,
+  colIndex: number,
+  paneCols: number | null = null
+): WorkspaceRailAction | null {
+  const row = rows[rowIndex];
+  if (row === undefined) {
+    return null;
+  }
+  if (row.railAction !== null) {
+    return row.railAction;
+  }
+  if (row.kind !== 'dir-header') {
+    return null;
+  }
+  if (!row.text.includes(NEW_THREAD_INLINE_LABEL)) {
+    return null;
+  }
+  const buttonStart =
+    paneCols === null
+      ? row.text.lastIndexOf(NEW_THREAD_INLINE_LABEL)
+      : Math.max(0, Math.floor(paneCols) - NEW_THREAD_INLINE_LABEL.length);
+  const normalizedCol = Math.max(0, Math.floor(colIndex));
+  if (normalizedCol < buttonStart || normalizedCol >= buttonStart + NEW_THREAD_INLINE_LABEL.length) {
+    return null;
+  }
+  return 'conversation.new';
+}
+
+export function projectIdAtWorkspaceRailRow(
+  rows: readonly WorkspaceRailViewRow[],
+  rowIndex: number
+): string | null {
+  const row = rows[rowIndex];
+  if (row === undefined) {
+    return null;
+  }
+  return row.directoryKey;
 }
 
 export function kindAtWorkspaceRailRow(

@@ -44,67 +44,28 @@ void test('codexResumeSessionIdFromAdapterState reads canonical and legacy keys'
   );
 });
 
-void test('mergeAdapterStateFromSessionEvent stores codex thread id from notify payload', () => {
-  const merged = mergeAdapterStateFromSessionEvent(
-    'codex',
-    {},
-    {
-      type: 'notify',
-      record: {
-        ts: '2026-02-14T00:00:00.000Z',
-        payload: {
-          'thread-id': 'thread-42'
-        }
-      }
-    },
-    '2026-02-14T00:00:00.000Z'
-  );
-  assert.deepEqual(merged, {
-    codex: {
-      resumeSessionId: 'thread-42',
-      lastObservedAt: '2026-02-14T00:00:00.000Z'
-    }
-  });
-
-  const unchanged = mergeAdapterStateFromSessionEvent(
-    'codex',
-    merged as Record<string, unknown>,
-    {
-      type: 'turn-completed',
-      record: {
-        ts: '2026-02-14T00:01:00.000Z',
-        payload: {
-          thread_id: 'thread-42'
-        }
-      }
-    },
-    '2026-02-14T00:01:00.000Z'
-  );
-  assert.equal(unchanged, null);
-});
-
-void test('mergeAdapterStateFromSessionEvent ignores unsupported agents and events without thread ids', () => {
+void test('mergeAdapterStateFromSessionEvent returns null for codex session events', () => {
   assert.equal(
     mergeAdapterStateFromSessionEvent(
-      'claude',
+      'codex',
       {},
       {
-        type: 'notify',
-        record: {
-          ts: '2026-02-14T00:00:00.000Z',
-          payload: {
-            'thread-id': 'thread-claude'
-          }
+        type: 'session-exit',
+        exit: {
+          code: 0,
+          signal: null
         }
       },
       '2026-02-14T00:00:00.000Z'
     ),
     null
   );
+});
 
+void test('mergeAdapterStateFromSessionEvent ignores unsupported agents', () => {
   assert.equal(
     mergeAdapterStateFromSessionEvent(
-      'codex',
+      'claude',
       {},
       {
         type: 'session-exit',

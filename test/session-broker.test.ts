@@ -229,6 +229,35 @@ void test('single-session broker truncates oversized chunks to tail backlog wind
   }
 });
 
+void test('single-session broker evicts oldest backlog entries when cumulative bytes exceed limit', async () => {
+  const fake = new FakePtySession();
+  const broker = startSingleSessionBroker(
+    undefined,
+    6,
+    {
+      startSession: () => fake as unknown as ReturnType<typeof startPtySession>
+    }
+  );
+
+  const live = createAttachmentCollector();
+  broker.attach(live.handlers);
+  fake.emit('data', Buffer.from('abcd'));
+  fake.emit('data', Buffer.from('efgh'));
+  await waitForCondition(() => live.readText().includes('efgh'), 'live output for eviction path');
+
+  const replay = createAttachmentCollector();
+  broker.attach(replay.handlers, 0);
+  await waitForCondition(() => replay.readText().length > 0, 'replayed tail after eviction');
+  assert.equal(replay.readText().includes('abcd'), false);
+  assert.equal(replay.readText().includes('efgh'), true);
+
+  fake.emit('exit', {
+    code: 0,
+    signal: null
+  } satisfies PtyExit);
+  await waitForCondition(() => replay.exit() !== null, 'eviction path exit');
+});
+
 void test('single-session broker forwards resize to underlying PTY session', async () => {
   const broker = startSingleSessionBroker({
     command: '/bin/sh',

@@ -6,8 +6,11 @@ import {
   drawUiAlignedText,
   drawUiModal,
   fillUiRect,
+  formatUiButton,
+  isUiModalOverlayHit,
   layoutUiModalRect,
   paintUiRow,
+  paintUiRowWithTrailingLabel,
   SINGLE_LINE_UI_BOX_GLYPHS,
   strokeUiRect,
   truncateUiText
@@ -49,6 +52,15 @@ void test('ui kit truncates text deterministically with ellipsis', () => {
   assert.equal(truncateUiText('界界界', 4), '界…');
 });
 
+void test('ui kit formats button labels with icon and padding defaults', () => {
+  assert.equal(formatUiButton({ label: 'new conversation', prefixIcon: '+' }), '[ + new conversation ]');
+  assert.equal(formatUiButton({ label: '  ', prefixIcon: '' }), '[ button ]');
+  assert.equal(
+    formatUiButton({ label: 'archive', prefixIcon: 'x', suffixIcon: '!', paddingX: 2.9 }),
+    '[  x archive !  ]'
+  );
+});
+
 void test('ui kit aligned text and row paint helpers draw left/center/right', () => {
   const surface = createUiSurface(12, 3);
   paintUiRow(surface, 0, 'left', DEFAULT_UI_STYLE, DEFAULT_UI_STYLE, 0);
@@ -60,6 +72,68 @@ void test('ui kit aligned text and row paint helpers draw left/center/right', ()
   assert.equal(rows[0]?.startsWith('left'), true);
   assert.equal(rows[1]?.includes('    mid'), true);
   assert.equal(rows[2]?.endsWith('right'), true);
+});
+
+void test('ui kit paints row with a trailing label aligned to the right edge', () => {
+  const surface = createUiSurface(20, 1);
+  paintUiRowWithTrailingLabel(
+    surface,
+    0,
+    'left content',
+    '[+ thread]',
+    DEFAULT_UI_STYLE,
+    DEFAULT_UI_STYLE,
+    DEFAULT_UI_STYLE
+  );
+
+  const row = stripAnsi(renderUiSurfaceAnsiRows(surface)[0] ?? '');
+  assert.equal(row.endsWith('[+ thread]'), true);
+  assert.equal(row.startsWith('left'), true);
+  assert.equal(row.includes('…'), true);
+
+  const clippedSurface = createUiSurface(10, 1);
+  paintUiRowWithTrailingLabel(
+    clippedSurface,
+    0,
+    'long left content',
+    '[+ thread]',
+    DEFAULT_UI_STYLE,
+    DEFAULT_UI_STYLE,
+    DEFAULT_UI_STYLE
+  );
+  const clippedRow = stripAnsi(renderUiSurfaceAnsiRows(clippedSurface)[0] ?? '');
+  assert.equal(clippedRow.endsWith('[+ thread]'), true);
+  assert.equal(clippedRow.includes('long left'), false);
+
+  const zeroWidthSurface = createUiSurface(8, 1);
+  paintUiRowWithTrailingLabel(
+    zeroWidthSurface,
+    0,
+    'ignored',
+    '[x]',
+    DEFAULT_UI_STYLE,
+    DEFAULT_UI_STYLE,
+    DEFAULT_UI_STYLE,
+    {
+      width: 0
+    }
+  );
+  const zeroWidthRow = stripAnsi(renderUiSurfaceAnsiRows(zeroWidthSurface)[0] ?? '');
+  assert.equal(zeroWidthRow, '        ');
+
+  const noTrailingLabelSurface = createUiSurface(14, 1);
+  paintUiRowWithTrailingLabel(
+    noTrailingLabelSurface,
+    0,
+    'left',
+    '',
+    DEFAULT_UI_STYLE,
+    DEFAULT_UI_STYLE,
+    DEFAULT_UI_STYLE
+  );
+  const noTrailingLabelRow = stripAnsi(renderUiSurfaceAnsiRows(noTrailingLabelSurface)[0] ?? '');
+  assert.equal(noTrailingLabelRow.startsWith('left'), true);
+  assert.equal(noTrailingLabelRow.includes('[+ thread]'), false);
 });
 
 void test('ui kit fillUiRect clamps rectangles and leaves out-of-bounds writes untouched', () => {
@@ -372,4 +446,34 @@ void test('ui kit buildUiModalOverlay returns positioned modal rows and supports
     height: 3
   });
   assert.equal(fallbackBodyOverlay.rows.length, 3);
+});
+
+void test('ui kit modal hit-test returns true only for points inside overlay bounds', () => {
+  const overlay = buildUiModalOverlay({
+    viewportCols: 40,
+    viewportRows: 10,
+    width: 20,
+    height: 5,
+    anchor: 'center',
+    title: 'Hit Test',
+    bodyLines: ['body']
+  });
+
+  assert.equal(isUiModalOverlayHit(overlay, overlay.left + 1, overlay.top + 1), true);
+  assert.equal(
+    isUiModalOverlayHit(overlay, overlay.left + overlay.width, overlay.top + overlay.height),
+    true
+  );
+  assert.equal(isUiModalOverlayHit(overlay, overlay.left, overlay.top + 1), false);
+  assert.equal(isUiModalOverlayHit(overlay, overlay.left + 1, overlay.top), false);
+  assert.equal(
+    isUiModalOverlayHit(overlay, overlay.left + overlay.width + 1, overlay.top + 1),
+    false
+  );
+  assert.equal(
+    isUiModalOverlayHit(overlay, overlay.left + 1, overlay.top + overlay.height + 1),
+    false
+  );
+  assert.equal(isUiModalOverlayHit(overlay, 0, 1), false);
+  assert.equal(isUiModalOverlayHit(overlay, 1, 0), false);
 });

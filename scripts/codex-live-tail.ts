@@ -9,7 +9,6 @@ interface TailOptions {
   pollMs: number;
   json: boolean;
   includeTextDeltas: boolean;
-  onlyNotify: boolean;
   exitOnSessionEnd: boolean;
   fromNow: boolean;
 }
@@ -40,7 +39,6 @@ function parseArgs(argv: string[]): TailOptions {
   let pollMs = envPollMs;
   let json = false;
   let includeTextDeltas = false;
-  let onlyNotify = false;
   let exitOnSessionEnd = envExitOnSessionEnd;
   let fromNow = false;
 
@@ -83,15 +81,6 @@ function parseArgs(argv: string[]): TailOptions {
       includeTextDeltas = false;
       continue;
     }
-    if (arg === '--only-notify') {
-      onlyNotify = true;
-      includeTextDeltas = false;
-      continue;
-    }
-    if (arg === '--all-events') {
-      onlyNotify = false;
-      continue;
-    }
     if (arg === '--from-now') {
       fromNow = true;
       continue;
@@ -112,7 +101,7 @@ function parseArgs(argv: string[]): TailOptions {
 
   if (typeof conversationId !== 'string' || conversationId.length === 0) {
     process.stderr.write(
-      'usage: npm run codex:live:tail -- --conversation-id <id> [--json] [--only-notify] [--include-text-deltas] [--from-now|--from-start]\n'
+      'usage: npm run codex:live:tail -- --conversation-id <id> [--json] [--include-text-deltas] [--from-now|--from-start]\n'
     );
     process.exitCode = 2;
     process.exit(2);
@@ -126,7 +115,6 @@ function parseArgs(argv: string[]): TailOptions {
     pollMs,
     json,
     includeTextDeltas,
-    onlyNotify,
     exitOnSessionEnd,
     fromNow
   };
@@ -167,17 +155,10 @@ function summarizeEvent(event: NormalizedEventEnvelope): string {
     return `${event.ts} ${event.type} turn=${turnId} reason=${String(payload.reason)}`;
   }
 
-  if (event.type === 'meta-notify-observed' && payload.kind === 'notify') {
-    return `${event.ts} ${event.type} turn=${turnId} notifyType=${payload.notifyType}`;
-  }
-
   return `${event.ts} ${event.type} turn=${turnId}`;
 }
 
 function shouldEmitEvent(event: NormalizedEventEnvelope, options: TailOptions): boolean {
-  if (options.onlyNotify) {
-    return event.type === 'meta-notify-observed';
-  }
   if (options.includeTextDeltas) {
     return true;
   }

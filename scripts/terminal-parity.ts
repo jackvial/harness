@@ -13,7 +13,7 @@ function summarizeMatrix(result: ReturnType<typeof runTerminalParityMatrix>): st
   return `terminal-parity: pass=${String(result.pass)} scenes=${String(result.totalScenes)} passed=${String(result.passedScenes)} failed=${String(result.failedScenes)}`;
 }
 
-async function main(): Promise<number> {
+function main(): number {
   const json = process.argv.includes('--json');
   const matrix = runTerminalParityMatrix(TERMINAL_PARITY_SCENES);
 
@@ -29,5 +29,5 @@ async function main(): Promise<number> {
   return matrix.pass ? 0 : 1;
 }
 
-const code = await main();
+const code = main();
 process.exitCode = code;

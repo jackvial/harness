@@ -3,6 +3,33 @@ import type { PtyExit } from '../pty/pty_host.ts';
 export type StreamSignal = 'interrupt' | 'eof' | 'terminate';
 export type StreamSessionRuntimeStatus = 'running' | 'needs-input' | 'completed' | 'exited';
 export type StreamSessionListSort = 'attention-first' | 'started-desc' | 'started-asc';
+export type StreamTelemetrySource = 'otlp-log' | 'otlp-metric' | 'otlp-trace' | 'history';
+export type StreamTelemetryStatusHint = 'running' | 'completed' | 'needs-input';
+export type StreamSessionControllerType = 'human' | 'agent' | 'automation';
+
+export interface StreamSessionController {
+  controllerId: string;
+  controllerType: StreamSessionControllerType;
+  controllerLabel: string | null;
+  claimedAt: string;
+}
+
+export interface StreamTelemetrySummary {
+  source: StreamTelemetrySource;
+  eventName: string | null;
+  severity: string | null;
+  summary: string | null;
+  observedAt: string;
+}
+
+export interface StreamSessionKeyEventRecord {
+  source: StreamTelemetrySource;
+  eventName: string | null;
+  severity: string | null;
+  summary: string | null;
+  observedAt: string;
+  statusHint: StreamTelemetryStatusHint | null;
+}
 
 interface DirectoryUpsertCommand {
   type: 'directory.upsert';
@@ -110,6 +137,22 @@ interface SessionRespondCommand {
   text: string;
 }
 
+interface SessionClaimCommand {
+  type: 'session.claim';
+  sessionId: string;
+  controllerId: string;
+  controllerType: StreamSessionControllerType;
+  controllerLabel?: string;
+  reason?: string;
+  takeover?: boolean;
+}
+
+interface SessionReleaseCommand {
+  type: 'session.release';
+  sessionId: string;
+  reason?: string;
+}
+
 interface SessionInterruptCommand {
   type: 'session.interrupt';
   sessionId: string;
@@ -178,6 +221,8 @@ export type StreamCommand =
   | SessionStatusCommand
   | SessionSnapshotCommand
   | SessionRespondCommand
+  | SessionClaimCommand
+  | SessionReleaseCommand
   | SessionInterruptCommand
   | SessionRemoveCommand
   | PtyStartCommand
@@ -224,26 +269,8 @@ export type StreamClientEnvelope =
   | StreamResizeEnvelope
   | StreamSignalEnvelope;
 
-interface StreamNotifyRecord {
-  ts: string;
-  payload: Record<string, unknown>;
-}
-
 export type StreamSessionEvent =
-  | {
-      type: 'notify';
-      record: StreamNotifyRecord;
-    }
-  | {
-      type: 'turn-completed';
-      record: StreamNotifyRecord;
-    }
-  | {
-      type: 'attention-required';
-      reason: string;
-      record: StreamNotifyRecord;
-    }
-  | {
+  {
       type: 'session-exit';
       exit: PtyExit;
     };
@@ -285,11 +312,32 @@ export type StreamObservedEvent =
       ts: string;
       directoryId: string | null;
       conversationId: string | null;
+      telemetry: StreamTelemetrySummary | null;
+      controller: StreamSessionController | null;
     }
   | {
       type: 'session-event';
       sessionId: string;
       event: StreamSessionEvent;
+      ts: string;
+      directoryId: string | null;
+      conversationId: string | null;
+    }
+  | {
+      type: 'session-key-event';
+      sessionId: string;
+      keyEvent: StreamSessionKeyEventRecord;
+      ts: string;
+      directoryId: string | null;
+      conversationId: string | null;
+    }
+  | {
+      type: 'session-control';
+      sessionId: string;
+      action: 'claimed' | 'released' | 'taken-over';
+      controller: StreamSessionController | null;
+      previousController: StreamSessionController | null;
+      reason: string | null;
       ts: string;
       directoryId: string | null;
       conversationId: string | null;
@@ -857,6 +905,62 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
     };
   }
 
+  if (type === 'session.claim') {
+    const sessionId = readString(record['sessionId']);
+    const controllerId = readString(record['controllerId']);
+    const controllerType = parseSessionControllerType(record['controllerType']);
+    if (sessionId === null || controllerId === null || controllerType === null) {
+      return null;
+    }
+    const command: SessionClaimCommand = {
+      type,
+      sessionId,
+      controllerId,
+      controllerType
+    };
+    const controllerLabel = readString(record['controllerLabel']);
+    if (record['controllerLabel'] !== undefined && controllerLabel === null) {
+      return null;
+    }
+    const reason = readString(record['reason']);
+    if (record['reason'] !== undefined && reason === null) {
+      return null;
+    }
+    const takeover = readBoolean(record['takeover']);
+    if (record['takeover'] !== undefined && takeover === null) {
+      return null;
+    }
+    if (controllerLabel !== null) {
+      command.controllerLabel = controllerLabel;
+    }
+    if (reason !== null) {
+      command.reason = reason;
+    }
+    if (takeover !== null) {
+      command.takeover = takeover;
+    }
+    return command;
+  }
+
+  if (type === 'session.release') {
+    const sessionId = readString(record['sessionId']);
+    if (sessionId === null) {
+      return null;
+    }
+    const command: SessionReleaseCommand = {
+      type,
+      sessionId
+    };
+    const reason = readString(record['reason']);
+    if (record['reason'] !== undefined && reason === null) {
+      return null;
+    }
+    if (reason !== null) {
+      command.reason = reason;
+    }
+    return command;
+  }
+
   const sessionId = readString(record['sessionId']);
   if (sessionId === null) {
     return null;
@@ -1095,42 +1199,135 @@ function parseStreamSessionEvent(value: unknown): StreamSessionEvent | null {
     };
   }
 
-  const recordValue = asRecord(record['record']);
-  if (recordValue === null) {
-    return null;
-  }
-  const ts = readString(recordValue['ts']);
-  const payload = asRecord(recordValue['payload']);
-  if (ts === null || payload === null) {
-    return null;
-  }
-
-  if (type === 'notify' || type === 'turn-completed') {
-    return {
-      type,
-      record: {
-        ts,
-        payload
-      }
-    };
-  }
-
-  if (type === 'attention-required') {
-    const reason = readString(record['reason']);
-    if (reason === null) {
-      return null;
-    }
-    return {
-      type,
-      reason,
-      record: {
-        ts,
-        payload
-      }
-    };
-  }
-
   return null;
+}
+
+function parseTelemetrySource(value: unknown): StreamTelemetrySource | null {
+  if (
+    value === 'otlp-log' ||
+    value === 'otlp-metric' ||
+    value === 'otlp-trace' ||
+    value === 'history'
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function parseSessionControllerType(value: unknown): StreamSessionControllerType | null {
+  if (value === 'human' || value === 'agent' || value === 'automation') {
+    return value;
+  }
+  return null;
+}
+
+function parseSessionController(value: unknown): StreamSessionController | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const record = asRecord(value);
+  if (record === null) {
+    return undefined;
+  }
+  const controllerId = readString(record['controllerId']);
+  const controllerType = parseSessionControllerType(record['controllerType']);
+  const controllerLabel = record['controllerLabel'] === null ? null : readString(record['controllerLabel']);
+  const claimedAt = readString(record['claimedAt']);
+  if (
+    controllerId === null ||
+    controllerType === null ||
+    controllerLabel === null && record['controllerLabel'] !== null ||
+    claimedAt === null
+  ) {
+    return undefined;
+  }
+  return {
+    controllerId,
+    controllerType,
+    controllerLabel,
+    claimedAt
+  };
+}
+
+function parseTelemetryStatusHint(value: unknown): StreamTelemetryStatusHint | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (value === 'running' || value === 'completed' || value === 'needs-input') {
+    return value;
+  }
+  return undefined;
+}
+
+function parseTelemetrySummary(value: unknown): StreamTelemetrySummary | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const record = asRecord(value);
+  if (record === null) {
+    return undefined;
+  }
+  const source = parseTelemetrySource(record['source']);
+  const eventName = record['eventName'] === null ? null : readString(record['eventName']);
+  const severity = record['severity'] === null ? null : readString(record['severity']);
+  const summary = record['summary'] === null ? null : readString(record['summary']);
+  const observedAt = readString(record['observedAt']);
+  if (
+    source === null ||
+    eventName === null && record['eventName'] !== null ||
+    severity === null && record['severity'] !== null ||
+    summary === null && record['summary'] !== null ||
+    observedAt === null
+  ) {
+    return undefined;
+  }
+  return {
+    source,
+    eventName,
+    severity,
+    summary,
+    observedAt
+  };
+}
+
+function parseSessionKeyEventRecord(value: unknown): StreamSessionKeyEventRecord | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const source = parseTelemetrySource(record['source']);
+  const eventName = record['eventName'] === null ? null : readString(record['eventName']);
+  const severity = record['severity'] === null ? null : readString(record['severity']);
+  const summary = record['summary'] === null ? null : readString(record['summary']);
+  const observedAt = readString(record['observedAt']);
+  const statusHint = parseTelemetryStatusHint(record['statusHint']);
+  if (
+    source === null ||
+    eventName === null && record['eventName'] !== null ||
+    severity === null && record['severity'] !== null ||
+    summary === null && record['summary'] !== null ||
+    observedAt === null ||
+    statusHint === undefined
+  ) {
+    return null;
+  }
+  return {
+    source,
+    eventName,
+    severity,
+    summary,
+    observedAt,
+    statusHint
+  };
 }
 
 function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
@@ -1223,6 +1420,8 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     const ts = readString(record['ts']);
     const directoryId = readString(record['directoryId']);
     const conversationId = readString(record['conversationId']);
+    const telemetry = parseTelemetrySummary(record['telemetry']);
+    const controller = parseSessionController(record['controller']);
     if (
       sessionId === null ||
       status === null ||
@@ -1230,7 +1429,9 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       ts === null ||
       (record['attentionReason'] !== null && attentionReason === null) ||
       (record['directoryId'] !== null && directoryId === null) ||
-      (record['conversationId'] !== null && conversationId === null)
+      (record['conversationId'] !== null && conversationId === null) ||
+      (record['telemetry'] !== undefined && telemetry === undefined) ||
+      (record['controller'] !== undefined && controller === undefined)
     ) {
       return null;
     }
@@ -1250,7 +1451,9 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       live,
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
-      conversationId: record['conversationId'] === null ? null : conversationId
+      conversationId: record['conversationId'] === null ? null : conversationId,
+      telemetry: telemetry ?? null,
+      controller: controller ?? null
     };
   }
 
@@ -1273,6 +1476,65 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       type,
       sessionId,
       event,
+      ts,
+      directoryId: record['directoryId'] === null ? null : directoryId,
+      conversationId: record['conversationId'] === null ? null : conversationId
+    };
+  }
+
+  if (type === 'session-key-event') {
+    const sessionId = readString(record['sessionId']);
+    const keyEvent = parseSessionKeyEventRecord(record['keyEvent']);
+    const ts = readString(record['ts']);
+    const directoryId = readString(record['directoryId']);
+    const conversationId = readString(record['conversationId']);
+    if (
+      sessionId === null ||
+      keyEvent === null ||
+      ts === null ||
+      (record['directoryId'] !== null && directoryId === null) ||
+      (record['conversationId'] !== null && conversationId === null)
+    ) {
+      return null;
+    }
+    return {
+      type,
+      sessionId,
+      keyEvent,
+      ts,
+      directoryId: record['directoryId'] === null ? null : directoryId,
+      conversationId: record['conversationId'] === null ? null : conversationId
+    };
+  }
+
+  if (type === 'session-control') {
+    const sessionId = readString(record['sessionId']);
+    const action = readString(record['action']);
+    const controller = parseSessionController(record['controller']);
+    const previousController = parseSessionController(record['previousController']);
+    const reason = record['reason'] === null ? null : readString(record['reason']);
+    const ts = readString(record['ts']);
+    const directoryId = readString(record['directoryId']);
+    const conversationId = readString(record['conversationId']);
+    if (
+      sessionId === null ||
+      (action !== 'claimed' && action !== 'released' && action !== 'taken-over') ||
+      controller === undefined ||
+      previousController === undefined ||
+      reason === null && record['reason'] !== null ||
+      ts === null ||
+      (record['directoryId'] !== null && directoryId === null) ||
+      (record['conversationId'] !== null && conversationId === null)
+    ) {
+      return null;
+    }
+    return {
+      type,
+      sessionId,
+      action,
+      controller,
+      previousController,
+      reason,
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
       conversationId: record['conversationId'] === null ? null : conversationId

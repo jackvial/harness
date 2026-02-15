@@ -5,9 +5,17 @@ import { execFile } from 'node:child_process';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
-import { openCodexControlPlaneClient } from '../src/control-plane/codex-session-stream.ts';
+import {
+  openCodexControlPlaneClient,
+  subscribeControlPlaneKeyEvents,
+  type ControlPlaneKeyEvent
+} from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
-import type { StreamServerEnvelope, StreamSessionEvent } from '../src/control-plane/stream-protocol.ts';
+import type {
+  StreamServerEnvelope,
+  StreamSessionController,
+  StreamSessionEvent
+} from '../src/control-plane/stream-protocol.ts';
 import {
   parseSessionSummaryRecord,
   parseSessionSummaryList
@@ -33,7 +41,7 @@ import {
   parseMuxInputChunk,
   wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
-import { loadHarnessConfig } from '../src/config/config-core.ts';
+import { loadHarnessConfig, updateHarnessMuxUiConfig } from '../src/config/config-core.ts';
 import {
   detectMuxGlobalShortcut,
   firstShortcutText,
@@ -54,7 +62,7 @@ import {
   renderWorkspaceRailAnsiRows
 } from '../src/mux/workspace-rail.ts';
 import {
-  actionAtWorkspaceRailRow,
+  actionAtWorkspaceRailCell,
   buildWorkspaceRailViewRows,
   conversationIdAtWorkspaceRailRow,
   projectIdAtWorkspaceRailRow,
@@ -92,6 +100,7 @@ import {
 } from '../src/perf/perf-core.ts';
 import {
   buildUiModalOverlay,
+  formatUiButton,
   isUiModalOverlayHit
 } from '../src/ui/kit.ts';
 
@@ -185,6 +194,10 @@ interface ConversationState {
   live: boolean;
   attached: boolean;
   lastOutputCursor: number;
+  lastKnownWork: string | null;
+  lastKnownWorkAt: string | null;
+  lastTelemetrySource: string | null;
+  controller: StreamSessionController | null;
 }
 
 interface ProcessUsageSample {
@@ -222,6 +235,13 @@ interface GitSummary {
   readonly deletions: number;
 }
 
+type GitSummaryRefreshReason = 'startup' | 'interval' | 'focus' | 'trigger';
+
+interface PendingGitSummaryRefresh {
+  readonly dueAtMs: number;
+  readonly reason: GitSummaryRefreshReason;
+}
+
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
 const DEFAULT_STARTUP_SETTLE_QUIET_MS = 300;
@@ -235,15 +255,58 @@ const STARTUP_TERMINAL_MIN_COLS = 40;
 const STARTUP_TERMINAL_MIN_ROWS = 10;
 const STARTUP_TERMINAL_PROBE_TIMEOUT_MS = 250;
 const STARTUP_TERMINAL_PROBE_INTERVAL_MS = 10;
+const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
+const MIN_PANE_WIDTH_PERCENT = 1;
+const MAX_PANE_WIDTH_PERCENT = 99;
+const GIT_SUMMARY_LOADING: GitSummary = {
+  branch: '(loading)',
+  changedFiles: 0,
+  additions: 0,
+  deletions: 0
+};
+const GIT_SUMMARY_NOT_REPOSITORY: GitSummary = {
+  branch: '(not git)',
+  changedFiles: 0,
+  additions: 0,
+  deletions: 0
+};
 
 interface ProjectPaneSnapshot {
   readonly directoryId: string;
   readonly path: string;
   readonly lines: readonly string[];
+  readonly actionLineIndexByKind: {
+    readonly conversationNew: number;
+    readonly projectClose: number;
+  };
 }
+
+interface ProjectPaneWrappedLine {
+  readonly text: string;
+  readonly sourceLineIndex: number;
+}
+
+type ProjectPaneAction = 'conversation.new' | 'project.close';
+
+const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = formatUiButton({
+  label: 'new thread',
+  prefixIcon: '+'
+});
+const PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL = formatUiButton({
+  label: 'close project',
+  prefixIcon: '<'
+});
+const CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL = formatUiButton({
+  label: 'archive thread',
+  prefixIcon: 'x'
+});
 
 function buildProjectPaneSnapshot(directoryId: string, path: string): ProjectPaneSnapshot {
   const projectName = basename(path) || path;
+  const actionLineIndexByKind = {
+    conversationNew: 3,
+    projectClose: 4
+  } as const;
   return {
     directoryId,
     path,
@@ -251,12 +314,42 @@ function buildProjectPaneSnapshot(directoryId: string, path: string): ProjectPan
       `project ${projectName}`,
       `path ${path}`,
       '',
-      'ctrl+t create conversation in this project',
-      'ctrl+w archive this project',
+      PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL,
+      PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL,
       '',
       ...buildProjectTreeLines(path)
-    ]
+    ],
+    actionLineIndexByKind
   };
+}
+
+function buildProjectPaneWrappedLines(snapshot: ProjectPaneSnapshot, cols: number): readonly ProjectPaneWrappedLine[] {
+  const safeCols = Math.max(1, cols);
+  const wrapped: ProjectPaneWrappedLine[] = [];
+  for (let lineIndex = 0; lineIndex < snapshot.lines.length; lineIndex += 1) {
+    const line = snapshot.lines[lineIndex]!;
+    const segments = wrapTextForColumns(line, safeCols);
+    if (segments.length === 0) {
+      wrapped.push({
+        text: '',
+        sourceLineIndex: lineIndex
+      });
+      continue;
+    }
+    for (const segment of segments) {
+      wrapped.push({
+        text: segment,
+        sourceLineIndex: lineIndex
+      });
+    }
+  }
+  if (wrapped.length === 0) {
+    wrapped.push({
+      text: '',
+      sourceLineIndex: -1
+    });
+  }
+  return wrapped;
 }
 
 function buildProjectPaneRows(
@@ -267,21 +360,74 @@ function buildProjectPaneRows(
 ): { rows: readonly string[]; top: number } {
   const safeCols = Math.max(1, cols);
   const safeRows = Math.max(1, paneRows);
-  const wrappedLines = snapshot.lines.flatMap((line) => wrapTextForColumns(line, safeCols));
-  if (wrappedLines.length === 0) {
-    wrappedLines.push('');
-  }
+  const wrappedLines = buildProjectPaneWrappedLines(snapshot, safeCols);
   const maxTop = Math.max(0, wrappedLines.length - safeRows);
   const nextTop = Math.max(0, Math.min(maxTop, scrollTop));
   const viewport = wrappedLines.slice(nextTop, nextTop + safeRows);
   while (viewport.length < safeRows) {
-    viewport.push('');
+    viewport.push({
+      text: '',
+      sourceLineIndex: -1
+    });
   }
   return {
-    rows: viewport.map((row) => padOrTrimDisplay(row, safeCols)),
+    rows: viewport.map((row) => padOrTrimDisplay(row.text, safeCols)),
     top: nextTop
   };
 }
+
+function projectPaneActionAtRow(
+  snapshot: ProjectPaneSnapshot,
+  cols: number,
+  paneRows: number,
+  scrollTop: number,
+  rowIndex: number
+): ProjectPaneAction | null {
+  const safeRows = Math.max(1, paneRows);
+  const wrappedLines = buildProjectPaneWrappedLines(snapshot, cols);
+  const maxTop = Math.max(0, wrappedLines.length - safeRows);
+  const nextTop = Math.max(0, Math.min(maxTop, scrollTop));
+  const normalizedRow = Math.max(0, Math.min(safeRows - 1, rowIndex));
+  const line = wrappedLines[nextTop + normalizedRow];
+  if (line === undefined) {
+    return null;
+  }
+  if (line.sourceLineIndex === snapshot.actionLineIndexByKind.conversationNew) {
+    return 'conversation.new';
+  }
+  if (line.sourceLineIndex === snapshot.actionLineIndexByKind.projectClose) {
+    return 'project.close';
+  }
+  return null;
+}
+
+function normalizePaneWidthPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 30;
+  }
+  if (value < MIN_PANE_WIDTH_PERCENT) {
+    return MIN_PANE_WIDTH_PERCENT;
+  }
+  if (value > MAX_PANE_WIDTH_PERCENT) {
+    return MAX_PANE_WIDTH_PERCENT;
+  }
+  return value;
+}
+
+function leftColsFromPaneWidthPercent(cols: number, paneWidthPercent: number): number {
+  const availablePaneCols = Math.max(2, cols - 1);
+  const normalizedPercent = normalizePaneWidthPercent(paneWidthPercent);
+  const requestedLeftCols = Math.round((availablePaneCols * normalizedPercent) / 100);
+  return Math.max(1, Math.min(availablePaneCols - 1, requestedLeftCols));
+}
+
+function paneWidthPercentFromLayout(layout: { cols: number; leftCols: number }): number {
+  const availablePaneCols = Math.max(2, layout.cols - 1);
+  const percent = (layout.leftCols / availablePaneCols) * 100;
+  const rounded = Math.round(percent * 100) / 100;
+  return normalizePaneWidthPercent(rounded);
+}
+
 function restoreTerminalState(
   newline: boolean,
   restoreInputModes: (() => void) | null = null
@@ -320,10 +466,8 @@ function formatErrorMessage(error: unknown): string {
 
 function extractFocusEvents(chunk: Buffer): FocusEventExtraction {
   const text = chunk.toString('utf8');
-  const focusInMatches = text.match(/\u001b\[I/g);
-  const focusOutMatches = text.match(/\u001b\[O/g);
-  const focusInCount = focusInMatches?.length ?? 0;
-  const focusOutCount = focusOutMatches?.length ?? 0;
+  const focusInCount = text.split('\u001b[I').length - 1;
+  const focusOutCount = text.split('\u001b[O').length - 1;
 
   if (focusInCount === 0 && focusOutCount === 0) {
     return {
@@ -356,10 +500,6 @@ function prepareArtifactPath(path: string, overwriteOnStart: boolean): string {
     }
   }
   return resolvedPath;
-}
-
-function asString(value: unknown, fallback: string): string {
-  return typeof value === 'string' ? value : fallback;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -453,6 +593,31 @@ function parseConversationRecord(value: unknown): ControlPlaneConversationRecord
   };
 }
 
+function parseSessionControllerRecord(value: unknown): StreamSessionController | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const controllerId = record['controllerId'];
+  const controllerType = record['controllerType'];
+  const controllerLabelRaw = record['controllerLabel'];
+  const claimedAt = record['claimedAt'];
+  if (
+    typeof controllerId !== 'string' ||
+    (controllerType !== 'human' && controllerType !== 'agent' && controllerType !== 'automation') ||
+    (controllerLabelRaw !== null && typeof controllerLabelRaw !== 'string') ||
+    typeof claimedAt !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    controllerId,
+    controllerType,
+    controllerLabel: controllerLabelRaw,
+    claimedAt
+  };
+}
+
 function normalizeExitCode(exit: PtyExit): number {
   if (exit.code !== null) {
     return exit.code;
@@ -502,57 +667,6 @@ function mapSessionEventToNormalizedEvent(
   scope: EventScope,
   idFactory: () => string
 ): NormalizedEventEnvelope | null {
-  if (event.type === 'turn-completed') {
-    const payloadObject = event.record.payload;
-    return createNormalizedEvent(
-      'provider',
-      'provider-turn-completed',
-      scope,
-      {
-        kind: 'turn',
-        threadId: asString(payloadObject['thread-id'], scope.conversationId),
-        turnId: asString(payloadObject['turn-id'], scope.turnId ?? 'turn-live'),
-        status: 'completed'
-      },
-      () => new Date(),
-      idFactory
-    );
-  }
-
-  if (event.type === 'attention-required') {
-    const payloadObject = event.record.payload;
-    return createNormalizedEvent(
-      'meta',
-      'meta-attention-raised',
-      scope,
-      {
-        kind: 'attention',
-        threadId: asString(payloadObject['thread-id'], scope.conversationId),
-        turnId: asString(payloadObject['turn-id'], scope.turnId ?? 'turn-live'),
-        reason: event.reason,
-        detail: asString(payloadObject.type, 'notify')
-      },
-      () => new Date(),
-      idFactory
-    );
-  }
-
-  if (event.type === 'notify') {
-    const payloadObject = event.record.payload;
-    return createNormalizedEvent(
-      'meta',
-      'meta-notify-observed',
-      scope,
-      {
-        kind: 'notify',
-        notifyType: asString(payloadObject.type, 'unknown'),
-        raw: payloadObject
-      },
-      () => new Date(),
-      idFactory
-    );
-  }
-
   if (event.type === 'session-exit') {
     return createNormalizedEvent(
       'meta',
@@ -571,6 +685,15 @@ function mapSessionEventToNormalizedEvent(
   }
 
   return null;
+}
+
+function observedAtFromSessionEvent(event: StreamSessionEvent): string {
+  if (event.type === 'session-exit') {
+    return new Date().toISOString();
+  }
+  const record = asRecord((event as { record?: unknown }).record);
+  const ts = record?.['ts'];
+  return typeof ts === 'string' ? ts : new Date().toISOString();
 }
 
 function sanitizeProcessEnv(): Record<string, string> {
@@ -666,43 +789,66 @@ async function runGitCommand(cwd: string, args: readonly string[]): Promise<stri
   }
 }
 
-async function readGitSummary(cwd: string): Promise<GitSummary> {
-  const branch = (await runGitCommand(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])) || '(detached)';
-  const statusOutput = await runGitCommand(cwd, ['status', '--porcelain']);
-  const changedFiles = statusOutput.length === 0 ? 0 : statusOutput.split('\n').filter((line) => line.trim().length > 0).length;
-
-  const numstatOutputs = await Promise.all([
-    runGitCommand(cwd, ['diff', '--numstat']),
-    runGitCommand(cwd, ['diff', '--numstat', '--cached'])
-  ]);
-  let additions = 0;
-  let deletions = 0;
-  for (const output of numstatOutputs) {
-    if (output.length === 0) {
-      continue;
-    }
-    const lines = output.split('\n');
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 2) {
-        continue;
-      }
-      const added = Number.parseInt(parts[0] ?? '', 10);
-      const removed = Number.parseInt(parts[1] ?? '', 10);
-      if (Number.isFinite(added)) {
-        additions += added;
-      }
-      if (Number.isFinite(removed)) {
-        deletions += removed;
-      }
-    }
+function parseGitBranchFromStatusHeader(header: string | null): string {
+  if (header === null) {
+    return '(detached)';
   }
+  const raw = header.trim();
+  if (raw.length === 0) {
+    return '(detached)';
+  }
+  if (raw.startsWith('No commits yet on ')) {
+    const branch = raw.slice('No commits yet on '.length).trim();
+    return branch.length > 0 ? branch : '(detached)';
+  }
+  const head = raw.split('...')[0]?.trim() ?? '';
+  if (head.length === 0 || head === 'HEAD' || head.startsWith('HEAD ')) {
+    return '(detached)';
+  }
+  return head;
+}
+
+function parseGitShortstatCounts(output: string): { additions: number; deletions: number } {
+  if (output.length === 0) {
+    return {
+      additions: 0,
+      deletions: 0
+    };
+  }
+  const additionsMatch = /(\d+)\s+insertion(?:s)?\(\+\)/.exec(output);
+  const deletionsMatch = /(\d+)\s+deletion(?:s)?\(-\)/.exec(output);
+  return {
+    additions: additionsMatch === null ? 0 : Number.parseInt(additionsMatch[1] ?? '0', 10),
+    deletions: deletionsMatch === null ? 0 : Number.parseInt(deletionsMatch[1] ?? '0', 10)
+  };
+}
+
+async function readGitSummary(cwd: string): Promise<GitSummary> {
+  const insideWorkTree = await runGitCommand(cwd, ['rev-parse', '--is-inside-work-tree']);
+  if (insideWorkTree !== 'true') {
+    return GIT_SUMMARY_NOT_REPOSITORY;
+  }
+  const statusOutput = await runGitCommand(cwd, ['status', '--porcelain=1', '--branch']);
+  const statusLines = statusOutput.split('\n').filter((line) => line.trim().length > 0);
+  const firstStatusLine = statusLines[0];
+  const headerLine =
+    firstStatusLine !== undefined && firstStatusLine.startsWith('## ')
+      ? statusLines.shift()?.slice(3) ?? null
+      : null;
+  const branch = parseGitBranchFromStatusHeader(headerLine);
+  const changedFiles = statusLines.length;
+  const [unstagedShortstat, stagedShortstat] = await Promise.all([
+    runGitCommand(cwd, ['diff', '--shortstat']),
+    runGitCommand(cwd, ['diff', '--cached', '--shortstat'])
+  ]);
+  const unstaged = parseGitShortstatCounts(unstagedShortstat);
+  const staged = parseGitShortstatCounts(stagedShortstat);
 
   return {
     branch,
     changedFiles,
-    additions,
-    deletions
+    additions: unstaged.additions + staged.additions,
+    deletions: unstaged.deletions + staged.deletions
   };
 }
 
@@ -868,8 +1014,16 @@ function extractOscColorReplies(buffer: string): {
 
   return {
     remainder,
-    foregroundHex,
-    backgroundHex,
+    ...(foregroundHex !== undefined
+      ? {
+          foregroundHex
+        }
+      : {}),
+    ...(backgroundHex !== undefined
+      ? {
+          backgroundHex
+        }
+      : {}),
     indexedHexByCode
   };
 }
@@ -890,9 +1044,21 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProb
       clearTimeout(timer);
       process.stdin.off('data', onData);
       resolve({
-        foregroundHex,
-        backgroundHex,
-        indexedHexByCode: Object.keys(indexedHexByCode).length > 0 ? indexedHexByCode : undefined
+        ...(foregroundHex !== undefined
+          ? {
+              foregroundHex
+            }
+          : {}),
+        ...(backgroundHex !== undefined
+          ? {
+              backgroundHex
+            }
+          : {}),
+        ...(Object.keys(indexedHexByCode).length > 0
+          ? {
+              indexedHexByCode
+            }
+          : {})
       });
     };
 
@@ -1108,8 +1274,58 @@ function createConversationState(
     processId: null,
     live: true,
     attached: false,
-    lastOutputCursor: 0
+    lastOutputCursor: 0,
+    lastKnownWork: null,
+    lastKnownWorkAt: null,
+    lastTelemetrySource: null,
+    controller: null
   };
+}
+
+function normalizeInlineSummaryText(value: string): string {
+  const compact = value.replace(/\s+/gu, ' ').trim();
+  if (compact.length <= 96) {
+    return compact;
+  }
+  return `${compact.slice(0, 95)}…`;
+}
+
+function telemetrySummaryText(summary: {
+  source: string;
+  eventName: string | null;
+  summary: string | null;
+}): string | null {
+  const eventName = summary.eventName?.trim() ?? '';
+  const description = summary.summary?.trim() ?? '';
+  const merged =
+    description.length > 0 && eventName.length > 0 && !description.includes(eventName)
+      ? `${eventName}: ${description}`
+      : description.length > 0
+        ? description
+        : eventName.length > 0
+          ? eventName
+          : summary.source;
+  const normalized = normalizeInlineSummaryText(merged);
+  return normalized.length === 0 ? null : normalized;
+}
+
+function applyTelemetrySummaryToConversation(
+  target: ConversationState,
+  telemetry:
+    | {
+        source: string;
+        eventName: string | null;
+        summary: string | null;
+        observedAt: string;
+      }
+    | null
+): void {
+  if (telemetry === null) {
+    return;
+  }
+  target.lastKnownWork = telemetrySummaryText(telemetry);
+  target.lastKnownWorkAt = telemetry.observedAt;
+  target.lastTelemetrySource = telemetry.source;
 }
 
 function applySummaryToConversation(
@@ -1132,6 +1348,8 @@ function applySummaryToConversation(
   target.lastExit = summary.lastExit;
   target.processId = summary.processId;
   target.live = summary.live;
+  target.controller = summary.controller;
+  applyTelemetrySummaryToConversation(target, summary.telemetry);
 }
 
 function conversationSummary(conversation: ConversationState): ConversationRailSessionSummary {
@@ -1152,13 +1370,14 @@ function conversationOrder(conversations: ReadonlyMap<string, ConversationState>
 function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
   const deleteConversation = firstShortcutText(bindings, 'mux.conversation.delete') || 'ctrl+x';
+  const takeoverConversation = firstShortcutText(bindings, 'mux.conversation.takeover') || 'ctrl+l';
   const addProject = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
   const closeProject = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
   const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${deleteConversation} archive  ${addProject}/${closeProject} projects  ${switchHint} switch  ${interrupt} quit`;
+  return `${newConversation} new  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch  ${interrupt} quit`;
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
@@ -1171,15 +1390,16 @@ function buildRailModel(
   activeConversationId: string | null,
   projectSelectionEnabled: boolean,
   shortcutsCollapsed: boolean,
-  gitSummary: GitSummary,
+  gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
-  shortcutBindings: ResolvedMuxShortcutBindings
+  shortcutBindings: ResolvedMuxShortcutBindings,
+  localControllerId: string
 ): WorkspaceRailModel {
   const directoryRows = [...directories.values()].map((directory) => ({
     key: directory.directoryId,
     workspaceId: basename(directory.path) || directory.path,
     worktreeId: directory.path,
-    git: gitSummary
+    git: gitSummaryByDirectoryId.get(directory.directoryId) ?? GIT_SUMMARY_LOADING
   }));
   const knownDirectoryKeys = new Set(directoryRows.map((directory) => directory.key));
   for (const sessionId of orderedIds) {
@@ -1193,7 +1413,7 @@ function buildRailModel(
       key: directoryKey,
       workspaceId: '(untracked)',
       worktreeId: '(untracked)',
-      git: gitSummary
+      git: gitSummaryByDirectoryId.get(directoryKey) ?? GIT_SUMMARY_LOADING
     });
   }
 
@@ -1212,12 +1432,15 @@ function buildRailModel(
           title: conversation.title,
           agentLabel: conversation.agentType,
           cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
-          memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null
+          memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null,
+          lastKnownWork: conversation.lastKnownWork,
+          controller: conversation.controller
         };
       })
       .flatMap((conversation) => (conversation === null ? [] : [conversation])),
     activeProjectId,
     activeConversationId,
+    localControllerId,
     projectSelectionEnabled,
     processes: [],
     shortcutHint: shortcutHintText(shortcutBindings),
@@ -1235,9 +1458,10 @@ function buildRailRows(
   activeConversationId: string | null,
   projectSelectionEnabled: boolean,
   shortcutsCollapsed: boolean,
-  gitSummary: GitSummary,
+  gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
-  shortcutBindings: ResolvedMuxShortcutBindings
+  shortcutBindings: ResolvedMuxShortcutBindings,
+  localControllerId: string
 ): { ansiRows: readonly string[]; viewRows: ReturnType<typeof buildWorkspaceRailViewRows> } {
   const railModel = buildRailModel(
     directories,
@@ -1247,9 +1471,10 @@ function buildRailRows(
     activeConversationId,
     projectSelectionEnabled,
     shortcutsCollapsed,
-    gitSummary,
+    gitSummaryByDirectoryId,
     processUsageBySessionId,
-    shortcutBindings
+    shortcutBindings,
+    localControllerId
   );
   const viewRows = buildWorkspaceRailViewRows(railModel, layout.paneRows);
   return {
@@ -1280,15 +1505,6 @@ const MUX_MODAL_THEME = {
     bold: false
   }
 } as const;
-
-function inputContainsTurnSubmission(data: Uint8Array): boolean {
-  for (const byte of data) {
-    if (byte === 0x0a || byte === 0x0d) {
-      return true;
-    }
-  }
-  return false;
-}
 
 function compareSelectionPoints(left: SelectionPoint, right: SelectionPoint): number {
   if (left.rowAbs !== right.rowAbs) {
@@ -1511,7 +1727,21 @@ function isCopyShortcutInput(input: Buffer): boolean {
   }
 
   const text = input.toString('utf8');
-  return /\u001b\[(99|67);(\d+)u/.test(text);
+  const prefixes = ['\u001b[99;', '\u001b[67;'] as const;
+  for (const prefix of prefixes) {
+    let startIndex = text.indexOf(prefix);
+    while (startIndex !== -1) {
+      let index = startIndex + prefix.length;
+      while (index < text.length && text.charCodeAt(index) >= 0x30 && text.charCodeAt(index) <= 0x39) {
+        index += 1;
+      }
+      if (index > startIndex + prefix.length && text[index] === 'u') {
+        return true;
+      }
+      startIndex = text.indexOf(prefix, startIndex + 1);
+    }
+  }
+  return false;
 }
 
 function writeTextToClipboard(value: string): boolean {
@@ -1578,6 +1808,7 @@ async function main(): Promise<number> {
     'mux.conversation.next': [],
     'mux.conversation.previous': [],
     'mux.conversation.archive': [],
+    'mux.conversation.takeover': [],
     'mux.conversation.delete': [],
     'mux.directory.add': [],
     'mux.directory.close': []
@@ -1589,7 +1820,12 @@ async function main(): Promise<number> {
     cols: size.cols,
     rows: size.rows
   });
-  let leftPaneColsOverride: number | null = null;
+  const configuredMuxUi = loadedConfig.config.mux.ui;
+  const configuredMuxGit = loadedConfig.config.mux.git;
+  let leftPaneColsOverride: number | null =
+    configuredMuxUi.paneWidthPercent === null
+      ? null
+      : leftColsFromPaneWidthPercent(size.cols, configuredMuxUi.paneWidthPercent);
   let layout = computeDualPaneLayout(size.cols, size.rows, {
     leftCols: leftPaneColsOverride
   });
@@ -1636,30 +1872,39 @@ async function main(): Promise<number> {
   let muxRecordingOracle: TerminalSnapshotOracle | null = null;
   if (options.recordingPath !== null) {
     const recordIntervalMs = Math.max(1, Math.floor(1000 / options.recordingFps));
-    muxRecordingWriter = createTerminalRecordingWriter({
+    const recordingWriterOptions: Parameters<typeof createTerminalRecordingWriter>[0] = {
       filePath: options.recordingPath,
       source: 'codex-live-mux',
       defaultForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex ?? 'd0d7de',
       defaultBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex ?? '0f1419',
-      ansiPaletteIndexedHex: probedPalette.indexedHexByCode,
       minFrameIntervalMs: recordIntervalMs
-    });
+    };
+    if (probedPalette.indexedHexByCode !== undefined) {
+      recordingWriterOptions.ansiPaletteIndexedHex = probedPalette.indexedHexByCode;
+    }
+    muxRecordingWriter = createTerminalRecordingWriter(recordingWriterOptions);
     muxRecordingOracle = new TerminalSnapshotOracle(size.cols, size.rows);
   }
-  const controlPlaneOpenSpan = startPerfSpan('mux.startup.control-plane-open');
-  const controlPlaneClient = await openCodexControlPlaneClient(
+  const controlPlaneMode =
     options.controlPlaneHost !== null && options.controlPlanePort !== null
       ? {
-          mode: 'remote',
+          mode: 'remote' as const,
           host: options.controlPlaneHost,
           port: options.controlPlanePort,
-          authToken: options.controlPlaneAuthToken ?? undefined,
+          ...(options.controlPlaneAuthToken !== null
+            ? {
+                authToken: options.controlPlaneAuthToken
+              }
+            : {}),
           connectRetryWindowMs: controlPlaneConnectRetryWindowMs,
           connectRetryDelayMs: controlPlaneConnectRetryDelayMs
         }
       : {
-          mode: 'embedded'
-        },
+          mode: 'embedded' as const
+        };
+  const controlPlaneOpenSpan = startPerfSpan('mux.startup.control-plane-open');
+  const controlPlaneClient = await openCodexControlPlaneClient(
+    controlPlaneMode,
     {
     startEmbeddedServer: async () =>
       await startControlPlaneStreamServer({
@@ -1667,17 +1912,27 @@ async function main(): Promise<number> {
           options.invocationDirectory,
           process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite'
         ),
-        startSession: (input) =>
-          startCodexLiveSession({
+        startSession: (input) => {
+          const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {
             args: input.args,
-            env: input.env,
-            cwd: input.cwd,
             initialCols: input.initialCols,
             initialRows: input.initialRows,
-            terminalForegroundHex: input.terminalForegroundHex,
-            terminalBackgroundHex: input.terminalBackgroundHex,
             enableSnapshotModel: debugConfig.mux.serverSnapshotModelEnabled
-          })
+          };
+          if (input.env !== undefined) {
+            sessionOptions.env = input.env;
+          }
+          if (input.cwd !== undefined) {
+            sessionOptions.cwd = input.cwd;
+          }
+          if (input.terminalForegroundHex !== undefined) {
+            sessionOptions.terminalForegroundHex = input.terminalForegroundHex;
+          }
+          if (input.terminalBackgroundHex !== undefined) {
+            sessionOptions.terminalBackgroundHex = input.terminalBackgroundHex;
+          }
+          return startCodexLiveSession(sessionOptions);
+        }
       })
   });
   controlPlaneOpenSpan.end();
@@ -1708,7 +1963,10 @@ async function main(): Promise<number> {
   const directories = new Map<string, ControlPlaneDirectoryRecord>([
     [persistedDirectory.directoryId, persistedDirectory]
   ]);
+  const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
+  const muxControllerLabel = `human mux ${process.pid}`;
   const conversations = new Map<string, ConversationState>();
+  let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null = null;
   const conversationStartInFlight = new Map<string, Promise<ConversationState>>();
   const removedConversationIds = new Set<string>();
   let activeConversationId: string | null = null;
@@ -1888,7 +2146,7 @@ async function main(): Promise<number> {
     const state = createConversationState(
       sessionId,
       directoryId,
-      seed?.title ?? `untitled task ${String(conversations.size + 1)}`,
+      seed?.title ?? '',
       seed?.agentType ?? 'codex',
       normalizeAdapterState(seed?.adapterState),
       `turn-${randomUUID()}`,
@@ -1902,13 +2160,71 @@ async function main(): Promise<number> {
 
   const activeConversation = (): ConversationState => {
     if (activeConversationId === null) {
-      throw new Error('active conversation is not set');
+      throw new Error('active thread is not set');
     }
     const state = conversations.get(activeConversationId);
     if (state === undefined) {
-      throw new Error(`active conversation missing: ${activeConversationId}`);
+      throw new Error(`active thread missing: ${activeConversationId}`);
     }
     return state;
+  };
+
+  const isConversationControlledByLocalHuman = (conversation: ConversationState): boolean => {
+    return (
+      conversation.controller !== null &&
+      conversation.controller.controllerType === 'human' &&
+      conversation.controller.controllerId === muxControllerId
+    );
+  };
+
+  const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
+    if (removedConversationIds.has(event.sessionId)) {
+      return;
+    }
+    const conversation = ensureConversation(event.sessionId, {
+      directoryId: event.directoryId
+    });
+    if (event.directoryId !== null) {
+      conversation.directoryId = event.directoryId;
+    }
+
+    if (event.type === 'session-status') {
+      conversation.status = event.status;
+      conversation.attentionReason = event.attentionReason;
+      conversation.live = event.live;
+      conversation.controller = event.controller;
+      conversation.lastEventAt = event.ts;
+      applyTelemetrySummaryToConversation(conversation, event.telemetry);
+      return;
+    }
+
+    if (event.type === 'session-control') {
+      conversation.controller = event.controller;
+      conversation.lastEventAt = event.ts;
+      return;
+    }
+
+    applyTelemetrySummaryToConversation(conversation, {
+      source: event.keyEvent.source,
+      eventName: event.keyEvent.eventName,
+      summary: event.keyEvent.summary,
+      observedAt: event.keyEvent.observedAt
+    });
+    conversation.lastEventAt = event.keyEvent.observedAt;
+    if (event.keyEvent.statusHint === 'needs-input') {
+      conversation.status = 'needs-input';
+      conversation.attentionReason = 'telemetry';
+      return;
+    }
+    if (event.keyEvent.statusHint === 'running' && conversation.status !== 'exited') {
+      conversation.status = 'running';
+      conversation.attentionReason = null;
+      return;
+    }
+    if (event.keyEvent.statusHint === 'completed' && conversation.status !== 'exited') {
+      conversation.status = 'completed';
+      conversation.attentionReason = null;
+    }
   };
 
   const hydrateDirectoryList = async (): Promise<void> => {
@@ -1985,6 +2301,32 @@ async function main(): Promise<number> {
     return persistedRows.length;
   };
 
+  async function subscribeConversationEvents(sessionId: string): Promise<void> {
+    try {
+      await streamClient.sendCommand({
+        type: 'pty.subscribe-events',
+        sessionId
+      });
+    } catch (error: unknown) {
+      if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  async function unsubscribeConversationEvents(sessionId: string): Promise<void> {
+    try {
+      await streamClient.sendCommand({
+        type: 'pty.unsubscribe-events',
+        sessionId
+      });
+    } catch (error: unknown) {
+      if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
+        throw error;
+      }
+    }
+  }
+
   const startConversation = async (sessionId: string): Promise<ConversationState> => {
     const inFlight = conversationStartInFlight.get(sessionId);
     if (inFlight !== undefined) {
@@ -2019,7 +2361,7 @@ async function main(): Promise<number> {
         options.invocationDirectory,
         configuredDirectoryPath ?? options.invocationDirectory
       );
-      await streamClient.sendCommand({
+      const ptyStartCommand: Parameters<typeof streamClient.sendCommand>[0] = {
         type: 'pty.start',
         sessionId,
         args: launchArgs,
@@ -2027,13 +2369,20 @@ async function main(): Promise<number> {
         cwd: sessionCwd,
         initialCols: layout.rightCols,
         initialRows: layout.paneRows,
-        terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
-        terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
         tenantId: options.scope.tenantId,
         userId: options.scope.userId,
         workspaceId: options.scope.workspaceId,
         worktreeId: options.scope.worktreeId
-      });
+      };
+      const terminalForegroundHex = process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex;
+      const terminalBackgroundHex = process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex;
+      if (terminalForegroundHex !== undefined) {
+        ptyStartCommand.terminalForegroundHex = terminalForegroundHex;
+      }
+      if (terminalBackgroundHex !== undefined) {
+        ptyStartCommand.terminalBackgroundHex = terminalBackgroundHex;
+      }
+      await streamClient.sendCommand(ptyStartCommand);
       ptySizeByConversationId.set(sessionId, {
         cols: layout.rightCols,
         rows: layout.paneRows
@@ -2060,6 +2409,7 @@ async function main(): Promise<number> {
       if (statusSummary !== null) {
         applySummaryToConversation(state, statusSummary);
       }
+      await subscribeConversationEvents(sessionId);
       startSpan.end({
         live: state.live
       });
@@ -2123,6 +2473,9 @@ async function main(): Promise<number> {
     for (const summary of summaries) {
       const conversation = ensureConversation(summary.sessionId);
       applySummaryToConversation(conversation, summary);
+      if (summary.live) {
+        await subscribeConversationEvents(summary.sessionId);
+      }
     }
     hydrateSpan.end({
       persisted: persistedCount,
@@ -2134,9 +2487,9 @@ async function main(): Promise<number> {
   if (conversations.size === 0) {
     const targetDirectoryId = resolveActiveDirectoryId();
     if (targetDirectoryId === null) {
-      throw new Error('cannot create initial conversation without an active directory');
+      throw new Error('cannot create initial thread without an active directory');
     }
-    const initialTitle = `untitled task ${String(conversations.size + 1)}`;
+    const initialTitle = '';
     await streamClient.sendCommand({
       type: 'conversation.create',
       conversationId: options.initialConversationId,
@@ -2157,15 +2510,13 @@ async function main(): Promise<number> {
     activeConversationId = ordered[0] ?? options.initialConversationId;
   }
 
-  let gitSummary: GitSummary = {
-    branch: '(loading)',
-    changedFiles: 0,
-    additions: 0,
-    deletions: 0
-  };
+  const gitSummaryByDirectoryId = new Map<string, GitSummary>();
+  const gitLastRefreshAtMsByDirectoryId = new Map<string, number>();
+  const gitLastActivityAtMsByDirectoryId = new Map<string, number>();
+  const pendingGitSummaryRefreshByDirectoryId = new Map<string, PendingGitSummaryRefresh>();
+  const gitRefreshInFlightDirectoryIds = new Set<string>();
   const processUsageBySessionId = new Map<string, ProcessUsageSample>();
   let processUsageRefreshInFlight = false;
-  let gitSummaryRefreshInFlight = false;
 
   const processUsageEqual = (left: ProcessUsageSample, right: ProcessUsageSample): boolean =>
     left.cpuPercent === right.cpuPercent && left.memoryMb === right.memoryMb;
@@ -2175,6 +2526,185 @@ async function main(): Promise<number> {
     left.changedFiles === right.changedFiles &&
     left.additions === right.additions &&
     left.deletions === right.deletions;
+
+  const gitRefreshReasonPriority = (reason: GitSummaryRefreshReason): number => {
+    if (reason === 'startup' || reason === 'focus') {
+      return 3;
+    }
+    if (reason === 'trigger') {
+      return 2;
+    }
+    return 1;
+  };
+
+  const ensureDirectoryGitState = (directoryId: string): void => {
+    if (!gitSummaryByDirectoryId.has(directoryId)) {
+      gitSummaryByDirectoryId.set(directoryId, GIT_SUMMARY_LOADING);
+    }
+    if (!gitLastActivityAtMsByDirectoryId.has(directoryId)) {
+      gitLastActivityAtMsByDirectoryId.set(directoryId, Date.now());
+    }
+  };
+
+  const deleteDirectoryGitState = (directoryId: string): void => {
+    gitSummaryByDirectoryId.delete(directoryId);
+    gitLastRefreshAtMsByDirectoryId.delete(directoryId);
+    gitLastActivityAtMsByDirectoryId.delete(directoryId);
+    pendingGitSummaryRefreshByDirectoryId.delete(directoryId);
+    gitRefreshInFlightDirectoryIds.delete(directoryId);
+  };
+
+  const syncGitStateWithDirectories = (): void => {
+    for (const directoryId of directories.keys()) {
+      ensureDirectoryGitState(directoryId);
+    }
+    const staleDirectoryIds = [...gitSummaryByDirectoryId.keys()].filter(
+      (directoryId) => !directories.has(directoryId)
+    );
+    for (const directoryId of staleDirectoryIds) {
+      deleteDirectoryGitState(directoryId);
+    }
+  };
+
+  const queueGitSummaryRefresh = (
+    directoryId: string,
+    reason: GitSummaryRefreshReason,
+    debounceMs: number
+  ): void => {
+    if (!directories.has(directoryId)) {
+      return;
+    }
+    ensureDirectoryGitState(directoryId);
+    const nowMs = Date.now();
+    const dueAtMs = nowMs + Math.max(0, debounceMs);
+    const pending = pendingGitSummaryRefreshByDirectoryId.get(directoryId);
+    if (pending === undefined) {
+      pendingGitSummaryRefreshByDirectoryId.set(directoryId, {
+        dueAtMs,
+        reason
+      });
+      return;
+    }
+    pendingGitSummaryRefreshByDirectoryId.set(directoryId, {
+      dueAtMs: Math.min(pending.dueAtMs, dueAtMs),
+      reason:
+        gitRefreshReasonPriority(reason) >= gitRefreshReasonPriority(pending.reason)
+          ? reason
+          : pending.reason
+    });
+  };
+
+  const noteGitActivity = (directoryId: string | null, reason: GitSummaryRefreshReason): void => {
+    if (directoryId === null || !directories.has(directoryId)) {
+      return;
+    }
+    gitLastActivityAtMsByDirectoryId.set(directoryId, Date.now());
+    queueGitSummaryRefresh(
+      directoryId,
+      reason,
+      reason === 'focus' || reason === 'startup' ? 0 : configuredMuxGit.triggerDebounceMs
+    );
+    if (reason === 'focus' || reason === 'startup') {
+      drainPendingGitSummaryRefreshes();
+    }
+  };
+
+  const gitPollIntervalMsForDirectory = (directoryId: string, nowMs: number): number => {
+    const isActiveDirectory = activeDirectoryId !== null && directoryId === activeDirectoryId;
+    const basePollMs = isActiveDirectory ? configuredMuxGit.activePollMs : configuredMuxGit.idlePollMs;
+    const lastActivityAtMs = gitLastActivityAtMsByDirectoryId.get(directoryId) ?? 0;
+    if (nowMs - lastActivityAtMs <= configuredMuxGit.burstWindowMs) {
+      return Math.min(basePollMs, configuredMuxGit.burstPollMs);
+    }
+    return basePollMs;
+  };
+
+  const refreshGitSummaryForDirectory = async (
+    directoryId: string,
+    reason: GitSummaryRefreshReason
+  ): Promise<void> => {
+    if (gitRefreshInFlightDirectoryIds.has(directoryId)) {
+      return;
+    }
+    const directory = directories.get(directoryId);
+    if (directory === undefined) {
+      deleteDirectoryGitState(directoryId);
+      return;
+    }
+    ensureDirectoryGitState(directoryId);
+    gitRefreshInFlightDirectoryIds.add(directoryId);
+    const gitSpan = startPerfSpan('mux.background.git-summary', {
+      reason,
+      directoryId
+    });
+    try {
+      const next = await readGitSummary(directory.path);
+      if (!directories.has(directoryId)) {
+        deleteDirectoryGitState(directoryId);
+        gitSpan.end({
+          reason,
+          directoryId,
+          dropped: true
+        });
+        return;
+      }
+      const previous = gitSummaryByDirectoryId.get(directoryId) ?? GIT_SUMMARY_LOADING;
+      const changed = !gitSummaryEqual(previous, next);
+      gitSummaryByDirectoryId.set(directoryId, next);
+      gitLastRefreshAtMsByDirectoryId.set(directoryId, Date.now());
+      if (changed) {
+        markDirty();
+      }
+      gitSpan.end({
+        reason,
+        directoryId,
+        changed,
+        branch: next.branch,
+        changedFiles: next.changedFiles
+      });
+    } finally {
+      gitRefreshInFlightDirectoryIds.delete(directoryId);
+      setImmediate(() => {
+        drainPendingGitSummaryRefreshes();
+      });
+    }
+  };
+
+  const drainPendingGitSummaryRefreshes = (): void => {
+    if (shuttingDown || !configuredMuxGit.enabled) {
+      return;
+    }
+    syncGitStateWithDirectories();
+    const nowMs = Date.now();
+    for (const directoryId of directories.keys()) {
+      const lastRefreshAtMs = gitLastRefreshAtMsByDirectoryId.get(directoryId) ?? 0;
+      const pollIntervalMs = gitPollIntervalMsForDirectory(directoryId, nowMs);
+      if (nowMs - lastRefreshAtMs >= pollIntervalMs) {
+        queueGitSummaryRefresh(directoryId, 'interval', 0);
+      }
+    }
+
+    let availableSlots =
+      Math.max(1, configuredMuxGit.maxConcurrency) - gitRefreshInFlightDirectoryIds.size;
+    if (availableSlots <= 0) {
+      return;
+    }
+    const dueEntries = [...pendingGitSummaryRefreshByDirectoryId.entries()]
+      .filter((entry) => entry[1].dueAtMs <= nowMs)
+      .sort((left, right) => left[1].dueAtMs - right[1].dueAtMs);
+    for (const [directoryId, pending] of dueEntries) {
+      if (availableSlots <= 0) {
+        break;
+      }
+      if (!directories.has(directoryId) || gitRefreshInFlightDirectoryIds.has(directoryId)) {
+        pendingGitSummaryRefreshByDirectoryId.delete(directoryId);
+        continue;
+      }
+      pendingGitSummaryRefreshByDirectoryId.delete(directoryId);
+      void refreshGitSummaryForDirectory(directoryId, pending.reason);
+      availableSlots -= 1;
+    }
+  };
 
   const refreshProcessUsage = async (reason: 'startup' | 'interval'): Promise<void> => {
     if (processUsageRefreshInFlight) {
@@ -2224,32 +2754,6 @@ async function main(): Promise<number> {
     }
   };
 
-  const refreshGitSummary = async (reason: 'startup' | 'interval'): Promise<void> => {
-    if (gitSummaryRefreshInFlight) {
-      return;
-    }
-    gitSummaryRefreshInFlight = true;
-    const gitSpan = startPerfSpan('mux.background.git-summary', {
-      reason
-    });
-    try {
-      const next = await readGitSummary(options.invocationDirectory);
-      const changed = !gitSummaryEqual(gitSummary, next);
-      if (changed) {
-        gitSummary = next;
-        markDirty();
-      }
-      gitSpan.end({
-        reason,
-        changed,
-        branch: next.branch,
-        changedFiles: next.changedFiles
-      });
-    } finally {
-      gitSummaryRefreshInFlight = false;
-    }
-  };
-
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
   let dirty = true;
@@ -2262,7 +2766,16 @@ async function main(): Promise<number> {
   let renderedBracketedPaste: boolean | null = null;
   let previousSelectionRows: readonly number[] = [];
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
-  let shortcutsCollapsed = false;
+  let shortcutsCollapsed = configuredMuxUi.shortcutsCollapsed;
+  let persistedMuxUiState = {
+    paneWidthPercent: paneWidthPercentFromLayout(layout),
+    shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed
+  };
+  let pendingMuxUiStatePersist: {
+    paneWidthPercent: number;
+    shortcutsCollapsed: boolean;
+  } | null = null;
+  let muxUiStatePersistTimer: NodeJS.Timeout | null = null;
   let renderScheduled = false;
   let shuttingDown = false;
   let runtimeFatal: { origin: string; error: unknown } | null = null;
@@ -2357,8 +2870,70 @@ async function main(): Promise<number> {
     scheduleRender();
   };
 
+  keyEventSubscription = await subscribeControlPlaneKeyEvents(streamClient, {
+    tenantId: options.scope.tenantId,
+    userId: options.scope.userId,
+    workspaceId: options.scope.workspaceId,
+    onEvent: (event) => {
+      applyControlPlaneKeyEvent(event);
+      markDirty();
+    }
+  });
+
+  const muxUiStatePersistenceEnabled = loadedConfig.error === null;
+  const persistMuxUiStateNow = (): void => {
+    if (!muxUiStatePersistenceEnabled) {
+      return;
+    }
+    if (muxUiStatePersistTimer !== null) {
+      clearTimeout(muxUiStatePersistTimer);
+      muxUiStatePersistTimer = null;
+    }
+    const pending = pendingMuxUiStatePersist;
+    if (pending === null) {
+      return;
+    }
+    pendingMuxUiStatePersist = null;
+    if (
+      pending.paneWidthPercent === persistedMuxUiState.paneWidthPercent &&
+      pending.shortcutsCollapsed === persistedMuxUiState.shortcutsCollapsed
+    ) {
+      return;
+    }
+    try {
+      const updated = updateHarnessMuxUiConfig(pending, {
+        filePath: loadedConfig.filePath
+      });
+      persistedMuxUiState = {
+        paneWidthPercent:
+          updated.mux.ui.paneWidthPercent === null
+            ? paneWidthPercentFromLayout(layout)
+            : updated.mux.ui.paneWidthPercent,
+        shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed
+      };
+    } catch (error: unknown) {
+      process.stderr.write(
+        `[config] unable to persist mux ui state: ${error instanceof Error ? error.message : String(error)}\n`
+      );
+    }
+  };
+  const queuePersistMuxUiState = (): void => {
+    if (!muxUiStatePersistenceEnabled) {
+      return;
+    }
+    pendingMuxUiStatePersist = {
+      paneWidthPercent: paneWidthPercentFromLayout(layout),
+      shortcutsCollapsed
+    };
+    if (muxUiStatePersistTimer !== null) {
+      clearTimeout(muxUiStatePersistTimer);
+    }
+    muxUiStatePersistTimer = setTimeout(persistMuxUiStateNow, UI_STATE_PERSIST_DEBOUNCE_MS);
+    muxUiStatePersistTimer.unref?.();
+  };
+
   let processUsageTimer: NodeJS.Timeout | null = null;
-  let gitSummaryTimer: NodeJS.Timeout | null = null;
+  let gitSummaryWorkerTimer: NodeJS.Timeout | null = null;
   let backgroundProbesStarted = false;
   const startBackgroundProbes = (timedOut: boolean): void => {
     if (shuttingDown || backgroundProbesStarted || !backgroundProbesEnabled) {
@@ -2370,14 +2945,28 @@ async function main(): Promise<number> {
       settledObserved: startupSequencer.snapshot().settledObserved
     });
     void refreshProcessUsage('startup');
-    void refreshGitSummary('startup');
     processUsageTimer = setInterval(() => {
       void refreshProcessUsage('interval');
     }, 1000);
-    gitSummaryTimer = setInterval(() => {
-      void refreshGitSummary('interval');
-    }, 1500);
   };
+  if (configuredMuxGit.enabled) {
+    syncGitStateWithDirectories();
+    for (const directoryId of directories.keys()) {
+      queueGitSummaryRefresh(directoryId, 'startup', 0);
+    }
+    if (activeDirectoryId !== null) {
+      noteGitActivity(activeDirectoryId, 'focus');
+    }
+    drainPendingGitSummaryRefreshes();
+    gitSummaryWorkerTimer = setInterval(() => {
+      drainPendingGitSummaryRefreshes();
+    }, 120);
+    gitSummaryWorkerTimer.unref?.();
+  } else {
+    recordPerfEvent('mux.background.git-summary.skipped', {
+      reason: 'disabled'
+    });
+  }
   recordPerfEvent('mux.startup.background-probes.wait', {
     maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
     enabled: backgroundProbesEnabled ? 1 : 0
@@ -2704,6 +3293,7 @@ async function main(): Promise<number> {
     const normalizedCol = Math.max(1, Math.min(size.cols, col));
     leftPaneColsOverride = Math.max(1, normalizedCol - 1);
     applyLayout(size);
+    queuePersistMuxUiState();
   };
 
   const controlPlaneOpSpans = new Map<number, ReturnType<typeof startPerfSpan>>();
@@ -2903,7 +3493,7 @@ async function main(): Promise<number> {
     if (addDirectoryPrompt.error !== null && addDirectoryPrompt.error.length > 0) {
       addDirectoryBody.push(`error: ${addDirectoryPrompt.error}`);
     } else {
-      addDirectoryBody.push('add a workspace project for new conversations');
+      addDirectoryBody.push('add a workspace project for new threads');
     }
     return buildUiModalOverlay({
       viewportCols: layout.cols,
@@ -2930,7 +3520,12 @@ async function main(): Promise<number> {
         : conversationTitleEdit.value === conversationTitleEdit.lastSavedValue
           ? 'saved'
           : 'pending';
-    const editBody = [`title: ${conversationTitleEdit.value}_`, `state: ${editState}`];
+    const editBody = [
+      `title: ${conversationTitleEdit.value}_`,
+      `state: ${editState}`,
+      '',
+      CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL
+    ];
     if (conversationTitleEdit.error !== null && conversationTitleEdit.error.length > 0) {
       editBody.push(`error: ${conversationTitleEdit.error}`);
     }
@@ -2938,12 +3533,12 @@ async function main(): Promise<number> {
       viewportCols: layout.cols,
       viewportRows,
       width: Math.min(modalMaxWidth, 96),
-      height: 7,
+      height: 9,
       anchor: 'center',
       marginRows: 1,
-      title: 'Edit Conversation Title',
+      title: 'Edit Thread Title',
       bodyLines: editBody,
-      footer: 'typing autosaves   enter done   esc done',
+      footer: 'typing autosaves   enter done   ctrl+x archive   esc done',
       theme: MUX_MODAL_THEME
     });
   };
@@ -2956,7 +3551,11 @@ async function main(): Promise<number> {
     return buildConversationTitleModalOverlay(layout.rows);
   };
 
-  const dismissModalOnOutsideClick = (input: Buffer, dismiss: () => void): boolean => {
+  const dismissModalOnOutsideClick = (
+    input: Buffer,
+    dismiss: () => void,
+    onInsidePointerPress?: (col: number, row: number) => boolean
+  ): boolean => {
     if (!input.includes(0x1b)) {
       return false;
     }
@@ -2979,6 +3578,9 @@ async function main(): Promise<number> {
       }
       if (!isUiModalOverlayHit(modalOverlay, token.event.col, token.event.row)) {
         dismiss();
+        return true;
+      }
+      if (onInsidePointerPress?.(token.event.col, token.event.row) === true) {
         return true;
       }
     }
@@ -3006,10 +3608,6 @@ async function main(): Promise<number> {
         sinceCursor
       });
     }
-    await streamClient.sendCommand({
-      type: 'pty.subscribe-events',
-      sessionId
-    });
   };
 
   const detachConversation = async (sessionId: string): Promise<void> => {
@@ -3022,10 +3620,6 @@ async function main(): Promise<number> {
     }
     await streamClient.sendCommand({
       type: 'pty.detach',
-      sessionId
-    });
-    await streamClient.sendCommand({
-      type: 'pty.unsubscribe-events',
       sessionId
     });
     conversation.attached = false;
@@ -3049,6 +3643,7 @@ async function main(): Promise<number> {
       return;
     }
     activeDirectoryId = directoryId;
+    noteGitActivity(directoryId, 'focus');
     mainPaneMode = 'project';
     projectPaneScrollTop = 0;
     refreshProjectPaneSnapshot(directoryId);
@@ -3083,6 +3678,9 @@ async function main(): Promise<number> {
     forceFullClear = true;
     previousRows = [];
     const targetConversation = conversations.get(sessionId);
+    if (targetConversation?.directoryId !== undefined) {
+      noteGitActivity(targetConversation.directoryId, 'focus');
+    }
     if (targetConversation !== undefined && !targetConversation.live) {
       await startConversation(sessionId);
     }
@@ -3126,7 +3724,7 @@ async function main(): Promise<number> {
 
   const createAndActivateConversationInDirectory = async (directoryId: string): Promise<void> => {
     const sessionId = `conversation-${randomUUID()}`;
-    const title = `untitled task ${String(conversations.size + 1)}`;
+    const title = '';
     await streamClient.sendCommand({
       type: 'conversation.create',
       conversationId: sessionId,
@@ -3141,6 +3739,7 @@ async function main(): Promise<number> {
       agentType: 'codex',
       adapterState: {}
     });
+    noteGitActivity(directoryId, 'trigger');
     await startConversation(sessionId);
     await activateConversation(sessionId);
   };
@@ -3165,6 +3764,7 @@ async function main(): Promise<number> {
       type: 'conversation.archive',
       conversationId: sessionId
     });
+    await unsubscribeConversationEvents(sessionId);
 
     removeConversationState(sessionId);
 
@@ -3193,6 +3793,28 @@ async function main(): Promise<number> {
     markDirty();
   };
 
+  const takeoverConversation = async (sessionId: string): Promise<void> => {
+    const target = conversations.get(sessionId);
+    if (target === undefined) {
+      return;
+    }
+    const result = await streamClient.sendCommand({
+      type: 'session.claim',
+      sessionId,
+      controllerId: muxControllerId,
+      controllerType: 'human',
+      controllerLabel: muxControllerLabel,
+      reason: 'human takeover',
+      takeover: true
+    });
+    const controller = parseSessionControllerRecord(result['controller']);
+    if (controller !== null) {
+      target.controller = controller;
+    }
+    target.lastEventAt = new Date().toISOString();
+    markDirty();
+  };
+
   const addDirectoryByPath = async (rawPath: string): Promise<void> => {
     const normalizedPath = resolveWorkspacePathForMux(options.invocationDirectory, rawPath);
     const directoryResult = await streamClient.sendCommand({
@@ -3209,6 +3831,8 @@ async function main(): Promise<number> {
     }
     directories.set(directory.directoryId, directory);
     activeDirectoryId = directory.directoryId;
+    syncGitStateWithDirectories();
+    noteGitActivity(directory.directoryId, 'startup');
 
     await hydratePersistedConversationsForDirectory(directory.directoryId);
     const targetConversationId = conversationOrder(conversations).find((sessionId) => {
@@ -3247,6 +3871,7 @@ async function main(): Promise<number> {
         type: 'conversation.archive',
         conversationId: sessionId
       });
+      await unsubscribeConversationEvents(sessionId);
       removeConversationState(sessionId);
       if (activeConversationId === sessionId) {
         activeConversationId = null;
@@ -3258,6 +3883,7 @@ async function main(): Promise<number> {
       directoryId
     });
     directories.delete(directoryId);
+    deleteDirectoryGitState(directoryId);
     if (projectPaneSnapshot?.directoryId === directoryId) {
       projectPaneSnapshot = null;
       projectPaneScrollTop = 0;
@@ -3270,6 +3896,9 @@ async function main(): Promise<number> {
 
     if (activeDirectoryId === directoryId || activeDirectoryId === null || !directories.has(activeDirectoryId)) {
       activeDirectoryId = firstDirectoryId();
+    }
+    if (activeDirectoryId !== null) {
+      noteGitActivity(activeDirectoryId, 'focus');
     }
 
     const fallbackDirectoryId = resolveActiveDirectoryId();
@@ -3364,9 +3993,10 @@ async function main(): Promise<number> {
       activeConversationId,
       mainPaneMode === 'project',
       shortcutsCollapsed,
-      gitSummary,
+      gitSummaryByDirectoryId,
       processUsageBySessionId,
-      shortcutBindings
+      shortcutBindings,
+      muxControllerId
     );
     latestRailViewRows = rail.viewRows;
     let rightRows: readonly string[] = [];
@@ -3540,7 +4170,7 @@ async function main(): Promise<number> {
         scheduleStartupSettledProbe(startupFirstPaintTargetSessionId);
       }
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
-        const recordingCursorStyle =
+        const recordingCursorStyle: RenderCursorStyle =
           rightFrame === null ? { shape: 'block', blinking: false } : rightFrame.cursor.style;
         const recordingCursorRow = rightFrame === null ? 0 : rightFrame.cursor.row;
         const recordingCursorCol =
@@ -3581,6 +4211,7 @@ async function main(): Promise<number> {
         return;
       }
       const conversation = ensureConversation(envelope.sessionId);
+      noteGitActivity(conversation.directoryId, 'trigger');
       const chunk = Buffer.from(envelope.chunkBase64, 'base64');
       outputSampleSessionIds.add(envelope.sessionId);
       if (activeConversationId === envelope.sessionId) {
@@ -3650,8 +4281,8 @@ async function main(): Promise<number> {
         return;
       }
       const conversation = ensureConversation(envelope.sessionId);
-      const observedAt =
-        envelope.event.type === 'session-exit' ? new Date().toISOString() : envelope.event.record.ts;
+      noteGitActivity(conversation.directoryId, 'trigger');
+      const observedAt = observedAtFromSessionEvent(envelope.event);
       const updatedAdapterState = mergeAdapterStateFromSessionEvent(
         conversation.agentType,
         conversation.adapterState,
@@ -3665,16 +4296,8 @@ async function main(): Promise<number> {
       if (normalized !== null) {
         enqueuePersistedEvent(normalized);
       }
-      if (envelope.event.type === 'attention-required') {
-        conversation.status = 'needs-input';
-        conversation.attentionReason = envelope.event.reason;
-      } else if (envelope.event.type === 'turn-completed') {
-        conversation.status = 'completed';
-        conversation.attentionReason = null;
-      } else if (envelope.event.type === 'notify') {
-        // no status change
-      }
       if (envelope.event.type === 'session-exit') {
+        exit = envelope.event.exit;
         conversation.status = 'exited';
         conversation.live = false;
         conversation.attentionReason = null;
@@ -3704,6 +4327,8 @@ async function main(): Promise<number> {
       }
       const conversation = conversations.get(envelope.sessionId);
       if (conversation !== undefined) {
+        noteGitActivity(conversation.directoryId, 'trigger');
+        exit = envelope.exit;
         conversation.status = 'exited';
         conversation.live = false;
         conversation.attentionReason = null;
@@ -3804,6 +4429,7 @@ async function main(): Promise<number> {
     if (conversationTitleEdit === null) {
       return false;
     }
+    const edit = conversationTitleEdit;
     if (input.length === 1 && input[0] === 0x03) {
       return false;
     }
@@ -3812,15 +4438,40 @@ async function main(): Promise<number> {
       stopConversationTitleEdit(true);
       return true;
     }
+    const modalAction = detectMuxGlobalShortcut(input, shortcutBindings);
+    if (modalAction === 'mux.conversation.archive' || modalAction === 'mux.conversation.delete') {
+      const targetConversationId = edit.conversationId;
+      stopConversationTitleEdit(true);
+      queueControlPlaneOp(async () => {
+        await archiveConversation(targetConversationId);
+      }, 'modal-archive-conversation');
+      markDirty();
+      return true;
+    }
     if (
       dismissModalOnOutsideClick(input, () => {
         stopConversationTitleEdit(true);
+      }, (_col, row) => {
+        const overlay = buildConversationTitleModalOverlay(layout.rows);
+        if (overlay === null) {
+          return false;
+        }
+        const archiveButtonRow = overlay.top + 5;
+        if (row - 1 !== archiveButtonRow) {
+          return false;
+        }
+        const targetConversationId = edit.conversationId;
+        stopConversationTitleEdit(true);
+        queueControlPlaneOp(async () => {
+          await archiveConversation(targetConversationId);
+        }, 'modal-archive-conversation-click');
+        markDirty();
+        return true;
       })
     ) {
       return true;
     }
 
-    const edit = conversationTitleEdit;
     let nextValue = edit.value;
     let done = false;
     for (const byte of input) {
@@ -3977,8 +4628,9 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.conversation.archive') {
-      const targetConversationId = activeConversationId;
-      if (targetConversationId !== null) {
+      const targetConversationId =
+        mainPaneMode === 'conversation' ? activeConversationId : null;
+      if (targetConversationId !== null && conversations.has(targetConversationId)) {
         queueControlPlaneOp(async () => {
           await archiveConversation(targetConversationId);
         }, 'shortcut-archive-conversation');
@@ -3986,11 +4638,22 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.conversation.delete') {
-      const targetConversationId = activeConversationId;
-      if (targetConversationId !== null) {
+      const targetConversationId =
+        mainPaneMode === 'conversation' ? activeConversationId : null;
+      if (targetConversationId !== null && conversations.has(targetConversationId)) {
         queueControlPlaneOp(async () => {
           await archiveConversation(targetConversationId);
         }, 'shortcut-delete-conversation');
+      }
+      return;
+    }
+    if (globalShortcut === 'mux.conversation.takeover') {
+      const targetConversationId =
+        mainPaneMode === 'conversation' ? activeConversationId : null;
+      if (targetConversationId !== null && conversations.has(targetConversationId)) {
+        queueControlPlaneOp(async () => {
+          await takeoverConversation(targetConversationId);
+        }, 'shortcut-takeover-conversation');
       }
       return;
     }
@@ -4003,7 +4666,12 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.directory.close') {
-      const targetDirectoryId = resolveDirectoryForAction();
+      const targetDirectoryId =
+        mainPaneMode === 'project' &&
+        activeDirectoryId !== null &&
+        directories.has(activeDirectoryId)
+          ? activeDirectoryId
+          : null;
       if (targetDirectoryId !== null) {
         queueControlPlaneOp(async () => {
           await closeDirectory(targetDirectoryId);
@@ -4098,6 +4766,37 @@ async function main(): Promise<number> {
           continue;
         }
       }
+      const projectPaneActionClick =
+        target === 'right' &&
+        mainPaneMode === 'project' &&
+        isLeftButtonPress(token.event.code, token.event.final) &&
+        !hasAltModifier(token.event.code) &&
+        !isMotionMouseCode(token.event.code);
+      if (projectPaneActionClick && projectPaneSnapshot !== null) {
+        const snapshot = projectPaneSnapshot;
+        const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
+        const action = projectPaneActionAtRow(
+          snapshot,
+          layout.rightCols,
+          layout.paneRows,
+          projectPaneScrollTop,
+          rowIndex
+        );
+        if (action === 'conversation.new') {
+          queueControlPlaneOp(async () => {
+            await createAndActivateConversationInDirectory(snapshot.directoryId);
+          }, 'project-pane-new-conversation');
+          markDirty();
+          continue;
+        }
+        if (action === 'project.close') {
+          queueControlPlaneOp(async () => {
+            await closeDirectory(snapshot.directoryId);
+          }, 'project-pane-close-project');
+          markDirty();
+          continue;
+        }
+      }
       const leftPaneConversationSelect =
         target === 'left' &&
         isLeftButtonPress(token.event.code, token.event.final) &&
@@ -4105,12 +4804,18 @@ async function main(): Promise<number> {
         !isMotionMouseCode(token.event.code);
       if (leftPaneConversationSelect) {
         const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
+        const colIndex = Math.max(0, Math.min(layout.leftCols - 1, token.event.col - 1));
         const selectedConversationId = conversationIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedProjectId = projectIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
-        const selectedAction = actionAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        const selectedAction = actionAtWorkspaceRailCell(
+          latestRailViewRows,
+          rowIndex,
+          colIndex,
+          layout.leftCols
+        );
         const selectedRowKind = kindAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const supportsConversationTitleEditClick =
-          selectedRowKind === 'conversation-title' || selectedRowKind === 'conversation-meta';
+          selectedRowKind === 'conversation-title' || selectedRowKind === 'conversation-body';
         const keepTitleEditActive =
           conversationTitleEdit !== null &&
           selectedConversationId === conversationTitleEdit.conversationId &&
@@ -4168,6 +4873,7 @@ async function main(): Promise<number> {
         if (selectedAction === 'shortcuts.toggle') {
           conversationTitleEditClickState = null;
           shortcutsCollapsed = !shortcutsCollapsed;
+          queuePersistMuxUiState();
           markDirty();
           continue;
         }
@@ -4333,15 +5039,18 @@ async function main(): Promise<number> {
     if (inputConversation === null) {
       return;
     }
+    if (
+      inputConversation.controller !== null &&
+      !isConversationControlledByLocalHuman(inputConversation)
+    ) {
+      return;
+    }
 
     for (const forwardChunk of forwardToSession) {
-      if (inputContainsTurnSubmission(forwardChunk) && inputConversation.status !== 'exited') {
-        inputConversation.status = 'running';
-        inputConversation.attentionReason = null;
-        inputConversation.lastEventAt = new Date().toISOString();
-        markDirty();
-      }
       streamClient.sendInput(inputConversation.sessionId, forwardChunk);
+    }
+    if (forwardToSession.length > 0) {
+      noteGitActivity(inputConversation.directoryId, 'trigger');
     }
 
   };
@@ -4397,9 +5106,9 @@ async function main(): Promise<number> {
       clearInterval(processUsageTimer);
       processUsageTimer = null;
     }
-    if (gitSummaryTimer !== null) {
-      clearInterval(gitSummaryTimer);
-      gitSummaryTimer = null;
+    if (gitSummaryWorkerTimer !== null) {
+      clearInterval(gitSummaryWorkerTimer);
+      gitSummaryWorkerTimer = null;
     }
     if (resizeTimer !== null) {
       clearTimeout(resizeTimer);
@@ -4409,6 +5118,7 @@ async function main(): Promise<number> {
       clearTimeout(ptyResizeTimer);
       ptyResizeTimer = null;
     }
+    persistMuxUiStateNow();
     if (conversationTitleEdit !== null) {
       clearConversationTitleEditTimer(conversationTitleEdit);
     }
@@ -4422,6 +5132,10 @@ async function main(): Promise<number> {
     process.off('uncaughtException', onUncaughtException);
     process.off('unhandledRejection', onUnhandledRejection);
     removeEnvelopeListener();
+    if (keyEventSubscription !== null) {
+      await keyEventSubscription.close();
+      keyEventSubscription = null;
+    }
     if (runtimeFatalExitTimer !== null) {
       clearTimeout(runtimeFatalExitTimer);
       runtimeFatalExitTimer = null;
@@ -4465,10 +5179,14 @@ async function main(): Promise<number> {
         );
       }
     } else if (recordingCloseError !== null) {
+      const recordingCloseErrorMessage =
+        recordingCloseError instanceof Error
+          ? recordingCloseError.message
+          : typeof recordingCloseError === 'string'
+            ? recordingCloseError
+            : 'unknown error';
       process.stderr.write(
-        `[mux-recording] close-failed ${
-          recordingCloseError instanceof Error ? recordingCloseError.message : String(recordingCloseError)
-        }\n`
+        `[mux-recording] close-failed ${recordingCloseErrorMessage}\n`
       );
     }
     endStartupActiveStartCommandSpan({

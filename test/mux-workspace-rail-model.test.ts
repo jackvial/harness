@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  actionAtWorkspaceRailCell,
   actionAtWorkspaceRailRow,
   buildWorkspaceRailViewRows,
   conversationIdAtWorkspaceRailRow,
+  projectIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
 
@@ -15,7 +17,6 @@ void test('workspace rail model builds rows with conversation spacing and proces
           key: 'a:b',
           workspaceId: 'alpha',
           worktreeId: 'worktree-local',
-          active: false,
           git: {
             branch: 'main',
             additions: 4,
@@ -27,7 +28,6 @@ void test('workspace rail model builds rows with conversation spacing and proces
           key: 'c:d',
           workspaceId: 'charlie',
           worktreeId: 'worktree-local',
-          active: false,
           git: {
             branch: 'feature/x',
             additions: 1,
@@ -44,6 +44,7 @@ void test('workspace rail model builds rows with conversation spacing and proces
           agentLabel: 'codex',
           cpuPercent: 0,
           memoryMb: 0,
+          lastKnownWork: null,
           status: 'needs-input',
           attentionReason: 'approval',
           startedAt: '2026-01-01T00:00:00.000Z',
@@ -56,6 +57,7 @@ void test('workspace rail model builds rows with conversation spacing and proces
           agentLabel: 'codex',
           cpuPercent: null,
           memoryMb: null,
+          lastKnownWork: null,
           status: 'exited',
           attentionReason: null,
           startedAt: 'bad-time',
@@ -72,6 +74,7 @@ void test('workspace rail model builds rows with conversation spacing and proces
           status: 'exited'
         }
       ],
+      activeProjectId: null,
       activeConversationId: 's1',
       nowMs: Date.parse('2026-01-01T00:00:10.000Z')
     },
@@ -80,11 +83,24 @@ void test('workspace rail model builds rows with conversation spacing and proces
 
   assert.equal(rows.length, 32);
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.active), true);
-  assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('needs action · approval')), true);
-  assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('◌ exited · · ·')), true);
+  assert.equal(
+    rows.some((row) => row.kind === 'conversation-title' && row.text.includes('▲ codex - untitled task 1')),
+    true
+  );
+  assert.equal(
+    rows.some(
+      (row) => row.kind === 'conversation-body' && row.text.includes('approval')
+    ),
+    true
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'conversation-title' && row.text.includes('■ codex - untitled task 2')),
+    true
+  );
   assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('exited · · · ·')), true);
   assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.startsWith('├─ 📁 charlie')), true);
-  assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('(no conversations)')), true);
+  assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')), true);
+  assert.equal(rows.some((row) => row.text.includes('(no conversations)')), false);
   assert.equal(rows.some((row) => row.kind === 'muted' && row.text === '│'), true);
   const secondDirectoryHeaderRowIndex = rows.findIndex(
     (row) => row.kind === 'dir-header' && row.text.startsWith('├─ 📁 charlie')
@@ -105,21 +121,24 @@ void test('workspace rail model builds rows with conversation spacing and proces
     true
   );
   assert.equal(rows.some((row) => row.kind === 'shortcut-body' && row.text.includes('ctrl+t')), true);
-  assert.equal(rows[rows.length - 1]?.kind, 'action');
+  assert.equal(rows[rows.length - 1]?.kind, 'shortcut-body');
+  assert.equal(rows[0]?.railAction, 'project.add');
 });
 
-void test('workspace rail model handles empty directories and blank workspace name', () => {
+void test('workspace rail model handles empty projects and blank workspace name', () => {
   const noDirectoryRows = buildWorkspaceRailViewRows(
     {
       directories: [],
       conversations: [],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:00:00.000Z')
     },
     16
   );
-  assert.equal(noDirectoryRows[0]?.text.includes('no directories'), true);
+  assert.equal(noDirectoryRows.some((row) => row.text.includes('no projects')), true);
+  assert.equal(noDirectoryRows[0]?.railAction, 'project.add');
 
   const blankNameRows = buildWorkspaceRailViewRows(
     {
@@ -128,7 +147,6 @@ void test('workspace rail model handles empty directories and blank workspace na
           key: 'x:y',
           workspaceId: '   ',
           worktreeId: 'ignored',
-          active: false,
           git: {
             branch: 'topic',
             additions: 0,
@@ -139,6 +157,7 @@ void test('workspace rail model handles empty directories and blank workspace na
       ],
       conversations: [],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null
     },
     16
@@ -146,7 +165,7 @@ void test('workspace rail model handles empty directories and blank workspace na
   assert.equal(blankNameRows.some((row) => row.text.includes('(unnamed)')), true);
 });
 
-void test('workspace rail model makes empty-directory state clickable for new conversation', () => {
+void test('workspace rail model makes project header thread action clickable', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -154,7 +173,6 @@ void test('workspace rail model makes empty-directory state clickable for new co
           key: 'dir',
           workspaceId: 'harness',
           worktreeId: 'worktree-local',
-          active: false,
           git: {
             branch: 'main',
             additions: 0,
@@ -165,18 +183,27 @@ void test('workspace rail model makes empty-directory state clickable for new co
       ],
       conversations: [],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null
     },
     20
   );
 
-  const emptyStateRowIndex = rows.findIndex((row) => row.kind === 'muted' && row.text.includes('(no conversations)'));
-  assert.equal(emptyStateRowIndex >= 0, true);
   const emptyStateActionRowIndex = rows.findIndex(
-    (row, index) => index > emptyStateRowIndex && row.kind === 'action' && row.text.includes('+ new conversation')
+    (row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')
   );
   assert.equal(emptyStateActionRowIndex >= 0, true);
-  assert.equal(actionAtWorkspaceRailRow(rows, emptyStateActionRowIndex), 'conversation.new');
+  const buttonStart = rows[emptyStateActionRowIndex]!.text.indexOf('[+ thread]');
+  assert.equal(buttonStart >= 0, true);
+  assert.equal(actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, buttonStart), 'conversation.new');
+  const paneCols = 48;
+  const alignedButtonStart = paneCols - '[+ thread]'.length;
+  assert.equal(
+    actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, alignedButtonStart, paneCols),
+    'conversation.new'
+  );
+  assert.equal(actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, buttonStart, paneCols), null);
+  assert.equal(actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, 0), null);
 });
 
 void test('workspace rail model truncates content before pinned shortcuts and supports two-row limit', () => {
@@ -185,14 +212,16 @@ void test('workspace rail model truncates content before pinned shortcuts and su
       directories: [],
       conversations: [],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null
     },
     2
   );
   assert.equal(twoRows.length, 2);
-  assert.equal(twoRows[0]?.kind, 'action');
-  assert.equal(twoRows[1]?.kind, 'action');
-  assert.equal(twoRows[1]?.text.includes('close directory'), true);
+  assert.equal(twoRows[0]?.kind, 'shortcut-body');
+  assert.equal(twoRows[1]?.kind, 'shortcut-body');
+  assert.equal(twoRows[0]?.text.includes('switch thread'), true);
+  assert.equal(twoRows[1]?.text.includes('quit mux'), true);
 
   const truncated = buildWorkspaceRailViewRows(
     {
@@ -201,7 +230,6 @@ void test('workspace rail model truncates content before pinned shortcuts and su
           key: 'd',
           workspaceId: 'dir',
           worktreeId: 'w',
-          active: false,
           git: {
             branch: 'main',
             additions: 1,
@@ -218,6 +246,7 @@ void test('workspace rail model truncates content before pinned shortcuts and su
           agentLabel: 'codex',
           cpuPercent: 1.2,
           memoryMb: 30,
+          lastKnownWork: null,
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
@@ -225,15 +254,16 @@ void test('workspace rail model truncates content before pinned shortcuts and su
         }
       ],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:01:00.000Z')
     },
     3
   );
   assert.equal(truncated.length, 3);
-  assert.equal(truncated[0]?.text.includes('archive conversation'), true);
-  assert.equal(truncated[1]?.text.includes('add directory'), true);
-  assert.equal(truncated[2]?.text.includes('close directory'), true);
+  assert.equal(truncated[0]?.text.includes('close project'), true);
+  assert.equal(truncated[1]?.text.includes('switch thread'), true);
+  assert.equal(truncated[2]?.text.includes('quit mux'), true);
 });
 
 void test('workspace rail model supports idle normalization custom shortcuts and row hit-testing', () => {
@@ -244,7 +274,6 @@ void test('workspace rail model supports idle normalization custom shortcuts and
           key: 'dir',
           workspaceId: 'harness',
           worktreeId: 'none',
-          active: false,
           git: {
             branch: 'main',
             additions: 0,
@@ -261,6 +290,7 @@ void test('workspace rail model supports idle normalization custom shortcuts and
           agentLabel: 'codex',
           cpuPercent: 0.1,
           memoryMb: 10,
+          lastKnownWork: null,
           status: 'running',
           attentionReason: '   ',
           startedAt: '2026-01-01T00:00:00.000Z',
@@ -268,6 +298,7 @@ void test('workspace rail model supports idle normalization custom shortcuts and
         }
       ],
       processes: [],
+      activeProjectId: null,
       activeConversationId: 'conversation-a',
       shortcutHint: '   ',
       nowMs: Date.parse('2026-01-01T00:00:20.000Z')
@@ -275,11 +306,12 @@ void test('workspace rail model supports idle normalization custom shortcuts and
     20
   );
 
-  assert.equal(rows.some((row) => row.text.includes('◍ idle')), true);
+  assert.equal(rows.some((row) => row.text.includes('○ codex - untitled')), true);
+  assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('0.1% · 10MB')), true);
   assert.equal(rows.some((row) => row.text.includes('ctrl+j/k switch')), true);
-  assert.equal(rows.some((row) => row.text.includes('x archive conversation')), true);
-  assert.equal(rows.some((row) => row.text.includes('🗑 archive conversation')), false);
-  assert.equal(rows.some((row) => row.text.includes('add directory')), true);
+  assert.equal(rows.some((row) => row.text.includes('x archive thread')), true);
+  assert.equal(rows.some((row) => row.text.includes('🗑 archive thread')), false);
+  assert.equal(rows.some((row) => row.text.includes('add project')), true);
   const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
   assert.equal(shortcutHeaderRowIndex >= 0, true);
   const conversationRowIndex = rows.findIndex(
@@ -287,14 +319,198 @@ void test('workspace rail model supports idle normalization custom shortcuts and
   );
   assert.equal(conversationRowIndex >= 0, true);
   assert.equal(actionAtWorkspaceRailRow(rows, shortcutHeaderRowIndex), 'shortcuts.toggle');
-  assert.equal(conversationIdAtWorkspaceRailRow(rows, conversationRowIndex), 'conversation-a');
-  assert.equal(actionAtWorkspaceRailRow(rows, rows.length - 1), 'directory.close');
-  assert.equal(conversationIdAtWorkspaceRailRow(rows, -1), null);
-  assert.equal(conversationIdAtWorkspaceRailRow(rows, 100), null);
   assert.equal(actionAtWorkspaceRailRow(rows, -1), null);
   assert.equal(actionAtWorkspaceRailRow(rows, 100), null);
+  assert.equal(actionAtWorkspaceRailCell(rows, 0, 0), 'project.add');
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, conversationRowIndex), 'conversation-a');
+  assert.equal(projectIdAtWorkspaceRailRow(rows, conversationRowIndex), 'dir');
+  assert.equal(actionAtWorkspaceRailCell(rows, rows.length - 1, 0), null);
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, -1), null);
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, 100), null);
+  assert.equal(projectIdAtWorkspaceRailRow(rows, -1), null);
+  assert.equal(projectIdAtWorkspaceRailRow(rows, 100), null);
+  assert.equal(actionAtWorkspaceRailCell(rows, -1, 0), null);
+  assert.equal(actionAtWorkspaceRailCell(rows, 100, 0), null);
   assert.equal(kindAtWorkspaceRailRow(rows, conversationRowIndex), 'conversation-title');
   assert.equal(kindAtWorkspaceRailRow(rows, -1), null);
+});
+
+void test('workspace rail model omits separator when conversation title is empty', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-empty-title',
+          directoryKey: 'dir',
+          title: '   ',
+          agentLabel: 'codex',
+          cpuPercent: 0,
+          memoryMb: 0,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-empty-title',
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    20
+  );
+
+  const titleRow = rows.find(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-empty-title'
+  );
+  assert.notEqual(titleRow, undefined);
+  assert.equal(titleRow?.text.includes('codex - '), false);
+  assert.equal(titleRow?.text.includes('codex'), true);
+});
+
+void test('workspace rail model limits active project styling to header and git rows', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir-a',
+          workspaceId: 'alpha',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: 'dir-a',
+      activeConversationId: null,
+      projectSelectionEnabled: true
+    },
+    16
+  );
+  const header = rows.find((row) => row.kind === 'dir-header');
+  const meta = rows.find((row) => row.kind === 'dir-meta');
+  const divider = rows.find((row) => row.kind === 'muted' && row.text === '│');
+  const newThreadAction = rows.find(
+    (row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')
+  );
+  assert.equal(header?.active, true);
+  assert.equal(meta?.active, true);
+  assert.equal(divider?.active, false);
+  assert.equal(newThreadAction?.active, true);
+});
+
+void test('workspace rail model does not mark project active while selection mode is disabled', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir-a',
+          workspaceId: 'alpha',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir-a',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0,
+          memoryMb: 0,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: 'dir-a',
+      activeConversationId: 'conversation-a',
+      projectSelectionEnabled: false,
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    16
+  );
+
+  const header = rows.find((row) => row.kind === 'dir-header');
+  const meta = rows.find((row) => row.kind === 'dir-meta');
+  assert.equal(header?.active, false);
+  assert.equal(meta?.active, false);
+});
+
+void test('workspace rail model does not mark conversation active while project selection is enabled', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir-a',
+          workspaceId: 'alpha',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir-a',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0,
+          memoryMb: 0,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: 'dir-a',
+      activeConversationId: 'conversation-a',
+      projectSelectionEnabled: true,
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    16
+  );
+
+  const header = rows.find((row) => row.kind === 'dir-header');
+  const conversationTitle = rows.find((row) => row.kind === 'conversation-title');
+  const conversationBody = rows.find((row) => row.kind === 'conversation-body');
+  assert.equal(header?.active, true);
+  assert.equal(conversationTitle?.active, false);
+  assert.equal(conversationBody?.active, false);
+  assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.conversationStatus === null), false);
 });
 
 void test('workspace rail model overrides default shortcut text when custom hint is set', () => {
@@ -303,6 +519,7 @@ void test('workspace rail model overrides default shortcut text when custom hint
       directories: [],
       conversations: [],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null,
       shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+] quit'
     },
@@ -311,7 +528,7 @@ void test('workspace rail model overrides default shortcut text when custom hint
 
   assert.equal(rows.length, 8);
   assert.equal(rows.some((row) => row.text.includes('ctrl+n/p switch')), true);
-  assert.equal(rows.some((row) => row.text.includes('close directory')), true);
+  assert.equal(rows.some((row) => row.text.includes('close project')), false);
 });
 
 void test('workspace rail model supports newline-delimited shortcut hint rows', () => {
@@ -320,6 +537,7 @@ void test('workspace rail model supports newline-delimited shortcut hint rows', 
       directories: [],
       conversations: [],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null,
       shortcutHint: 'ctrl+t new\nctrl+n/p switch\nctrl+c quit'
     },
@@ -338,7 +556,6 @@ void test('workspace rail model treats running sessions with missing last event 
           key: 'dir',
           workspaceId: 'harness',
           worktreeId: 'none',
-          active: false,
           git: {
             branch: 'main',
             additions: 0,
@@ -355,6 +572,7 @@ void test('workspace rail model treats running sessions with missing last event 
           agentLabel: 'codex',
           cpuPercent: 0,
           memoryMb: 1,
+          lastKnownWork: null,
           status: 'running',
           attentionReason: null,
           startedAt: 'bad-time',
@@ -362,13 +580,14 @@ void test('workspace rail model treats running sessions with missing last event 
         }
       ],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:00:20.000Z')
     },
     20
   );
 
-  assert.equal(rows.some((row) => row.text.includes('◍ idle')), true);
+  assert.equal(rows.some((row) => row.text.includes('○ codex - task')), true);
 });
 
 void test('workspace rail model supports collapsed shortcut descriptions with clickable toggle row', () => {
@@ -377,6 +596,7 @@ void test('workspace rail model supports collapsed shortcut descriptions with cl
       directories: [],
       conversations: [],
       processes: [],
+      activeProjectId: null,
       activeConversationId: null,
       shortcutsCollapsed: true
     },
@@ -387,5 +607,331 @@ void test('workspace rail model supports collapsed shortcut descriptions with cl
   assert.equal(rows.some((row) => row.kind === 'shortcut-body'), false);
   const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
   assert.equal(actionAtWorkspaceRailRow(rows, shortcutHeaderRowIndex), 'shortcuts.toggle');
-  assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('new conversation')), true);
+  assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('add project')), true);
+});
+
+void test('workspace rail model does not expose thread action for headers without inline button label', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null
+    },
+    12
+  );
+  const noProjectsHeaderRowIndex = rows.findIndex(
+    (row) => row.kind === 'dir-header' && row.text.includes('no projects')
+  );
+  assert.equal(noProjectsHeaderRowIndex >= 0, true);
+  assert.equal(actionAtWorkspaceRailCell(rows, noProjectsHeaderRowIndex, 7, 40), null);
+});
+
+void test('workspace rail model maps both thread rows to the same conversation id', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0.5,
+          memoryMb: 9,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      nowMs: Date.parse('2026-01-01T00:00:02.000Z')
+    },
+    20
+  );
+
+  const titleRowIndex = rows.findIndex(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-a'
+  );
+  const bodyRowIndex = rows.findIndex(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+  );
+  assert.equal(titleRowIndex >= 0, true);
+  assert.equal(bodyRowIndex >= 0, true);
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, titleRowIndex), 'conversation-a');
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, bodyRowIndex), 'conversation-a');
+  assert.equal(kindAtWorkspaceRailRow(rows, bodyRowIndex), 'conversation-body');
+});
+
+void test('workspace rail model prefers last-known-work text over cpu or attention fallback', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 11.1,
+          memoryMb: 99,
+          lastKnownWork: 'codex.sse_event: response.completed',
+          status: 'running',
+          attentionReason: 'approval',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    20
+  );
+
+  const bodyRow = rows.find((row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a');
+  assert.notEqual(bodyRow, undefined);
+  assert.equal(bodyRow?.text.includes('codex.sse_event: response.completed'), true);
+  assert.equal(bodyRow?.text.includes('11.1% · 99MB'), false);
+  assert.equal(bodyRow?.text.includes('approval'), false);
+});
+
+void test('workspace rail model shows controller ownership hints for non-local controllers', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 11.1,
+          memoryMb: 99,
+          lastKnownWork: 'working',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+          controller: {
+            controllerId: 'agent-owner',
+            controllerType: 'agent',
+            controllerLabel: 'openclaw',
+            claimedAt: '2026-01-01T00:00:01.000Z'
+          }
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      localControllerId: 'human-local',
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    20
+  );
+
+  const bodyRow = rows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+  );
+  assert.notEqual(bodyRow, undefined);
+  assert.equal(bodyRow?.text.includes('controlled by openclaw'), true);
+
+  const localRows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 11.1,
+          memoryMb: 99,
+          lastKnownWork: 'working',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+          controller: {
+            controllerId: 'human-local',
+            controllerType: 'human',
+            controllerLabel: 'human-local',
+            claimedAt: '2026-01-01T00:00:01.000Z'
+          }
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      localControllerId: 'human-local',
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    20
+  );
+
+  const localBodyRow = localRows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+  );
+  assert.notEqual(localBodyRow, undefined);
+  assert.equal(localBodyRow?.text.includes('controlled by'), false);
+  assert.equal(localBodyRow?.text.includes('working'), true);
+
+  const unlabeledRows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 11.1,
+          memoryMb: 99,
+          lastKnownWork: 'working',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+          controller: {
+            controllerId: 'robot-7',
+            controllerType: 'automation',
+            controllerLabel: '   ',
+            claimedAt: '2026-01-01T00:00:01.000Z'
+          }
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      localControllerId: 'human-local',
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    20
+  );
+  const unlabeledBodyRow = unlabeledRows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+  );
+  assert.notEqual(unlabeledBodyRow, undefined);
+  assert.equal(unlabeledBodyRow?.text.includes('controlled by automation:robot-7'), true);
+
+  const undefinedLabelRows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 11.1,
+          memoryMb: 99,
+          lastKnownWork: 'working',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+          controller: {
+            controllerId: 'agent-raw',
+            controllerType: 'agent',
+            controllerLabel: undefined,
+            claimedAt: '2026-01-01T00:00:01.000Z'
+          } as unknown as {
+            controllerId: string;
+            controllerType: 'agent';
+            controllerLabel: string | null;
+            claimedAt: string;
+          }
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      localControllerId: 'human-local',
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    20
+  );
+  const undefinedLabelBodyRow = undefinedLabelRows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+  );
+  assert.notEqual(undefinedLabelBodyRow, undefined);
+  assert.equal(undefinedLabelBodyRow?.text.includes('controlled by agent:agent-raw'), true);
 });

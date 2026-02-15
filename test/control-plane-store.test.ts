@@ -316,6 +316,101 @@ void test('control-plane store upsertDirectory updates existing id paths and rej
   }
 });
 
+void test('control-plane store persists telemetry, deduplicates fingerprints, and resolves thread mapping', () => {
+  const store = new SqliteControlPlaneStore(':memory:');
+  try {
+    store.upsertDirectory({
+      directoryId: 'dir-telemetry',
+      tenantId: 'tenant-telemetry',
+      userId: 'user-telemetry',
+      workspaceId: 'workspace-telemetry',
+      path: '/tmp/telemetry'
+    });
+    store.createConversation({
+      conversationId: 'conversation-telemetry',
+      directoryId: 'dir-telemetry',
+      title: 'telemetry conversation',
+      agentType: 'codex',
+      adapterState: {
+        codex: {
+          resumeSessionId: 'thread-telemetry'
+        }
+      }
+    });
+
+    const insertedFirst = store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-telemetry',
+      providerThreadId: 'thread-telemetry',
+      eventName: 'codex.user_prompt',
+      severity: 'INFO',
+      summary: 'prompt accepted',
+      observedAt: '2026-02-15T00:00:00.000Z',
+      payload: {
+        a: 1
+      },
+      fingerprint: 'fingerprint-1'
+    });
+    const insertedDuplicate = store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-telemetry',
+      providerThreadId: 'thread-telemetry',
+      eventName: 'codex.user_prompt',
+      severity: 'INFO',
+      summary: 'prompt accepted',
+      observedAt: '2026-02-15T00:00:00.000Z',
+      payload: {
+        a: 1
+      },
+      fingerprint: 'fingerprint-1'
+    });
+    assert.equal(insertedFirst, true);
+    assert.equal(insertedDuplicate, false);
+
+    store.appendTelemetry({
+      source: 'history',
+      sessionId: 'conversation-telemetry',
+      providerThreadId: 'thread-telemetry',
+      eventName: 'history.entry',
+      severity: null,
+      summary: 'from history',
+      observedAt: '2026-02-15T00:00:01.000Z',
+      payload: {
+        b: 2
+      },
+      fingerprint: 'fingerprint-2'
+    });
+
+    const latest = store.latestTelemetrySummary('conversation-telemetry');
+    assert.deepEqual(latest, {
+      source: 'history',
+      eventName: 'history.entry',
+      severity: null,
+      summary: 'from history',
+      observedAt: '2026-02-15T00:00:01.000Z'
+    });
+
+    const listed = store.listTelemetryForSession('conversation-telemetry', 10);
+    assert.equal(listed.length, 2);
+    assert.equal(listed[0]?.summary, 'from history');
+    assert.equal(listed[1]?.summary, 'prompt accepted');
+    assert.equal(typeof listed[0]?.telemetryId, 'number');
+    assert.equal(listed[0]?.payload['b'], 2);
+    assert.equal(listed[1]?.fingerprint, 'fingerprint-1');
+
+    assert.equal(
+      store.findConversationIdByCodexThreadId('thread-telemetry'),
+      'conversation-telemetry'
+    );
+    assert.equal(store.findConversationIdByCodexThreadId('missing-thread'), null);
+    assert.equal(store.findConversationIdByCodexThreadId('   '), null);
+    assert.equal(store.latestTelemetrySummary('missing-conversation'), null);
+    assert.deepEqual(store.listTelemetryForSession('missing-conversation', 5), []);
+  } finally {
+    store.close();
+  }
+});
+
 void test('control-plane store normalization helpers validate row shapes and fields', () => {
   assert.throws(() => normalizeStoredDirectoryRow(null), /expected object row/);
   assert.throws(
@@ -581,6 +676,227 @@ void test('control-plane store normalization helpers validate row shapes and fie
     adapter_state_json: '{bad json'
   });
   assert.deepEqual(normalizedInvalidAdapterState.adapterState, {});
+});
+
+void test('control-plane telemetry normalization guards reject invalid rows and fallback on malformed payload json', () => {
+  const storePath = tempStorePath();
+  const store = new SqliteControlPlaneStore(storePath);
+  store.close();
+
+  const db = new DatabaseSync(storePath);
+  try {
+    db.exec(`
+      INSERT INTO session_telemetry (
+        source,
+        session_id,
+        provider_thread_id,
+        event_name,
+        severity,
+        summary,
+        observed_at,
+        ingested_at,
+        payload_json,
+        fingerprint
+      ) VALUES (
+        'bad-source',
+        'conversation-x',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        '2026-02-15T00:00:00.000Z',
+        '2026-02-15T00:00:00.000Z',
+        '{}',
+        'bad-source-row'
+      );
+    `);
+  } finally {
+    db.close();
+  }
+
+  const reopened = new SqliteControlPlaneStore(storePath);
+  try {
+    assert.throws(() => reopened.listTelemetryForSession('conversation-x', 10), /telemetry source enum value/);
+  } finally {
+    reopened.close();
+  }
+
+  const db2 = new DatabaseSync(storePath);
+  try {
+    db2.exec(`DELETE FROM session_telemetry;`);
+    db2.exec(`
+      INSERT INTO session_telemetry (
+        source,
+        session_id,
+        provider_thread_id,
+        event_name,
+        severity,
+        summary,
+        observed_at,
+        ingested_at,
+        payload_json,
+        fingerprint
+      ) VALUES (
+        'otlp-log',
+        'conversation-y',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        '2026-02-15T00:00:00.000Z',
+        '2026-02-15T00:00:00.000Z',
+        '[]',
+        'array-payload-row'
+      );
+    `);
+    db2.exec(`
+      INSERT INTO session_telemetry (
+        source,
+        session_id,
+        provider_thread_id,
+        event_name,
+        severity,
+        summary,
+        observed_at,
+        ingested_at,
+        payload_json,
+        fingerprint
+      ) VALUES (
+        'otlp-log',
+        'conversation-y',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        '2026-02-15T00:00:01.000Z',
+        '2026-02-15T00:00:01.000Z',
+        '{',
+        'bad-json-row'
+      );
+    `);
+    db2.exec(`
+      INSERT INTO session_telemetry (
+        source,
+        session_id,
+        provider_thread_id,
+        event_name,
+        severity,
+        summary,
+        observed_at,
+        ingested_at,
+        payload_json,
+        fingerprint
+      ) VALUES (
+        'otlp-log',
+        'conversation-y',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        '2026-02-15T00:00:02.000Z',
+        '2026-02-15T00:00:02.000Z',
+        zeroblob(1),
+        'blob-payload-row'
+      );
+    `);
+  } finally {
+    db2.close();
+  }
+
+  const reopenedPayload = new SqliteControlPlaneStore(storePath);
+  try {
+    assert.throws(
+      () => reopenedPayload.listTelemetryForSession('conversation-y', 10),
+      /expected string for payload_json/
+    );
+  } finally {
+    reopenedPayload.close();
+  }
+
+  const db3 = new DatabaseSync(storePath);
+  try {
+    db3.exec(`DELETE FROM session_telemetry WHERE fingerprint = 'blob-payload-row';`);
+  } finally {
+    db3.close();
+  }
+
+  const reopenedPayloadFallback = new SqliteControlPlaneStore(storePath);
+  try {
+    const rows = reopenedPayloadFallback.listTelemetryForSession('conversation-y', 10);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows[0]?.payload, {});
+    assert.deepEqual(rows[1]?.payload, {});
+  } finally {
+    reopenedPayloadFallback.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('control-plane store thread-id lookup falls back when json_extract path raises', () => {
+  const storePath = tempStorePath();
+  const store = new SqliteControlPlaneStore(storePath);
+  try {
+    store.upsertDirectory({
+      directoryId: 'dir-fallback',
+      tenantId: 'tenant-fallback',
+      userId: 'user-fallback',
+      workspaceId: 'workspace-fallback',
+      path: '/tmp/fallback'
+    });
+    store.createConversation({
+      conversationId: 'conversation-bad-json',
+      directoryId: 'dir-fallback',
+      title: 'bad json',
+      agentType: 'codex',
+      adapterState: {}
+    });
+    store.createConversation({
+      conversationId: 'conversation-good-json',
+      directoryId: 'dir-fallback',
+      title: 'good json',
+      agentType: 'codex',
+      adapterState: {
+        codex: {
+          resumeSessionId: 'thread-fallback'
+        }
+      }
+    });
+  } finally {
+    store.close();
+  }
+
+  const db = new DatabaseSync(storePath);
+  try {
+    db.prepare('UPDATE conversations SET adapter_state_json = ? WHERE conversation_id = ?').run(
+      '{',
+      'conversation-bad-json'
+    );
+    db.prepare('UPDATE conversations SET adapter_state_json = ? WHERE conversation_id = ?').run(
+      '{"codex":"not-object"}',
+      'conversation-good-json'
+    );
+  } finally {
+    db.close();
+  }
+
+  const reopened = new SqliteControlPlaneStore(storePath);
+  try {
+    assert.equal(reopened.findConversationIdByCodexThreadId('thread-fallback'), null);
+    reopened.updateConversationAdapterState('conversation-good-json', {
+      codex: {
+        resumeSessionId: 'thread-fallback'
+      }
+    });
+    assert.equal(
+      reopened.findConversationIdByCodexThreadId('thread-fallback'),
+      'conversation-good-json'
+    );
+  } finally {
+    reopened.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
 });
 
 void test('control-plane store supports deleting conversations and rejects missing ids', () => {

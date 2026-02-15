@@ -1,5 +1,12 @@
 import { connectControlPlaneStreamClient, type ControlPlaneStreamClient } from './stream-client.ts';
 import type { ControlPlaneStreamServer } from './stream-server.ts';
+import type {
+  StreamObservedEvent,
+  StreamSessionController,
+  StreamSessionKeyEventRecord,
+  StreamSessionRuntimeStatus,
+  StreamTelemetrySummary
+} from './stream-protocol.ts';
 
 interface BaseControlPlaneAddress {
   host: string;
@@ -41,8 +48,217 @@ interface OpenCodexControlPlaneClientResult {
   close: () => Promise<void>;
 }
 
+export type ControlPlaneKeyEvent =
+  | {
+      type: 'session-status';
+      sessionId: string;
+      status: StreamSessionRuntimeStatus;
+      attentionReason: string | null;
+      live: boolean;
+      ts: string;
+      directoryId: string | null;
+      conversationId: string | null;
+      telemetry: StreamTelemetrySummary | null;
+      controller: StreamSessionController | null;
+      cursor: number;
+    }
+  | {
+      type: 'session-telemetry';
+      sessionId: string;
+      keyEvent: StreamSessionKeyEventRecord;
+      ts: string;
+      directoryId: string | null;
+      conversationId: string | null;
+      cursor: number;
+    }
+  | {
+      type: 'session-control';
+      sessionId: string;
+      action: 'claimed' | 'released' | 'taken-over';
+      controller: StreamSessionController | null;
+      previousController: StreamSessionController | null;
+      reason: string | null;
+      ts: string;
+      directoryId: string | null;
+      conversationId: string | null;
+      cursor: number;
+    };
+
+interface SubscribeControlPlaneKeyEventsOptions {
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  directoryId?: string;
+  conversationId?: string;
+  afterCursor?: number;
+  includeOutput?: boolean;
+  onEvent: (event: ControlPlaneKeyEvent) => void;
+}
+
+interface ControlPlaneKeyEventSubscription {
+  subscriptionId: string;
+  close: () => Promise<void>;
+}
+
 interface OpenCodexControlPlaneSessionDependencies {
   startEmbeddedServer?: () => Promise<ControlPlaneStreamServer>;
+}
+
+function mapObservedEventToKeyEvent(event: StreamObservedEvent, cursor: number): ControlPlaneKeyEvent | null {
+  if (event.type === 'session-status') {
+    return {
+      type: 'session-status',
+      sessionId: event.sessionId,
+      status: event.status,
+      attentionReason: event.attentionReason,
+      live: event.live,
+      ts: event.ts,
+      directoryId: event.directoryId,
+      conversationId: event.conversationId,
+      telemetry: event.telemetry,
+      controller: event.controller,
+      cursor
+    };
+  }
+  if (event.type === 'session-key-event') {
+    return {
+      type: 'session-telemetry',
+      sessionId: event.sessionId,
+      keyEvent: event.keyEvent,
+      ts: event.ts,
+      directoryId: event.directoryId,
+      conversationId: event.conversationId,
+      cursor
+    };
+  }
+  if (event.type === 'session-control') {
+    return {
+      type: 'session-control',
+      sessionId: event.sessionId,
+      action: event.action,
+      controller: event.controller,
+      previousController: event.previousController,
+      reason: event.reason,
+      ts: event.ts,
+      directoryId: event.directoryId,
+      conversationId: event.conversationId,
+      cursor
+    };
+  }
+  return null;
+}
+
+export async function subscribeControlPlaneKeyEvents(
+  client: ControlPlaneStreamClient,
+  options: SubscribeControlPlaneKeyEventsOptions
+): Promise<ControlPlaneKeyEventSubscription> {
+  let subscriptionId: string | null = null;
+  const bufferedEnvelopes: Array<{
+    subscriptionId: string;
+    cursor: number;
+    event: StreamObservedEvent;
+  }> = [];
+
+  const emitIfRelevant = (payload: {
+    subscriptionId: string;
+    cursor: number;
+    event: StreamObservedEvent;
+  }): void => {
+    if (subscriptionId === null || payload.subscriptionId !== subscriptionId) {
+      return;
+    }
+    const mapped = mapObservedEventToKeyEvent(payload.event, payload.cursor);
+    if (mapped === null) {
+      return;
+    }
+    options.onEvent(mapped);
+  };
+
+  const removeListener = client.onEnvelope((envelope) => {
+    if (envelope.kind !== 'stream.event') {
+      return;
+    }
+    const payload = {
+      subscriptionId: envelope.subscriptionId,
+      cursor: envelope.cursor,
+      event: envelope.event
+    };
+    if (subscriptionId === null) {
+      bufferedEnvelopes.push(payload);
+      return;
+    }
+    emitIfRelevant(payload);
+  });
+
+  const subscribeCommand: {
+    type: 'stream.subscribe';
+    tenantId?: string;
+    userId?: string;
+    workspaceId?: string;
+    directoryId?: string;
+    conversationId?: string;
+    includeOutput?: boolean;
+    afterCursor?: number;
+  } = {
+    type: 'stream.subscribe',
+    includeOutput: options.includeOutput ?? false
+  };
+  if (options.tenantId !== undefined) {
+    subscribeCommand.tenantId = options.tenantId;
+  }
+  if (options.userId !== undefined) {
+    subscribeCommand.userId = options.userId;
+  }
+  if (options.workspaceId !== undefined) {
+    subscribeCommand.workspaceId = options.workspaceId;
+  }
+  if (options.directoryId !== undefined) {
+    subscribeCommand.directoryId = options.directoryId;
+  }
+  if (options.conversationId !== undefined) {
+    subscribeCommand.conversationId = options.conversationId;
+  }
+  if (options.afterCursor !== undefined) {
+    subscribeCommand.afterCursor = options.afterCursor;
+  }
+
+  let subscribed: Record<string, unknown>;
+  try {
+    subscribed = await client.sendCommand(subscribeCommand);
+  } catch (error: unknown) {
+    removeListener();
+    throw error;
+  }
+  const parsedSubscriptionId = subscribed['subscriptionId'];
+  if (typeof parsedSubscriptionId !== 'string' || parsedSubscriptionId.length === 0) {
+    removeListener();
+    throw new Error('control-plane stream.subscribe returned malformed subscription id');
+  }
+  subscriptionId = parsedSubscriptionId;
+  for (const payload of bufferedEnvelopes) {
+    emitIfRelevant(payload);
+  }
+  bufferedEnvelopes.length = 0;
+
+  let closed = false;
+  return {
+    subscriptionId: parsedSubscriptionId,
+    close: async () => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      removeListener();
+      try {
+        await client.sendCommand({
+          type: 'stream.unsubscribe',
+          subscriptionId: parsedSubscriptionId
+        });
+      } catch {
+        // Best-effort unsubscribe on shutdown.
+      }
+    }
+  };
 }
 
 export async function openCodexControlPlaneClient(
