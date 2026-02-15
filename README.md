@@ -22,23 +22,24 @@ This recording shows three separate Codex sessions running in parallel, with liv
 ## Current Capabilities
 
 - Host real agent CLIs inside first-party PTY sessions with live human steering.
-- Run multiple conversations concurrently and switch active control instantly.
-- Persist directory/conversation metadata across reconnects via the control-plane SQLite state store.
+- Run multiple threads concurrently and switch active control instantly.
+- Persist project/thread metadata across reconnects via the control-plane SQLite state store.
 - Persist adapter state required for provider-native thread continuity (Codex resume path).
 - Capture Codex observability data end-to-end (OTLP logs/metrics/traces + `~/.codex/history.jsonl`) into the control-plane SQLite store for durable session diagnostics and richer runtime state.
 - Stream typed key status/telemetry events from the control plane (`session-status` + `session-key-event`) through a reusable internal subscription API for UI consumers.
 - Normalize provider/control-plane lifecycle transitions into one hook event model (`thread.*`, `session.*`, `turn.*`, `tool.*`, `input.required`) for automation and notification adapters.
 - Dispatch lifecycle hooks from config (`harness.config.jsonc`) with connector adapters (`peon-ping` sound categories and generic outbound webhooks).
 - Keep startup focused on the selected conversation by default; persisted non-selected conversations are not auto-resumed unless explicitly enabled.
-- Show a directory-scoped left rail with conversation status, git summary, and per-session telemetry.
+- Show a project-scoped left rail with thread status, git summary, and per-session telemetry.
 - Drive thread bubble state and second-line "last known work" text from control-plane key events instead of local input heuristics.
 - Normalize actionable session states for operators (`working`, `needs action`, `idle`, `complete`, `exited`).
-- Support keyboard and mouse-driven conversation selection in the mux.
-- Support keyboard and clickable left-rail actions for new conversation, archive conversation, add directory, and close directory.
-- Select directories directly from the rail to open a project-focused pane (tree preview) and scope directory actions explicitly.
-- Scope `new conversation`/`close directory` to the selected directory in project view, while conversation selection keeps `new conversation` in that conversation's directory.
-- Soft-delete conversations in the mux by archiving them; permanent delete remains a control-plane API command.
-- Add and close directories from the mux without leaving the TUI.
+- Support keyboard and mouse-driven thread selection in the mux.
+- Support keyboard and clickable left-rail actions for new thread, archive thread, add project, and close project.
+- Create new threads through a modal chooser (`codex` or `terminal`) and launch terminal threads as plain shells under the same control-plane session model.
+- Select projects directly from the rail to open a project-focused pane (tree preview) and scope project actions explicitly.
+- Scope `new thread`/`close project` to the selected project in project view, while thread selection keeps `new thread` in that thread's project.
+- Soft-delete threads in the mux by archiving them; permanent delete remains a control-plane API command.
+- Add and close projects from the mux without leaving the TUI.
 - Render prompt workflows (directory add, title edit) as immediate-mode modal overlays built from first-party UI-kit primitives.
 - Drag the pane divider to resize rail/content width interactively.
 - Keep one protocol path for both human UI and API clients through the control-plane stream.

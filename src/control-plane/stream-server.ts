@@ -72,6 +72,8 @@ interface LiveSessionLike {
 }
 
 export interface StartControlPlaneSessionInput {
+  command?: string;
+  baseArgs?: string[];
   args: string[];
   env?: Record<string, string>;
   cwd?: string;
@@ -308,6 +310,21 @@ function controllerDisplayName(controller: SessionControllerState): string {
     return label;
   }
   return `${controller.controllerType}:${controller.controllerId}`;
+}
+
+export function resolveTerminalCommandForEnvironment(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform
+): string {
+  const shellCommand = env.SHELL?.trim();
+  if (shellCommand !== undefined && shellCommand.length > 0) {
+    return shellCommand;
+  }
+  const windowsCommand = env.ComSpec?.trim();
+  if (windowsCommand !== undefined && windowsCommand.length > 0) {
+    return windowsCommand;
+  }
+  return platform === 'win32' ? 'cmd.exe' : 'sh';
 }
 
 export class ControlPlaneStreamServer {
@@ -552,6 +569,23 @@ export class ControlPlaneStreamServer {
       captureTraces: this.codexTelemetry.captureTraces,
       historyPersistence: this.codexHistory.enabled ? 'save-all' : 'none'
     });
+  }
+
+  private resolveTerminalCommand(): string {
+    return resolveTerminalCommandForEnvironment(process.env, process.platform);
+  }
+
+  private launchProfileForAgent(agentType: string): {
+    readonly command?: string;
+    readonly baseArgs?: readonly string[];
+  } {
+    if (agentType !== 'terminal') {
+      return {};
+    }
+    return {
+      command: this.resolveTerminalCommand(),
+      baseArgs: []
+    };
   }
 
   private telemetryEndpointBaseUrl(): string | null {
@@ -1465,11 +1499,18 @@ export class ControlPlaneStreamServer {
       const persistedConversation = this.stateStore.getConversation(command.sessionId);
       const agentType = persistedConversation?.agentType ?? 'codex';
       const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
+      const launchProfile = this.launchProfileForAgent(agentType);
       const startInput: StartControlPlaneSessionInput = {
         args: [...codexLaunchArgs, ...command.args],
         initialCols: command.initialCols,
         initialRows: command.initialRows
       };
+      if (launchProfile.command !== undefined) {
+        startInput.command = launchProfile.command;
+      }
+      if (launchProfile.baseArgs !== undefined) {
+        startInput.baseArgs = [...launchProfile.baseArgs];
+      }
       if (command.env !== undefined) {
         startInput.env = command.env;
       }

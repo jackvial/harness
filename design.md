@@ -161,12 +161,13 @@ Pass-through stream invariants:
 
 - Escape is forwarded to the active PTY session; mux does not reserve it as a quit key.
 - `ctrl+c` handling is single-stage: one press requests mux shutdown and signals all live child PTYs (`interrupt` then `terminate`) before close.
-- Conversation "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
-- Directory lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
-- The left rail includes clickable action rows (new conversation, archive conversation, add directory, close directory) with keybind parity.
-- Directory rows in the left rail are selectable; selecting a directory switches the right pane into a project view and scopes directory actions to that explicit selection.
-- `new conversation` preserves conversation-directory affinity when a conversation row is selected; in project view it uses the selected directory.
-- Clicking the active conversation title row enters inline title-edit mode; edits update locally immediately and persist through debounced `conversation.update` control-plane commands.
+- Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
+- Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
+- The left rail includes clickable action rows (new thread, archive thread, add project, close project) with keybind parity.
+- Project rows in the left rail are selectable; selecting a project switches the right pane into a project view and scopes project actions to that explicit selection.
+- `new thread` preserves thread-project affinity when a thread row is selected; in project view it uses the selected project.
+- Creating a thread uses a modal agent-type chooser (`codex` or `terminal`); terminal threads launch a plain interactive shell over the same PTY/control-plane path.
+- Clicking the active thread title row enters inline title-edit mode; edits update locally immediately and persist through debounced `conversation.update` control-plane commands.
 - The pane separator is draggable; divider moves recompute layout and PTY resize through the normal mux resize path.
 - The mux status row is performance-focused: live FPS and throughput (`KB/s`) plus render/output/event-loop timing stats.
 
@@ -1033,10 +1034,11 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - VTE-driven cursor parity (position, visibility, and DECSCUSR shape/blink style)
     - VTE-driven bracketed paste mode parity (`?2004`) mirrored to host terminal mode
     - first-party gesture-based in-pane selection with visual highlight and keyboard-triggered copy, with modifier-based passthrough for app mouse input
-    - multi-conversation rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new conversation creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
+    - multi-thread rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new thread creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
     - explicit directory selection from rail rows, with a project-focused right-pane tree view when directory mode is active
-    - directory-scoped actions (`new conversation`, `close directory`) target the selected directory in project mode and preserve active-conversation directory affinity in conversation mode
-    - left rail composition uses directory-wrapped conversation blocks with inline git summary and per-conversation telemetry (CPU/memory sampled from `ps` via `processId`)
+    - project-scoped actions (`new thread`, `close project`) target the selected project in project mode and preserve active-thread project affinity in thread mode
+    - thread creation opens a modal selector (`codex` or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
+    - left rail composition uses project-wrapped thread blocks with inline git summary and per-thread telemetry (CPU/memory sampled from `ps` via `processId`)
     - git summary uses an adaptive per-project scheduler (`mux.background.git-summary`) with config-driven active/idle/burst intervals and bounded concurrency (`mux.git.*`), while process-usage sampling (`mux.background.process-usage`) remains opt-in through `HARNESS_MUX_BACKGROUND_PROBES=1`
     - control-plane operations are scheduled with interactive-first priority, and persisted non-active conversation warm-start is opt-in (`HARNESS_MUX_BACKGROUND_RESUME=1`) so startup and interactivity are not taxed by non-selected sessions
     - terminal-output persistence is buffered and flushed in batches (`mux.events.flush`) so per-chunk SQLite writes do not execute directly in the PTY output hot path

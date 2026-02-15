@@ -287,6 +287,12 @@ interface ProjectPaneWrappedLine {
 }
 
 type ProjectPaneAction = 'conversation.new' | 'project.close';
+type ThreadAgentType = 'codex' | 'terminal';
+
+interface NewThreadPromptState {
+  readonly directoryId: string;
+  selectedAgentType: ThreadAgentType;
+}
 
 const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = formatUiButton({
   label: 'new thread',
@@ -299,6 +305,14 @@ const PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL = formatUiButton({
 const CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL = formatUiButton({
   label: 'archive thread',
   prefixIcon: 'x'
+});
+const NEW_THREAD_MODAL_CODEX_BUTTON = formatUiButton({
+  label: 'codex',
+  prefixIcon: '◆'
+});
+const NEW_THREAD_MODAL_TERMINAL_BUTTON = formatUiButton({
+  label: 'terminal',
+  prefixIcon: '▣'
 });
 
 function buildProjectPaneSnapshot(directoryId: string, path: string): ProjectPaneSnapshot {
@@ -1282,6 +1296,14 @@ function createConversationState(
   };
 }
 
+function normalizeThreadAgentType(value: string): ThreadAgentType {
+  return value === 'terminal' ? 'terminal' : 'codex';
+}
+
+function nextThreadAgentType(value: ThreadAgentType): ThreadAgentType {
+  return value === 'codex' ? 'terminal' : 'codex';
+}
+
 function normalizeInlineSummaryText(value: string): string {
   const compact = value.replace(/\s+/gu, ' ').trim();
   if (compact.length <= 96) {
@@ -1919,6 +1941,12 @@ async function main(): Promise<number> {
             initialRows: input.initialRows,
             enableSnapshotModel: debugConfig.mux.serverSnapshotModelEnabled
           };
+          if (input.command !== undefined) {
+            sessionOptions.command = input.command;
+          }
+          if (input.baseArgs !== undefined) {
+            sessionOptions.baseArgs = input.baseArgs;
+          }
           if (input.env !== undefined) {
             sessionOptions.env = input.env;
           }
@@ -2348,9 +2376,11 @@ async function main(): Promise<number> {
       });
       const targetConversation = ensureConversation(sessionId);
       targetConversation.lastOutputCursor = 0;
+      const agentType = normalizeThreadAgentType(targetConversation.agentType);
+      const baseArgsForAgent = agentType === 'codex' ? options.codexArgs : [];
       const launchArgs = buildAgentStartArgs(
-        targetConversation.agentType,
-        options.codexArgs,
+        agentType,
+        baseArgsForAgent,
         targetConversation.adapterState
       );
       const configuredDirectoryPath =
@@ -2783,6 +2813,7 @@ async function main(): Promise<number> {
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
+  let newThreadPrompt: NewThreadPromptState | null = null;
   let addDirectoryPrompt: { value: string; error: string | null } | null = null;
   let conversationTitleEdit: ConversationTitleEditState | null = null;
   let conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
@@ -3483,6 +3514,34 @@ async function main(): Promise<number> {
     markDirty();
   };
 
+  const buildNewThreadModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+    if (newThreadPrompt === null) {
+      return null;
+    }
+    const codexSelected = newThreadPrompt.selectedAgentType === 'codex';
+    const terminalSelected = newThreadPrompt.selectedAgentType === 'terminal';
+    const bodyLines = [
+      'choose thread type',
+      '',
+      `${codexSelected ? '●' : '○'} ${NEW_THREAD_MODAL_CODEX_BUTTON}`,
+      `${terminalSelected ? '●' : '○'} ${NEW_THREAD_MODAL_TERMINAL_BUTTON}`,
+      '',
+      'c/t toggle'
+    ];
+    return buildUiModalOverlay({
+      viewportCols: layout.cols,
+      viewportRows,
+      width: Math.min(Math.max(24, layout.cols - 2), 52),
+      height: 10,
+      anchor: 'center',
+      marginRows: 1,
+      title: 'New Thread',
+      bodyLines,
+      footer: 'enter create   esc cancel',
+      theme: MUX_MODAL_THEME
+    });
+  };
+
   const buildAddDirectoryModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
     if (addDirectoryPrompt === null) {
       return null;
@@ -3544,6 +3603,10 @@ async function main(): Promise<number> {
   };
 
   const buildCurrentModalOverlay = (): ReturnType<typeof buildUiModalOverlay> | null => {
+    const newThreadOverlay = buildNewThreadModalOverlay(layout.rows);
+    if (newThreadOverlay !== null) {
+      return newThreadOverlay;
+    }
     const addDirectoryOverlay = buildAddDirectoryModalOverlay(layout.rows);
     if (addDirectoryOverlay !== null) {
       return addDirectoryOverlay;
@@ -3722,7 +3785,26 @@ async function main(): Promise<number> {
     processUsageBySessionId.delete(sessionId);
   };
 
-  const createAndActivateConversationInDirectory = async (directoryId: string): Promise<void> => {
+  const openNewThreadPrompt = (directoryId: string): void => {
+    if (!directories.has(directoryId)) {
+      return;
+    }
+    addDirectoryPrompt = null;
+    if (conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
+    }
+    conversationTitleEditClickState = null;
+    newThreadPrompt = {
+      directoryId,
+      selectedAgentType: 'codex'
+    };
+    markDirty();
+  };
+
+  const createAndActivateConversationInDirectory = async (
+    directoryId: string,
+    agentType: ThreadAgentType
+  ): Promise<void> => {
     const sessionId = `conversation-${randomUUID()}`;
     const title = '';
     await streamClient.sendCommand({
@@ -3730,13 +3812,13 @@ async function main(): Promise<number> {
       conversationId: sessionId,
       directoryId,
       title,
-      agentType: 'codex',
+      agentType,
       adapterState: {}
     });
     ensureConversation(sessionId, {
       directoryId,
       title,
-      agentType: 'codex',
+      agentType,
       adapterState: {}
     });
     noteGitActivity(directoryId, 'trigger');
@@ -3785,7 +3867,7 @@ async function main(): Promise<number> {
       }
       const fallbackDirectoryId = resolveActiveDirectoryId();
       if (fallbackDirectoryId !== null) {
-        await createAndActivateConversationInDirectory(fallbackDirectoryId);
+        await createAndActivateConversationInDirectory(fallbackDirectoryId, 'codex');
       }
       return;
     }
@@ -3843,7 +3925,7 @@ async function main(): Promise<number> {
       await activateConversation(targetConversationId);
       return;
     }
-    await createAndActivateConversationInDirectory(directory.directoryId);
+    await createAndActivateConversationInDirectory(directory.directoryId, 'codex');
   };
 
   const closeDirectory = async (directoryId: string): Promise<void> => {
@@ -3914,7 +3996,7 @@ async function main(): Promise<number> {
       return;
     }
     if (fallbackDirectoryId !== null) {
-      await createAndActivateConversationInDirectory(fallbackDirectoryId);
+      await createAndActivateConversationInDirectory(fallbackDirectoryId, 'codex');
       return;
     }
 
@@ -4032,10 +4114,7 @@ async function main(): Promise<number> {
       rightRows,
       perfStatusRow
     );
-    const modalOverlay =
-      addDirectoryPrompt !== null
-        ? buildAddDirectoryModalOverlay(rows.length)
-        : buildConversationTitleModalOverlay(rows.length);
+    const modalOverlay = buildCurrentModalOverlay();
     if (modalOverlay !== null) {
       applyModalOverlay(rows, modalOverlay);
     }
@@ -4505,6 +4584,95 @@ async function main(): Promise<number> {
     return true;
   };
 
+  const handleNewThreadPromptInput = (input: Buffer): boolean => {
+    if (newThreadPrompt === null) {
+      return false;
+    }
+    if (input.length === 1 && input[0] === 0x03) {
+      return false;
+    }
+    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
+    if (dismissAction === 'mux.app.quit') {
+      newThreadPrompt = null;
+      markDirty();
+      return true;
+    }
+    if (
+      dismissModalOnOutsideClick(input, () => {
+        newThreadPrompt = null;
+        markDirty();
+      }, (_col, row) => {
+        const overlay = buildNewThreadModalOverlay(layout.rows);
+        if (overlay === null) {
+          return false;
+        }
+        const codexRow = overlay.top + 4;
+        const terminalRow = overlay.top + 5;
+        let selectedAgentType: ThreadAgentType | null = null;
+        if (row - 1 === codexRow) {
+          selectedAgentType = 'codex';
+        } else if (row - 1 === terminalRow) {
+          selectedAgentType = 'terminal';
+        } else {
+          return false;
+        }
+        const targetDirectoryId = newThreadPrompt?.directoryId;
+        newThreadPrompt = null;
+        if (targetDirectoryId !== undefined) {
+          queueControlPlaneOp(async () => {
+            await createAndActivateConversationInDirectory(targetDirectoryId, selectedAgentType);
+          }, `modal-new-thread-click:${selectedAgentType}`);
+        }
+        markDirty();
+        return true;
+      })
+    ) {
+      return true;
+    }
+
+    let selectedAgentType = newThreadPrompt.selectedAgentType;
+    let changed = false;
+    let submit = false;
+    for (const byte of input) {
+      if (byte === 0x0d || byte === 0x0a) {
+        submit = true;
+        break;
+      }
+      if (byte === 0x09 || byte === 0x20) {
+        selectedAgentType = nextThreadAgentType(selectedAgentType);
+        changed = true;
+        continue;
+      }
+      if (byte === 0x31 || byte === 0x63 || byte === 0x43) {
+        selectedAgentType = 'codex';
+        changed = true;
+        continue;
+      }
+      if (byte === 0x32 || byte === 0x74 || byte === 0x54) {
+        selectedAgentType = 'terminal';
+        changed = true;
+        continue;
+      }
+    }
+
+    if (changed && newThreadPrompt !== null) {
+      newThreadPrompt.selectedAgentType = selectedAgentType;
+      markDirty();
+    }
+    if (submit) {
+      const targetDirectoryId = newThreadPrompt?.directoryId;
+      newThreadPrompt = null;
+      if (targetDirectoryId !== undefined) {
+        queueControlPlaneOp(async () => {
+          await createAndActivateConversationInDirectory(targetDirectoryId, selectedAgentType);
+        }, `modal-new-thread:${selectedAgentType}`);
+      }
+      markDirty();
+      return true;
+    }
+    return true;
+  };
+
   const handleAddDirectoryPromptInput = (input: Buffer): boolean => {
     if (addDirectoryPrompt === null) {
       return false;
@@ -4573,6 +4741,9 @@ async function main(): Promise<number> {
     if (shuttingDown) {
       return;
     }
+    if (handleNewThreadPromptInput(chunk)) {
+      return;
+    }
     if (handleConversationTitleEditInput(chunk)) {
       return;
     }
@@ -4621,9 +4792,7 @@ async function main(): Promise<number> {
     if (globalShortcut === 'mux.conversation.new') {
       const targetDirectoryId = resolveDirectoryForAction();
       if (targetDirectoryId !== null) {
-        queueControlPlaneOp(async () => {
-          await createAndActivateConversationInDirectory(targetDirectoryId);
-        }, 'shortcut-new-conversation');
+        openNewThreadPrompt(targetDirectoryId);
       }
       return;
     }
@@ -4783,9 +4952,7 @@ async function main(): Promise<number> {
           rowIndex
         );
         if (action === 'conversation.new') {
-          queueControlPlaneOp(async () => {
-            await createAndActivateConversationInDirectory(snapshot.directoryId);
-          }, 'project-pane-new-conversation');
+          openNewThreadPrompt(snapshot.directoryId);
           markDirty();
           continue;
         }
@@ -4832,9 +4999,7 @@ async function main(): Promise<number> {
           conversationTitleEditClickState = null;
           const targetDirectoryId = selectedProjectId ?? resolveDirectoryForAction();
           if (targetDirectoryId !== null) {
-            queueControlPlaneOp(async () => {
-              await createAndActivateConversationInDirectory(targetDirectoryId);
-            }, 'mouse-new-conversation');
+            openNewThreadPrompt(targetDirectoryId);
           }
           markDirty();
           continue;

@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   ControlPlaneStreamServer,
+  resolveTerminalCommandForEnvironment,
   startControlPlaneStreamServer,
   type StartControlPlaneSessionInput
 } from '../src/control-plane/stream-server.ts';
@@ -3198,6 +3199,118 @@ void test('stream server skips codex telemetry arg injection for non-codex agent
     client.close();
     await server.close();
   }
+});
+
+void test('stream server launches terminal agents with shell command and no codex base args', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const comSpec = process.env.ComSpec?.trim();
+  const shell = process.env.SHELL?.trim();
+  const expectedTerminalCommand =
+    process.platform === 'win32'
+      ? (comSpec !== undefined && comSpec.length > 0 ? comSpec : 'cmd.exe')
+      : (shell !== undefined && shell.length > 0 ? shell : 'sh');
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-terminal',
+      tenantId: 'tenant-terminal',
+      userId: 'user-terminal',
+      workspaceId: 'workspace-terminal',
+      path: '/tmp/terminal'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-terminal',
+      directoryId: 'directory-terminal',
+      title: 'terminal',
+      agentType: 'terminal'
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-terminal',
+      args: ['-lc', 'echo hello'],
+      initialCols: 80,
+      initialRows: 24
+    });
+    const started = created[0]?.input;
+    assert.notEqual(started, undefined);
+    assert.equal(started?.command, expectedTerminalCommand);
+    assert.deepEqual(started?.baseArgs, []);
+    assert.deepEqual(started?.args, ['-lc', 'echo hello']);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('resolveTerminalCommandForEnvironment prefers shell then ComSpec then platform fallback', () => {
+  assert.equal(
+    resolveTerminalCommandForEnvironment(
+      {
+        SHELL: '/bin/zsh',
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe'
+      },
+      'linux'
+    ),
+    '/bin/zsh'
+  );
+  assert.equal(
+    resolveTerminalCommandForEnvironment(
+      {
+        SHELL: '   ',
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe'
+      },
+      'linux'
+    ),
+    'C:\\Windows\\System32\\cmd.exe'
+  );
+  assert.equal(
+    resolveTerminalCommandForEnvironment(
+      {
+        SHELL: '',
+        ComSpec: ' '
+      },
+      'win32'
+    ),
+    'cmd.exe'
+  );
+  assert.equal(
+    resolveTerminalCommandForEnvironment(
+      {
+        SHELL: '',
+        ComSpec: ''
+      },
+      'darwin'
+    ),
+    'sh'
+  );
 });
 
 void test('stream server telemetry/history private guard branches are stable', async () => {

@@ -604,6 +604,101 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
   }
 });
 
+void test('subscribeControlPlaneKeyEvents emits post-subscribe events without buffering', async () => {
+  const streamSubscriptionId = 'subscription-post-subscribe';
+  let unsubscribed = false;
+  const harness = await startMockHarnessServer((socket, envelope) => {
+    if (envelope.kind !== 'command') {
+      return;
+    }
+    socket.write(
+      encodeStreamEnvelope({
+        kind: 'command.accepted',
+        commandId: envelope.commandId
+      })
+    );
+    if (envelope.command.type === 'stream.subscribe') {
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'command.completed',
+          commandId: envelope.commandId,
+          result: {
+            subscriptionId: streamSubscriptionId,
+            cursor: 33
+          }
+        })
+      );
+      setTimeout(() => {
+        socket.write(
+          encodeStreamEnvelope({
+            kind: 'stream.event',
+            subscriptionId: streamSubscriptionId,
+            cursor: 34,
+            event: {
+              type: 'session-status',
+              sessionId: 'conversation-live',
+              status: 'running',
+              attentionReason: null,
+              live: true,
+              ts: '2026-01-01T00:00:03.000Z',
+              directoryId: 'directory-live',
+              conversationId: 'conversation-live',
+              controller: null,
+              telemetry: null
+            }
+          })
+        );
+      }, 0);
+      return;
+    }
+    if (envelope.command.type === 'stream.unsubscribe') {
+      unsubscribed = true;
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'command.completed',
+          commandId: envelope.commandId,
+          result: {
+            unsubscribed: true
+          }
+        })
+      );
+      return;
+    }
+    socket.write(
+      encodeStreamEnvelope({
+        kind: 'command.completed',
+        commandId: envelope.commandId,
+        result: {}
+      })
+    );
+  });
+
+  const opened = await openCodexControlPlaneClient({
+    mode: 'remote',
+    host: harness.address.address,
+    port: harness.address.port
+  });
+
+  try {
+    const observed: Array<Record<string, unknown>> = [];
+    const subscription = await subscribeControlPlaneKeyEvents(opened.client, {
+      onEvent: (event) => {
+        observed.push(event as unknown as Record<string, unknown>);
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(observed.length, 1);
+    assert.equal(observed[0]?.['type'], 'session-status');
+    assert.equal(observed[0]?.['cursor'], 34);
+    await subscription.close();
+    assert.equal(unsubscribed, true);
+  } finally {
+    await opened.close();
+    await harness.stop();
+  }
+});
+
 void test('subscribeControlPlaneKeyEvents rejects malformed subscription ids', async () => {
   const harness = await startMockHarnessServer((socket, envelope) => {
     if (envelope.kind !== 'command') {

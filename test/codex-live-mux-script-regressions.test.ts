@@ -62,6 +62,21 @@ void test('codex-live-mux enforces selection-gated close/archive shortcuts and i
   assert.equal(source.includes('CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL'), true);
 });
 
+void test('codex-live-mux creates threads through a type-selection modal and supports terminal threads', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes('type ThreadAgentType = \'codex\' | \'terminal\';'), true);
+  assert.equal(source.includes('let newThreadPrompt: NewThreadPromptState | null = null;'), true);
+  assert.equal(source.includes('const openNewThreadPrompt = (directoryId: string): void => {'), true);
+  assert.equal(source.includes('const buildNewThreadModalOverlay = (viewportRows: number)'), true);
+  assert.equal(source.includes('handleNewThreadPromptInput(chunk)'), true);
+  assert.equal(source.includes('createAndActivateConversationInDirectory = async ('), true);
+  assert.equal(source.includes('agentType: ThreadAgentType'), true);
+  assert.equal(source.includes('createAndActivateConversationInDirectory(targetDirectoryId, selectedAgentType)'), true);
+  assert.equal(source.includes('agentType === \'codex\' ? options.codexArgs : []'), true);
+});
+
 void test('codex-live-mux keeps event subscriptions for inactive live conversations', () => {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const source = readFileSync(scriptPath, 'utf8');
