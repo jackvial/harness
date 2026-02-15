@@ -59,10 +59,10 @@ void test('workspace rail renders directory-centric rows with title and status m
       nowMs: Date.parse('2026-01-01T00:03:00.000Z')
     },
     100,
-    18
+    24
   );
 
-  assert.equal(rows.length, 18);
+  assert.equal(rows.length, 24);
   assert.equal(rows.some((row) => row.includes('📁 ~/dev/harness ─ main')), true);
   assert.equal(rows.some((row) => row.includes('+12 -3 │ 4 files')), true);
   assert.equal(rows.some((row) => row.includes('codex - untitled task 1')), true);
@@ -75,7 +75,7 @@ void test('workspace rail renders directory-centric rows with title and status m
   assert.equal(rows.some((row) => row.includes('conversation-a')), false);
 });
 
-void test('workspace rail keeps shortcuts pinned to bottom rows', () => {
+void test('workspace rail keeps shortcut actions pinned to bottom rows when vertical list is truncated', () => {
   const rows = renderWorkspaceRailAnsiRows(
     {
       directories: [
@@ -102,8 +102,8 @@ void test('workspace rail keeps shortcuts pinned to bottom rows', () => {
   );
 
   assert.equal(rows.length, 6);
-  assert.equal(rows[0]?.includes('⌨ shortcuts'), true);
-  assert.equal(rows[1]?.includes('ctrl+t new'), true);
+  assert.equal(rows[0]?.includes('ctrl+j/k switch conversation'), true);
+  assert.equal(rows[1]?.includes('ctrl+c x2 quit mux'), true);
   assert.equal(rows[5]?.includes('close directory'), true);
 });
 
@@ -140,4 +140,24 @@ void test('workspace rail keeps full height when shortcut hint text is provided'
   assert.equal(rows.length, 8);
   assert.equal(rows.some((row) => row.includes('ctrl+n/p switch')), true);
   assert.equal(rows.some((row) => row.includes('close directory')), true);
+});
+
+void test('workspace rail collapses shortcut descriptions while retaining toggle header and actions', () => {
+  const rows = renderWorkspaceRailAnsiRows(
+    {
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeConversationId: null,
+      shortcutsCollapsed: true,
+      nowMs: Date.parse('2026-01-01T00:00:00.000Z')
+    },
+    40,
+    8
+  );
+
+  assert.equal(rows.length, 8);
+  assert.equal(rows.some((row) => row.includes('shortcuts [+]')), true);
+  assert.equal(rows.some((row) => row.includes('ctrl+t new conversation')), false);
+  assert.equal(rows.some((row) => row.includes('new conversation')), true);
 });

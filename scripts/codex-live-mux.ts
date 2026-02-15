@@ -1072,6 +1072,7 @@ function buildRailModel(
   orderedIds: readonly string[],
   activeDirectoryId: string | null,
   activeConversationId: string | null,
+  shortcutsCollapsed: boolean,
   gitSummary: GitSummary,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
   shortcutBindings: ResolvedMuxShortcutBindings
@@ -1122,6 +1123,7 @@ function buildRailModel(
     activeConversationId,
     processes: [],
     shortcutHint: shortcutHintText(shortcutBindings),
+    shortcutsCollapsed,
     nowMs: Date.now()
   };
 }
@@ -1133,6 +1135,7 @@ function buildRailRows(
   orderedIds: readonly string[],
   activeDirectoryId: string | null,
   activeConversationId: string | null,
+  shortcutsCollapsed: boolean,
   gitSummary: GitSummary,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
   shortcutBindings: ResolvedMuxShortcutBindings
@@ -1143,6 +1146,7 @@ function buildRailRows(
     orderedIds,
     activeDirectoryId,
     activeConversationId,
+    shortcutsCollapsed,
     gitSummary,
     processUsageBySessionId,
     shortcutBindings
@@ -1163,10 +1167,12 @@ function buildRenderRows(
   shortcutBindings: ResolvedMuxShortcutBindings
 ): string[] {
   const rows: string[] = [];
+  const separatorAnchor = `\u001b[${String(layout.separatorCol)}G`;
+  const rightAnchor = `\u001b[${String(layout.rightStartCol)}G`;
   for (let row = 0; row < layout.paneRows; row += 1) {
     const left = railRows[row] ?? ' '.repeat(layout.leftCols);
     const right = renderSnapshotAnsiRow(rightFrame, row, layout.rightCols);
-    rows.push(`${left}\u001b[0m│${right}`);
+    rows.push(`${left}\u001b[0m${separatorAnchor}│${rightAnchor}${right}`);
   }
 
   const mainMode = rightFrame.viewport.followOutput
@@ -2178,6 +2184,7 @@ async function main(): Promise<number> {
   let renderedBracketedPaste: boolean | null = null;
   let previousSelectionRows: readonly number[] = [];
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
+  let shortcutsCollapsed = false;
   let renderScheduled = false;
   let shuttingDown = false;
   let runtimeFatal: { origin: string; error: unknown } | null = null;
@@ -3063,6 +3070,7 @@ async function main(): Promise<number> {
       orderedIds,
       activeDirectoryId,
       activeConversationId,
+      shortcutsCollapsed,
       gitSummary,
       processUsageBySessionId,
       shortcutBindings
@@ -3744,6 +3752,11 @@ async function main(): Promise<number> {
               await closeDirectory(targetDirectoryId);
             }, 'mouse-close-directory');
           }
+          markDirty();
+          continue;
+        }
+        if (selectedAction === 'shortcuts.toggle') {
+          shortcutsCollapsed = !shortcutsCollapsed;
           markDirty();
           continue;
         }

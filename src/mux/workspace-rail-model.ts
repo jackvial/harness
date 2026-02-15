@@ -43,6 +43,7 @@ interface WorkspaceRailModel {
   readonly processes: readonly WorkspaceRailProcessSummary[];
   readonly activeConversationId: string | null;
   readonly shortcutHint?: string;
+  readonly shortcutsCollapsed?: boolean;
   readonly nowMs?: number;
 }
 
@@ -68,7 +69,8 @@ type WorkspaceRailAction =
   | 'conversation.new'
   | 'conversation.delete'
   | 'directory.add'
-  | 'directory.close';
+  | 'directory.close'
+  | 'shortcuts.toggle';
 
 type NormalizedConversationStatus = 'needs-action' | 'working' | 'idle' | 'complete' | 'exited';
 
@@ -257,22 +259,56 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   return rows;
 }
 
-function shortcutRows(): readonly WorkspaceRailViewRow[] {
-  return [
+function shortcutDescriptionRows(shortcutHint: string | undefined): readonly string[] {
+  const normalized = shortcutHint?.trim();
+  if (normalized === undefined || normalized.length === 0) {
+    return [
+      'ctrl+t new conversation',
+      'ctrl+x archive conversation',
+      'ctrl+o add directory',
+      'ctrl+w close directory',
+      'ctrl+j/k switch conversation',
+      'ctrl+c x2 quit mux'
+    ];
+  }
+  if (normalized.includes('\n')) {
+    return normalized
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }
+  return normalized
+    .split(/\s{2,}/u)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+function shortcutRows(
+  shortcutHint: string | undefined,
+  shortcutsCollapsed: boolean
+): readonly WorkspaceRailViewRow[] {
+  const rows: WorkspaceRailViewRow[] = [
     {
       kind: 'shortcut-header',
-      text: '├─ ⌨ shortcuts',
+      text: `├─ ⌨ shortcuts ${shortcutsCollapsed ? '[+]' : '[-]'}`,
       active: false,
       conversationSessionId: null,
-      railAction: null
-    },
-    {
-      kind: 'shortcut-body',
-      text: '│  ctrl+t new  ctrl+j/k switch  ctrl+c x2 quit',
-      active: false,
-      conversationSessionId: null,
-      railAction: null
-    },
+      railAction: 'shortcuts.toggle'
+    }
+  ];
+  if (!shortcutsCollapsed) {
+    const descriptions = shortcutDescriptionRows(shortcutHint);
+    for (const description of descriptions) {
+      rows.push({
+        kind: 'shortcut-body',
+        text: `│  ${description}`,
+        active: false,
+        conversationSessionId: null,
+        railAction: null
+      });
+    }
+  }
+  rows.push(
     {
       kind: 'action',
       text: '│  ➕ new conversation',
@@ -301,7 +337,8 @@ function shortcutRows(): readonly WorkspaceRailViewRow[] {
       conversationSessionId: null,
       railAction: 'directory.close'
     }
-  ];
+  );
+  return rows;
 }
 
 export function buildWorkspaceRailViewRows(
@@ -311,19 +348,7 @@ export function buildWorkspaceRailViewRows(
   const safeRows = Math.max(1, maxRows);
   const nowMs = model.nowMs ?? Date.now();
   const contentRows = buildContentRows(model, nowMs);
-  const shortcutHint = model.shortcutHint?.trim();
-  const shortcuts = shortcutRows();
-  const renderedShortcuts: readonly WorkspaceRailViewRow[] =
-    shortcutHint !== undefined && shortcutHint.length > 0
-      ? [
-          shortcuts[0]!,
-          {
-            ...shortcuts[1]!,
-            text: `│  ${shortcutHint}`
-          },
-          ...shortcuts.slice(2)
-        ]
-      : shortcuts;
+  const renderedShortcuts = shortcutRows(model.shortcutHint, model.shortcutsCollapsed ?? false);
 
   if (safeRows <= renderedShortcuts.length) {
     return renderedShortcuts.slice(renderedShortcuts.length - safeRows);

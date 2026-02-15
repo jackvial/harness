@@ -398,3 +398,85 @@ void test('stream client retries connection while server is starting', async () 
     });
   }
 });
+
+void test('stream client transport helpers emit envelopes only while open', async () => {
+  const observed: StreamClientEnvelope[] = [];
+  const harness = await startHarnessServer((_socket, envelope) => {
+    observed.push(envelope);
+  });
+
+  const client = await connectControlPlaneStreamClient({
+    host: harness.address.address,
+    port: harness.address.port
+  });
+
+  try {
+    client.sendInput('session-transport', Buffer.from('hello', 'utf8'));
+    client.sendResize('session-transport', 123, 45);
+    client.sendSignal('session-transport', 'terminate');
+    await delay(10);
+
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'pty.input' &&
+          envelope.sessionId === 'session-transport' &&
+          Buffer.from(envelope.dataBase64, 'base64').toString('utf8') === 'hello'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'pty.resize' &&
+          envelope.sessionId === 'session-transport' &&
+          envelope.cols === 123 &&
+          envelope.rows === 45
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'pty.signal' &&
+          envelope.sessionId === 'session-transport' &&
+          envelope.signal === 'terminate'
+      ),
+      true
+    );
+
+    const observedCount = observed.length;
+    client.close();
+    client.sendInput('session-transport', Buffer.from('ignored', 'utf8'));
+    client.sendResize('session-transport', 1, 1);
+    client.sendSignal('session-transport', 'interrupt');
+    await delay(10);
+    assert.equal(observed.length, observedCount);
+  } finally {
+    await harness.stop();
+  }
+});
+
+void test('stream client connect treats non-retryable connect errors as fatal', async () => {
+  await assert.rejects(
+    connectControlPlaneStreamClient({
+      host: '127.0.0.1',
+      port: -1,
+      connectRetryWindowMs: 1_000,
+      connectRetryDelayMs: 20
+    }),
+    /ERR_SOCKET_BAD_PORT|port/
+  );
+});
+
+void test('stream client connect stops retrying after retry window expires', async () => {
+  const port = await reserveLocalPort();
+  await assert.rejects(
+    connectControlPlaneStreamClient({
+      host: '127.0.0.1',
+      port,
+      connectRetryWindowMs: 25,
+      connectRetryDelayMs: 10
+    })
+  );
+});
