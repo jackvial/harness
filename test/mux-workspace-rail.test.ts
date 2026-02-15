@@ -122,3 +122,22 @@ void test('workspace rail handles tiny row counts by showing shortcut tail', () 
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.includes('close directory'), true);
 });
+
+void test('workspace rail keeps full height when shortcut hint text is provided', () => {
+  const rows = renderWorkspaceRailAnsiRows(
+    {
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeConversationId: null,
+      shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+c x2 quit',
+      nowMs: Date.parse('2026-01-01T00:00:00.000Z')
+    },
+    40,
+    8
+  );
+
+  assert.equal(rows.length, 8);
+  assert.equal(rows.some((row) => row.includes('ctrl+n/p switch')), true);
+  assert.equal(rows.some((row) => row.includes('close directory')), true);
+});

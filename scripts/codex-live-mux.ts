@@ -221,6 +221,13 @@ function restoreTerminalState(
   }
 }
 
+function formatErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+  return String(error);
+}
+
 function extractFocusEvents(chunk: Buffer): FocusEventExtraction {
   const text = chunk.toString('utf8');
   const focusInMatches = text.match(/\u001b\[I/g);
@@ -2173,6 +2180,8 @@ async function main(): Promise<number> {
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
   let renderScheduled = false;
   let shuttingDown = false;
+  let runtimeFatal: { origin: string; error: unknown } | null = null;
+  let runtimeFatalExitTimer: NodeJS.Timeout | null = null;
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
@@ -2212,6 +2221,26 @@ async function main(): Promise<number> {
     markDirty();
   };
 
+  const handleRuntimeFatal = (origin: string, error: unknown): void => {
+    if (runtimeFatal !== null) {
+      return;
+    }
+    runtimeFatal = {
+      origin,
+      error
+    };
+    shuttingDown = true;
+    stop = true;
+    dirty = false;
+    process.stderr.write(`[mux] fatal runtime error (${origin}): ${formatErrorMessage(error)}\n`);
+    restoreTerminalState(true, inputModeManager.restore);
+    runtimeFatalExitTimer = setTimeout(() => {
+      process.stderr.write('[mux] fatal runtime error forced exit\n');
+      process.exit(1);
+    }, 1200);
+    runtimeFatalExitTimer.unref?.();
+  };
+
   const scheduleRender = (): void => {
     if (shuttingDown || renderScheduled) {
       return;
@@ -2219,9 +2248,13 @@ async function main(): Promise<number> {
     renderScheduled = true;
     setImmediate(() => {
       renderScheduled = false;
-      render();
-      if (dirty) {
-        scheduleRender();
+      try {
+        render();
+        if (dirty) {
+          scheduleRender();
+        }
+      } catch (error: unknown) {
+        handleRuntimeFatal('render', error);
       }
     });
   };
@@ -2434,8 +2467,10 @@ async function main(): Promise<number> {
   };
 
   const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
-    const conversation = activeConversation();
-    applyPtyResizeToSession(conversation.sessionId, ptySize, false);
+    if (activeConversationId === null) {
+      return;
+    }
+    applyPtyResizeToSession(activeConversationId, ptySize, false);
   };
 
   const flushPendingPtyResize = (): void => {
@@ -2652,7 +2687,9 @@ async function main(): Promise<number> {
     controlPlanePumpScheduled = true;
     setImmediate(() => {
       controlPlanePumpScheduled = false;
-      void runControlPlaneQueue();
+      void runControlPlaneQueue().catch((error: unknown) => {
+        handleRuntimeFatal('control-plane-pump', error);
+      });
     });
   };
 
@@ -2973,6 +3010,9 @@ async function main(): Promise<number> {
     if (selectionPinnedFollowOutput !== null) {
       return;
     }
+    if (activeConversationId === null) {
+      return;
+    }
     const follow = activeConversation().oracle.snapshotWithoutHash().viewport.followOutput;
     selectionPinnedFollowOutput = follow;
     if (follow) {
@@ -2987,6 +3027,9 @@ async function main(): Promise<number> {
     const shouldRepin = selectionPinnedFollowOutput;
     selectionPinnedFollowOutput = null;
     if (shouldRepin) {
+      if (activeConversationId === null) {
+        return;
+      }
       activeConversation().oracle.setFollowOutput(true);
     }
   };
@@ -3349,7 +3392,13 @@ async function main(): Promise<number> {
     }
   };
 
-  const removeEnvelopeListener = streamClient.onEnvelope(handleEnvelope);
+  const removeEnvelopeListener = streamClient.onEnvelope((envelope) => {
+    try {
+      handleEnvelope(envelope);
+    } catch (error: unknown) {
+      handleRuntimeFatal('stream-envelope', error);
+    }
+  });
 
   const initialActiveId = activeConversationId;
   activeConversationId = null;
@@ -3584,11 +3633,18 @@ async function main(): Promise<number> {
       globalShortcut !== 'mux.app.interrupt-all' &&
       isCopyShortcutInput(focusExtraction.sanitized)
     ) {
+      if (activeConversationId === null) {
+        return;
+      }
       const selectedFrame = activeConversation().oracle.snapshotWithoutHash();
       const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
       if (copied) {
         markDirty();
       }
+      return;
+    }
+
+    if (activeConversationId === null) {
       return;
     }
 
@@ -3802,11 +3858,33 @@ async function main(): Promise<number> {
     const nextSize = terminalSize();
     queueResize(nextSize);
   };
+  const onInputSafe = (chunk: Buffer): void => {
+    try {
+      onInput(chunk);
+    } catch (error: unknown) {
+      handleRuntimeFatal('stdin-data', error);
+    }
+  };
+  const onResizeSafe = (): void => {
+    try {
+      onResize();
+    } catch (error: unknown) {
+      handleRuntimeFatal('stdout-resize', error);
+    }
+  };
+  const onUncaughtException = (error: Error): void => {
+    handleRuntimeFatal('uncaught-exception', error);
+  };
+  const onUnhandledRejection = (reason: unknown): void => {
+    handleRuntimeFatal('unhandled-rejection', reason);
+  };
 
-  process.stdin.on('data', onInput);
-  process.stdout.on('resize', onResize);
+  process.stdin.on('data', onInputSafe);
+  process.stdout.on('resize', onResizeSafe);
   process.once('SIGINT', requestStop);
   process.once('SIGTERM', requestStop);
+  process.once('uncaughtException', onUncaughtException);
+  process.once('unhandledRejection', onUnhandledRejection);
 
   inputModeManager.enable();
   applyLayout(size, true);
@@ -3842,11 +3920,17 @@ async function main(): Promise<number> {
     if (renderScheduled) {
       renderScheduled = false;
     }
-    process.stdin.off('data', onInput);
-    process.stdout.off('resize', onResize);
+    process.stdin.off('data', onInputSafe);
+    process.stdout.off('resize', onResizeSafe);
     process.off('SIGINT', requestStop);
     process.off('SIGTERM', requestStop);
+    process.off('uncaughtException', onUncaughtException);
+    process.off('unhandledRejection', onUnhandledRejection);
     removeEnvelopeListener();
+    if (runtimeFatalExitTimer !== null) {
+      clearTimeout(runtimeFatalExitTimer);
+      runtimeFatalExitTimer = null;
+    }
 
     let recordingCloseError: unknown = null;
     try {
@@ -3911,6 +3995,9 @@ async function main(): Promise<number> {
   }
 
   if (exit === null) {
+    if (runtimeFatal !== null) {
+      return 1;
+    }
     return 0;
   }
   return normalizeExitCode(exit);
@@ -3922,8 +4009,6 @@ try {
 } catch (error: unknown) {
   shutdownPerfCore();
   restoreTerminalState(true);
-  process.stderr.write(
-    `codex:live:mux fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
-  );
+  process.stderr.write(`codex:live:mux fatal error: ${formatErrorMessage(error)}\n`);
   process.exitCode = 1;
 }

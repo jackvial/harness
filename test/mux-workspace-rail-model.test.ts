@@ -252,7 +252,9 @@ void test('workspace rail model overrides default shortcut text when custom hint
     8
   );
 
+  assert.equal(rows.length, 8);
   assert.equal(rows.some((row) => row.text.includes('ctrl+n/p switch')), true);
+  assert.equal(rows.some((row) => row.text.includes('close directory')), true);
 });
 
 void test('workspace rail model treats running sessions with missing last event as working', () => {

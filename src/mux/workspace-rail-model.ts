@@ -311,25 +311,30 @@ export function buildWorkspaceRailViewRows(
   const safeRows = Math.max(1, maxRows);
   const nowMs = model.nowMs ?? Date.now();
   const contentRows = buildContentRows(model, nowMs);
+  const shortcutHint = model.shortcutHint?.trim();
   const shortcuts = shortcutRows();
+  const renderedShortcuts: readonly WorkspaceRailViewRow[] =
+    shortcutHint !== undefined && shortcutHint.length > 0
+      ? [
+          shortcuts[0]!,
+          {
+            ...shortcuts[1]!,
+            text: `│  ${shortcutHint}`
+          },
+          ...shortcuts.slice(2)
+        ]
+      : shortcuts;
 
-  if (safeRows <= shortcuts.length) {
-    return shortcuts.slice(shortcuts.length - safeRows);
+  if (safeRows <= renderedShortcuts.length) {
+    return renderedShortcuts.slice(renderedShortcuts.length - safeRows);
   }
 
-  const contentCapacity = safeRows - shortcuts.length;
+  const contentCapacity = safeRows - renderedShortcuts.length;
   const rows: WorkspaceRailViewRow[] = [...contentRows.slice(0, contentCapacity)];
   while (rows.length < contentCapacity) {
     pushRow(rows, 'muted', '│');
   }
-  if (model.shortcutHint !== undefined && model.shortcutHint.trim().length > 0) {
-    rows.push(shortcuts[0]!, {
-      ...shortcuts[1]!,
-      text: `│  ${model.shortcutHint.trim()}`
-    });
-    return rows;
-  }
-  rows.push(...shortcuts);
+  rows.push(...renderedShortcuts);
   return rows;
 }
 
