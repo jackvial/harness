@@ -1959,6 +1959,9 @@ async function main(): Promise<number> {
           options.invocationDirectory,
           process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite'
         ),
+        codexTelemetry: loadedConfig.config.codex.telemetry,
+        codexHistory: loadedConfig.config.codex.history,
+        lifecycleHooks: loadedConfig.config.hooks.lifecycle,
         startSession: (input) => {
           const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {
             args: input.args,

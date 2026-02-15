@@ -106,6 +106,15 @@ void test('codex-live-mux status is driven by control-plane key events instead o
   assert.equal(source.includes("inputConversation.status = 'running';"), false);
 });
 
+void test('codex-live-mux embedded control-plane server inherits codex telemetry/history config', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes('codexTelemetry: loadedConfig.config.codex.telemetry,'), true);
+  assert.equal(source.includes('codexHistory: loadedConfig.config.codex.history,'), true);
+  assert.equal(source.includes('lifecycleHooks: loadedConfig.config.hooks.lifecycle,'), true);
+});
+
 void test('codex-live-mux rail rendering consumes per-project git summary map and removes legacy single-summary path', () => {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const source = readFileSync(scriptPath, 'utf8');
