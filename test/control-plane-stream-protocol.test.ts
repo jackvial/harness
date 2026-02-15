@@ -105,6 +105,15 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c0e1',
+      command: {
+        type: 'conversation.update',
+        conversationId: 'conversation-1',
+        title: 'renamed'
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c0ea',
       command: {
         type: 'conversation.delete',
@@ -405,6 +414,14 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       commandId: 'c2conversationd',
       command: {
         type: 'conversation.archive'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2conversationd1',
+      command: {
+        type: 'conversation.update',
+        conversationId: 'conversation-1'
       }
     },
     {
@@ -868,6 +885,18 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 16.25,
+      event: {
+        type: 'conversation-updated',
+        conversation: {
+          conversationId: 'conversation-1',
+          title: 'renamed'
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 16.5,
       event: {
         type: 'conversation-deleted',
@@ -1101,6 +1130,15 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 1,
       event: {
         type: 'conversation-created'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'conversation-updated',
+        conversation: null
       }
     },
     {

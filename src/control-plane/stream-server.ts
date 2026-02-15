@@ -655,6 +655,30 @@ export class ControlPlaneStreamServer {
       };
     }
 
+    if (command.type === 'conversation.update') {
+      const updated = this.stateStore.updateConversationTitle(command.conversationId, command.title);
+      if (updated === null) {
+        throw new Error(`conversation not found: ${command.conversationId}`);
+      }
+      const record = this.conversationRecord(updated);
+      this.publishObservedEvent(
+        {
+          tenantId: updated.tenantId,
+          userId: updated.userId,
+          workspaceId: updated.workspaceId,
+          directoryId: updated.directoryId,
+          conversationId: updated.conversationId
+        },
+        {
+          type: 'conversation-updated',
+          conversation: record
+        }
+      );
+      return {
+        conversation: record
+      };
+    }
+
     if (command.type === 'conversation.delete') {
       const existing = this.stateStore.getConversation(command.conversationId);
       if (existing === null) {

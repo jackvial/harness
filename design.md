@@ -164,6 +164,7 @@ Pass-through stream invariants:
 - Conversation "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Directory lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
 - The left rail includes clickable action rows (new conversation, archive conversation, add directory, close directory) with keybind parity.
+- Clicking the active conversation title row enters inline title-edit mode; edits update locally immediately and persist through debounced `conversation.update` control-plane commands.
 - The pane separator is draggable; divider moves recompute layout and PTY resize through the normal mux resize path.
 - The mux status row is performance-focused: live FPS and throughput (`KB/s`) plus render/output/event-loop timing stats.
 

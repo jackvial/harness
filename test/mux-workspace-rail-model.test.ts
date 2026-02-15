@@ -3,7 +3,8 @@ import test from 'node:test';
 import {
   actionAtWorkspaceRailRow,
   buildWorkspaceRailViewRows,
-  conversationIdAtWorkspaceRailRow
+  conversationIdAtWorkspaceRailRow,
+  kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
 
 void test('workspace rail model builds rows with conversation spacing and process metadata', () => {
@@ -80,7 +81,7 @@ void test('workspace rail model builds rows with conversation spacing and proces
   assert.equal(rows.length, 32);
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.active), true);
   assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('needs action · approval')), true);
-  assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('◌ exited · · · ·')), true);
+  assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('◌ exited · · ·')), true);
   assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('exited · · · ·')), true);
   assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.startsWith('├─ 📁 charlie')), true);
   assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('(no conversations)')), true);
@@ -251,6 +252,8 @@ void test('workspace rail model supports idle normalization custom shortcuts and
   assert.equal(conversationIdAtWorkspaceRailRow(rows, 100), null);
   assert.equal(actionAtWorkspaceRailRow(rows, -1), null);
   assert.equal(actionAtWorkspaceRailRow(rows, 100), null);
+  assert.equal(kindAtWorkspaceRailRow(rows, conversationRowIndex), 'conversation-title');
+  assert.equal(kindAtWorkspaceRailRow(rows, -1), null);
 });
 
 void test('workspace rail model overrides default shortcut text when custom hint is set', () => {

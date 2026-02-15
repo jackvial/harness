@@ -636,6 +636,15 @@ void test('stream server persists directories and conversations and replays scop
     const subscriptionWithoutOutput = subscribedWithoutOutput['subscriptionId'];
     assert.equal(typeof subscriptionWithoutOutput, 'string');
 
+    const updatedConversation = await client.sendCommand({
+      type: 'conversation.update',
+      conversationId: 'conversation-1',
+      title: 'renamed task 1'
+    });
+    const updatedConversationRecord = updatedConversation['conversation'] as Record<string, unknown>;
+    assert.equal(updatedConversationRecord['title'], 'renamed task 1');
+    await delay(20);
+
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-1',
@@ -673,6 +682,15 @@ void test('stream server persists directories and conversations and replays scop
           envelope.event.type === 'session-output'
       ),
       false
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === subscriptionWithoutOutput &&
+          envelope.event.type === 'conversation-updated'
+      ),
+      true
     );
     assert.equal(
       observed.some(
@@ -746,6 +764,14 @@ void test('stream server persists directories and conversations and replays scop
       client.sendCommand({
         type: 'conversation.delete',
         conversationId: 'conversation-1'
+      }),
+      /conversation not found/
+    );
+    await assert.rejects(
+      client.sendCommand({
+        type: 'conversation.update',
+        conversationId: 'conversation-1',
+        title: 'missing'
       }),
       /conversation not found/
     );

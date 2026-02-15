@@ -59,6 +59,8 @@ void test('control-plane store upserts directories and persists conversations/ru
         resumeSessionId: 'thread-123'
       }
     });
+    const updatedTitle = store.updateConversationTitle('conversation-1', 'renamed task');
+    assert.equal(updatedTitle?.title, 'renamed task');
 
     const runtimeUpdated = store.updateConversationRuntime('conversation-1', {
       status: 'needs-input',
@@ -208,6 +210,7 @@ void test('control-plane store restores archived directory and validates errors'
       }),
       null
     );
+    assert.equal(store.updateConversationTitle('missing-conversation', 'x'), null);
 
     store.archiveDirectory('dir-a');
 

@@ -53,7 +53,8 @@ import {
 import {
   actionAtWorkspaceRailRow,
   buildWorkspaceRailViewRows,
-  conversationIdAtWorkspaceRailRow
+  conversationIdAtWorkspaceRailRow,
+  kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
 import {
   createTerminalRecordingWriter
@@ -134,6 +135,15 @@ interface PaneSelectionDrag {
   readonly hasDragged: boolean;
 }
 
+interface ConversationTitleEditState {
+  conversationId: string;
+  value: string;
+  lastSavedValue: string;
+  error: string | null;
+  persistInFlight: boolean;
+  debounceTimer: NodeJS.Timeout | null;
+}
+
 interface ConversationState {
   readonly sessionId: string;
   directoryId: string | null;
@@ -197,6 +207,7 @@ const DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS = 1500;
 const DEFAULT_BACKGROUND_START_MAX_WAIT_MS = 5000;
 const DEFAULT_BACKGROUND_RESUME_PERSISTED = false;
 const DEFAULT_BACKGROUND_PROBES_ENABLED = false;
+const DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS = 250;
 const STARTUP_TERMINAL_MIN_COLS = 40;
 const STARTUP_TERMINAL_MIN_ROWS = 10;
 const STARTUP_TERMINAL_PROBE_TIMEOUT_MS = 250;
@@ -2188,6 +2199,7 @@ async function main(): Promise<number> {
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
   let addDirectoryPrompt: { value: string; error: string | null } | null = null;
+  let conversationTitleEdit: ConversationTitleEditState | null = null;
   let paneDividerDragActive = false;
   let ansiValidationReported = false;
   let resizeTimer: NodeJS.Timeout | null = null;
@@ -2200,6 +2212,9 @@ async function main(): Promise<number> {
   const requestStop = (): void => {
     if (stop) {
       return;
+    }
+    if (conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
     }
     stop = true;
     queueControlPlaneOp(async () => {
@@ -2761,6 +2776,119 @@ async function main(): Promise<number> {
     enqueueControlPlaneOp(task, 'background', label);
   };
 
+  const clearConversationTitleEditTimer = (edit: ConversationTitleEditState): void => {
+    if (edit.debounceTimer !== null) {
+      clearTimeout(edit.debounceTimer);
+      edit.debounceTimer = null;
+    }
+  };
+
+  const queueConversationTitlePersist = (
+    edit: ConversationTitleEditState,
+    reason: 'debounced' | 'flush'
+  ): void => {
+    const titleToPersist = edit.value;
+    if (titleToPersist === edit.lastSavedValue) {
+      return;
+    }
+    edit.persistInFlight = true;
+    markDirty();
+    queueControlPlaneOp(async () => {
+      try {
+        const result = await streamClient.sendCommand({
+          type: 'conversation.update',
+          conversationId: edit.conversationId,
+          title: titleToPersist
+        });
+        const parsed = parseConversationRecord(result['conversation']);
+        const persistedTitle = parsed?.title ?? titleToPersist;
+        const latestConversation = conversations.get(edit.conversationId);
+        const latestEdit = conversationTitleEdit;
+        const shouldApplyToConversation =
+          latestEdit === null ||
+          latestEdit.conversationId !== edit.conversationId ||
+          latestEdit.value === titleToPersist;
+        if (latestConversation !== undefined && shouldApplyToConversation) {
+          latestConversation.title = persistedTitle;
+        }
+        if (latestEdit !== null && latestEdit.conversationId === edit.conversationId) {
+          latestEdit.lastSavedValue = persistedTitle;
+          if (latestEdit.value === titleToPersist) {
+            latestEdit.error = null;
+          }
+        }
+      } catch (error: unknown) {
+        const latestEdit = conversationTitleEdit;
+        if (
+          latestEdit !== null &&
+          latestEdit.conversationId === edit.conversationId &&
+          latestEdit.value === titleToPersist
+        ) {
+          latestEdit.error = error instanceof Error ? error.message : String(error);
+        }
+        throw error;
+      } finally {
+        const latestEdit = conversationTitleEdit;
+        if (latestEdit !== null && latestEdit.conversationId === edit.conversationId) {
+          latestEdit.persistInFlight = false;
+        }
+        markDirty();
+      }
+    }, `title-edit-${reason}:${edit.conversationId}`);
+  };
+
+  const scheduleConversationTitlePersist = (): void => {
+    const edit = conversationTitleEdit;
+    if (edit === null) {
+      return;
+    }
+    clearConversationTitleEditTimer(edit);
+    edit.debounceTimer = setTimeout(() => {
+      const latestEdit = conversationTitleEdit;
+      if (latestEdit === null || latestEdit.conversationId !== edit.conversationId) {
+        return;
+      }
+      latestEdit.debounceTimer = null;
+      queueConversationTitlePersist(latestEdit, 'debounced');
+    }, DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS);
+    edit.debounceTimer.unref?.();
+  };
+
+  const stopConversationTitleEdit = (persistPending: boolean): void => {
+    const edit = conversationTitleEdit;
+    if (edit === null) {
+      return;
+    }
+    clearConversationTitleEditTimer(edit);
+    if (persistPending) {
+      queueConversationTitlePersist(edit, 'flush');
+    }
+    conversationTitleEdit = null;
+    markDirty();
+  };
+
+  const beginConversationTitleEdit = (conversationId: string): void => {
+    const target = conversations.get(conversationId);
+    if (target === undefined) {
+      return;
+    }
+    if (conversationTitleEdit?.conversationId === conversationId) {
+      return;
+    }
+    if (conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
+    }
+    conversationTitleEdit = {
+      conversationId,
+      value: target.title,
+      lastSavedValue: target.title,
+      error: null,
+      persistInFlight: false,
+      debounceTimer: null
+    };
+    markDirty();
+  };
+
   const attachConversation = async (sessionId: string): Promise<void> => {
     const conversation = conversations.get(sessionId);
     if (conversation === undefined) {
@@ -2815,6 +2943,9 @@ async function main(): Promise<number> {
     if (activeConversationId === sessionId) {
       return;
     }
+    if (conversationTitleEdit !== null && conversationTitleEdit.conversationId !== sessionId) {
+      stopConversationTitleEdit(true);
+    }
     const previousActiveId = activeConversationId;
     selection = null;
     selectionDrag = null;
@@ -2860,6 +2991,9 @@ async function main(): Promise<number> {
   };
 
   const removeConversationState = (sessionId: string): void => {
+    if (conversationTitleEdit?.conversationId === sessionId) {
+      stopConversationTitleEdit(false);
+    }
     removedConversationIds.add(sessionId);
     conversations.delete(sessionId);
     conversationStartInFlight.delete(sessionId);
@@ -3116,6 +3250,21 @@ async function main(): Promise<number> {
           : ` (${addDirectoryPrompt.error})`;
       rows[rows.length - 1] = padOrTrimDisplay(
         `${promptPrefix}${promptValue}_  enter save  esc cancel${errorSuffix}`,
+        layout.cols
+      );
+    } else if (conversationTitleEdit !== null) {
+      const editState =
+        conversationTitleEdit.persistInFlight
+          ? 'saving'
+          : conversationTitleEdit.value === conversationTitleEdit.lastSavedValue
+            ? 'saved'
+            : 'pending';
+      const errorSuffix =
+        conversationTitleEdit.error === null || conversationTitleEdit.error.length === 0
+          ? ''
+          : ` (${conversationTitleEdit.error})`;
+      rows[rows.length - 1] = padOrTrimDisplay(
+        `[mux] edit title: ${conversationTitleEdit.value}_  ${editState}  typing saves  enter done  esc done${errorSuffix}`,
         layout.cols
       );
     }
@@ -3495,6 +3644,52 @@ async function main(): Promise<number> {
     });
   })();
 
+  const handleConversationTitleEditInput = (input: Buffer): boolean => {
+    if (conversationTitleEdit === null) {
+      return false;
+    }
+    if (input.length === 1 && input[0] === 0x03) {
+      return false;
+    }
+    if (input.length === 1 && input[0] === 0x1b) {
+      stopConversationTitleEdit(true);
+      return true;
+    }
+
+    const edit = conversationTitleEdit;
+    let nextValue = edit.value;
+    let done = false;
+    for (const byte of input) {
+      if (byte === 0x0d || byte === 0x0a) {
+        done = true;
+        break;
+      }
+      if (byte === 0x7f || byte === 0x08) {
+        nextValue = nextValue.slice(0, -1);
+        continue;
+      }
+      if (byte >= 32 && byte <= 126) {
+        nextValue += String.fromCharCode(byte);
+      }
+    }
+
+    if (nextValue !== edit.value) {
+      edit.value = nextValue;
+      edit.error = null;
+      const conversation = conversations.get(edit.conversationId);
+      if (conversation !== undefined) {
+        conversation.title = nextValue;
+      }
+      scheduleConversationTitlePersist();
+      markDirty();
+    }
+
+    if (done) {
+      stopConversationTitleEdit(true);
+    }
+    return true;
+  };
+
   const handleAddDirectoryPromptInput = (input: Buffer): boolean => {
     if (addDirectoryPrompt === null) {
       return false;
@@ -3555,6 +3750,9 @@ async function main(): Promise<number> {
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
+      return;
+    }
+    if (handleConversationTitleEditInput(chunk)) {
       return;
     }
     if (handleAddDirectoryPromptInput(chunk)) {
@@ -3727,6 +3925,14 @@ async function main(): Promise<number> {
         const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
         const selectedConversationId = conversationIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedAction = actionAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        const selectedRowKind = kindAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        const keepTitleEditActive =
+          conversationTitleEdit !== null &&
+          selectedConversationId === conversationTitleEdit.conversationId &&
+          selectedRowKind === 'conversation-title';
+        if (!keepTitleEditActive && conversationTitleEdit !== null) {
+          stopConversationTitleEdit(true);
+        }
         if (selection !== null || selectionDrag !== null) {
           selection = null;
           selectionDrag = null;
@@ -3770,6 +3976,14 @@ async function main(): Promise<number> {
         if (selectedAction === 'shortcuts.toggle') {
           shortcutsCollapsed = !shortcutsCollapsed;
           markDirty();
+          continue;
+        }
+        if (
+          selectedConversationId !== null &&
+          selectedConversationId === activeConversationId &&
+          selectedRowKind === 'conversation-title'
+        ) {
+          beginConversationTitleEdit(selectedConversationId);
           continue;
         }
         if (selectedConversationId !== null && selectedConversationId !== activeConversationId) {
@@ -3941,6 +4155,9 @@ async function main(): Promise<number> {
     if (ptyResizeTimer !== null) {
       clearTimeout(ptyResizeTimer);
       ptyResizeTimer = null;
+    }
+    if (conversationTitleEdit !== null) {
+      clearConversationTitleEditTimer(conversationTitleEdit);
     }
     if (renderScheduled) {
       renderScheduled = false;

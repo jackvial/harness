@@ -556,6 +556,26 @@ export class SqliteControlPlaneStore {
     }
   }
 
+  updateConversationTitle(
+    conversationId: string,
+    title: string
+  ): ControlPlaneConversationRecord | null {
+    const existing = this.getConversation(conversationId);
+    if (existing === null) {
+      return null;
+    }
+    this.db
+      .prepare(
+        `
+        UPDATE conversations
+        SET title = ?
+        WHERE conversation_id = ?
+      `
+      )
+      .run(title, conversationId);
+    return this.getConversation(conversationId);
+  }
+
   deleteConversation(conversationId: string): boolean {
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {

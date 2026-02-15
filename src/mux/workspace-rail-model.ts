@@ -144,21 +144,6 @@ function formatMem(value: number | null): string {
   return `${String(Math.max(0, Math.round(value)))}MB`;
 }
 
-function formatDuration(startedAt: string, nowMs: number): string {
-  const startedAtMs = Date.parse(startedAt);
-  if (!Number.isFinite(startedAtMs)) {
-    return '·';
-  }
-  const elapsedMs = Math.max(0, nowMs - startedAtMs);
-  const totalSeconds = Math.floor(elapsedMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes > 0) {
-    return `${String(minutes)}m`;
-  }
-  return `${String(seconds)}s`;
-}
-
 function directoryDisplayName(directory: WorkspaceRailDirectorySummary): string {
   const name = directory.workspaceId.trim();
   if (name.length === 0) {
@@ -232,7 +217,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
         pushRow(
           rows,
           'conversation-meta',
-          `│    ${statusGlyph(normalizedStatus)} ${statusText(normalizedStatus)}${reason} · ${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)} · ${formatDuration(conversation.startedAt, nowMs)}`,
+          `│    ${statusGlyph(normalizedStatus)} ${statusText(normalizedStatus)}${reason} · ${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)}`,
           active,
           conversation.sessionId
         );
@@ -383,4 +368,15 @@ export function actionAtWorkspaceRailRow(
     return null;
   }
   return row.railAction;
+}
+
+export function kindAtWorkspaceRailRow(
+  rows: readonly WorkspaceRailViewRow[],
+  rowIndex: number
+): WorkspaceRailViewRow['kind'] | null {
+  const row = rows[rowIndex];
+  if (row === undefined) {
+    return null;
+  }
+  return row.kind;
 }

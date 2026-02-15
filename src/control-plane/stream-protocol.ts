@@ -51,6 +51,12 @@ interface ConversationArchiveCommand {
   conversationId: string;
 }
 
+interface ConversationUpdateCommand {
+  type: 'conversation.update';
+  conversationId: string;
+  title: string;
+}
+
 interface ConversationDeleteCommand {
   type: 'conversation.delete';
   conversationId: string;
@@ -162,6 +168,7 @@ export type StreamCommand =
   | ConversationCreateCommand
   | ConversationListCommand
   | ConversationArchiveCommand
+  | ConversationUpdateCommand
   | ConversationDeleteCommand
   | StreamSubscribeCommand
   | StreamUnsubscribeCommand
@@ -252,6 +259,10 @@ export type StreamObservedEvent =
     }
   | {
       type: 'conversation-created';
+      conversation: Record<string, unknown>;
+    }
+  | {
+      type: 'conversation-updated';
       conversation: Record<string, unknown>;
     }
   | {
@@ -635,6 +646,19 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
     return {
       type,
       conversationId
+    };
+  }
+
+  if (type === 'conversation.update') {
+    const conversationId = readString(record['conversationId']);
+    const title = readString(record['title']);
+    if (conversationId === null || title === null) {
+      return null;
+    }
+    return {
+      type,
+      conversationId,
+      title
     };
   }
 
@@ -1136,6 +1160,17 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
   }
 
   if (type === 'conversation-created') {
+    const conversation = asRecord(record['conversation']);
+    if (conversation === null) {
+      return null;
+    }
+    return {
+      type,
+      conversation
+    };
+  }
+
+  if (type === 'conversation-updated') {
     const conversation = asRecord(record['conversation']);
     if (conversation === null) {
       return null;
