@@ -268,6 +268,44 @@ void test('mux runtime wiring integration updates rail status line and icon from
       assert.equal(runningConversation?.status, 'running');
       assert.equal(runningConversation?.lastKnownWork?.includes('prompt submitted'), true);
 
+      const noisyTraceResponse = await postJson(
+        {
+          host: telemetryAddress?.address ?? '127.0.0.1',
+          port: telemetryAddress?.port ?? 0
+        },
+        `/v1/traces/${encodeURIComponent(token)}`,
+        {
+          resourceSpans: [
+            {
+              scopeSpans: [
+                {
+                  spans: [
+                    {
+                      name: 'handle_responses',
+                      endTimeUnixNano: '1771126752000000000',
+                      attributes: [
+                        {
+                          key: 'kind',
+                          value: {
+                            stringValue: 'response.output_text.delta'
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      );
+      assert.equal(noisyTraceResponse.statusCode, 200);
+      await delay(25);
+      const noisyConversation = conversations.get('conversation-runtime');
+      assert.notEqual(noisyConversation, undefined);
+      assert.equal(noisyConversation?.status, 'running');
+      assert.equal(noisyConversation?.lastKnownWork?.includes('prompt submitted'), true);
+
       const runningRows = buildWorkspaceRailViewRows(
         {
           directories: [
@@ -349,6 +387,36 @@ void test('mux runtime wiring integration updates rail status line and icon from
       assert.notEqual(completedConversation, undefined);
       assert.equal(completedConversation?.status, 'completed');
       assert.equal(completedConversation?.lastKnownWork?.includes('turn complete'), true);
+
+      const postCompleteTraceResponse = await postJson(
+        {
+          host: telemetryAddress?.address ?? '127.0.0.1',
+          port: telemetryAddress?.port ?? 0
+        },
+        `/v1/traces/${encodeURIComponent(token)}`,
+        {
+          resourceSpans: [
+            {
+              scopeSpans: [
+                {
+                  spans: [
+                    {
+                      name: 'receiving',
+                      endTimeUnixNano: '1771126754000000000'
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      );
+      assert.equal(postCompleteTraceResponse.statusCode, 200);
+      await delay(25);
+      const postCompleteConversation = conversations.get('conversation-runtime');
+      assert.notEqual(postCompleteConversation, undefined);
+      assert.equal(postCompleteConversation?.status, 'completed');
+      assert.equal(postCompleteConversation?.lastKnownWork?.includes('turn complete'), true);
 
       const resumedResponse = await postJson(
         {

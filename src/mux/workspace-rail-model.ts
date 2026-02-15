@@ -168,12 +168,12 @@ function normalizeConversationStatus(
   return 'working';
 }
 
-function statusGlyph(status: NormalizedConversationStatus, nowMs: number): string {
+function statusGlyph(status: NormalizedConversationStatus): string {
   if (status === 'needs-action') {
     return '▲';
   }
   if (status === 'working') {
-    return Math.floor(nowMs / 400) % 2 === 0 ? '◆' : '◇';
+    return '◆';
   }
   if (status === 'idle') {
     return '○';
@@ -347,7 +347,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
         pushRow(
           rows,
           'conversation-title',
-          `│  ${active ? '▸' : ' '} ${statusGlyph(normalizedStatus, nowMs)} ${conversationDisplayTitle(conversation)}`,
+          `│  ${active ? '▸' : ' '} ${statusGlyph(normalizedStatus)} ${conversationDisplayTitle(conversation)}`,
           active,
           conversation.sessionId,
           directory.key,

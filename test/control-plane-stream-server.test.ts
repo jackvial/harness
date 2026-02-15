@@ -2955,7 +2955,7 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       type: 'session.status',
       sessionId: 'conversation-otel'
     });
-    assert.equal(completedStatus['status'], 'running');
+    assert.equal(completedStatus['status'], 'completed');
     assert.equal(
       (completedStatus['telemetry'] as Record<string, unknown>)['source'],
       'otlp-trace'
@@ -2986,7 +2986,7 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       type: 'session.status',
       sessionId: 'conversation-otel'
     });
-    assert.equal(completedAfterInput['status'], 'running');
+    assert.equal(completedAfterInput['status'], 'completed');
 
     const listedConversations = await client.sendCommand({
       type: 'conversation.list',

@@ -1051,6 +1051,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - active-session attach now resumes from the last observed PTY cursor and inactive-session event subscriptions are removed on detach, preventing full-history replay and non-selected event churn
     - key-event subscription wiring (`session-status` + `session-key-event`) that drives thread bubble status and second-line "last known work" text from provider/telemetry signals rather than local keystroke heuristics
     - Codex OTEL normalization now maps provider-native event families (`codex.user_prompt`, `codex.api_request`, `codex.sse_event`, `codex.tool_*`, `codex.websocket_*`) plus turn-latency metrics (`codex.turn.e2e_duration_ms`) into deterministic `running/completed/needs-input` hints and concise operator-facing work summaries.
+    - mux status reduction now separates high-signal status transitions from noisy telemetry chatter: trace spans are status-neutral, non-turn metrics are status-neutral, stream deltas collapse into stable human-readable progress text, and the working glyph is static (non-blinking) to reduce visual noise while preserving live progress detail in the second line.
+    - OTLP timestamp normalization now treats zero/invalid nano timestamps as fallback wall-clock observations (instead of epoch `1970`), keeping telemetry timelines orderable and reducing false recency artifacts.
     - takeover-aware interaction so humans can explicitly claim/take over sessions currently controlled by automation
     - first-party styled rail rendering built from low-level terminal UI primitives rather than framework-driven VDOM
     - per-conversation thread-id correlation keeps status routing correct when multiple sessions run concurrently

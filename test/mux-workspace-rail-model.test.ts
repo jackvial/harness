@@ -1145,11 +1145,7 @@ void test('workspace rail model infers needs-action and working from last-known-
   assert.notEqual(needsActionRow, undefined);
   assert.notEqual(workingRow, undefined);
   assert.equal(needsActionRow?.text.includes('▲ codex - approval'), true);
-  const workingGlyphRendered =
-    workingRow === undefined
-      ? false
-      : workingRow.text.includes('◆ codex - streaming') || workingRow.text.includes('◇ codex - streaming');
-  assert.equal(workingGlyphRendered, true);
+  assert.equal(workingRow?.text.includes('◆ codex - streaming'), true);
 });
 
 void test('workspace rail model treats missing lastEventAt as current for last-known-work text', () => {

@@ -73,16 +73,27 @@ function normalizeIso(ts: unknown, fallback: string): string {
 }
 
 function normalizeNanoTimestamp(nanoValue: unknown, fallback: string): string {
+  let numericNano: number | null = null;
   if (typeof nanoValue === 'number' && Number.isFinite(nanoValue)) {
-    return new Date(Math.floor(nanoValue / 1_000_000)).toISOString();
-  }
-  if (typeof nanoValue === 'string') {
-    const numeric = Number.parseInt(nanoValue, 10);
-    if (Number.isFinite(numeric)) {
-      return new Date(Math.floor(numeric / 1_000_000)).toISOString();
+    numericNano = nanoValue;
+  } else if (typeof nanoValue === 'string') {
+    const parsed = Number.parseInt(nanoValue, 10);
+    if (Number.isFinite(parsed)) {
+      numericNano = parsed;
     }
   }
-  return fallback;
+  if (numericNano === null || numericNano <= 0) {
+    return fallback;
+  }
+  const epochMs = Math.floor(numericNano / 1_000_000);
+  if (!Number.isFinite(epochMs) || epochMs <= 0) {
+    return fallback;
+  }
+  const parsed = new Date(epochMs);
+  if (!Number.isFinite(parsed.getTime())) {
+    return fallback;
+  }
+  return parsed.toISOString();
 }
 
 function parseAnyValue(value: unknown): unknown {
@@ -673,7 +684,10 @@ export function parseOtlpLogEvents(payload: unknown, observedAtFallback: string)
         }
         const attributes = parseOtlpAttributes(item['attributes']);
         const body = parseAnyValue(item['body']);
-        const observedAt = normalizeNanoTimestamp(item['timeUnixNano'], observedAtFallback);
+        const observedAt = normalizeNanoTimestamp(
+          item['timeUnixNano'],
+          normalizeNanoTimestamp(item['observedTimeUnixNano'], observedAtFallback)
+        );
         const eventName = pickEventName(attributes['event.name'], attributes, body);
         const severity = readStringTrimmed(item['severityText']);
         const payloadRecord: Record<string, unknown> = {
@@ -777,6 +791,10 @@ export function parseOtlpMetricEvents(
               ? `metric points=${String(pointCount)}`
               : `${metricName} points=${String(pointCount)}`;
         }
+        const statusHint =
+          metricName === 'codex.turn.e2e_duration_ms' || metricName === 'codex.conversation.turn.count'
+            ? 'completed'
+            : null;
         events.push({
           source: 'otlp-metric',
           observedAt: observedAtFallback,
@@ -784,7 +802,7 @@ export function parseOtlpMetricEvents(
           severity: null,
           summary,
           providerThreadId: extractCodexThreadId(payloadRecord),
-          statusHint: deriveStatusHint(metricName, null, summary, payloadRecord),
+          statusHint,
           payload: payloadRecord
         });
       }
@@ -846,7 +864,7 @@ export function parseOtlpTraceEvents(
           severity: null,
           summary,
           providerThreadId: extractCodexThreadId(payloadRecord),
-          statusHint: deriveStatusHint(spanName, null, summary, payloadRecord),
+          statusHint: null,
           payload: payloadRecord
         });
       }

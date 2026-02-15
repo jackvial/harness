@@ -137,10 +137,77 @@ void test('parseOtlpLogEvents parses records, thread ids, summaries, and status 
   assert.equal(events[0]?.providerThreadId, 'thread-1');
   assert.equal(events[0]?.statusHint, 'running');
   assert.equal(events[0]?.summary, 'prompt: prompt accepted');
+  assert.equal(events[1]?.observedAt, '2023-11-14T22:13:21.000Z');
   assert.equal(events[1]?.statusHint, 'completed');
   assert.equal(events[2]?.eventName, null);
   assert.equal(events[2]?.summary, null);
   assert.equal(events[2]?.statusHint, null);
+});
+
+void test('parseOtlpLogEvents falls back to provided timestamp when nanos are missing or zero', () => {
+  const events = parseOtlpLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  timeUnixNano: '0',
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
+                  body: { stringValue: 'prompt submitted' }
+                },
+                {
+                  observedTimeUnixNano: '0',
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
+                  body: { stringValue: 'prompt submitted' }
+                },
+                {
+                  timeUnixNano: '1',
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
+                  body: { stringValue: 'prompt submitted' }
+                },
+                {
+                  timeUnixNano: 9e21,
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
+                  body: { stringValue: 'prompt submitted' }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.equal(events.length, 4);
+  assert.equal(events[0]?.observedAt, '2026-02-15T00:00:00.000Z');
+  assert.equal(events[1]?.observedAt, '2026-02-15T00:00:00.000Z');
+  assert.equal(events[2]?.observedAt, '2026-02-15T00:00:00.000Z');
+  assert.equal(events[3]?.observedAt, '2026-02-15T00:00:00.000Z');
+});
+
+void test('parseOtlpLogEvents marks turn metric event names as completed status hints', () => {
+  const events = parseOtlpLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.turn.e2e_duration_ms' } }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.statusHint, 'completed');
 });
 
 void test('parseOtlpLogEvents maps codex event families to concise summaries', () => {
@@ -628,7 +695,7 @@ void test('parseOtlpTraceEvents covers summary variants for span name, kind, and
   assert.equal(events[1]?.summary, 'trace.two: response.output_text.delta');
   assert.equal(events[2]?.summary, 'response.started');
   assert.equal(events[3]?.summary, 'error');
-  assert.equal(events[3]?.statusHint, 'needs-input');
+  assert.equal(events[3]?.statusHint, null);
 });
 
 void test('parseOtlpTraceEvents returns empty on invalid root shape', () => {

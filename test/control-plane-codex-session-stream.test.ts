@@ -143,6 +143,16 @@ async function startMockHarnessServer(
   };
 }
 
+async function waitForCondition(predicate: () => boolean, timeoutMs = 500): Promise<void> {
+  const startedAt = Date.now();
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error('timed out waiting for condition');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 void test('openCodexControlPlaneSession opens and closes a remote session', async () => {
   const startedInputs: StartControlPlaneSessionInput[] = [];
   const server = await startControlPlaneStreamServer({
@@ -587,7 +597,7 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
         observed.push(event as unknown as Record<string, unknown>);
       }
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitForCondition(() => observed.length === 3);
 
     assert.equal(observed.length, 3);
     assert.equal(observed[0]?.['type'], 'session-status');
@@ -686,7 +696,7 @@ void test('subscribeControlPlaneKeyEvents emits post-subscribe events without bu
         observed.push(event as unknown as Record<string, unknown>);
       }
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitForCondition(() => observed.length === 1);
 
     assert.equal(observed.length, 1);
     assert.equal(observed[0]?.['type'], 'session-status');
@@ -888,7 +898,7 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
         observed.push(event as unknown as Record<string, unknown>);
       }
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitForCondition(() => observed.length === 1);
     assert.equal(subscribeCommandSeen, true);
     assert.equal(observed.length, 1);
     assert.equal(observed[0]?.['type'], 'session-status');
