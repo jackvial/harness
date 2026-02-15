@@ -12,3 +12,11 @@ void test('codex-live-mux script no longer references removed inline control-pla
   assert.equal(source.includes('controlPlaneOpRunning ? 1 : 0'), false);
   assert.equal(source.includes('controlPlaneQueue.metrics()'), true);
 });
+
+void test('codex-live-mux project pane row padding helper remains imported', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes('viewport.map((row) => padOrTrimDisplay(row, safeCols))'), true);
+  assert.equal(source.includes('padOrTrimDisplay,'), true);
+});

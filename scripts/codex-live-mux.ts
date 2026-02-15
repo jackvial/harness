@@ -29,6 +29,7 @@ import {
   classifyPaneAt,
   computeDualPaneLayout,
   diffRenderedRows,
+  padOrTrimDisplay,
   parseMuxInputChunk,
   wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
