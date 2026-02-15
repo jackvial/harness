@@ -18,8 +18,8 @@ const OPCODE_CLOSE = 0x03;
 const DEFAULT_COMMAND = '/bin/sh';
 const DEFAULT_COMMAND_ARGS = ['-i'];
 const DEFAULT_HELPER_PATH_CANDIDATES = [
-  join(dirname(fileURLToPath(import.meta.url)), '../../bin/ptyd'),
-  join(dirname(fileURLToPath(import.meta.url)), '../../native/ptyd/target/release/ptyd')
+  join(dirname(fileURLToPath(import.meta.url)), '../../native/ptyd/target/release/ptyd'),
+  join(dirname(fileURLToPath(import.meta.url)), '../../bin/ptyd')
 ] as const;
 
 interface StartPtySessionOptions {

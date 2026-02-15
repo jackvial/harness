@@ -1591,6 +1591,17 @@ async function main(): Promise<number> {
     process.stderr.write(`[config] using last-known-good due to parse error: ${loadedConfig.error}\n`);
   }
   const shortcutBindings = resolveMuxShortcutBindings(loadedConfig.config.mux.keybindings);
+  const modalDismissShortcutBindings = resolveMuxShortcutBindings({
+    'mux.app.quit': ['escape'],
+    'mux.app.interrupt-all': [],
+    'mux.conversation.new': [],
+    'mux.conversation.next': [],
+    'mux.conversation.previous': [],
+    'mux.conversation.archive': [],
+    'mux.conversation.delete': [],
+    'mux.directory.add': [],
+    'mux.directory.close': []
+  });
   const store = new SqliteEventStore(options.storePath);
 
   let size = await readStartupTerminalSize();
@@ -3338,7 +3349,7 @@ async function main(): Promise<number> {
           viewportRows: rows.length,
           width: Math.min(modalMaxWidth, 96),
           height: 6,
-          anchor: 'bottom',
+          anchor: 'center',
           marginRows: 1,
           title: 'Add Directory',
           bodyLines: addDirectoryBody,
@@ -3366,7 +3377,7 @@ async function main(): Promise<number> {
           viewportRows: rows.length,
           width: Math.min(modalMaxWidth, 96),
           height: 7,
-          anchor: 'bottom',
+          anchor: 'center',
           marginRows: 1,
           title: 'Edit Conversation Title',
           bodyLines: editBody,
@@ -3758,8 +3769,12 @@ async function main(): Promise<number> {
     if (input.length === 1 && input[0] === 0x03) {
       return false;
     }
-    if (input.length === 1 && input[0] === 0x1b) {
+    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
+    if (dismissAction === 'mux.app.quit') {
       stopConversationTitleEdit(true);
+      return true;
+    }
+    if (input.includes(0x1b)) {
       return true;
     }
 
@@ -3804,12 +3819,13 @@ async function main(): Promise<number> {
     if (input.length === 1 && input[0] === 0x03) {
       return false;
     }
-    if (input.length === 1 && input[0] === 0x1b) {
+    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
+    if (dismissAction === 'mux.app.quit') {
       addDirectoryPrompt = null;
-      if (activeConversationId !== null) {
-        streamClient.sendInput(activeConversation().sessionId, input);
-      }
       markDirty();
+      return true;
+    }
+    if (input.includes(0x1b)) {
       return true;
     }
 
