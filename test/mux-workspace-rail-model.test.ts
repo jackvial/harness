@@ -1039,6 +1039,73 @@ void test('workspace rail model does not keep stale complete telemetry once newe
   assert.equal(bodyRow?.text.includes('working · 0.3% · 20MB'), true);
 });
 
+void test('workspace rail model keeps status-line text consistent despite selected-thread output activity', () => {
+  const nowMs = Date.parse('2026-01-01T00:00:10.500Z');
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-selected-like',
+          directoryKey: 'dir',
+          title: 'selected-like',
+          agentLabel: 'codex',
+          cpuPercent: null,
+          memoryMb: null,
+          lastKnownWork: 'writing response…',
+          lastKnownWorkAt: '2026-01-01T00:00:10.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:10.450Z'
+        },
+        {
+          sessionId: 'conversation-unselected-like',
+          directoryKey: 'dir',
+          title: 'unselected-like',
+          agentLabel: 'codex',
+          cpuPercent: null,
+          memoryMb: null,
+          lastKnownWork: 'writing response…',
+          lastKnownWorkAt: '2026-01-01T00:00:10.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:10.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-selected-like',
+      nowMs
+    },
+    24
+  );
+
+  const selectedBody = rows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-selected-like'
+  );
+  const unselectedBody = rows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-unselected-like'
+  );
+  assert.notEqual(selectedBody, undefined);
+  assert.notEqual(unselectedBody, undefined);
+  assert.equal(selectedBody?.text.includes('writing response…'), true);
+  assert.equal(unselectedBody?.text.includes('writing response…'), true);
+});
+
 void test('workspace rail model includes normalized status in fallback detail text when telemetry is missing', () => {
   const rows = buildWorkspaceRailViewRows(
     {

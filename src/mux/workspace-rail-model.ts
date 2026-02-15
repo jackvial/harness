@@ -80,6 +80,8 @@ const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'add project',
   prefixIcon: '>'
 });
+const WORKING_TEXT_STALE_MS = 5_000;
+const COMPLETION_TEXT_STALE_MS = 60_000;
 
 type WorkspaceRailAction =
   | 'conversation.new'
@@ -103,16 +105,23 @@ function parseIsoMs(value: string | null | undefined): number {
   return Date.parse(value);
 }
 
-function isLastKnownWorkCurrent(conversation: WorkspaceRailConversationSummary): boolean {
+function isLastKnownWorkCurrent(
+  conversation: WorkspaceRailConversationSummary,
+  nowMs: number
+): boolean {
   const lastKnownWorkAtMs = parseIsoMs(conversation.lastKnownWorkAt ?? null);
-  const lastEventAtMs = parseIsoMs(conversation.lastEventAt);
-  if (!Number.isFinite(lastEventAtMs)) {
+  if (!Number.isFinite(lastKnownWorkAtMs)) {
     return true;
   }
-  if (!Number.isFinite(lastKnownWorkAtMs)) {
-    return false;
+  const ageMs = Math.max(0, nowMs - lastKnownWorkAtMs);
+  const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
+  if (inferred === 'complete' || inferred === 'needs-action') {
+    if (conversation.status === 'running') {
+      return ageMs <= WORKING_TEXT_STALE_MS;
+    }
+    return ageMs <= COMPLETION_TEXT_STALE_MS;
   }
-  return lastKnownWorkAtMs + 200 >= lastEventAtMs;
+  return ageMs <= WORKING_TEXT_STALE_MS;
 }
 
 function inferStatusFromLastKnownWork(lastKnownWork: string | null): NormalizedConversationStatus | null {
@@ -161,14 +170,17 @@ function normalizeConversationStatus(
     return 'exited';
   }
   const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
-  if ((inferred === 'needs-action' || inferred === 'complete') && isLastKnownWorkCurrent(conversation)) {
+  if (
+    (inferred === 'needs-action' || inferred === 'complete') &&
+    isLastKnownWorkCurrent(conversation, nowMs)
+  ) {
     return inferred;
   }
   const lastEventAtMs = parseIsoMs(conversation.lastEventAt);
   if (!Number.isFinite(lastEventAtMs) || nowMs - lastEventAtMs > 15_000) {
     return 'idle';
   }
-  if (inferred === 'working' && isLastKnownWorkCurrent(conversation)) {
+  if (inferred === 'working' && isLastKnownWorkCurrent(conversation, nowMs)) {
     return 'working';
   }
   return 'working';
@@ -253,14 +265,15 @@ function controllerDisplayText(
 function conversationDetailText(
   conversation: WorkspaceRailConversationSummary,
   localControllerId: string | null,
-  normalizedStatus: NormalizedConversationStatus
+  normalizedStatus: NormalizedConversationStatus,
+  nowMs: number
 ): string {
   const controllerText = controllerDisplayText(conversation, localControllerId);
   if (controllerText !== null) {
     return controllerText;
   }
   const lastKnownWork = summaryText(conversation.lastKnownWork);
-  if (lastKnownWork !== null && isLastKnownWorkCurrent(conversation)) {
+  if (lastKnownWork !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
     return lastKnownWork;
   }
   const attentionReason = summaryText(conversation.attentionReason);
@@ -277,11 +290,17 @@ export function projectWorkspaceRailConversation(
     readonly nowMs?: number;
   } = {}
 ): WorkspaceRailConversationProjection {
-  const normalizedStatus = normalizeConversationStatus(conversation, options.nowMs ?? Date.now());
+  const nowMs = options.nowMs ?? Date.now();
+  const normalizedStatus = normalizeConversationStatus(conversation, nowMs);
   return {
     status: normalizedStatus,
     glyph: statusGlyph(normalizedStatus),
-    detailText: conversationDetailText(conversation, options.localControllerId ?? null, normalizedStatus)
+    detailText: conversationDetailText(
+      conversation,
+      options.localControllerId ?? null,
+      normalizedStatus,
+      nowMs
+    )
   };
 }
 

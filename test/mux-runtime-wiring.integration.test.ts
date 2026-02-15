@@ -356,21 +356,25 @@ void test('mux runtime wiring integration updates rail status line and icon from
           host: telemetryAddress?.address ?? '127.0.0.1',
           port: telemetryAddress?.port ?? 0
         },
-        `/v1/metrics/${encodeURIComponent(token)}`,
+        `/v1/logs/${encodeURIComponent(token)}`,
         {
-          resourceMetrics: [
+          resourceLogs: [
             {
-              scopeMetrics: [
+              scopeLogs: [
                 {
-                  metrics: [
+                  logRecords: [
                     {
-                      name: 'codex.turn.e2e_duration_ms',
-                      sum: {
-                        dataPoints: [
-                          {
-                            asDouble: 611
+                      timeUnixNano: '1771126753000000000',
+                      attributes: [
+                        {
+                          key: 'event.name',
+                          value: {
+                            stringValue: 'codex.sse_event'
                           }
-                        ]
+                        }
+                      ],
+                      body: {
+                        stringValue: 'stream response.completed'
                       }
                     }
                   ]
@@ -386,7 +390,45 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const completedConversation = conversations.get('conversation-runtime');
       assert.notEqual(completedConversation, undefined);
       assert.equal(completedConversation?.status, 'completed');
-      assert.equal(completedConversation?.lastKnownWork?.includes('turn complete'), true);
+      assert.equal(completedConversation?.lastKnownWork, 'response complete');
+
+      const delayedMetricResponse = await postJson(
+        {
+          host: telemetryAddress?.address ?? '127.0.0.1',
+          port: telemetryAddress?.port ?? 0
+        },
+        `/v1/metrics/${encodeURIComponent(token)}`,
+        {
+          resourceMetrics: [
+            {
+              scopeMetrics: [
+                {
+                  metrics: [
+                    {
+                      name: 'codex.turn.e2e_duration_ms',
+                      sum: {
+                        dataPoints: [
+                          {
+                            timeUnixNano: '1771126763000000000',
+                            asDouble: 611
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      );
+      assert.equal(delayedMetricResponse.statusCode, 200);
+      await delay(25);
+
+      const delayedMetricConversation = conversations.get('conversation-runtime');
+      assert.notEqual(delayedMetricConversation, undefined);
+      assert.equal(delayedMetricConversation?.status, 'completed');
+      assert.equal(delayedMetricConversation?.lastKnownWork, 'response complete');
 
       const postCompleteTraceResponse = await postJson(
         {
@@ -416,7 +458,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const postCompleteConversation = conversations.get('conversation-runtime');
       assert.notEqual(postCompleteConversation, undefined);
       assert.equal(postCompleteConversation?.status, 'completed');
-      assert.equal(postCompleteConversation?.lastKnownWork?.includes('turn complete'), true);
+      assert.equal(postCompleteConversation?.lastKnownWork, 'response complete');
 
       const resumedResponse = await postJson(
         {

@@ -786,6 +786,26 @@ void test('runtime wiring poem-like sequence keeps status high-signal and status
   assert.equal(conversation.lastKnownWork, 'turn complete (18260ms)');
 });
 
+void test('runtime wiring ignores delayed turn metric text once response completion text is already set', () => {
+  const conversation = createConversationState('conversation-delayed-metric', {
+    status: 'completed',
+    lastKnownWork: 'response complete',
+    lastKnownWorkAt: '2026-02-15T00:00:04.000Z',
+    lastTelemetrySource: 'otlp-log'
+  });
+
+  applyTelemetrySummaryToConversation(conversation, {
+    source: 'otlp-metric',
+    eventName: 'codex.turn.e2e_duration_ms',
+    summary: 'turn complete (31644ms)',
+    observedAt: '2026-02-15T00:00:24.000Z'
+  });
+
+  assert.equal(conversation.lastKnownWork, 'response complete');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:04.000Z');
+  assert.equal(conversation.lastTelemetrySource, 'otlp-log');
+});
+
 void test('runtime wiring applies only eligible status hints for telemetry events', () => {
   const conversation = createConversationState('conversation-status-hints', {
     status: 'running'

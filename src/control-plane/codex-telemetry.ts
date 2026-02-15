@@ -547,6 +547,12 @@ function deriveStatusHint(
         return statusHint;
       }
     }
+    if (normalizedEventName === 'codex.sse_event') {
+      const sseHint = statusFromOutcomeText(summary);
+      if (sseHint !== null) {
+        return sseHint;
+      }
+    }
     return 'running';
   }
 

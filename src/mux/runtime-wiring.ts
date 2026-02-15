@@ -46,6 +46,7 @@ const RUNNING_STATUS_HINT_EVENT_NAMES = new Set([
   'codex.websocket_request',
   'codex.websocket_event'
 ]);
+const METRIC_COMPLETION_ENRICH_MAX_DELAY_MS = 2_000;
 
 function parseIsoMs(value: string | null): number {
   if (value === null) {
@@ -276,6 +277,18 @@ export function applyTelemetrySummaryToConversation<TConversation extends MuxRun
   }
   const projected = projectTelemetrySummary(telemetry);
   if (projected.text !== null) {
+    const normalizedEventName = normalizeEventName(telemetry.eventName);
+    if (telemetry.source === 'otlp-metric' && normalizedEventName === 'codex.turn.e2e_duration_ms') {
+      const inferredCurrentStatus = statusFromTelemetryText(target.lastKnownWork);
+      if (
+        inferredCurrentStatus === 'completed' &&
+        Number.isFinite(currentAtMs) &&
+        Number.isFinite(observedAtMs) &&
+        observedAtMs - currentAtMs > METRIC_COMPLETION_ENRICH_MAX_DELAY_MS
+      ) {
+        return;
+      }
+    }
     target.lastKnownWork = projected.text;
     target.lastKnownWorkAt = telemetry.observedAt;
     target.lastTelemetrySource = telemetry.source;

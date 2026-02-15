@@ -430,6 +430,10 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
                   ]
                 },
                 {
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }],
+                  body: { stringValue: 'stream response.completed' }
+                },
+                {
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
                   body: { stringValue: `${'x'.repeat(80)}` }
                 },
@@ -464,16 +468,17 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
     '2026-02-15T00:00:00.000Z'
   );
 
-  assert.equal(events.length, 8);
+  assert.equal(events.length, 9);
   assert.equal(events[0]?.statusHint, 'running');
   assert.equal(events[1]?.statusHint, 'needs-input');
   assert.equal(events[2]?.statusHint, 'completed');
   assert.equal(events[3]?.summary, 'stream response.completed');
   assert.equal(events[3]?.statusHint, 'completed');
   assert.equal(events[4]?.statusHint, 'needs-input');
-  assert.equal(events[5]?.summary?.endsWith('…'), true);
-  assert.equal(events[6]?.summary, 'model request');
+  assert.equal(events[5]?.statusHint, 'completed');
+  assert.equal(events[6]?.summary?.endsWith('…'), true);
   assert.equal(events[7]?.summary, 'model request');
+  assert.equal(events[8]?.summary, 'model request');
 });
 
 void test('parseOtlpLogEvents covers statusHint fallback branches for needs-input summary text and api status fields', () => {
