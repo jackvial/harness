@@ -3097,7 +3097,7 @@ void test('stream server ingests codex history lines and supports reset when fil
       type: 'session.status',
       sessionId: 'conversation-history'
     });
-    assert.equal(firstStatus['status'], 'running');
+    assert.equal(firstStatus['status'], 'completed');
     assert.equal((firstStatus['telemetry'] as Record<string, unknown>)['source'], 'history');
 
     writeFileSync(

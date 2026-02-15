@@ -720,7 +720,7 @@ Output 4: Codex Telemetry + History Ingestion
 - Demonstration:
   - receive OTLP logs/metrics/traces from live Codex sessions
   - ingest Codex `history.jsonl` entries with thread-id correlation
-  - map telemetry/history hints into deterministic session status transitions
+  - map telemetry hints into deterministic session status transitions while keeping history as timeline/context enrichment
   - correlate enriched status/key events with terminal and normalized event stream ids
   - verify malformed telemetry/history payloads are ignored without process instability
 
@@ -999,7 +999,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - optional shared-token auth is enforced before non-auth commands when configured.
     - per-connection output buffering is bounded; slow consumers are disconnected once buffered output exceeds configured limits.
     - session runtime status tracking is exposed through `session.status` (`running`, `needs-input`, `completed`, `exited`) with attention reason and last-exit details.
-    - runtime status is now event-driven from provider signals (Codex telemetry/history) instead of local keystroke heuristics, preventing false `working` transitions from pre-submit typing and making background-session completion deterministic.
+    - runtime status is now event-driven from provider telemetry signals (not history replay) instead of local keystroke heuristics, preventing false `working` transitions from pre-submit typing and making background-session completion deterministic.
     - session summaries now include PTY `processId` for per-session telemetry in operator clients.
     - when enabled in `harness.config.jsonc`, the server hosts a local OTLP HTTP receiver and appends Codex `-c` overrides on launch so logs/metrics/traces (including optional prompt text) stream directly into Harness.
     - Codex `history.jsonl` tail ingestion is supported as a parallel enrichment path, with thread-id correlation into conversation ids and shared SQLite persistence.

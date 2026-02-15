@@ -723,7 +723,12 @@ export class ControlPlaneStreamServer {
         this.updateSessionThreadId(sessionState, event.providerThreadId, event.observedAt);
       }
       let statusPublished = false;
-      if (event.statusHint !== null && sessionState.status !== 'exited' && sessionState.session !== null) {
+      const shouldApplyStatusHint =
+        event.statusHint !== null &&
+        event.source !== 'history' &&
+        sessionState.status !== 'exited' &&
+        sessionState.session !== null;
+      if (shouldApplyStatusHint) {
         if (event.statusHint === 'needs-input') {
           this.setSessionStatus(sessionState, 'needs-input', 'telemetry', event.observedAt);
         } else {

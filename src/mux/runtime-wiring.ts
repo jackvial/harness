@@ -40,13 +40,19 @@ interface ProjectedTelemetrySummary {
 
 const RUNNING_STATUS_HINT_EVENT_NAMES = new Set([
   'codex.user_prompt',
-  'codex.conversation_starts',
   'codex.api_request',
   'codex.tool_decision',
   'codex.tool_result',
   'codex.websocket_request',
   'codex.websocket_event'
 ]);
+
+function parseIsoMs(value: string | null): number {
+  if (value === null) {
+    return Number.NaN;
+  }
+  return Date.parse(value);
+}
 
 function normalizeInlineSummaryText(value: string): string {
   const compact = value.replace(/\s+/gu, ' ').trim();
@@ -114,7 +120,7 @@ function normalizeSummary(value: string | null): string {
   return (value ?? '').trim();
 }
 
-function projectSseSummary(summary: string): string {
+function projectSseSummary(summary: string): string | null {
   const normalized = summary.toLowerCase();
   if (normalized.includes('response.completed')) {
     return 'response complete';
@@ -138,13 +144,10 @@ function projectSseSummary(summary: string): string {
       'response.reasoning_summary_text.done'
     ])
   ) {
-    return 'reasoning…';
+    return 'thinking…';
   }
-  if (normalized.includes('response.created')) {
-    return 'response started';
-  }
-  if (normalized.includes('response.in_progress')) {
-    return 'model working…';
+  if (includesAny(normalized, ['response.created', 'response.in_progress'])) {
+    return 'thinking…';
   }
   if (
     includesAny(normalized, [
@@ -153,9 +156,9 @@ function projectSseSummary(summary: string): string {
       'response.content_part.done'
     ])
   ) {
-    return 'drafting response…';
+    return 'writing response…';
   }
-  return 'streaming response…';
+  return null;
 }
 
 function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'observedAt'>): ProjectedTelemetrySummary {
@@ -213,7 +216,7 @@ function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'obse
   }
   if (eventName === 'codex.sse_event') {
     return {
-      text: projectSseSummary(summary.length > 0 ? summary : 'stream event'),
+      text: summary.length > 0 ? projectSseSummary(summary) : null,
       heartbeat: true
     };
   }
@@ -224,8 +227,15 @@ function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'obse
     };
   }
   if (eventName === 'codex.websocket_request' || eventName === 'codex.websocket_event') {
+    const normalizedSummary = summary.toLowerCase();
+    if (!includesAny(normalizedSummary, ['error', 'failed', 'denied', 'abort'])) {
+      return {
+        text: null,
+        heartbeat: true
+      };
+    }
     return {
-      text: normalizeInlineSummaryText(summary.length > 0 ? summary : eventName.replace(/^codex\./u, '').replace(/_/gu, ' ')),
+      text: normalizeInlineSummaryText(summary),
       heartbeat: true
     };
   }
@@ -257,6 +267,11 @@ export function applyTelemetrySummaryToConversation<TConversation extends MuxRun
   telemetry: MuxTelemetrySummaryInput | null
 ): void {
   if (telemetry === null) {
+    return;
+  }
+  const observedAtMs = parseIsoMs(telemetry.observedAt);
+  const currentAtMs = parseIsoMs(target.lastKnownWorkAt);
+  if (Number.isFinite(currentAtMs) && Number.isFinite(observedAtMs) && observedAtMs < currentAtMs) {
     return;
   }
   const projected = projectTelemetrySummary(telemetry);

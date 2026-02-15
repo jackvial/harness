@@ -109,7 +109,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream response.reasoning_summary_part.added'
     }),
-    'reasoning…'
+    'thinking…'
   );
   assert.equal(
     telemetrySummaryText({
@@ -117,7 +117,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream response.created'
     }),
-    'response started'
+    'thinking…'
   );
   assert.equal(
     telemetrySummaryText({
@@ -125,7 +125,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream response.in_progress'
     }),
-    'model working…'
+    'thinking…'
   );
   assert.equal(
     telemetrySummaryText({
@@ -133,7 +133,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream response.output_item.added'
     }),
-    'drafting response…'
+    'writing response…'
   );
   assert.equal(
     telemetrySummaryText({
@@ -141,7 +141,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream noop'
     }),
-    'streaming response…'
+    null
   );
   assert.equal(
     telemetrySummaryText({
@@ -173,7 +173,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.websocket_request',
       summary: null
     }),
-    'websocket request'
+    null
   );
   assert.equal(
     telemetrySummaryText({
@@ -197,7 +197,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: null
     }),
-    'streaming response…'
+    null
   );
   assert.equal(
     telemetrySummaryText({
@@ -205,7 +205,15 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.websocket_event',
       summary: 'realtime response.delta'
     }),
-    'realtime response.delta'
+    null
+  );
+  assert.equal(
+    telemetrySummaryText({
+      source: 'otlp-log',
+      eventName: 'codex.websocket_event',
+      summary: 'realtime error connection dropped'
+    }),
+    'realtime error connection dropped'
   );
   assert.equal(
     telemetrySummaryText({
@@ -289,6 +297,24 @@ void test('runtime wiring applies telemetry summary to conversation state', () =
   assert.equal(conversation.lastKnownWork, 'prompt submitted');
   assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:00.000Z');
   assert.equal(conversation.lastTelemetrySource, 'otlp-log');
+});
+
+void test('runtime wiring ignores stale telemetry summaries that arrive out of order', () => {
+  const conversation = createConversationState('conversation-stale', {
+    lastKnownWork: 'turn complete (611ms)',
+    lastKnownWorkAt: '2026-02-15T00:00:03.000Z',
+    lastTelemetrySource: 'otlp-metric'
+  });
+
+  applyTelemetrySummaryToConversation(conversation, {
+    source: 'otlp-log',
+    eventName: 'codex.sse_event',
+    summary: 'stream response.output_text.delta',
+    observedAt: '2026-02-15T00:00:02.000Z'
+  });
+  assert.equal(conversation.lastKnownWork, 'turn complete (611ms)');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:03.000Z');
+  assert.equal(conversation.lastTelemetrySource, 'otlp-metric');
 });
 
 void test('runtime wiring ignores low-signal trace summaries but allows working heartbeat refresh', () => {

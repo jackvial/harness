@@ -59,15 +59,48 @@ function readStringTrimmed(value: unknown): string | null {
   return trimmed;
 }
 
+function normalizeEpochTimestamp(input: number, fallback: string): string {
+  if (!Number.isFinite(input) || input <= 0) {
+    return fallback;
+  }
+  const abs = Math.abs(input);
+  let epochMs: number;
+  if (abs >= 1e18) {
+    epochMs = Math.floor(input / 1_000_000);
+  } else if (abs >= 1e15) {
+    epochMs = Math.floor(input / 1_000);
+  } else if (abs >= 1e12) {
+    epochMs = Math.floor(input);
+  } else {
+    epochMs = Math.floor(input * 1_000);
+  }
+  if (!Number.isFinite(epochMs) || epochMs <= 0) {
+    return fallback;
+  }
+  const parsed = new Date(epochMs);
+  if (!Number.isFinite(parsed.getTime())) {
+    return fallback;
+  }
+  return parsed.toISOString();
+}
+
 function normalizeIso(ts: unknown, fallback: string): string {
   if (typeof ts === 'string') {
-    const parsed = Date.parse(ts);
+    const trimmed = ts.trim();
+    if (trimmed.length === 0) {
+      return fallback;
+    }
+    if (/^-?\d+(\.\d+)?$/u.test(trimmed)) {
+      const numeric = Number(trimmed);
+      return normalizeEpochTimestamp(numeric, fallback);
+    }
+    const parsed = Date.parse(trimmed);
     if (Number.isFinite(parsed)) {
       return new Date(parsed).toISOString();
     }
   }
   if (typeof ts === 'number' && Number.isFinite(ts)) {
-    return new Date(ts).toISOString();
+    return normalizeEpochTimestamp(ts, fallback);
   }
   return fallback;
 }
@@ -448,7 +481,6 @@ function statusHintFromText(input: string): CodexStatusHint | null {
     includesAnySubstring(normalized, [
       'codex.user_prompt',
       'user_prompt',
-      'conversation_starts',
       'api_request',
       'response.created',
       'codex.sse_event',
@@ -471,7 +503,6 @@ function deriveStatusHint(
 ): CodexStatusHint | null {
   const runningEventNames = new Set([
     'codex.user_prompt',
-    'codex.conversation_starts',
     'codex.api_request',
     'codex.sse_event',
     'codex.tool_decision',

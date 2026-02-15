@@ -431,7 +431,6 @@ void test('mux runtime wiring integration updates rail status line and icon from
                 {
                   logRecords: [
                     {
-                      timeUnixNano: '1771126755000000000',
                       attributes: [
                         {
                           key: 'event.name',

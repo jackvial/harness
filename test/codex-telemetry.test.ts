@@ -382,6 +382,7 @@ void test('parseOtlpLogEvents maps codex event families to concise summaries', (
   assert.equal(events[20]?.summary, 'realtime event');
   assert.equal(events[21]?.summary, 'prompt submitted');
   assert.equal(events[22]?.summary, 'conversation started');
+  assert.equal(events[22]?.statusHint, null);
   assert.equal(events[23]?.summary, 'stream response.output_text.delta');
   assert.equal(events[24]?.summary, 'stream event');
 });
@@ -732,6 +733,118 @@ void test('parseCodexHistoryLine parses history entries and rejects invalid line
 
   assert.equal(parseCodexHistoryLine('{', '2026-02-15T00:00:00.000Z'), null);
   assert.equal(parseCodexHistoryLine('[]', '2026-02-15T00:00:00.000Z'), null);
+});
+
+void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards invalid epoch values', () => {
+  const seconds = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: 1771126751,
+      type: 'user_prompt',
+      message: 'seconds timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(seconds, null);
+  assert.equal(seconds?.observedAt, '2026-02-15T03:39:11.000Z');
+
+  const milliseconds = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: 1771126751000,
+      type: 'user_prompt',
+      message: 'milliseconds timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(milliseconds, null);
+  assert.equal(milliseconds?.observedAt, '2026-02-15T03:39:11.000Z');
+
+  const secondsString = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: '1771126751',
+      type: 'user_prompt',
+      message: 'seconds as string'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(secondsString, null);
+  assert.equal(secondsString?.observedAt, '2026-02-15T03:39:11.000Z');
+
+  const microseconds = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: 1e15,
+      type: 'user_prompt',
+      message: 'microseconds timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(microseconds, null);
+  assert.equal(microseconds?.observedAt, '2001-09-09T01:46:40.000Z');
+
+  const nanoseconds = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: 1e18,
+      type: 'user_prompt',
+      message: 'nanoseconds timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(nanoseconds, null);
+  assert.equal(nanoseconds?.observedAt, '2001-09-09T01:46:40.000Z');
+
+  const tinyEpoch = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: 0.0004,
+      type: 'user_prompt',
+      message: 'tiny timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(tinyEpoch, null);
+  assert.equal(tinyEpoch?.observedAt, '2026-02-15T00:00:00.000Z');
+
+  const hugeEpoch = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: 9e27,
+      type: 'user_prompt',
+      message: 'huge timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(hugeEpoch, null);
+  assert.equal(hugeEpoch?.observedAt, '2026-02-15T00:00:00.000Z');
+
+  const blankTimestamp = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: '   ',
+      type: 'user_prompt',
+      message: 'blank timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(blankTimestamp, null);
+  assert.equal(blankTimestamp?.observedAt, '2026-02-15T00:00:00.000Z');
+
+  const nonPositiveTimestamp = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: 0,
+      type: 'user_prompt',
+      message: 'non-positive timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(nonPositiveTimestamp, null);
+  assert.equal(nonPositiveTimestamp?.observedAt, '2026-02-15T00:00:00.000Z');
+
+  const negativeTimestamp = parseCodexHistoryLine(
+    JSON.stringify({
+      timestamp: -1,
+      type: 'user_prompt',
+      message: 'negative timestamp'
+    }),
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.notEqual(negativeTimestamp, null);
+  assert.equal(negativeTimestamp?.observedAt, '2026-02-15T00:00:00.000Z');
 });
 
 void test('parseCodexHistoryLine derives completed status from summary text fallback', () => {
