@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -16,10 +17,10 @@ const OPCODE_CLOSE = 0x03;
 
 const DEFAULT_COMMAND = '/bin/sh';
 const DEFAULT_COMMAND_ARGS = ['-i'];
-const DEFAULT_HELPER_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../native/ptyd/target/release/ptyd'
-);
+const DEFAULT_HELPER_PATH_CANDIDATES = [
+  join(dirname(fileURLToPath(import.meta.url)), '../../bin/ptyd'),
+  join(dirname(fileURLToPath(import.meta.url)), '../../native/ptyd/target/release/ptyd')
+] as const;
 
 interface StartPtySessionOptions {
   command?: string;
@@ -34,6 +35,26 @@ interface StartPtySessionOptions {
 export interface PtyExit {
   code: number | null;
   signal: NodeJS.Signals | null;
+}
+
+export function resolvePtyHelperPath(
+  helperPath: string | undefined,
+  helperPathCandidates: readonly string[] = DEFAULT_HELPER_PATH_CANDIDATES,
+  pathExists: (path: string) => boolean = existsSync
+): string {
+  if (typeof helperPath === 'string' && helperPath.length > 0) {
+    return helperPath;
+  }
+  for (const candidate of helperPathCandidates) {
+    if (pathExists(candidate)) {
+      return candidate;
+    }
+  }
+  const fallback = helperPathCandidates[0];
+  if (fallback === undefined) {
+    throw new Error('pty helper path candidates must include at least one path');
+  }
+  return fallback;
 }
 
 class PtySession extends EventEmitter {
@@ -169,7 +190,7 @@ export function startPtySession(options: StartPtySessionOptions = {}): PtySessio
   const commandArgs = options.commandArgs ?? DEFAULT_COMMAND_ARGS;
   const env = options.env ?? process.env;
   const cwd = options.cwd;
-  const helperPath = options.helperPath ?? DEFAULT_HELPER_PATH;
+  const helperPath = resolvePtyHelperPath(options.helperPath);
 
   const child = spawn(
     helperPath,

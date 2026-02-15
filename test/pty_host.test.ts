@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { configurePerfCore, shutdownPerfCore } from '../src/perf/perf-core.ts';
-import { startPtySession, type PtyExit } from '../src/pty/pty_host.ts';
+import { resolvePtyHelperPath, startPtySession, type PtyExit } from '../src/pty/pty_host.ts';
 
 function createCollector() {
   const chunks: Buffer[] = [];
@@ -264,6 +264,32 @@ void test('pty-host close command exits default interactive shell session', asyn
   session.close();
   const exit = await waitForExit(session);
   assert.notEqual(exit.code, null);
+});
+
+void test('pty-host resolves helper path from preferred defaults and explicit overrides', () => {
+  const resolvedDefault = resolvePtyHelperPath(
+    undefined,
+    ['/missing/helper', '/preferred/helper'],
+    (path) => path === '/preferred/helper'
+  );
+  assert.equal(resolvedDefault, '/preferred/helper');
+
+  const resolvedFallback = resolvePtyHelperPath(
+    undefined,
+    ['/fallback/helper', '/missing/helper'],
+    () => false
+  );
+  assert.equal(resolvedFallback, '/fallback/helper');
+
+  const resolvedExplicit = resolvePtyHelperPath('/explicit/helper', ['/unused'], () => false);
+  assert.equal(resolvedExplicit, '/explicit/helper');
+});
+
+void test('pty-host helper path resolver rejects empty candidate lists', () => {
+  assert.throws(
+    () => resolvePtyHelperPath(undefined, [], () => false),
+    /pty helper path candidates must include at least one path/
+  );
 });
 
 void test('pty-host emits error when helper executable cannot be launched', async () => {

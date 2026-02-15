@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import {
   startSingleSessionBroker,
   type BrokerAttachmentHandlers,
   type BrokerDataEvent
 } from '../src/pty/session-broker.ts';
-import type { PtyExit } from '../src/pty/pty_host.ts';
+import type { startPtySession, PtyExit } from '../src/pty/pty_host.ts';
 
 function waitForCondition(
   predicate: () => boolean,
@@ -60,6 +61,15 @@ function createAttachmentCollector() {
       return lastExit;
     }
   };
+}
+
+class FakePtySession extends EventEmitter {
+  write(): void {}
+  resize(): void {}
+  close(): void {}
+  processId(): number | null {
+    return 777;
+  }
 }
 
 async function closeBrokerGracefully(
@@ -148,6 +158,53 @@ void test('single-session broker immediately notifies newly attached handlers af
   broker.attach(late.handlers);
   await waitForCondition(() => late.exit() !== null, 'late exit delivery');
   assert.equal(late.exit()?.code, 7);
+});
+
+void test('single-session broker maps spawn errors to a terminal exit state', async () => {
+  const broker = startSingleSessionBroker({
+    helperPath: '/path/that/does/not/exist'
+  });
+  assert.equal(broker.processId(), null);
+
+  const collector = createAttachmentCollector();
+  broker.attach(collector.handlers);
+  await waitForCondition(() => collector.exit() !== null, 'spawn error exit delivery');
+  assert.deepEqual(collector.exit(), {
+    code: null,
+    signal: null
+  });
+});
+
+void test('single-session broker suppresses duplicate exit notifications', async () => {
+  const fake = new FakePtySession();
+  const broker = startSingleSessionBroker(
+    undefined,
+    undefined,
+    {
+      startSession: () => fake as unknown as ReturnType<typeof startPtySession>
+    }
+  );
+
+  const exits: PtyExit[] = [];
+  broker.attach({
+    onData: () => {},
+    onExit: (exit) => {
+      exits.push(exit);
+    }
+  });
+
+  fake.emit('exit', {
+    code: 0,
+    signal: null
+  } satisfies PtyExit);
+  fake.emit('error', new Error('duplicate-terminal-signal'));
+
+  await waitForCondition(() => exits.length > 0, 'first exit delivery');
+  assert.equal(exits.length, 1);
+  assert.deepEqual(exits[0], {
+    code: 0,
+    signal: null
+  });
 });
 
 void test('single-session broker truncates oversized chunks to tail backlog window', async () => {

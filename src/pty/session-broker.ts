@@ -16,6 +16,11 @@ export interface BrokerAttachmentHandlers {
 }
 
 type StartPtySessionOptions = Parameters<typeof startPtySession>[0];
+type StartSessionFactory = (options?: StartPtySessionOptions) => ReturnType<typeof startPtySession>;
+
+interface StartSingleSessionBrokerDependencies {
+  startSession?: StartSessionFactory;
+}
 
 class SingleSessionBroker {
   private readonly session: ReturnType<typeof startPtySession>;
@@ -27,8 +32,12 @@ class SingleSessionBroker {
   private nextCursor = 1;
   private latestExit: PtyExit | null = null;
 
-  constructor(options?: StartPtySessionOptions, maxBacklogBytes = 256 * 1024) {
-    this.session = startPtySession(options);
+  constructor(
+    options?: StartPtySessionOptions,
+    maxBacklogBytes = 256 * 1024,
+    startSession: StartSessionFactory = startPtySession
+  ) {
+    this.session = startSession(options);
     this.maxBacklogBytes = maxBacklogBytes;
 
     this.session.on('data', (chunk: Buffer) => {
@@ -37,6 +46,10 @@ class SingleSessionBroker {
 
     this.session.on('exit', (exit: unknown) => {
       this.handleExit(exit as PtyExit);
+    });
+
+    this.session.on('error', (error: unknown) => {
+      this.handleError(error as Error);
     });
   }
 
@@ -117,16 +130,29 @@ class SingleSessionBroker {
   }
 
   private handleExit(exit: PtyExit): void {
+    if (this.latestExit !== null) {
+      return;
+    }
     this.latestExit = exit;
     for (const handlers of this.attachments.values()) {
       handlers.onExit(exit);
     }
   }
+
+  private handleError(error: Error): void {
+    void error;
+    this.handleExit({
+      code: null,
+      signal: null
+    });
+  }
 }
 
 export function startSingleSessionBroker(
   options?: StartPtySessionOptions,
-  maxBacklogBytes?: number
+  maxBacklogBytes?: number,
+  dependencies: StartSingleSessionBrokerDependencies = {}
 ): SingleSessionBroker {
-  return new SingleSessionBroker(options, maxBacklogBytes);
+  const startSession = dependencies.startSession ?? startPtySession;
+  return new SingleSessionBroker(options, maxBacklogBytes, startSession);
 }
