@@ -465,11 +465,10 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
     }
   }
 
-  pushRow(rows, 'action', `│  ${ADD_PROJECT_BUTTON_LABEL}`, false, null, null, null, 'project.add');
   if (showTaskPlanningUi) {
     pushRow(rows, 'action', `│  ${TASKS_BUTTON_LABEL}`, false, null, null, null, 'tasks.open');
+    pushRow(rows, 'muted', '│');
   }
-  pushRow(rows, 'muted', '│');
 
   if (model.directories.length === 0) {
     pushRow(rows, 'dir-header', '├─ 📁 no projects');
@@ -645,9 +644,33 @@ export function buildWorkspaceRailViewRows(
   }
 
   const contentCapacity = safeRows - renderedShortcuts.length;
-  const rows: WorkspaceRailViewRow[] = [...contentRows.slice(0, contentCapacity)];
+  const rows: WorkspaceRailViewRow[] = [...contentRows.slice(0, Math.max(0, contentCapacity - 1))];
   while (rows.length < contentCapacity) {
-    pushRow(rows, 'muted', '│');
+    rows.push({
+      kind: 'muted',
+      text: '│',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: null,
+      railAction: null,
+      conversationStatus: null
+    });
+  }
+  const projectActionRow: WorkspaceRailViewRow = {
+    kind: 'action',
+    text: ADD_PROJECT_BUTTON_LABEL,
+    active: false,
+    conversationSessionId: null,
+    directoryKey: null,
+    repositoryId: null,
+    railAction: 'project.add',
+    conversationStatus: null
+  };
+  const projectActionRowIndex = Math.max(0, contentCapacity - 3);
+  rows.splice(projectActionRowIndex, 0, projectActionRow);
+  if (rows.length > contentCapacity) {
+    rows.length = contentCapacity;
   }
   rows.push(...renderedShortcuts);
   return rows;

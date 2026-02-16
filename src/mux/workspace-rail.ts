@@ -114,6 +114,11 @@ function drawActionRow(
   row: WorkspaceRailViewRow
 ): void {
   fillUiRow(surface, rowIndex, NORMAL_STYLE);
+  if (row.railAction === 'project.add') {
+    const buttonStart = Math.max(0, Math.floor((surface.cols - row.text.length) / 2));
+    drawUiText(surface, buttonStart, rowIndex, row.text, ACTION_STYLE);
+    return;
+  }
   drawUiText(surface, 0, rowIndex, row.text, MUTED_STYLE);
   const buttonStart = row.text.indexOf('[');
   const buttonEnd = row.text.lastIndexOf(']');

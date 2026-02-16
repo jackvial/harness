@@ -115,9 +115,12 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   );
   const addProjectRow = rows.find((row) => row.includes('[ > add project ]'));
   assert.notEqual(addProjectRow, undefined);
-  assert.equal(addProjectRow?.includes('\u001b[0;38;5;245;49m│  '), true);
+  assert.equal(addProjectRow?.includes('\u001b[0;38;5;245;49m│  '), false);
   assert.equal(addProjectRow?.includes('\u001b[0;38;5;230;48;5;237m[ > add project ]'), true);
   assert.equal(addProjectRow?.includes('\u001b[0;38;5;245;48;5;237m│  '), false);
+  const addProjectRowPlain = stripAnsi(addProjectRow ?? '');
+  assert.equal(addProjectRowPlain.trimStart().startsWith('[ > add project ]'), true);
+  assert.equal(addProjectRowPlain.indexOf('[ > add project ]') > 35, true);
   const tasksRow = rows.find((row) => row.includes('[ # tasks ]'));
   assert.notEqual(tasksRow, undefined);
   assert.equal(tasksRow?.includes('\u001b[0;38;5;230;48;5;237m[ # tasks ]'), true);

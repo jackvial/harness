@@ -124,8 +124,11 @@ void test('workspace rail model builds rows with conversation spacing and proces
   );
   assert.equal(rows.some((row) => row.kind === 'shortcut-body' && row.text.includes('ctrl+t')), true);
   assert.equal(rows[rows.length - 1]?.kind, 'shortcut-body');
-  assert.equal(rows[0]?.railAction, 'project.add');
-  assert.equal(rows[1]?.railAction, 'tasks.open');
+  assert.equal(rows[0]?.railAction, 'tasks.open');
+  const addProjectRowIndex = rows.findIndex((row) => row.railAction === 'project.add');
+  const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
+  assert.equal(addProjectRowIndex >= 0, true);
+  assert.equal(shortcutHeaderRowIndex - addProjectRowIndex >= 2, true);
 });
 
 void test('workspace rail model handles empty projects and blank workspace name', () => {
@@ -141,8 +144,15 @@ void test('workspace rail model handles empty projects and blank workspace name'
     40
   );
   assert.equal(noDirectoryRows.some((row) => row.text.includes('no projects')), true);
-  assert.equal(noDirectoryRows[0]?.railAction, 'project.add');
-  assert.equal(noDirectoryRows[1]?.railAction, 'tasks.open');
+  assert.equal(noDirectoryRows[0]?.railAction, 'tasks.open');
+  const noDirectoryAddProjectRowIndex = noDirectoryRows.findIndex(
+    (row) => row.railAction === 'project.add'
+  );
+  const noDirectoryShortcutHeaderIndex = noDirectoryRows.findIndex(
+    (row) => row.kind === 'shortcut-header'
+  );
+  assert.equal(noDirectoryAddProjectRowIndex >= 0, true);
+  assert.equal(noDirectoryShortcutHeaderIndex - noDirectoryAddProjectRowIndex >= 2, true);
 
   const blankNameRows = buildWorkspaceRailViewRows(
     {
@@ -414,7 +424,9 @@ void test('workspace rail model supports starting normalization custom shortcuts
   assert.equal(actionAtWorkspaceRailRow(rows, shortcutHeaderRowIndex), 'shortcuts.toggle');
   assert.equal(actionAtWorkspaceRailRow(rows, -1), null);
   assert.equal(actionAtWorkspaceRailRow(rows, 100), null);
-  assert.equal(actionAtWorkspaceRailCell(rows, 0, 0), 'project.add');
+  const projectAddRowIndex = rows.findIndex((row) => row.railAction === 'project.add');
+  assert.equal(projectAddRowIndex >= 0, true);
+  assert.equal(actionAtWorkspaceRailCell(rows, projectAddRowIndex, 0), 'project.add');
   assert.equal(conversationIdAtWorkspaceRailRow(rows, conversationRowIndex), 'conversation-a');
   assert.equal(projectIdAtWorkspaceRailRow(rows, conversationRowIndex), 'dir');
   assert.equal(actionAtWorkspaceRailCell(rows, rows.length - 1, 0), null);
