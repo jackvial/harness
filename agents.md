@@ -13,6 +13,8 @@ This project has two core documents:
 - Do not create competing “source of truth” docs for core architecture/rules.
 
 ## Testing and Coverage Rules
+- This project is Bun-only: use `bun` for test, lint, coverage, scripts, dependency management, and CI task execution.
+- Do not use `npm`, `npx`, `pnpm`, or `yarn` commands in local workflows or CI for this repository.
 - 100% code coverage is required across the project.
 - Coverage compliance must be continuously verified (local + CI), not assumed.
 - Unit tests, integration tests, and end-to-end tests are all required.
