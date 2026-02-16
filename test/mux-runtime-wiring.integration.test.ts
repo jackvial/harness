@@ -144,7 +144,8 @@ void test('mux runtime wiring integration updates rail status line and icon from
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: false,
@@ -523,7 +524,8 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: false,

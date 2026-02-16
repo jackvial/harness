@@ -2726,7 +2726,8 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: false,
@@ -3064,6 +3065,289 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
   }
 });
 
+void test('stream server lifecycle telemetry mode drops verbose codex events by default', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50
+    }
+  });
+  const address = server.address();
+  const telemetryAddress = server.telemetryAddressInfo();
+  assert.notEqual(telemetryAddress, null);
+  const telemetryTarget = {
+    host: '127.0.0.1',
+    port: telemetryAddress!.port
+  };
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observedTelemetry = collectEnvelopes(client);
+  const internals = server as unknown as {
+    ingestParsedTelemetryEvent: (
+      fallbackSessionId: string | null,
+      event: {
+        source: 'otlp-log' | 'otlp-metric' | 'otlp-trace' | 'history';
+        observedAt: string;
+        eventName: string | null;
+        severity: string | null;
+        summary: string | null;
+        providerThreadId: string | null;
+        statusHint: 'running' | 'completed' | 'needs-input' | null;
+        payload: Record<string, unknown>;
+      }
+    ) => void;
+  };
+
+  try {
+    internals.ingestParsedTelemetryEvent('conversation-missing-lifecycle', {
+      source: 'otlp-log',
+      observedAt: '2026-02-16T00:00:00.000Z',
+      eventName: 'codex.sse_event',
+      severity: null,
+      summary: 'stream response.in_progress',
+      providerThreadId: 'thread-missing-lifecycle',
+      statusHint: 'running',
+      payload: {}
+    });
+
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-otel-lifecycle',
+      tenantId: 'tenant-otel-lifecycle',
+      userId: 'user-otel-lifecycle',
+      workspaceId: 'workspace-otel-lifecycle',
+      path: '/tmp/workspace-otel-lifecycle'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-otel-lifecycle',
+      directoryId: 'directory-otel-lifecycle',
+      title: 'otlp lifecycle',
+      agentType: 'codex'
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-otel-lifecycle',
+      args: ['--model', 'test-model'],
+      initialCols: 80,
+      initialRows: 24
+    });
+    const subscribed = await client.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-otel-lifecycle',
+      userId: 'user-otel-lifecycle',
+      workspaceId: 'workspace-otel-lifecycle',
+      conversationId: 'conversation-otel-lifecycle',
+      includeOutput: false
+    });
+    const telemetrySubscriptionId = subscribed['subscriptionId'];
+    assert.equal(typeof telemetrySubscriptionId, 'string');
+
+    assert.equal(created.length, 1);
+    const launchedArgs = created[0]!.input.args;
+    const exporterArg = launchedArgs.find((arg) => arg.includes('otel.exporter='));
+    assert.notEqual(exporterArg, undefined);
+    const tokenMatch = /\/v1\/logs\/([^"]+)/u.exec(exporterArg!);
+    assert.notEqual(tokenMatch, null);
+    const token = decodeURIComponent(tokenMatch?.[1] ?? '');
+    assert.notEqual(token.length, 0);
+
+    const emptyBatchResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {});
+    assert.equal(emptyBatchResponse.statusCode, 200);
+
+    const promptResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    {
+                      key: 'event.name',
+                      value: {
+                        stringValue: 'codex.user_prompt'
+                      }
+                    },
+                    {
+                      key: 'thread-id',
+                      value: {
+                        stringValue: 'thread-otel-lifecycle'
+                      }
+                    }
+                  ],
+                  body: {
+                    stringValue: 'prompt accepted'
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(promptResponse.statusCode, 200);
+
+    const verboseLogResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    {
+                      key: 'event.name',
+                      value: {
+                        stringValue: 'codex.sse_event'
+                      }
+                    },
+                    {
+                      key: 'kind',
+                      value: {
+                        stringValue: 'response.in_progress'
+                      }
+                    },
+                    {
+                      key: 'thread-id',
+                      value: {
+                        stringValue: 'thread-otel-lifecycle'
+                      }
+                    }
+                  ],
+                  body: {
+                    stringValue: 'response.in_progress'
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(verboseLogResponse.statusCode, 200);
+
+    const needsInputResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    {
+                      key: 'event.name',
+                      value: {
+                        stringValue: 'needs-input'
+                      }
+                    }
+                  ],
+                  body: {
+                    stringValue: 'needs-input'
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(needsInputResponse.statusCode, 200);
+
+    const metricResponse = await postJson(telemetryTarget, `/v1/metrics/${encodeURIComponent(token)}`, {
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: 'codex.turn.e2e_duration_ms',
+                  sum: {
+                    dataPoints: [{}]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(metricResponse.statusCode, 200);
+
+    const traceResponse = await postJson(telemetryTarget, `/v1/traces/${encodeURIComponent(token)}`, {
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  name: 'codex.websocket_event',
+                  attributes: [
+                    {
+                      key: 'thread-id',
+                      value: {
+                        stringValue: 'thread-otel-lifecycle'
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    assert.equal(traceResponse.statusCode, 200);
+
+    await delay(20);
+    const status = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-otel-lifecycle'
+    });
+    assert.equal(status['status'], 'running');
+    const telemetry = status['telemetry'] as Record<string, unknown> | null;
+    assert.notEqual(telemetry, null);
+    assert.equal(telemetry?.['eventName'], 'codex.turn.e2e_duration_ms');
+    assert.equal(telemetry?.['source'], 'otlp-metric');
+
+    const observedKeyEvents = observedTelemetry.filter(
+      (envelope) =>
+        envelope.kind === 'stream.event' &&
+        envelope.subscriptionId === telemetrySubscriptionId &&
+        envelope.event.type === 'session-key-event'
+    );
+    const observedEventNames = observedKeyEvents
+      .map((envelope) =>
+        envelope.kind === 'stream.event' && envelope.event.type === 'session-key-event'
+          ? envelope.event.keyEvent.eventName
+          : null
+      )
+      .filter((value): value is string => typeof value === 'string');
+    assert.deepEqual(observedEventNames, ['codex.user_prompt', 'codex.turn.e2e_duration_ms']);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('stream server ingests codex history lines and supports reset when file shrinks', async () => {
   const historyDir = mkdtempSync(join(tmpdir(), 'harness-history-'));
   const historyPath = join(historyDir, 'history.jsonl');
@@ -3076,7 +3360,8 @@ void test('stream server ingests codex history lines and supports reset when fil
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: true,
@@ -3216,7 +3501,8 @@ void test('stream server skips codex telemetry arg injection for non-codex agent
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: true,
@@ -3276,7 +3562,8 @@ void test('stream server launches terminal agents with shell command and no code
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: true,
@@ -3383,7 +3670,8 @@ void test('stream server telemetry/history private guard branches are stable', a
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: false,
@@ -3454,7 +3742,8 @@ void test('stream server telemetry/history private guard branches are stable', a
         logUserPrompt: true,
         captureLogs: true,
         captureMetrics: true,
-        captureTraces: true
+        captureTraces: true,
+        captureVerboseEvents: true
       },
       codexHistory: {
         enabled: false,
@@ -3617,7 +3906,8 @@ void test('stream server telemetry/history private guard branches are stable', a
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: true,
@@ -3652,7 +3942,8 @@ void test('stream server telemetry/history private guard branches are stable', a
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: true,
@@ -3683,7 +3974,8 @@ void test('stream server telemetry/history private guard branches are stable', a
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: true,
@@ -3711,7 +4003,8 @@ void test('stream server telemetry listener handles close-before-start and port 
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: false,
@@ -3730,7 +4023,8 @@ void test('stream server telemetry listener handles close-before-start and port 
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: false,
@@ -3751,7 +4045,8 @@ void test('stream server telemetry listener handles close-before-start and port 
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: true
     },
     codexHistory: {
       enabled: false,

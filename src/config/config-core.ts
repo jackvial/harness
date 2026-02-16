@@ -80,6 +80,7 @@ interface HarnessCodexTelemetryConfig {
   readonly captureLogs: boolean;
   readonly captureMetrics: boolean;
   readonly captureTraces: boolean;
+  readonly captureVerboseEvents: boolean;
 }
 
 interface HarnessCodexHistoryConfig {
@@ -191,7 +192,8 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: false
     },
     history: {
       enabled: true,
@@ -602,7 +604,11 @@ function normalizeCodexTelemetryConfig(input: unknown): HarnessCodexTelemetryCon
     captureTraces:
       typeof record['captureTraces'] === 'boolean'
         ? record['captureTraces']
-        : DEFAULT_HARNESS_CONFIG.codex.telemetry.captureTraces
+        : DEFAULT_HARNESS_CONFIG.codex.telemetry.captureTraces,
+    captureVerboseEvents:
+      typeof record['captureVerboseEvents'] === 'boolean'
+        ? record['captureVerboseEvents']
+        : DEFAULT_HARNESS_CONFIG.codex.telemetry.captureVerboseEvents
   };
 }
 

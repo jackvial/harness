@@ -177,7 +177,8 @@ async function main(): Promise<void> {
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
+      captureVerboseEvents: false
     },
     codexHistory: {
       enabled: false,

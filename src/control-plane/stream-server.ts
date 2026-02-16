@@ -96,6 +96,7 @@ interface CodexTelemetryServerConfig {
   readonly captureLogs: boolean;
   readonly captureMetrics: boolean;
   readonly captureTraces: boolean;
+  readonly captureVerboseEvents?: boolean;
 }
 
 interface CodexHistoryIngestConfig {
@@ -205,6 +206,7 @@ const DEFAULT_TENANT_ID = 'tenant-local';
 const DEFAULT_USER_ID = 'user-local';
 const DEFAULT_WORKSPACE_ID = 'workspace-local';
 const DEFAULT_WORKTREE_ID = 'worktree-local';
+const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set(['codex.user_prompt', 'codex.turn.e2e_duration_ms']);
 
 function compareIsoDesc(left: string | null, right: string | null): number {
   if (left === right) {
@@ -242,8 +244,17 @@ function normalizeCodexTelemetryConfig(
     logUserPrompt: input?.logUserPrompt ?? true,
     captureLogs: input?.captureLogs ?? true,
     captureMetrics: input?.captureMetrics ?? true,
-    captureTraces: input?.captureTraces ?? true
+    captureTraces: input?.captureTraces ?? true,
+    captureVerboseEvents: input?.captureVerboseEvents ?? false
   };
+}
+
+function isLifecycleTelemetryEventName(eventName: string | null): boolean {
+  const normalized = eventName?.trim().toLowerCase() ?? '';
+  if (normalized.length === 0) {
+    return false;
+  }
+  return LIFECYCLE_TELEMETRY_EVENT_NAMES.has(normalized);
 }
 
 function normalizeCodexHistoryConfig(
@@ -707,6 +718,16 @@ export class ControlPlaneStreamServer {
     const resolvedSessionId =
       fallbackSessionId ??
       (event.providerThreadId === null ? null : this.resolveSessionIdByThreadId(event.providerThreadId));
+    const captureVerboseEvents = this.codexTelemetry.captureVerboseEvents === true;
+    if (!captureVerboseEvents && !isLifecycleTelemetryEventName(event.eventName)) {
+      if (resolvedSessionId !== null && event.providerThreadId !== null) {
+        const sessionState = this.sessions.get(resolvedSessionId);
+        if (sessionState !== undefined) {
+          this.updateSessionThreadId(sessionState, event.providerThreadId, event.observedAt);
+        }
+      }
+      return;
+    }
     const fingerprint = telemetryFingerprint({
       source: event.source,
       sessionId: resolvedSessionId,

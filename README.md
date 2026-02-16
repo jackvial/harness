@@ -130,11 +130,12 @@ Harness is built to expose operational truth, not hide it.
 - Canonical thread/session lifecycle events.
 - Typed telemetry events for status hints and recent work summaries.
 - Deliberately minimal work-status projection: `codex.user_prompt` starts work, `codex.turn.e2e_duration_ms` completes a turn; noisy fallback formats are ignored.
+- Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, so non-lifecycle telemetry is opt-in.
 - Mux projection instrumentation (`mux.session-projection.transition`) for icon/status-line timeline debugging.
 - Selector index snapshots (`mux.selector.snapshot` + `mux.selector.entry`) so threads can be referenced by visible rail index.
 - Session ownership/control transition events.
 - Durable state in SQLite for reconnect-safe operations.
-- Codex telemetry ingestion (logs, metrics, traces, history) for deep diagnostics.
+- Codex telemetry ingestion (logs, metrics, traces, history) for deep diagnostics when verbose capture is enabled.
 
 ## Performance and Quality Principles
 
