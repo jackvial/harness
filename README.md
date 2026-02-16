@@ -46,6 +46,7 @@ Harness is built for developers who want to:
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
 - Detached gateway runtime: client disconnects do not stop running threads; stop the gateway explicitly when you want all child sessions to shut down.
+- `harness gateway stop` also performs workspace-scoped orphan `sqlite3` cleanup for the configured state DB path by default (`--no-cleanup-orphans` disables it).
 
 ## Programmable Interface
 
@@ -187,6 +188,7 @@ Gateway lifecycle control is explicit:
 harness gateway status
 harness gateway start
 harness gateway stop
+harness gateway stop --no-cleanup-orphans
 ```
 
 Configuration is file-first via `harness.config.jsonc`.

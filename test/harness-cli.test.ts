@@ -3,8 +3,9 @@ import test from 'node:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseGatewayRecordText } from '../src/cli/gateway-record.ts';
 
 interface RunHarnessResult {
@@ -77,6 +78,109 @@ async function runHarness(
         stdout: Buffer.concat(stdoutChunks).toString('utf8'),
         stderr: Buffer.concat(stderrChunks).toString('utf8')
       });
+    });
+  });
+}
+
+function isPidRunning(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code !== 'ESRCH';
+  }
+}
+
+function readParentPid(pid: number): number | null {
+  try {
+    const output = execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
+      encoding: 'utf8'
+    }).trim();
+    if (output.length === 0) {
+      return null;
+    }
+    const parsed = Number.parseInt(output, 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function waitForParentPid(pid: number, targetParentPid: number, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isPidRunning(pid)) {
+      return false;
+    }
+    if (readParentPid(pid) === targetParentPid) {
+      return true;
+    }
+    await delay(25);
+  }
+  return readParentPid(pid) === targetParentPid;
+}
+
+async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isPidRunning(pid)) {
+      return true;
+    }
+    await delay(25);
+  }
+  return !isPidRunning(pid);
+}
+
+async function spawnOrphanSqliteProcess(dbPath: string): Promise<number> {
+  return await new Promise<number>((resolveSpawn, rejectSpawn) => {
+    const longRunningSql =
+      'WITH RECURSIVE c(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM c WHERE x < 1000) SELECT count(*) FROM c a, c b, c d, c e;';
+    const launcherScript = [
+      "const { spawn } = require('node:child_process');",
+      'const dbPath = process.argv[1];',
+      'const sql = process.argv[2];',
+      "const child = spawn('sqlite3', [dbPath, sql], { detached: true, stdio: 'ignore' });",
+      "if (typeof child.pid !== 'number') { process.exit(2); }",
+      'process.stdout.write(String(child.pid));',
+      'child.unref();'
+    ].join('\n');
+
+    const launcher = spawn(process.execPath, ['-e', launcherScript, dbPath, longRunningSql], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    launcher.stdout?.on('data', (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+    });
+    launcher.stderr?.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+    });
+    launcher.once('error', rejectSpawn);
+    launcher.once('exit', (code, signal) => {
+      if (signal !== null) {
+        rejectSpawn(new Error(`orphan sqlite launcher exited via signal ${signal}`));
+        return;
+      }
+      if (code !== 0) {
+        rejectSpawn(
+          new Error(
+            `orphan sqlite launcher failed (code=${String(code)}): ${Buffer.concat(stderrChunks).toString('utf8')}`
+          )
+        );
+        return;
+      }
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      const pid = Number.parseInt(stdout, 10);
+      if (!Number.isInteger(pid) || pid <= 0) {
+        rejectSpawn(new Error(`orphan sqlite launcher produced invalid pid output: ${stdout}`));
+        return;
+      }
+      resolveSpawn(pid);
     });
   });
 }
@@ -212,6 +316,38 @@ void test('harness default client auto-starts detached gateway and leaves it run
     const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
     assert.equal(stopResult.code, 0);
   } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway stop cleans up orphan sqlite processes for the workspace db', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const dbPath = join(workspace, '.harness/control-plane.sqlite');
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port)
+  };
+  let orphanPid: number | null = null;
+  try {
+    const startResult = await runHarness(workspace, ['gateway', 'start', '--port', String(port)], env);
+    assert.equal(startResult.code, 0);
+
+    orphanPid = await spawnOrphanSqliteProcess(dbPath);
+    assert.equal(await waitForParentPid(orphanPid, 1, 2000), true);
+    assert.equal(isPidRunning(orphanPid), true);
+
+    const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
+    assert.equal(stopResult.code, 0);
+    assert.equal(stopResult.stdout.includes('gateway stopped'), true);
+    assert.equal(stopResult.stdout.includes('orphan sqlite cleanup:'), true);
+
+    assert.equal(await waitForPidExit(orphanPid, 4000), true);
+    assert.equal(isPidRunning(orphanPid), false);
+  } finally {
+    if (orphanPid !== null && isPidRunning(orphanPid)) {
+      process.kill(orphanPid, 'SIGKILL');
+    }
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
   }

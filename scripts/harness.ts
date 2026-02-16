@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -41,6 +41,7 @@ interface GatewayStartOptions {
 interface GatewayStopOptions {
   force: boolean;
   timeoutMs: number;
+  cleanupOrphans: boolean;
 }
 
 interface ParsedGatewayCommand {
@@ -67,6 +68,19 @@ interface GatewayProbeResult {
 interface EnsureGatewayResult {
   record: GatewayRecord;
   started: boolean;
+}
+
+interface ProcessTableEntry {
+  pid: number;
+  ppid: number;
+  command: string;
+}
+
+interface OrphanSqliteCleanupResult {
+  matchedPids: readonly number[];
+  terminatedPids: readonly number[];
+  failedPids: readonly number[];
+  errorMessage: string | null;
 }
 
 function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
@@ -138,12 +152,21 @@ function parseGatewayStartOptions(argv: readonly string[]): GatewayStartOptions 
 function parseGatewayStopOptions(argv: readonly string[]): GatewayStopOptions {
   const options: GatewayStopOptions = {
     force: false,
-    timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS
+    timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
+    cleanupOrphans: true
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!;
     if (arg === '--force') {
       options.force = true;
+      continue;
+    }
+    if (arg === '--cleanup-orphans') {
+      options.cleanupOrphans = true;
+      continue;
+    }
+    if (arg === '--no-cleanup-orphans') {
+      options.cleanupOrphans = false;
       continue;
     }
     if (arg === '--timeout-ms') {
@@ -232,7 +255,7 @@ function printUsage(): void {
       '  harness [mux-args...]',
       '  harness gateway start [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
       '  harness gateway run [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
-      '  harness gateway stop [--force] [--timeout-ms <ms>]',
+      '  harness gateway stop [--force] [--timeout-ms <ms>] [--cleanup-orphans|--no-cleanup-orphans]',
       '  harness gateway status',
       '  harness gateway restart [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
       '  harness gateway call --json \'{"type":"session.list"}\'',
@@ -305,6 +328,135 @@ async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> 
     await delay(DEFAULT_GATEWAY_STOP_POLL_MS);
   }
   return !isPidRunning(pid);
+}
+
+function readProcessTable(): readonly ProcessTableEntry[] {
+  const output = execFileSync('ps', ['-axww', '-o', 'pid=,ppid=,command='], {
+    encoding: 'utf8'
+  });
+  const lines = output.split('\n');
+  const entries: ProcessTableEntry[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    const match = /^(\d+)\s+(\d+)\s+(.*)$/u.exec(trimmed);
+    if (match === null) {
+      continue;
+    }
+    const pid = Number.parseInt(match[1] ?? '', 10);
+    const ppid = Number.parseInt(match[2] ?? '', 10);
+    const command = match[3] ?? '';
+    if (!Number.isInteger(pid) || pid <= 0 || !Number.isInteger(ppid) || ppid < 0) {
+      continue;
+    }
+    entries.push({
+      pid,
+      ppid,
+      command
+    });
+  }
+  return entries;
+}
+
+function findOrphanSqlitePidsForDbPath(stateDbPath: string): readonly number[] {
+  const normalizedDbPath = resolve(stateDbPath);
+  return readProcessTable()
+    .filter((entry) => entry.ppid === 1)
+    .filter((entry) => entry.pid !== process.pid)
+    .filter((entry) => /\bsqlite3\b/u.test(entry.command))
+    .filter((entry) => entry.command.includes(normalizedDbPath))
+    .map((entry) => entry.pid);
+}
+
+function formatOrphanSqliteCleanupResult(result: OrphanSqliteCleanupResult): string {
+  if (result.errorMessage !== null) {
+    return `orphan sqlite cleanup error: ${result.errorMessage}`;
+  }
+  if (result.matchedPids.length === 0) {
+    return 'orphan sqlite cleanup: none found';
+  }
+  if (result.failedPids.length === 0) {
+    return `orphan sqlite cleanup: terminated ${String(result.terminatedPids.length)} process(es)`;
+  }
+  return [
+    'orphan sqlite cleanup:',
+    `matched=${String(result.matchedPids.length)}`,
+    `terminated=${String(result.terminatedPids.length)}`,
+    `failed=${String(result.failedPids.length)}`
+  ].join(' ');
+}
+
+async function cleanupOrphanSqliteProcessesForDbPath(
+  stateDbPath: string,
+  options: GatewayStopOptions
+): Promise<OrphanSqliteCleanupResult> {
+  let matchedPids: readonly number[] = [];
+  try {
+    matchedPids = findOrphanSqlitePidsForDbPath(stateDbPath);
+  } catch (error: unknown) {
+    return {
+      matchedPids: [],
+      terminatedPids: [],
+      failedPids: [],
+      errorMessage: error instanceof Error ? error.message : String(error)
+    };
+  }
+
+  const terminatedPids: number[] = [];
+  const failedPids: number[] = [];
+
+  for (const pid of matchedPids) {
+    if (!isPidRunning(pid)) {
+      continue;
+    }
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch (error: unknown) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ESRCH') {
+        failedPids.push(pid);
+      }
+      continue;
+    }
+
+    const exitedAfterTerm = await waitForPidExit(pid, options.timeoutMs);
+    if (exitedAfterTerm) {
+      terminatedPids.push(pid);
+      continue;
+    }
+
+    if (!options.force) {
+      failedPids.push(pid);
+      continue;
+    }
+
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch (error: unknown) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ESRCH') {
+        failedPids.push(pid);
+      } else {
+        terminatedPids.push(pid);
+      }
+      continue;
+    }
+
+    if (await waitForPidExit(pid, options.timeoutMs)) {
+      terminatedPids.push(pid);
+    } else {
+      failedPids.push(pid);
+    }
+  }
+
+  return {
+    matchedPids,
+    terminatedPids,
+    failedPids,
+    errorMessage: null
+  };
 }
 
 function resolveGatewaySettings(
@@ -530,6 +682,15 @@ async function stopGateway(
 
   const probe = await probeGateway(record);
   const pidRunning = isPidRunning(record.pid);
+
+  const appendCleanupSummary = async (baseMessage: string): Promise<string> => {
+    if (!options.cleanupOrphans) {
+      return baseMessage;
+    }
+    const cleanupResult = await cleanupOrphanSqliteProcessesForDbPath(record.stateDbPath, options);
+    return `${baseMessage}; ${formatOrphanSqliteCleanupResult(cleanupResult)}`;
+  };
+
   if (!probe.connected && pidRunning && !options.force) {
     return {
       stopped: false,
@@ -541,7 +702,7 @@ async function stopGateway(
     removeGatewayRecord(recordPath);
     return {
       stopped: true,
-      message: 'removed stale gateway record'
+      message: await appendCleanupSummary('removed stale gateway record')
     };
   }
 
@@ -586,7 +747,7 @@ async function stopGateway(
   removeGatewayRecord(recordPath);
   return {
     stopped: true,
-    message: `gateway stopped (pid=${String(record.pid)})`
+    message: await appendCleanupSummary(`gateway stopped (pid=${String(record.pid)})`)
   };
 }
 
@@ -753,7 +914,8 @@ async function runGatewayCommandEntry(
   if (command.type === 'stop') {
     const stopOptions = command.stopOptions ?? {
       force: false,
-      timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS
+      timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
+      cleanupOrphans: true
     };
     const stopped = await stopGateway(recordPath, stopOptions);
     process.stdout.write(`${stopped.message}\n`);
@@ -785,7 +947,8 @@ async function runGatewayCommandEntry(
   if (command.type === 'restart') {
     const stopResult = await stopGateway(recordPath, {
       force: true,
-      timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS
+      timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
+      cleanupOrphans: true
     });
     process.stdout.write(`${stopResult.message}\n`);
     const ensured = await ensureGatewayRunning(
