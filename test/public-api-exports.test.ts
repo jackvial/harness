@@ -35,12 +35,8 @@ import type {
 } from '../src/control-plane/agent-realtime-api.ts';
 import type { ControlPlaneKeyEvent } from '../src/control-plane/codex-session-stream.ts';
 import type { CodexStatusHint, CodexTelemetryConfigArgsInput } from '../src/control-plane/codex-telemetry.ts';
-import type {
-  StreamTaskStatus,
-  StreamTelemetrySource,
-  StreamTelemetryStatusHint
-} from '../src/control-plane/stream-protocol.ts';
-import type { ControlPlaneTaskStatus, ControlPlaneTelemetryRecord } from '../src/store/control-plane-store.ts';
+import type { StreamTelemetrySource, StreamTelemetryStatusHint } from '../src/control-plane/stream-protocol.ts';
+import type { ControlPlaneTaskRecord, ControlPlaneTelemetryRecord } from '../src/store/control-plane-store.ts';
 
 void test('public api exports stay importable and structurally typed', () => {
   const subscription: AgentRealtimeSubscriptionFilter = {
@@ -265,8 +261,7 @@ void test('public api exports stay importable and structurally typed', () => {
     workspaceId: 'workspace-local',
     orderedTaskIds: ['task-1']
   };
-  const streamTaskStatus: StreamTaskStatus = 'ready';
-  const storeTaskStatus: ControlPlaneTaskStatus = 'ready';
+  const storeTaskStatus: ControlPlaneTaskRecord['status'] = 'ready';
   const subscriptionHandle = null as unknown as AgentRealtimeSubscription;
 
   assert.equal(connectOptions.host, '127.0.0.1');
@@ -302,7 +297,6 @@ void test('public api exports stay importable and structurally typed', () => {
   assert.equal(repository.repositoryId, 'repository-1');
   assert.equal(task.taskId, 'task-1');
   assert.equal(taskReorderInput.orderedTaskIds.length, 1);
-  assert.equal(streamTaskStatus, 'ready');
   assert.equal(storeTaskStatus, 'ready');
   assert.equal(subscriptionHandle as unknown, null as unknown);
   assert.equal(typeof HarnessAgentRealtimeClient.connect, 'function');
