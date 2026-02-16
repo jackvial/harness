@@ -22,6 +22,7 @@ import {
   serializeGatewayRecord,
   type GatewayRecord
 } from '../src/cli/gateway-record.ts';
+import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DAEMON_SCRIPT_PATH = resolve(SCRIPT_DIR, 'control-plane-daemon.ts');
@@ -1014,6 +1015,7 @@ async function runDefaultClient(
 
 async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory(process.env, process.cwd());
+  loadHarnessSecrets({ cwd: invocationDirectory });
   const recordPath = resolveGatewayRecordPath(invocationDirectory);
   const logPath = resolveGatewayLogPath(invocationDirectory);
   const daemonScriptPath = resolveScriptPath(

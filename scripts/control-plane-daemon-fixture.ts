@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import { loadHarnessConfig } from '../src/config/config-core.ts';
+import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   configurePerfCore,
   recordPerfEvent,
@@ -145,6 +146,7 @@ function parseArgs(argv: string[]): DaemonOptions {
 
 async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory();
+  loadHarnessSecrets({ cwd: invocationDirectory });
   configureProcessPerf(invocationDirectory);
   const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
   const serverSnapshotModelEnabled = loadedConfig.config.debug.mux.serverSnapshotModelEnabled;

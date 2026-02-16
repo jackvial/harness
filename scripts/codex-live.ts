@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
+import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import {
   createNormalizedEvent,
@@ -70,6 +71,8 @@ function mapToNormalizedEvent(
 }
 
 async function main(): Promise<number> {
+  const invocationDirectory = process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+  loadHarnessSecrets({ cwd: invocationDirectory });
   const interactive = process.stdin.isTTY && process.stdout.isTTY;
   const extraArgs = process.argv.slice(2);
 

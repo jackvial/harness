@@ -41,6 +41,7 @@ import {
   wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
 import { loadHarnessConfig, updateHarnessMuxUiConfig } from '../src/config/config-core.ts';
+import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   detectMuxGlobalShortcut,
   firstShortcutText,
@@ -1992,6 +1993,8 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  const invocationDirectory = process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+  loadHarnessSecrets({ cwd: invocationDirectory });
   const options = parseArgs(process.argv.slice(2));
   const loadedConfig = loadHarnessConfig({
     cwd: options.invocationDirectory

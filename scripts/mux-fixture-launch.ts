@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { loadHarnessConfig } from '../src/config/config-core.ts';
+import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   configurePerfCore,
   recordPerfEvent,
@@ -303,6 +304,7 @@ function normalizeChildExitCode(exit: readonly [number | null, NodeJS.Signals | 
 
 async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory();
+  loadHarnessSecrets({ cwd: invocationDirectory });
   const perfSettings = configureProcessPerf(invocationDirectory);
   const startupSpan = startPerfSpan('launch-fixture.startup.bootstrap', {
     process: 'launch-fixture'

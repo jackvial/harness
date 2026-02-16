@@ -193,6 +193,7 @@ harness gateway stop --no-cleanup-orphans
 
 Configuration is file-first via `harness.config.jsonc`.
 Codex launch mode is controlled under `codex.launch` with `defaultMode` and per-directory `directoryModes` overrides.
+Process-bootstrap secrets can be stored in `.harness/secrets.env` (for example `ANTHROPIC_API_KEY=...`); existing exported environment values take precedence.
 
 Inspect the latest selector index snapshot from perf artifacts:
 

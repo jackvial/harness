@@ -549,6 +549,7 @@ Design constraints:
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.
 - No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
 - Runtime behavior toggles are config-first; environment variables are reserved for bootstrap/transport wiring and test harness injection, not the primary control surface.
+- Bootstrap secrets may be loaded from `.harness/secrets.env` (dotenv-style `KEY=VALUE`) into process env before startup; explicitly exported environment variables remain authoritative over file-provided values.
 - Codex launch policy is config-governed under `codex.launch` with:
   - `defaultMode` (`yolo` or `standard`) as the fallback for all directories
   - `directoryModes` for per-directory overrides keyed by workspace path

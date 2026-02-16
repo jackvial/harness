@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
@@ -315,6 +315,44 @@ void test('harness default client auto-starts detached gateway and leaves it run
 
     const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
     assert.equal(stopResult.code, 0);
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness default client loads .harness/secrets.env and forwards ANTHROPIC_API_KEY to mux process', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const muxStubPath = join(workspace, 'mux-secrets-stub.js');
+  const observedKeyPath = join(workspace, '.harness/observed-anthropic-key.txt');
+  mkdirSync(join(workspace, '.harness'), { recursive: true });
+  writeFileSync(
+    join(workspace, '.harness/secrets.env'),
+    'ANTHROPIC_API_KEY=from-secrets-file',
+    'utf8'
+  );
+  writeFileSync(
+    muxStubPath,
+    [
+      "import { writeFileSync } from 'node:fs';",
+      'const target = process.env.HARNESS_TEST_ANTHROPIC_KEY_PATH;',
+      "if (typeof target === 'string' && target.length > 0) {",
+      "  writeFileSync(target, process.env.ANTHROPIC_API_KEY ?? '', 'utf8');",
+      '}'
+    ].join('\n'),
+    'utf8'
+  );
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port),
+    HARNESS_MUX_SCRIPT_PATH: muxStubPath,
+    HARNESS_TEST_ANTHROPIC_KEY_PATH: observedKeyPath
+  };
+  try {
+    const clientResult = await runHarness(workspace, [], env);
+    assert.equal(clientResult.code, 0);
+    assert.equal(existsSync(observedKeyPath), true);
+    assert.equal(readFileSync(observedKeyPath, 'utf8'), 'from-secrets-file');
   } finally {
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
