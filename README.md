@@ -183,6 +183,12 @@ Use `harness` as the default client. It connects to the gateway of record, or st
 harness
 ```
 
+Record an optional GIF artifact by passing mux recording flags explicitly:
+
+```bash
+npm run harness -- --record-output .harness/mux-recording.gif
+```
+
 Run a high-FPS terminal animation scene (vibe-tunnel style) to stress rendering paths:
 
 ```bash
