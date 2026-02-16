@@ -112,6 +112,7 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.notEqual(threadButtonRow, undefined);
   assert.equal(threadButtonRow?.includes('\u001b[0;38;5;230;48;5;237m[+ thread]'), true);
   const threadButtonRowPlain = stripAnsi(threadButtonRow ?? '');
+  assert.equal(threadButtonRowPlain.endsWith('[+ thread]'), true);
   assert.equal(threadButtonRowPlain.trimEnd().endsWith('[+ thread]'), true);
   assert.equal(threadButtonRowPlain.indexOf('[+ thread]') > 20, true);
   assert.equal(rows.some((row) => row.includes('conversation-a')), false);

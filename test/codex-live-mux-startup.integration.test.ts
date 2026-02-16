@@ -498,3 +498,30 @@ void test(
   },
   { timeout: 30000 }
 );
+
+void test(
+  'codex-live-mux opens new-thread modal when clicking left-rail [+ thread] button',
+  async () => {
+    const workspace = createWorkspace();
+    const interactive = startInteractiveMuxSession(workspace, {
+      cols: 100,
+      rows: 30
+    });
+
+    try {
+      const threadButtonCell = await waitForSnapshotLineContaining(interactive.oracle, '[+ thread]', 12000);
+      writeLeftMouseClick(interactive.session, threadButtonCell.col, threadButtonCell.row);
+      await waitForSnapshotLineContaining(interactive.oracle, 'New Thread', 12000);
+    } finally {
+      try {
+        interactive.session.write('\u0003');
+        const exit = await interactive.waitForExit;
+        assert.equal(exit.signal, null);
+        assert.equal(exit.code, 0);
+      } finally {
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    }
+  },
+  { timeout: 30000 }
+);

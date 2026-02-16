@@ -9,6 +9,7 @@ import {
 import {
   paintUiRow
 } from '../ui/kit.ts';
+import { measureDisplayWidth } from '../terminal/snapshot-oracle.ts';
 import {
   buildWorkspaceRailViewRows
 } from './workspace-rail-model.ts';
@@ -109,12 +110,22 @@ function drawTreeRow(
   options: {
     buttonLabel?: string;
     buttonStyle?: UiStyle;
+    alignButtonRight?: boolean;
   } = {}
 ): void {
   fillUiRow(surface, rowIndex, NORMAL_STYLE);
-  const contentStart = treeTextStartColumn(row.text);
-  const treePrefix = row.text.slice(0, contentStart);
-  const content = row.text.slice(contentStart);
+  const buttonLabel = options.buttonLabel;
+  const buttonStyle = options.buttonStyle;
+  const alignButtonRight = options.alignButtonRight ?? false;
+  const buttonTextStart =
+    buttonLabel === undefined ? -1 : row.text.lastIndexOf(buttonLabel);
+  const baseRowText =
+    alignButtonRight && buttonLabel !== undefined && buttonTextStart >= 0
+      ? row.text.slice(0, buttonTextStart).trimEnd()
+      : row.text;
+  const contentStart = treeTextStartColumn(baseRowText);
+  const treePrefix = baseRowText.slice(0, contentStart);
+  const content = baseRowText.slice(contentStart);
   drawUiText(surface, 0, rowIndex, treePrefix, MUTED_STYLE);
   drawUiText(
     surface,
@@ -123,15 +134,19 @@ function drawTreeRow(
     content,
     row.active && activeContentStyle !== null ? activeContentStyle : contentStyle
   );
-  const buttonLabel = options.buttonLabel;
-  const buttonStyle = options.buttonStyle;
   if (buttonLabel === undefined || buttonStyle === undefined) {
     return;
   }
-  const buttonStart = row.text.lastIndexOf(buttonLabel);
-  if (buttonStart < 0) {
+  if (buttonTextStart < 0) {
     return;
   }
+  const buttonWidth = Math.max(0, measureDisplayWidth(buttonLabel));
+  if (buttonWidth <= 0) {
+    return;
+  }
+  const buttonStart = alignButtonRight
+    ? Math.max(0, surface.cols - buttonWidth)
+    : buttonTextStart;
   drawUiText(surface, buttonStart, rowIndex, buttonLabel, buttonStyle);
 }
 
@@ -166,7 +181,8 @@ function drawDirectoryHeaderRow(
 ): void {
   drawTreeRow(surface, rowIndex, row, HEADER_STYLE, ACTIVE_ROW_STYLE, {
     buttonLabel: INLINE_THREAD_BUTTON_LABEL,
-    buttonStyle: ACTION_STYLE
+    buttonStyle: ACTION_STYLE,
+    alignButtonRight: true
   });
 }
 
