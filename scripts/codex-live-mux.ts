@@ -3210,16 +3210,18 @@ async function main(): Promise<number> {
     });
   };
 
-  await hydrateConversationList();
-  await hydrateRepositoryList();
-  await hydrateTaskPlanningState();
-  await subscribeTaskPlanningEvents();
-  if (activeConversationId === null) {
-    const ordered = conversationOrder(conversations);
-    activeConversationId = ordered[0] ?? null;
-  }
-  if (activeConversationId === null && resolveActiveDirectoryId() !== null) {
-    mainPaneMode = 'project';
+  async function hydrateStartupState(): Promise<void> {
+    await hydrateConversationList();
+    await hydrateRepositoryList();
+    await hydrateTaskPlanningState();
+    await subscribeTaskPlanningEvents();
+    if (activeConversationId === null) {
+      const ordered = conversationOrder(conversations);
+      activeConversationId = ordered[0] ?? null;
+    }
+    if (activeConversationId === null && resolveActiveDirectoryId() !== null) {
+      mainPaneMode = 'project';
+    }
   }
 
   const gitSummaryByDirectoryId = new Map<string, GitSummary>();
@@ -4708,17 +4710,17 @@ async function main(): Promise<number> {
     previousRows = [];
   };
 
-  const orderedTaskRecords = (): readonly ControlPlaneTaskRecord[] => {
+  function orderedTaskRecords(): readonly ControlPlaneTaskRecord[] {
     return sortTasksByOrder([...tasks.values()]);
-  };
+  }
 
-  const syncTaskPaneSelection = (): void => {
+  function syncTaskPaneSelection(): void {
     if (taskPaneSelectedTaskId !== null && tasks.has(taskPaneSelectedTaskId)) {
       return;
     }
     const activeTasks = orderedTaskRecords().filter((task) => task.status !== 'completed');
     taskPaneSelectedTaskId = activeTasks[0]?.taskId ?? null;
-  };
+  }
 
   const selectedTaskRecord = (): ControlPlaneTaskRecord | null => {
     if (taskPaneSelectedTaskId === null) {
@@ -7071,6 +7073,8 @@ async function main(): Promise<number> {
   const onUnhandledRejection = (reason: unknown): void => {
     handleRuntimeFatal('unhandled-rejection', reason);
   };
+
+  await hydrateStartupState();
 
   process.stdin.on('data', onInputSafe);
   process.stdout.on('resize', onResizeSafe);
