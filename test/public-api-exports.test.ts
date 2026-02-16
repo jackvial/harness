@@ -9,14 +9,38 @@ import type {
   AgentRealtimeEventType,
   AgentRealtimeSubscriptionFilter,
   AgentReleaseSessionInput,
+  AgentRepository,
+  AgentRepositoryListQuery,
+  AgentRepositoryUpdateInput,
+  AgentRepositoryUpsertInput,
+  AgentScopeQuery,
+  AgentProject,
+  AgentProjectListQuery,
+  AgentProjectUpsertInput,
+  AgentTask,
+  AgentTaskClaimInput,
+  AgentTaskCreateInput,
+  AgentTaskListQuery,
+  AgentTaskReorderInput,
+  AgentTaskStatus,
+  AgentTaskUpdateInput,
+  AgentThread,
+  AgentThreadCreateInput,
+  AgentThreadListQuery,
+  AgentThreadUpdateInput,
+  AgentRealtimeSubscription,
   AgentSessionClaimResult,
   AgentSessionReleaseResult,
   AgentSessionSummary
 } from '../src/control-plane/agent-realtime-api.ts';
 import type { ControlPlaneKeyEvent } from '../src/control-plane/codex-session-stream.ts';
 import type { CodexStatusHint, CodexTelemetryConfigArgsInput } from '../src/control-plane/codex-telemetry.ts';
-import type { StreamTelemetrySource, StreamTelemetryStatusHint } from '../src/control-plane/stream-protocol.ts';
-import type { ControlPlaneTelemetryRecord } from '../src/store/control-plane-store.ts';
+import type {
+  StreamTaskStatus,
+  StreamTelemetrySource,
+  StreamTelemetryStatusHint
+} from '../src/control-plane/stream-protocol.ts';
+import type { ControlPlaneTaskStatus, ControlPlaneTelemetryRecord } from '../src/store/control-plane-store.ts';
 
 void test('public api exports stay importable and structurally typed', () => {
   const subscription: AgentRealtimeSubscriptionFilter = {
@@ -52,6 +76,7 @@ void test('public api exports stay importable and structurally typed', () => {
   const eventType: AgentRealtimeEventType = 'session.status';
   const eventEnvelope: AgentRealtimeEventEnvelope<'session.status'> = {
     type: 'session.status',
+    subscriptionId: 'subscription-1',
     cursor: 1,
     observed: {
       type: 'session-status',
@@ -107,6 +132,142 @@ void test('public api exports stay importable and structurally typed', () => {
   const codexArgs = buildCodexTelemetryConfigArgs(codexConfig);
 
   const summary = null as unknown as AgentSessionSummary;
+  const scope: AgentScopeQuery = {
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local'
+  };
+  const projectUpsertInput: AgentProjectUpsertInput = {
+    ...scope,
+    projectId: 'directory-1',
+    path: '/tmp/project'
+  };
+  const projectListQuery: AgentProjectListQuery = {
+    ...scope,
+    includeArchived: true,
+    limit: 5
+  };
+  const threadCreateInput: AgentThreadCreateInput = {
+    threadId: 'conversation-1',
+    projectId: 'directory-1',
+    title: 'Thread',
+    agentType: 'codex',
+    adapterState: {}
+  };
+  const threadListQuery: AgentThreadListQuery = {
+    ...scope,
+    projectId: 'directory-1',
+    includeArchived: true,
+    limit: 5
+  };
+  const threadUpdateInput: AgentThreadUpdateInput = {
+    title: 'Updated'
+  };
+  const repositoryUpsertInput: AgentRepositoryUpsertInput = {
+    ...scope,
+    repositoryId: 'repository-1',
+    name: 'harness',
+    remoteUrl: 'https://github.com/acme/harness.git'
+  };
+  const repositoryListQuery: AgentRepositoryListQuery = {
+    ...scope,
+    includeArchived: true,
+    limit: 5
+  };
+  const repositoryUpdateInput: AgentRepositoryUpdateInput = {
+    name: 'harness-updated'
+  };
+  const taskStatus: AgentTaskStatus = 'ready';
+  const taskCreateInput: AgentTaskCreateInput = {
+    ...scope,
+    taskId: 'task-1',
+    repositoryId: 'repository-1',
+    title: 'Task',
+    description: 'details'
+  };
+  const taskListQuery: AgentTaskListQuery = {
+    ...scope,
+    repositoryId: 'repository-1',
+    status: 'ready',
+    limit: 5
+  };
+  const taskUpdateInput: AgentTaskUpdateInput = {
+    title: 'updated'
+  };
+  const taskClaimInput: AgentTaskClaimInput = {
+    taskId: 'task-1',
+    controllerId: 'agent-1',
+    projectId: 'directory-1',
+    branchName: 'task-branch',
+    baseBranch: 'main'
+  };
+  const project: AgentProject = {
+    projectId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    path: '/tmp/project',
+    createdAt: new Date(0).toISOString(),
+    archivedAt: null
+  };
+  const thread: AgentThread = {
+    threadId: 'conversation-1',
+    projectId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    title: 'Thread',
+    agentType: 'codex',
+    createdAt: new Date(0).toISOString(),
+    archivedAt: null,
+    runtimeStatus: 'running',
+    runtimeLive: true,
+    runtimeAttentionReason: null,
+    runtimeProcessId: null,
+    runtimeLastEventAt: null,
+    runtimeLastExit: null,
+    adapterState: {}
+  };
+  const repository: AgentRepository = {
+    repositoryId: 'repository-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    name: 'harness',
+    remoteUrl: 'https://github.com/acme/harness.git',
+    defaultBranch: 'main',
+    metadata: {},
+    createdAt: new Date(0).toISOString(),
+    archivedAt: null
+  };
+  const task: AgentTask = {
+    taskId: 'task-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    repositoryId: 'repository-1',
+    title: 'Task',
+    description: 'details',
+    status: 'ready',
+    orderIndex: 0,
+    claimedByControllerId: null,
+    claimedByProjectId: null,
+    branchName: null,
+    baseBranch: null,
+    claimedAt: null,
+    completedAt: null,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString()
+  };
+  const taskReorderInput: AgentTaskReorderInput = {
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    orderedTaskIds: ['task-1']
+  };
+  const streamTaskStatus: StreamTaskStatus = 'ready';
+  const storeTaskStatus: ControlPlaneTaskStatus = 'ready';
+  const subscriptionHandle = null as unknown as AgentRealtimeSubscription;
 
   assert.equal(connectOptions.host, '127.0.0.1');
   assert.equal(claimInput.sessionId, 'conversation-1');
@@ -122,5 +283,27 @@ void test('public api exports stay importable and structurally typed', () => {
   assert.equal(codexStatus, 'running');
   assert.equal(codexArgs.length > 0, true);
   assert.equal(summary as unknown, null as unknown);
+  assert.equal(scope.tenantId, 'tenant-local');
+  assert.equal(projectUpsertInput.projectId, 'directory-1');
+  assert.equal(projectListQuery.includeArchived, true);
+  assert.equal(threadCreateInput.threadId, 'conversation-1');
+  assert.equal(threadListQuery.projectId, 'directory-1');
+  assert.equal(threadUpdateInput.title, 'Updated');
+  assert.equal(repositoryUpsertInput.repositoryId, 'repository-1');
+  assert.equal(repositoryListQuery.limit, 5);
+  assert.equal(repositoryUpdateInput.name, 'harness-updated');
+  assert.equal(taskStatus, 'ready');
+  assert.equal(taskCreateInput.taskId, 'task-1');
+  assert.equal(taskListQuery.repositoryId, 'repository-1');
+  assert.equal(taskUpdateInput.title, 'updated');
+  assert.equal(taskClaimInput.taskId, 'task-1');
+  assert.equal(project.projectId, 'directory-1');
+  assert.equal(thread.threadId, 'conversation-1');
+  assert.equal(repository.repositoryId, 'repository-1');
+  assert.equal(task.taskId, 'task-1');
+  assert.equal(taskReorderInput.orderedTaskIds.length, 1);
+  assert.equal(streamTaskStatus, 'ready');
+  assert.equal(storeTaskStatus, 'ready');
+  assert.equal(subscriptionHandle as unknown, null as unknown);
   assert.equal(typeof HarnessAgentRealtimeClient.connect, 'function');
 });

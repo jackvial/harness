@@ -180,12 +180,12 @@ void test('parseStreamCommand parses repository and task commands', () => {
     parseStreamCommand({
       type: 'task.update',
       taskId: 'task-2',
-      title: 'Keep repository'
+      title: 'No repository update'
     }),
     {
       type: 'task.update',
       taskId: 'task-2',
-      title: 'Keep repository'
+      title: 'No repository update'
     }
   );
   assert.deepEqual(
@@ -337,8 +337,38 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'repository.upsert',
+      name: 'Harness'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.upsert',
       name: 'Harness',
       remoteUrl: 'https://github.com/acme/harness.git',
+      tenantId: 123,
+      metadata: []
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.get'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.update',
+      name: 'missing-id'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.update',
+      repositoryId: 'repository-1',
+      name: 123,
       metadata: []
     }),
     null
@@ -398,6 +428,49 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'repository.archive'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.create',
+      tenantId: 'tenant-1'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.get'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.update',
+      title: 'missing task id'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-1',
+      title: 5
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.delete'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.claim',
+      taskId: 'task-1',
+      controllerId: 'agent-1',
+      branchName: 5
     }),
     null
   );

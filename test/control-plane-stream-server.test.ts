@@ -3775,26 +3775,26 @@ void test('stream server exposes repository and task commands', async () => {
       afterCursor: 0
     });
     const taskSubscriptionId = subscribedTask['subscriptionId'] as string;
-    const subscribedMissingRepository = await client.sendCommand({
+    const subscribedRepositoryMiss = await client.sendCommand({
       type: 'stream.subscribe',
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
       workspaceId: 'workspace-task-1',
-      repositoryId: 'repository-missing-filter',
+      repositoryId: 'repository-missing',
       includeOutput: false,
       afterCursor: 0
     });
-    const missingRepositorySubscriptionId = subscribedMissingRepository['subscriptionId'] as string;
-    const subscribedMissingTask = await client.sendCommand({
+    const repositoryMissSubscriptionId = subscribedRepositoryMiss['subscriptionId'] as string;
+    const subscribedTaskMiss = await client.sendCommand({
       type: 'stream.subscribe',
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
       workspaceId: 'workspace-task-1',
-      taskId: 'task-missing-filter',
+      taskId: 'task-missing',
       includeOutput: false,
       afterCursor: 0
     });
-    const missingTaskSubscriptionId = subscribedMissingTask['subscriptionId'] as string;
+    const taskMissSubscriptionId = subscribedTaskMiss['subscriptionId'] as string;
 
     const upsertedRepository = await client.sendCommand({
       type: 'repository.upsert',
@@ -3984,6 +3984,24 @@ void test('stream server exposes repository and task commands', async () => {
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === repositoryMissSubscriptionId &&
+          envelope.event.type === 'task-reordered'
+      ),
+      false
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === taskMissSubscriptionId &&
+          envelope.event.type === 'task-reordered'
+      ),
+      false
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
           envelope.subscriptionId === repositorySubscriptionId &&
           envelope.event.type === 'repository-updated'
       ),
@@ -4022,24 +4040,6 @@ void test('stream server exposes repository and task commands', async () => {
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === taskSubscriptionId &&
           envelope.event.type === 'task-deleted'
-      ),
-      false
-    );
-    assert.equal(
-      observed.some(
-        (envelope) =>
-          envelope.kind === 'stream.event' &&
-          envelope.subscriptionId === missingRepositorySubscriptionId &&
-          envelope.event.type === 'task-reordered'
-      ),
-      false
-    );
-    assert.equal(
-      observed.some(
-        (envelope) =>
-          envelope.kind === 'stream.event' &&
-          envelope.subscriptionId === missingTaskSubscriptionId &&
-          envelope.event.type === 'task-reordered'
       ),
       false
     );

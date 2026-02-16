@@ -1076,6 +1076,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - includes `subscribeControlPlaneKeyEvents(...)`, a typed internal stream-subscription API that maps `stream.event` envelopes into key status/telemetry updates for UI consumers.
   - `src/control-plane/agent-realtime-api.ts` exposes the public TypeScript realtime automation API.
     - typed event handlers (`client.on(type, handler)`) over stream subscriptions, including wildcard listeners.
+    - object-model CRUD wrappers for projects/threads/repositories/tasks (`client.projects.*`, `client.threads.*`, `client.repositories.*`, `client.tasks.*`), with strict response validation.
+    - dynamic subscription lifecycle wrappers (`client.subscribe`, `client.unsubscribe`, `client.subscriptions.*`) so automations can scope feeds at runtime (for example by `repositoryId` / `taskId`) without reconnecting.
     - wrapper methods for steering, PTY transport, and ownership claim/release/takeover flows.
     - intended as the canonical API surface for external adapters while preserving control-plane parity with the human mux.
   - `scripts/control-plane-daemon.ts` provides a standalone control-plane process (`npm run control-plane:daemon`) for split client/server operation.

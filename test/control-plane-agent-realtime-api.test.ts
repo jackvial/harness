@@ -601,9 +601,11 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   });
 
   const wildcardTypes: string[] = [];
+  const wildcardSubscriptionIds: Array<string | undefined> = [];
   const statusEventSessionIds: string[] = [];
   const removeWildcard = realtime.client.on('*', (event) => {
     wildcardTypes.push(event.type);
+    wildcardSubscriptionIds.push(event.subscriptionId);
   });
   const removeStatusA = realtime.client.on('session.status', (event) => {
     statusEventSessionIds.push(event.observed.sessionId);
@@ -613,8 +615,12 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   });
 
   const dispatch = (realtime.client as unknown as {
-    dispatch: (cursor: number, observed: StreamObservedEvent) => void;
-  }).dispatch.bind(realtime.client) as (cursor: number, observed: StreamObservedEvent) => void;
+    dispatch: (subscriptionId: string, cursor: number, observed: StreamObservedEvent) => void;
+  }).dispatch.bind(realtime.client) as (
+    subscriptionId: string,
+    cursor: number,
+    observed: StreamObservedEvent
+  ) => void;
 
   const directoryPayload = {
     directoryId: 'directory-1',
@@ -773,7 +779,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   ];
 
   for (const event of mappedEvents) {
-    dispatch(1, event);
+    dispatch('subscription-test', 1, event);
   }
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(wildcardTypes, [
@@ -797,6 +803,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     'session.output'
   ]);
   assert.deepEqual(statusEventSessionIds, ['conversation-1']);
+  assert.equal(wildcardSubscriptionIds.every((subscriptionId) => subscriptionId === 'subscription-test'), true);
   assert.deepEqual(handlerErrors, ['listener boom']);
 
   removeStatusA();
@@ -1048,6 +1055,644 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   assert.equal(mockClient.closed, true);
   const unsubscribeCommands = mockClient.commands.filter((command) => command.type === 'stream.unsubscribe');
   assert.equal(unsubscribeCommands.length, 1);
+});
+
+void test('agent realtime client exposes typed CRUD wrappers for projects threads repositories tasks and subscriptions', async () => {
+  const mockClient = new MockRealtimeControlPlaneClient();
+  const realtime = createRealtimeClientForTest(mockClient);
+  const timestamp = '2026-02-01T00:00:00.000Z';
+
+  const projectRecord = {
+    directoryId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    path: '/tmp/project',
+    createdAt: timestamp,
+    archivedAt: null
+  };
+  const projectUpdatedRecord = {
+    ...projectRecord,
+    path: '/tmp/project-updated'
+  };
+  const projectArchivedRecord = {
+    ...projectUpdatedRecord,
+    archivedAt: timestamp
+  };
+  const malformedProjectRecord = {
+    directoryId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    createdAt: timestamp,
+    archivedAt: null
+  };
+  const threadRecord = {
+    conversationId: 'conversation-1',
+    directoryId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    title: 'Thread One',
+    agentType: 'codex',
+    createdAt: timestamp,
+    archivedAt: null,
+    runtimeStatus: 'running',
+    runtimeLive: true,
+    runtimeAttentionReason: null,
+    runtimeProcessId: null,
+    runtimeLastEventAt: timestamp,
+    runtimeLastExit: {
+      code: null,
+      signal: 'SIGTERM'
+    },
+    adapterState: {}
+  };
+  const malformedThreadRecord = {
+    ...threadRecord,
+    archivedAt: 123,
+    runtimeProcessId: 'invalid-number',
+    runtimeLastExit: {
+      code: 1,
+      signal: 9
+    }
+  };
+  const regexMalformedThreadRecord = {
+    ...threadRecord,
+    runtimeLastExit: {
+      code: 1,
+      signal: 'BAD'
+    }
+  };
+  const undefinedSignalThreadRecord = {
+    conversationId: 'conversation-1',
+    directoryId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    title: 'Thread bad signal',
+    agentType: 'codex',
+    createdAt: timestamp,
+    archivedAt: null,
+    runtimeStatus: 'running',
+    runtimeLive: true,
+    runtimeAttentionReason: null,
+    runtimeLastEventAt: timestamp,
+    runtimeLastExit: {},
+    adapterState: {}
+  };
+  const nullSignalThreadRecord = {
+    ...threadRecord,
+    runtimeLastExit: {
+      code: 'invalid-code',
+      signal: null
+    }
+  };
+  const nonObjectExitThreadRecord = {
+    ...threadRecord,
+    runtimeLastExit: 'invalid-exit'
+  };
+  const invalidRuntimeLiveThreadRecord = {
+    ...threadRecord,
+    runtimeLive: 'invalid-runtime-live'
+  };
+  const missingExitThreadRecord = {
+    conversationId: 'conversation-1',
+    directoryId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    title: 'Thread bad status',
+    agentType: 'codex',
+    createdAt: timestamp,
+    archivedAt: null,
+    runtimeStatus: 'unknown',
+    runtimeLive: true,
+    runtimeAttentionReason: null,
+    runtimeProcessId: null,
+    runtimeLastEventAt: timestamp,
+    adapterState: {}
+  };
+  const threadUpdatedRecord = {
+    ...threadRecord,
+    title: 'Thread One Updated'
+  };
+  const threadArchivedRecord = {
+    ...threadUpdatedRecord,
+    archivedAt: timestamp,
+    runtimeLastExit: null
+  };
+  const repositoryRecord = {
+    repositoryId: 'repository-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    name: 'harness',
+    remoteUrl: 'https://github.com/acme/harness.git',
+    defaultBranch: 'main',
+    metadata: {
+      provider: 'github'
+    },
+    createdAt: timestamp,
+    archivedAt: null
+  };
+  const repositoryUpdatedRecord = {
+    ...repositoryRecord,
+    name: 'harness-updated'
+  };
+  const repositoryArchivedRecord = {
+    ...repositoryUpdatedRecord,
+    archivedAt: timestamp
+  };
+  const taskRecord = {
+    taskId: 'task-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    repositoryId: 'repository-1',
+    title: 'implement api',
+    description: 'details',
+    status: 'ready',
+    orderIndex: 0,
+    claimedByControllerId: null,
+    claimedByDirectoryId: null,
+    branchName: null,
+    baseBranch: null,
+    claimedAt: null,
+    completedAt: null,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  const taskClaimedRecord = {
+    ...taskRecord,
+    status: 'in-progress',
+    claimedByControllerId: 'agent-1',
+    claimedByDirectoryId: 'directory-1',
+    branchName: 'task-branch',
+    baseBranch: 'main',
+    claimedAt: timestamp,
+    updatedAt: timestamp
+  };
+  const taskCompletedRecord = {
+    ...taskClaimedRecord,
+    status: 'completed',
+    completedAt: timestamp
+  };
+
+  mockClient.queueResult('stream.subscribe', {
+    subscriptionId: 'subscription-extra',
+    cursor: 44
+  });
+  mockClient.queueResult('stream.subscribe', {
+    subscriptionId: 'subscription-malformed',
+    cursor: 45
+  });
+  mockClient.queueResult('stream.unsubscribe', {
+    unsubscribed: true
+  });
+  mockClient.queueResult('stream.unsubscribe', {});
+
+  mockClient.queueResult('directory.upsert', {
+    directory: projectRecord
+  });
+  mockClient.queueResult('directory.upsert', {
+    directory: projectRecord
+  });
+  mockClient.queueResult('directory.upsert', {
+    directory: projectUpdatedRecord
+  });
+  mockClient.queueResult('directory.upsert', {
+    directory: []
+  });
+  mockClient.queueResult('directory.upsert', {
+    directory: malformedProjectRecord
+  });
+  mockClient.queueResult('directory.list', {
+    directories: [projectRecord]
+  });
+  mockClient.queueResult('directory.list', {
+    directories: [projectRecord]
+  });
+  mockClient.queueResult('directory.list', {
+    directories: []
+  });
+  mockClient.queueResult('directory.list', {
+    directories: {}
+  });
+  mockClient.queueResult('directory.archive', {
+    directory: projectArchivedRecord
+  });
+
+  mockClient.queueResult('conversation.create', {
+    conversation: threadRecord
+  });
+  mockClient.queueResult('conversation.create', {
+    conversation: malformedThreadRecord as unknown as Record<string, unknown>
+  });
+  mockClient.queueResult('conversation.list', {
+    conversations: [threadRecord]
+  });
+  mockClient.queueResult('conversation.list', {
+    conversations: [threadRecord]
+  });
+  mockClient.queueResult('conversation.list', {
+    conversations: []
+  });
+  mockClient.queueResult('conversation.update', {
+    conversation: threadUpdatedRecord
+  });
+  mockClient.queueResult('conversation.update', {
+    conversation: regexMalformedThreadRecord as unknown as Record<string, unknown>
+  });
+  mockClient.queueResult('conversation.update', {
+    conversation: undefinedSignalThreadRecord as unknown as Record<string, unknown>
+  });
+  mockClient.queueResult('conversation.update', {
+    conversation: nullSignalThreadRecord as unknown as Record<string, unknown>
+  });
+  mockClient.queueResult('conversation.update', {
+    conversation: nonObjectExitThreadRecord as unknown as Record<string, unknown>
+  });
+  mockClient.queueResult('conversation.update', {
+    conversation: invalidRuntimeLiveThreadRecord as unknown as Record<string, unknown>
+  });
+  mockClient.queueResult('conversation.update', {
+    conversation: missingExitThreadRecord as unknown as Record<string, unknown>
+  });
+  mockClient.queueResult('conversation.archive', {
+    conversation: threadArchivedRecord
+  });
+  mockClient.queueResult('conversation.archive', {
+    conversation: []
+  });
+  mockClient.queueResult('conversation.delete', {
+    deleted: true
+  });
+  mockClient.queueResult('conversation.delete', {});
+  mockClient.queueResult('session.status', {
+    sessionId: 'conversation-1',
+    directoryId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    worktreeId: 'worktree-local',
+    status: 'running',
+    attentionReason: null,
+    latestCursor: 7,
+    processId: 51000,
+    attachedClients: 1,
+    eventSubscribers: 1,
+    startedAt: timestamp,
+    lastEventAt: timestamp,
+    lastExit: null,
+    exitedAt: null,
+    live: true,
+    controller: null,
+    telemetry: null
+  });
+
+  mockClient.queueResult('repository.upsert', {
+    repository: repositoryRecord
+  });
+  mockClient.queueResult('repository.upsert', {
+    repository: repositoryRecord
+  });
+  mockClient.queueResult('repository.upsert', {
+    repository: []
+  });
+  mockClient.queueResult('repository.get', {
+    repository: repositoryRecord
+  });
+  mockClient.queueResult('repository.list', {
+    repositories: [repositoryRecord]
+  });
+  mockClient.queueResult('repository.list', {
+    repositories: [{}]
+  });
+  mockClient.queueResult('repository.update', {
+    repository: repositoryUpdatedRecord
+  });
+  mockClient.queueResult('repository.archive', {
+    repository: repositoryArchivedRecord
+  });
+
+  mockClient.queueResult('task.create', {
+    task: taskRecord
+  });
+  mockClient.queueResult('task.create', {
+    task: []
+  });
+  mockClient.queueResult('task.get', {
+    task: taskRecord
+  });
+  mockClient.queueResult('task.list', {
+    tasks: [taskRecord]
+  });
+  mockClient.queueResult('task.list', {
+    tasks: [{}]
+  });
+  mockClient.queueResult('task.update', {
+    task: taskClaimedRecord
+  });
+  mockClient.queueResult('task.delete', {
+    deleted: true
+  });
+  mockClient.queueResult('task.delete', {});
+  mockClient.queueResult('task.claim', {
+    task: taskClaimedRecord
+  });
+  mockClient.queueResult('task.complete', {
+    task: taskCompletedRecord
+  });
+  mockClient.queueResult('task.ready', {
+    task: taskRecord
+  });
+  mockClient.queueResult('task.queue', {
+    task: taskRecord
+  });
+  mockClient.queueResult('task.reorder', {
+    tasks: [taskRecord]
+  });
+
+  const createdSub = await realtime.client.subscriptions.create({
+    taskId: 'task-1'
+  });
+  assert.equal(createdSub.subscriptionId, 'subscription-extra');
+  const removedSub = await createdSub.unsubscribe();
+  assert.equal(removedSub.unsubscribed, true);
+  const unknownViaWrapper = await realtime.client.subscriptions.remove('subscription-unknown-wrapper');
+  assert.equal(unknownViaWrapper.unsubscribed, false);
+  const unknownUnsubscribed = await realtime.client.unsubscribe('subscription-unknown');
+  assert.equal(unknownUnsubscribed.unsubscribed, false);
+  const malformedSub = await realtime.client.subscribe({
+    repositoryId: 'repository-1'
+  });
+  await assert.rejects(
+    realtime.client.unsubscribe(malformedSub.subscriptionId),
+    /stream\.unsubscribe returned malformed response/
+  );
+
+  const createdProject = await realtime.client.projects.create({
+    projectId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    path: '/tmp/project'
+  });
+  assert.equal(createdProject.projectId, 'directory-1');
+  const upsertedProject = await realtime.client.projects.upsert({
+    path: '/tmp/project'
+  });
+  assert.equal(upsertedProject.path, '/tmp/project');
+  const updatedProject = await realtime.client.projects.update('directory-1', {
+    path: '/tmp/project-updated'
+  });
+  assert.equal(updatedProject.path, '/tmp/project-updated');
+  const listedProjects = await realtime.client.projects.list({
+    tenantId: 'tenant-local'
+  });
+  assert.equal(listedProjects.length, 1);
+  const fetchedProject = await realtime.client.projects.get('directory-1');
+  assert.equal(fetchedProject.projectId, 'directory-1');
+  await assert.rejects(realtime.client.projects.get('directory-missing'), /project not found/);
+  const archivedProject = await realtime.client.projects.archive('directory-1');
+  assert.equal(archivedProject.archivedAt, timestamp);
+  await assert.rejects(
+    realtime.client.upsertProject({
+      path: '/tmp/bad'
+    }),
+    /directory\.upsert returned malformed project/
+  );
+  await assert.rejects(
+    realtime.client.upsertProject({
+      path: '/tmp/bad-2'
+    }),
+    /directory\.upsert returned malformed project/
+  );
+  await assert.rejects(realtime.client.projects.list(), /directory\.list returned malformed projects/);
+
+  const createdThread = await realtime.client.threads.create({
+    threadId: 'conversation-1',
+    projectId: 'directory-1',
+    title: 'Thread One',
+    agentType: 'codex',
+    adapterState: {}
+  });
+  assert.equal(createdThread.threadId, 'conversation-1');
+  await assert.rejects(
+    realtime.client.createThread({
+      projectId: 'directory-1',
+      title: 'bad',
+      agentType: 'codex'
+    }),
+    /conversation\.create returned malformed thread/
+  );
+  const listedThreads = await realtime.client.threads.list({
+    projectId: 'directory-1'
+  });
+  assert.equal(listedThreads.length, 1);
+  const fetchedThread = await realtime.client.threads.get('conversation-1');
+  assert.equal(fetchedThread.threadId, 'conversation-1');
+  await assert.rejects(realtime.client.threads.get('conversation-missing'), /thread not found/);
+  const updatedThread = await realtime.client.threads.update('conversation-1', {
+    title: 'Thread One Updated'
+  });
+  assert.equal(updatedThread.title, 'Thread One Updated');
+  await assert.rejects(
+    realtime.client.threads.update('conversation-1', {
+      title: 'bad update'
+    }),
+    /conversation\.update returned malformed thread/
+  );
+  await assert.rejects(
+    realtime.client.threads.update('conversation-1', {
+      title: 'bad update missing signal'
+    }),
+    /conversation\.update returned malformed thread/
+  );
+  await assert.rejects(
+    realtime.client.threads.update('conversation-1', {
+      title: 'bad update null signal'
+    }),
+    /conversation\.update returned malformed thread/
+  );
+  await assert.rejects(
+    realtime.client.threads.update('conversation-1', {
+      title: 'bad update non-object exit'
+    }),
+    /conversation\.update returned malformed thread/
+  );
+  await assert.rejects(
+    realtime.client.threads.update('conversation-1', {
+      title: 'bad update invalid runtime live'
+    }),
+    /conversation\.update returned malformed thread/
+  );
+  await assert.rejects(
+    realtime.client.threads.update('conversation-1', {
+      title: 'bad update missing exit'
+    }),
+    /conversation\.update returned malformed thread/
+  );
+  const archivedThread = await realtime.client.threads.archive('conversation-1');
+  assert.equal(archivedThread.archivedAt, timestamp);
+  await assert.rejects(
+    realtime.client.threads.archive('conversation-1'),
+    /conversation\.archive returned malformed thread/
+  );
+  const deletedThread = await realtime.client.threads.delete('conversation-1');
+  assert.equal(deletedThread.deleted, true);
+  await assert.rejects(realtime.client.threads.delete('conversation-1'), /malformed response/);
+  const threadStatus = await realtime.client.threads.status('conversation-1');
+  assert.equal(threadStatus.sessionId, 'conversation-1');
+
+  const createdRepository = await realtime.client.repositories.create({
+    repositoryId: 'repository-1',
+    name: 'harness',
+    remoteUrl: 'https://github.com/acme/harness.git',
+    metadata: {
+      provider: 'github'
+    }
+  });
+  assert.equal(createdRepository.repositoryId, 'repository-1');
+  const upsertedRepository = await realtime.client.repositories.upsert({
+    name: 'harness',
+    remoteUrl: 'https://github.com/acme/harness.git'
+  });
+  assert.equal(upsertedRepository.name, 'harness');
+  await assert.rejects(
+    realtime.client.repositories.upsert({
+      name: 'bad',
+      remoteUrl: 'https://github.com/acme/harness.git'
+    }),
+    /repository\.upsert returned malformed repository/
+  );
+  const fetchedRepository = await realtime.client.repositories.get('repository-1');
+  assert.equal(fetchedRepository.repositoryId, 'repository-1');
+  const listedRepositories = await realtime.client.repositories.list();
+  assert.equal(listedRepositories.length, 1);
+  await assert.rejects(realtime.client.repositories.list(), /repository\.list returned malformed repositories/);
+  const updatedRepository = await realtime.client.repositories.update('repository-1', {
+    name: 'harness-updated'
+  });
+  assert.equal(updatedRepository.name, 'harness-updated');
+  const archivedRepository = await realtime.client.repositories.archive('repository-1');
+  assert.equal(archivedRepository.archivedAt, timestamp);
+
+  const createdTask = await realtime.client.tasks.create({
+    taskId: 'task-1',
+    repositoryId: 'repository-1',
+    title: 'implement api',
+    description: 'details'
+  });
+  assert.equal(createdTask.taskId, 'task-1');
+  await assert.rejects(
+    realtime.client.createTask({
+      title: 'bad'
+    }),
+    /task\.create returned malformed task/
+  );
+  const fetchedTask = await realtime.client.tasks.get('task-1');
+  assert.equal(fetchedTask.taskId, 'task-1');
+  const listedTasks = await realtime.client.tasks.list({
+    repositoryId: 'repository-1'
+  });
+  assert.equal(listedTasks.length, 1);
+  await assert.rejects(realtime.client.tasks.list(), /task\.list returned malformed tasks/);
+  const updatedTask = await realtime.client.tasks.update('task-1', {
+    title: 'updated'
+  });
+  assert.equal(updatedTask.status, 'in-progress');
+  const deletedTask = await realtime.client.tasks.delete('task-1');
+  assert.equal(deletedTask.deleted, true);
+  await assert.rejects(realtime.client.tasks.delete('task-1'), /malformed response/);
+  const claimedTask = await realtime.client.tasks.claim({
+    taskId: 'task-1',
+    controllerId: 'agent-1',
+    projectId: 'directory-1',
+    branchName: 'task-branch',
+    baseBranch: 'main'
+  });
+  assert.equal(claimedTask.claimedByProjectId, 'directory-1');
+  const completedTask = await realtime.client.tasks.complete('task-1');
+  assert.equal(completedTask.status, 'completed');
+  const readyTask = await realtime.client.tasks.ready('task-1');
+  assert.equal(readyTask.status, 'ready');
+  const queuedTask = await realtime.client.tasks.queue('task-1');
+  assert.equal(queuedTask.status, 'ready');
+  const reorderedTasks = await realtime.client.tasks.reorder({
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    orderedTaskIds: ['task-1']
+  });
+  assert.equal(reorderedTasks.length, 1);
+
+  mockClient.queueError('stream.unsubscribe', new Error('unsubscribe failed'));
+  await realtime.client.close();
+});
+
+void test('agent realtime client accepts draft task status and completed thread runtime status', async () => {
+  const mockClient = new MockRealtimeControlPlaneClient();
+  const realtime = createRealtimeClientForTest(mockClient);
+  const timestamp = '2026-02-01T00:00:00.000Z';
+
+  mockClient.queueResult('conversation.list', {
+    conversations: [
+      {
+        conversationId: 'conversation-runtime-completed',
+        directoryId: 'directory-1',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        title: 'Completed Thread',
+        agentType: 'codex',
+        createdAt: timestamp,
+        archivedAt: null,
+        runtimeStatus: 'completed',
+        runtimeLive: false,
+        runtimeAttentionReason: null,
+        runtimeProcessId: null,
+        runtimeLastEventAt: timestamp,
+        runtimeLastExit: {
+          code: 0,
+          signal: null
+        },
+        adapterState: {}
+      }
+    ]
+  });
+
+  mockClient.queueResult('task.list', {
+    tasks: [
+      {
+        taskId: 'task-draft',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        repositoryId: null,
+        title: 'Draft task',
+        description: '',
+        status: 'draft',
+        orderIndex: 1,
+        claimedByControllerId: null,
+        claimedByDirectoryId: null,
+        branchName: null,
+        baseBranch: null,
+        claimedAt: null,
+        completedAt: null,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }
+    ]
+  });
+
+  const threads = await realtime.client.threads.list();
+  assert.equal(threads[0]?.runtimeStatus, 'completed');
+  const tasks = await realtime.client.tasks.list();
+  assert.equal(tasks[0]?.status, 'draft');
+
+  await realtime.client.close();
 });
 
 void test('agent realtime connect forwards optional filters and ignores unrelated subscription events', async () => {

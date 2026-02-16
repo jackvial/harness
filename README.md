@@ -49,6 +49,7 @@ Harness is built for developers who want to:
 ## Programmable Interface
 
 Harness exposes a typed real-time client so you can build automations and integrations without screen-scraping.
+The API is object-model oriented (`projects`, `threads`, `repositories`, `tasks`) and subscription-aware.
 
 ```ts
 // Local import path in this repository.
@@ -70,19 +71,48 @@ client.on('session.telemetry', ({ observed }) => {
   console.log(observed.sessionId, observed.keyEvent.summary);
 });
 
-await client.claimSession({
-  sessionId: 'session-123',
-  controllerId: 'human-operator',
-  controllerType: 'human',
-  reason: 'manual review'
+const repository = await client.repositories.upsert({
+  repositoryId: 'repository-1',
+  name: 'harness',
+  remoteUrl: 'https://github.com/acme/harness.git',
+  defaultBranch: 'main'
 });
 
-const sessions = await client.listSessions({
-  status: 'running',
-  sort: 'attention-first'
+const project = await client.projects.create({
+  projectId: 'directory-1',
+  path: '/Users/me/dev/harness'
 });
 
-console.log('running sessions', sessions.length);
+const thread = await client.threads.create({
+  projectId: project.projectId,
+  title: 'Fix flaky tests',
+  agentType: 'codex'
+});
+
+const task = await client.tasks.create({
+  repositoryId: repository.repositoryId,
+  title: 'stabilize control-plane tests'
+});
+
+await client.tasks.claim({
+  taskId: task.taskId,
+  controllerId: 'agent-orchestrator',
+  projectId: project.projectId
+});
+
+const taskSubscription = await client.subscriptions.create({
+  repositoryId: repository.repositoryId
+});
+
+client.on('task.updated', ({ observed }) => {
+  console.log(observed.task['taskId'], observed.task['status']);
+});
+
+const status = await client.threads.status(thread.threadId);
+console.log('thread runtime', status.status);
+
+await taskSubscription.unsubscribe();
+await client.close();
 ```
 
 ### What You Can Build On Top
