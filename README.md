@@ -45,7 +45,7 @@ Harness is built for developers who want to:
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
-- Detached gateway runtime: client disconnects do not stop running threads; stop the gateway explicitly when you want all child sessions to shut down.
+- Detached gateway runtime: client disconnects do not stop running threads; gateway startup eagerly restores non-archived thread runtimes, and `harness gateway stop` is the explicit shutdown boundary for child sessions.
 - `harness gateway stop` also performs workspace-scoped orphan `sqlite3` cleanup for the configured state DB path by default (`--no-cleanup-orphans` disables it).
 
 ## Programmable Interface

@@ -356,6 +356,125 @@ void test('stream server dispatches lifecycle hooks from observed events', async
   assert.equal(webhookEvents.includes('session.started'), true);
 });
 
+void test('stream server auto-starts persisted conversations during gateway startup', async () => {
+  const stateStorePath = makeTempStateStorePath();
+  const seededStore = new SqliteControlPlaneStore(stateStorePath);
+  seededStore.upsertDirectory({
+    directoryId: 'directory-bootstrap-codex',
+    tenantId: 'tenant-bootstrap',
+    userId: 'user-bootstrap',
+    workspaceId: 'workspace-bootstrap',
+    path: '/tmp/bootstrap-codex'
+  });
+  seededStore.upsertDirectory({
+    directoryId: 'directory-bootstrap-terminal',
+    tenantId: 'tenant-bootstrap',
+    userId: 'user-bootstrap',
+    workspaceId: 'workspace-bootstrap',
+    path: '/tmp/bootstrap-terminal'
+  });
+  seededStore.upsertDirectory({
+    directoryId: 'directory-bootstrap-archived',
+    tenantId: 'tenant-bootstrap',
+    userId: 'user-bootstrap',
+    workspaceId: 'workspace-bootstrap',
+    path: '/tmp/bootstrap-archived'
+  });
+  seededStore.createConversation({
+    conversationId: 'conversation-bootstrap-codex',
+    directoryId: 'directory-bootstrap-codex',
+    title: 'codex bootstrap',
+    agentType: 'codex',
+    adapterState: {
+      codex: {
+        resumeSessionId: 'thread-bootstrap-codex'
+      }
+    }
+  });
+  seededStore.createConversation({
+    conversationId: 'conversation-bootstrap-terminal',
+    directoryId: 'directory-bootstrap-terminal',
+    title: 'terminal bootstrap',
+    agentType: 'terminal'
+  });
+  seededStore.createConversation({
+    conversationId: 'conversation-bootstrap-archived',
+    directoryId: 'directory-bootstrap-archived',
+    title: 'archived bootstrap',
+    agentType: 'codex',
+    adapterState: {
+      codex: {
+        resumeSessionId: 'thread-bootstrap-archived'
+      }
+    }
+  });
+  seededStore.archiveConversation('conversation-bootstrap-archived');
+  seededStore.close();
+
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    stateStorePath,
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  try {
+    assert.equal(sessions.length, 2);
+    const codex = sessions.find((session) => session.input.cwd === '/tmp/bootstrap-codex');
+    if (codex === undefined) {
+      throw new Error('expected codex bootstrap session');
+    }
+    assert.deepEqual(codex.input.args, ['resume', 'thread-bootstrap-codex']);
+    assert.equal(codex.input.initialCols, 80);
+    assert.equal(codex.input.initialRows, 24);
+
+    const terminal = sessions.find((session) => session.input.cwd === '/tmp/bootstrap-terminal');
+    if (terminal === undefined) {
+      throw new Error('expected terminal bootstrap session');
+    }
+    assert.equal(
+      terminal.input.command,
+      resolveTerminalCommandForEnvironment(process.env, process.platform)
+    );
+    assert.deepEqual(terminal.input.baseArgs, []);
+    assert.deepEqual(terminal.input.args, []);
+    assert.equal(terminal.input.initialCols, 80);
+    assert.equal(terminal.input.initialRows, 24);
+
+    assert.equal(
+      sessions.some((session) => session.input.args.includes('thread-bootstrap-archived')),
+      false
+    );
+
+    const listed = await client.sendCommand({
+      type: 'session.list',
+      tenantId: 'tenant-bootstrap',
+      userId: 'user-bootstrap',
+      workspaceId: 'workspace-bootstrap',
+      sort: 'started-asc'
+    });
+    const listedRows = listed['sessions'] as Array<Record<string, unknown>>;
+    assert.equal(listedRows.length, 2);
+    assert.deepEqual(
+      listedRows.map((row) => row['sessionId']).sort(),
+      ['conversation-bootstrap-codex', 'conversation-bootstrap-terminal']
+    );
+    assert.equal(listedRows.every((row) => row['live'] === true), true);
+  } finally {
+    client.close();
+    await server.close();
+    rmSync(stateStorePath, { force: true });
+    rmSync(dirname(stateStorePath), { recursive: true, force: true });
+  }
+});
+
 void test('stream server supports start/attach/io/events/cleanup over one protocol path', async () => {
   const created: FakeLiveSession[] = [];
   const startSession = (input: StartControlPlaneSessionInput): FakeLiveSession => {

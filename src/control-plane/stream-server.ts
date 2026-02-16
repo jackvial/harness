@@ -35,6 +35,7 @@ import {
   type ControlPlaneTelemetrySummary
 } from '../store/control-plane-store.ts';
 import {
+  buildAgentStartArgs,
   codexResumeSessionIdFromAdapterState,
   normalizeAdapterState
 } from '../adapters/agent-session-state.ts';
@@ -84,6 +85,21 @@ export interface StartControlPlaneSessionInput {
   initialRows: number;
   terminalForegroundHex?: string;
   terminalBackgroundHex?: string;
+}
+
+interface StartSessionRuntimeInput {
+  readonly sessionId: string;
+  readonly args: readonly string[];
+  readonly initialCols: number;
+  readonly initialRows: number;
+  readonly env?: Record<string, string>;
+  readonly cwd?: string;
+  readonly tenantId?: string;
+  readonly userId?: string;
+  readonly workspaceId?: string;
+  readonly worktreeId?: string;
+  readonly terminalForegroundHex?: string;
+  readonly terminalBackgroundHex?: string;
 }
 
 type StartControlPlaneSession = (input: StartControlPlaneSessionInput) => LiveSessionLike;
@@ -202,6 +218,8 @@ interface OtlpEndpointTarget {
 const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
+const DEFAULT_BOOTSTRAP_SESSION_COLS = 80;
+const DEFAULT_BOOTSTRAP_SESSION_ROWS = 24;
 const DEFAULT_TENANT_ID = 'tenant-local';
 const DEFAULT_USER_ID = 'user-local';
 const DEFAULT_WORKSPACE_ID = 'workspace-local';
@@ -455,6 +473,7 @@ export class ControlPlaneStreamServer {
     if (this.telemetryServer !== null) {
       await this.startTelemetryServer();
     }
+    this.autoStartPersistedConversationsOnStartup();
     this.startHistoryPollingIfEnabled();
   }
 
@@ -612,6 +631,128 @@ export class ControlPlaneStreamServer {
       command: this.resolveTerminalCommand(),
       baseArgs: []
     };
+  }
+
+  private autoStartPersistedConversationsOnStartup(): void {
+    const conversations = this.stateStore.listConversations();
+    let started = 0;
+    let failed = 0;
+    for (const conversation of conversations) {
+      const adapterState = normalizeAdapterState(conversation.adapterState);
+      const startArgs = buildAgentStartArgs(conversation.agentType, [], adapterState);
+      const directory = this.stateStore.getDirectory(conversation.directoryId);
+      try {
+        const bootstrapInput: StartSessionRuntimeInput = {
+          sessionId: conversation.conversationId,
+          args: startArgs,
+          initialCols: DEFAULT_BOOTSTRAP_SESSION_COLS,
+          initialRows: DEFAULT_BOOTSTRAP_SESSION_ROWS,
+          tenantId: conversation.tenantId,
+          userId: conversation.userId,
+          workspaceId: conversation.workspaceId,
+          worktreeId: DEFAULT_WORKTREE_ID,
+          ...(directory?.path !== undefined ? { cwd: directory.path } : {})
+        };
+        this.startSessionRuntime(bootstrapInput);
+        started += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    recordPerfEvent('control-plane.startup.sessions-auto-start', {
+      conversations: conversations.length,
+      started,
+      failed
+    });
+  }
+
+  private startSessionRuntime(command: StartSessionRuntimeInput): void {
+    const existing = this.sessions.get(command.sessionId);
+    if (existing !== undefined) {
+      if (existing.status === 'exited' && existing.session === null) {
+        this.destroySession(command.sessionId, false);
+      } else {
+        throw new Error(`session already exists: ${command.sessionId}`);
+      }
+    }
+
+    const persistedConversation = this.stateStore.getConversation(command.sessionId);
+    const agentType = persistedConversation?.agentType ?? 'codex';
+    const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
+    const launchProfile = this.launchProfileForAgent(agentType);
+    const startInput: StartControlPlaneSessionInput = {
+      args: [...codexLaunchArgs, ...command.args],
+      useNotifyHook: agentType === 'codex',
+      initialCols: command.initialCols,
+      initialRows: command.initialRows
+    };
+    if (launchProfile.command !== undefined) {
+      startInput.command = launchProfile.command;
+    }
+    if (launchProfile.baseArgs !== undefined) {
+      startInput.baseArgs = [...launchProfile.baseArgs];
+    }
+    if (command.env !== undefined) {
+      startInput.env = command.env;
+    }
+    if (command.cwd !== undefined) {
+      startInput.cwd = command.cwd;
+    }
+    if (command.terminalForegroundHex !== undefined) {
+      startInput.terminalForegroundHex = command.terminalForegroundHex;
+    }
+    if (command.terminalBackgroundHex !== undefined) {
+      startInput.terminalBackgroundHex = command.terminalBackgroundHex;
+    }
+
+    const session = this.startSession(startInput);
+
+    const unsubscribe = session.onEvent((event) => {
+      this.handleSessionEvent(command.sessionId, event);
+    });
+
+    const persistedRuntimeStatus = persistedConversation?.runtimeStatus;
+    const persistedRuntimeLastEventAt = persistedConversation?.runtimeLastEventAt ?? null;
+    const initialStatus: StreamSessionRuntimeStatus =
+      persistedRuntimeStatus === undefined ||
+      persistedRuntimeStatus === 'running' ||
+      persistedRuntimeStatus === 'exited' ||
+      (persistedRuntimeStatus === 'completed' && persistedRuntimeLastEventAt === null)
+        ? 'running'
+        : persistedRuntimeStatus;
+    const initialAttentionReason =
+      initialStatus === 'needs-input' ? persistedConversation?.runtimeAttentionReason ?? null : null;
+    this.sessions.set(command.sessionId, {
+      id: command.sessionId,
+      directoryId: persistedConversation?.directoryId ?? null,
+      agentType,
+      adapterState: normalizeAdapterState(persistedConversation?.adapterState ?? {}),
+      tenantId: persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID,
+      userId: persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID,
+      workspaceId: persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+      worktreeId: command.worktreeId ?? DEFAULT_WORKTREE_ID,
+      session,
+      eventSubscriberConnectionIds: new Set<string>(),
+      attachmentByConnectionId: new Map<string, string>(),
+      unsubscribe,
+      status: initialStatus,
+      attentionReason: initialAttentionReason,
+      lastEventAt: persistedConversation?.runtimeLastEventAt ?? null,
+      lastExit: persistedConversation?.runtimeLastExit ?? null,
+      lastSnapshot: null,
+      startedAt: new Date().toISOString(),
+      exitedAt: null,
+      tombstoneTimer: null,
+      lastObservedOutputCursor: session.latestCursorValue(),
+      latestTelemetry: this.stateStore.latestTelemetrySummary(command.sessionId),
+      controller: null
+    });
+
+    const state = this.sessions.get(command.sessionId);
+    if (state !== undefined) {
+      this.persistConversationRuntime(state);
+      this.publishStatusObservedEvent(state);
+    }
   }
 
   private telemetryEndpointBaseUrl(): string | null {
@@ -1976,92 +2117,25 @@ export class ControlPlaneStreamServer {
     }
 
     if (command.type === 'pty.start') {
-      const existing = this.sessions.get(command.sessionId);
-      if (existing !== undefined) {
-        if (existing.status === 'exited' && existing.session === null) {
-          this.destroySession(command.sessionId, false);
-        } else {
-          throw new Error(`session already exists: ${command.sessionId}`);
-        }
-      }
-
-      const persistedConversation = this.stateStore.getConversation(command.sessionId);
-      const agentType = persistedConversation?.agentType ?? 'codex';
-      const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
-      const launchProfile = this.launchProfileForAgent(agentType);
-      const startInput: StartControlPlaneSessionInput = {
-        args: [...codexLaunchArgs, ...command.args],
-        useNotifyHook: agentType === 'codex',
+      const startInput: StartSessionRuntimeInput = {
+        sessionId: command.sessionId,
+        args: command.args,
         initialCols: command.initialCols,
-        initialRows: command.initialRows
+        initialRows: command.initialRows,
+        ...(command.env !== undefined ? { env: command.env } : {}),
+        ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+        ...(command.tenantId !== undefined ? { tenantId: command.tenantId } : {}),
+        ...(command.userId !== undefined ? { userId: command.userId } : {}),
+        ...(command.workspaceId !== undefined ? { workspaceId: command.workspaceId } : {}),
+        ...(command.worktreeId !== undefined ? { worktreeId: command.worktreeId } : {}),
+        ...(command.terminalForegroundHex !== undefined
+          ? { terminalForegroundHex: command.terminalForegroundHex }
+          : {}),
+        ...(command.terminalBackgroundHex !== undefined
+          ? { terminalBackgroundHex: command.terminalBackgroundHex }
+          : {})
       };
-      if (launchProfile.command !== undefined) {
-        startInput.command = launchProfile.command;
-      }
-      if (launchProfile.baseArgs !== undefined) {
-        startInput.baseArgs = [...launchProfile.baseArgs];
-      }
-      if (command.env !== undefined) {
-        startInput.env = command.env;
-      }
-      if (command.cwd !== undefined) {
-        startInput.cwd = command.cwd;
-      }
-      if (command.terminalForegroundHex !== undefined) {
-        startInput.terminalForegroundHex = command.terminalForegroundHex;
-      }
-      if (command.terminalBackgroundHex !== undefined) {
-        startInput.terminalBackgroundHex = command.terminalBackgroundHex;
-      }
-
-      const session = this.startSession(startInput);
-
-      const unsubscribe = session.onEvent((event) => {
-        this.handleSessionEvent(command.sessionId, event);
-      });
-
-      const persistedRuntimeStatus = persistedConversation?.runtimeStatus;
-      const persistedRuntimeLastEventAt = persistedConversation?.runtimeLastEventAt ?? null;
-      const initialStatus: StreamSessionRuntimeStatus =
-        persistedRuntimeStatus === undefined ||
-        persistedRuntimeStatus === 'running' ||
-        persistedRuntimeStatus === 'exited' ||
-        (persistedRuntimeStatus === 'completed' && persistedRuntimeLastEventAt === null)
-          ? 'running'
-          : persistedRuntimeStatus;
-      const initialAttentionReason =
-        initialStatus === 'needs-input' ? persistedConversation?.runtimeAttentionReason ?? null : null;
-      this.sessions.set(command.sessionId, {
-        id: command.sessionId,
-        directoryId: persistedConversation?.directoryId ?? null,
-        agentType,
-        adapterState: normalizeAdapterState(persistedConversation?.adapterState ?? {}),
-        tenantId: persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID,
-        userId: persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID,
-        workspaceId: persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID,
-        worktreeId: command.worktreeId ?? DEFAULT_WORKTREE_ID,
-        session,
-        eventSubscriberConnectionIds: new Set<string>(),
-        attachmentByConnectionId: new Map<string, string>(),
-        unsubscribe,
-        status: initialStatus,
-        attentionReason: initialAttentionReason,
-        lastEventAt: persistedConversation?.runtimeLastEventAt ?? null,
-        lastExit: persistedConversation?.runtimeLastExit ?? null,
-        lastSnapshot: null,
-        startedAt: new Date().toISOString(),
-        exitedAt: null,
-        tombstoneTimer: null,
-        lastObservedOutputCursor: session.latestCursorValue(),
-        latestTelemetry: this.stateStore.latestTelemetrySummary(command.sessionId),
-        controller: null
-      });
-
-      const state = this.sessions.get(command.sessionId);
-      if (state !== undefined) {
-        this.persistConversationRuntime(state);
-        this.publishStatusObservedEvent(state);
-      }
+      this.startSessionRuntime(startInput);
 
       return {
         sessionId: command.sessionId
