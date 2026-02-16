@@ -159,6 +159,12 @@ async function main(): Promise<number> {
         initialRows: input.initialRows,
         enableSnapshotModel: serverSnapshotModelEnabled
       };
+      if (input.command !== undefined) {
+        sessionOptions.command = input.command;
+      }
+      if (input.baseArgs !== undefined) {
+        sessionOptions.baseArgs = input.baseArgs;
+      }
       if (input.env !== undefined) {
         sessionOptions.env = input.env;
       }
