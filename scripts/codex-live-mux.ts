@@ -94,6 +94,7 @@ import {
   sortedRepositoryList,
   sortTasksForHomePane,
   sortTasksByOrder,
+  taskPaneActionAtCell,
   taskPaneActionAtRow,
   taskPaneRepositoryIdAtRow,
   taskPaneTaskIdAtRow,
@@ -2215,6 +2216,7 @@ async function main(): Promise<number> {
     taskIds: [],
     repositoryIds: [],
     actions: [],
+    actionCells: [],
     top: 0
   };
   let taskPaneSelectedTaskId: string | null = null;
@@ -5212,6 +5214,7 @@ async function main(): Promise<number> {
       taskIds: [],
       repositoryIds: [],
       actions: [],
+      actionCells: [],
       top: 0
     };
     if (rightFrame !== null) {
@@ -6104,7 +6107,22 @@ async function main(): Promise<number> {
         handled = true;
         continue;
       }
+      if (byte === 0x41) {
+        runTaskPaneAction('task.create');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x52) {
+        runTaskPaneAction('repository.create');
+        handled = true;
+        continue;
+      }
       if (byte === 0x65) {
+        runTaskPaneAction('task.edit');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x05) {
         runTaskPaneAction('task.edit');
         handled = true;
         continue;
@@ -6124,7 +6142,17 @@ async function main(): Promise<number> {
         handled = true;
         continue;
       }
+      if (byte === 0x12) {
+        runTaskPaneAction('task.draft');
+        handled = true;
+        continue;
+      }
       if (byte === 0x63) {
+        runTaskPaneAction('task.complete');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x13) {
         runTaskPaneAction('task.complete');
         handled = true;
         continue;
@@ -6401,6 +6429,7 @@ async function main(): Promise<number> {
         !isMotionMouseCode(token.event.code);
       if (taskPaneActionClick) {
         const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
+        const colIndex = Math.max(0, Math.min(layout.rightCols - 1, token.event.col - layout.rightStartCol));
         const repositoryId = taskPaneRepositoryIdAtRow(latestTaskPaneView, rowIndex);
         if (repositoryId !== null) {
           taskPaneSelectedRepositoryId = repositoryId;
@@ -6411,11 +6440,17 @@ async function main(): Promise<number> {
         const taskId = taskPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
         if (taskId !== null) {
           taskPaneSelectedTaskId = taskId;
+          const taskRecord = tasks.get(taskId);
+          if (taskRecord !== undefined && taskRecord.repositoryId !== null && repositories.has(taskRecord.repositoryId)) {
+            taskPaneSelectedRepositoryId = taskRecord.repositoryId;
+          }
           taskPaneNotice = null;
           markDirty();
           continue;
         }
-        const action = taskPaneActionAtRow(latestTaskPaneView, rowIndex);
+        const action =
+          taskPaneActionAtCell(latestTaskPaneView, rowIndex, colIndex) ??
+          taskPaneActionAtRow(latestTaskPaneView, rowIndex);
         if (action !== null) {
           runTaskPaneAction(action);
           markDirty();

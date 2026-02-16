@@ -96,14 +96,6 @@ const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'add project',
   prefixIcon: '>'
 });
-const ADD_REPOSITORY_BUTTON_LABEL = formatUiButton({
-  label: 'add repository',
-  prefixIcon: '>'
-});
-const ARCHIVE_REPOSITORY_BUTTON_LABEL = formatUiButton({
-  label: 'archive repository',
-  prefixIcon: '<'
-});
 const HOME_BUTTON_LABEL = formatUiButton({
   label: 'home',
   prefixIcon: '⌂'
@@ -362,110 +354,11 @@ function pushRow(
   });
 }
 
-function repositoryDisplayName(repository: WorkspaceRailRepositorySummary): string {
-  const name = repository.name.trim();
-  if (name.length > 0) {
-    return name;
-  }
-  return '(unnamed repository)';
-}
-
-function repositoryPathFromUrl(remoteUrl: string): string | null {
-  const normalized = remoteUrl.trim();
-  if (normalized.length === 0) {
-    return null;
-  }
-  const match = /github\.com[/:]([^/\s]+\/[^/\s]+?)(?:\.git)?(?:\/)?$/iu.exec(normalized);
-  if (match === null) {
-    return null;
-  }
-  return match[1] as string;
-}
-
-function formatRepositoryCommitCount(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) {
-    return '· commits';
-  }
-  const rounded = Math.max(0, Math.floor(value));
-  return `${String(rounded)} commits`;
-}
-
-function formatRepositoryLastUpdated(lastCommitAt: string | null, nowMs: number): string {
-  const commitAtMs = parseIsoMs(lastCommitAt);
-  if (!Number.isFinite(commitAtMs)) {
-    return 'unknown';
-  }
-  const diffMs = Math.max(0, nowMs - commitAtMs);
-  const minuteMs = 60_000;
-  const hourMs = 60 * minuteMs;
-  const dayMs = 24 * hourMs;
-  if (diffMs < minuteMs) {
-    return 'just now';
-  }
-  if (diffMs < hourMs) {
-    return `${String(Math.floor(diffMs / minuteMs))}m ago`;
-  }
-  if (diffMs < dayMs) {
-    return `${String(Math.floor(diffMs / hourMs))}h ago`;
-  }
-  return `${String(Math.floor(diffMs / dayMs))}d ago`;
-}
-
-function repositoryStatLine(repository: WorkspaceRailRepositorySummary, nowMs: number): string {
-  const commitCount = formatRepositoryCommitCount(repository.commitCount);
-  const updated = formatRepositoryLastUpdated(repository.lastCommitAt, nowMs);
-  const hash =
-    repository.shortCommitHash === null || repository.shortCommitHash.trim().length === 0
-      ? '·'
-      : repository.shortCommitHash.trim();
-  const path = repositoryPathFromUrl(repository.remoteUrl);
-  const projectCountLabel = repository.associatedProjectCount === 1 ? 'project' : 'projects';
-  const pathSuffix = path === null ? '' : ` (${path})`;
-  return `${repositoryDisplayName(repository)}${pathSuffix} · ${String(repository.associatedProjectCount)} ${projectCountLabel} · ${commitCount} · ${updated} · ${hash}`;
-}
-
 function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
   if (showTaskPlanningUi) {
     pushRow(rows, 'action', `│  ${HOME_BUTTON_LABEL}`, false, null, null, null, 'home.open');
-  }
-  const showRepositorySection =
-    showTaskPlanningUi && (model.repositories !== undefined || model.repositoriesCollapsed !== undefined);
-  if (showRepositorySection) {
-    const repositories = model.repositories ?? [];
-    const repositoriesCollapsed = model.repositoriesCollapsed ?? false;
-    pushRow(rows, 'repository-header', `├─ ⎇ repositories ${repositoriesCollapsed ? '[+]' : '[-]'}`, false, null, null, null, 'repositories.toggle');
-    if (!repositoriesCollapsed) {
-      pushRow(rows, 'action', `│  ${ADD_REPOSITORY_BUTTON_LABEL}`, false, null, null, null, 'repository.add');
-      if (repositories.length === 0) {
-        pushRow(rows, 'muted', '│  no repositories');
-      } else {
-        for (const repository of repositories) {
-          pushRow(
-            rows,
-            'repository-row',
-            `│  ⎇ ${repositoryStatLine(repository, nowMs)}`,
-            false,
-            null,
-            null,
-            repository.repositoryId,
-            'repository.edit'
-          );
-          pushRow(
-            rows,
-            'action',
-            `│    ${ARCHIVE_REPOSITORY_BUTTON_LABEL}`,
-            false,
-            null,
-            null,
-            repository.repositoryId,
-            'repository.archive'
-          );
-          pushRow(rows, 'muted', '│');
-        }
-      }
-    }
   }
 
   if (model.directories.length === 0) {

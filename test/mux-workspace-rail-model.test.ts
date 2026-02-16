@@ -212,11 +212,9 @@ void test('workspace rail model can hide repository and task controls from the r
   assert.equal(rows.some((row) => row.railAction === 'project.add'), true);
 });
 
-void test('workspace rail model formats finite process stats and shows empty repository section copy', () => {
+void test('workspace rail model formats finite process stats without repository rail rows', () => {
   const rows = buildWorkspaceRailViewRows(
     {
-      repositories: [],
-      repositoriesCollapsed: false,
       directories: [
         {
           key: 'dir',
@@ -248,10 +246,12 @@ void test('workspace rail model formats finite process stats and shows empty rep
   );
 
   assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('12.3% · 43MB')), true);
-  assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('no repositories')), true);
+  assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
+  assert.equal(rows.some((row) => row.kind === 'repository-row'), false);
+  assert.equal(rows.some((row) => row.text.includes('repositories [-]')), false);
 });
 
-void test('workspace rail model can render collapsed repository header from flag-only configuration', () => {
+void test('workspace rail model ignores repository collapse flags in rail rendering', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       repositoriesCollapsed: true,
@@ -264,8 +264,8 @@ void test('workspace rail model can render collapsed repository header from flag
     13
   );
 
-  assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('[+]')), true);
-  assert.equal(rows.some((row) => row.railAction === 'repository.add'), false);
+  assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
+  assert.equal(rows.some((row) => row.railAction === 'repositories.toggle'), false);
 });
 
 void test('workspace rail model makes project header thread action clickable', () => {
@@ -716,7 +716,7 @@ void test('workspace rail model supports collapsed shortcut descriptions with cl
   assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('add project')), true);
 });
 
-void test('workspace rail model renders repository rows with stats and repository actions', () => {
+void test('workspace rail model omits repository rows even when repository data is provided', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       repositories: [
@@ -738,162 +738,17 @@ void test('workspace rail model renders repository rows with stats and repositor
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T03:00:00.000Z')
     },
-    18
+    24
   );
-
-  const repositoryRowIndex = rows.findIndex((row) => row.kind === 'repository-row');
-  assert.equal(repositoryRowIndex >= 0, true);
-  assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('repositories [-]')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('321 commits')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('3h ago')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('abc1234')), true);
-  assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('add repository')), true);
-  assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('archive repository')), true);
-  assert.equal(repositoryIdAtWorkspaceRailRow(rows, repositoryRowIndex), 'repository-1');
-  assert.equal(repositoryIdAtWorkspaceRailRow(rows, -1), null);
-  assert.equal(repositoryIdAtWorkspaceRailRow(rows, 10_000), null);
-  assert.equal(actionAtWorkspaceRailRow(rows, repositoryRowIndex), 'repository.edit');
-  assert.equal(actionAtWorkspaceRailCell(rows, repositoryRowIndex, 0), 'repository.edit');
+  assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
+  assert.equal(rows.some((row) => row.kind === 'repository-row'), false);
+  assert.equal(rows.some((row) => row.railAction === 'repository.add'), false);
+  assert.equal(rows.some((row) => row.railAction === 'repository.edit'), false);
+  assert.equal(rows.some((row) => row.railAction === 'repository.archive'), false);
+  assert.equal(rows.some((row) => row.railAction === 'repositories.toggle'), false);
 });
 
-void test('workspace rail model formats repository fallback stats and relative age branches', () => {
-  const rows = buildWorkspaceRailViewRows(
-    {
-      repositories: [
-        {
-          repositoryId: 'repository-empty',
-          name: '',
-          remoteUrl: '',
-          associatedProjectCount: 1,
-          commitCount: null,
-          lastCommitAt: null,
-          shortCommitHash: ''
-        },
-        {
-          repositoryId: 'repository-now',
-          name: 'external',
-          remoteUrl: 'https://example.com/acme/external.git',
-          associatedProjectCount: 2,
-          commitCount: Number.NaN,
-          lastCommitAt: '2026-01-05T00:00:10.000Z',
-          shortCommitHash: '   '
-        },
-        {
-          repositoryId: 'repository-old',
-          name: 'legacy',
-          remoteUrl: 'https://github.com/acme/legacy.git',
-          associatedProjectCount: 3,
-          commitCount: 5,
-          lastCommitAt: '2026-01-02T00:00:30.000Z',
-          shortCommitHash: 'deadbee'
-        }
-      ],
-      repositoriesCollapsed: false,
-      directories: [],
-      conversations: [],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: null,
-      nowMs: Date.parse('2026-01-05T00:00:30.000Z')
-    },
-    40
-  );
-  const repositoryRows = rows.filter((row) => row.kind === 'repository-row').map((row) => row.text);
-  assert.equal(repositoryRows.some((text) => text.includes('(unnamed repository)')), true);
-  assert.equal(repositoryRows.some((text) => text.includes('· commits')), true);
-  assert.equal(repositoryRows.some((text) => text.includes('unknown')), true);
-  assert.equal(repositoryRows.some((text) => text.includes('just now')), true);
-  assert.equal(repositoryRows.some((text) => text.includes('3d ago')), true);
-  assert.equal(repositoryRows.some((text) => text.includes('(acme/legacy)')), true);
-});
-
-void test('workspace rail model supports collapsed repository section with clickable toggle row', () => {
-  const rows = buildWorkspaceRailViewRows(
-    {
-      repositories: [],
-      repositoriesCollapsed: true,
-      directories: [],
-      conversations: [],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: null
-    },
-    13
-  );
-  const headerIndex = rows.findIndex((row) => row.kind === 'repository-header');
-  assert.equal(headerIndex >= 0, true);
-  assert.equal(rows[headerIndex]?.text.includes('repositories [+]'), true);
-  assert.equal(rows.some((row) => row.text.includes('add repository')), false);
-  assert.equal(actionAtWorkspaceRailRow(rows, headerIndex), 'repositories.toggle');
-});
-
-void test('workspace rail model shows explicit empty repository message when section is expanded', () => {
-  const rows = buildWorkspaceRailViewRows(
-    {
-      repositories: [],
-      repositoriesCollapsed: false,
-      directories: [],
-      conversations: [],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: null
-    },
-    14
-  );
-
-  assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('no repositories')), true);
-});
-
-void test('workspace rail model repository stat formatting covers minute unknown and non-github branches', () => {
-  const rows = buildWorkspaceRailViewRows(
-    {
-      repositories: [
-        {
-          repositoryId: 'repository-minute',
-          name: 'repo-minute',
-          remoteUrl: 'https://github.com/acme/repo-minute.git',
-          associatedProjectCount: 1,
-          commitCount: 7,
-          lastCommitAt: '2026-01-01T00:30:00.000Z',
-          shortCommitHash: 'deadbee'
-        },
-        {
-          repositoryId: 'repository-unknown',
-          name: '',
-          remoteUrl: 'https://example.com/not-github',
-          associatedProjectCount: 0,
-          commitCount: null,
-          lastCommitAt: null,
-          shortCommitHash: ''
-        },
-        {
-          repositoryId: 'repository-empty-url',
-          name: 'repo-empty-url',
-          remoteUrl: '   ',
-          associatedProjectCount: 3,
-          commitCount: 1,
-          lastCommitAt: '2025-12-30T00:00:00.000Z',
-          shortCommitHash: 'cafebabe'
-        }
-      ],
-      directories: [],
-      conversations: [],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T01:00:00.000Z')
-    },
-    30
-  );
-
-  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('30m ago')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('(unnamed repository)')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('· commits')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('unknown')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('2d ago')), true);
-});
-
-void test('workspace rail model repository id row helper and starting fallback status line are covered', () => {
+void test('workspace rail model repository id helper returns null and starting fallback status line is covered', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -931,31 +786,10 @@ void test('workspace rail model repository id row helper and starting fallback s
     },
     18
   );
-  const repositoryRows = buildWorkspaceRailViewRows(
-    {
-      repositories: [
-        {
-          repositoryId: 'repository-row-id',
-          name: 'harness',
-          remoteUrl: 'https://github.com/jmoyers/harness.git',
-          associatedProjectCount: 1,
-          commitCount: 5,
-          lastCommitAt: '2026-01-01T00:00:00.000Z',
-          shortCommitHash: 'abc1234'
-        }
-      ],
-      directories: [],
-      conversations: [],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: null
-    },
-    18
-  );
-  const repositoryRowIndex = repositoryRows.findIndex((row) => row.kind === 'repository-row');
   assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
-  assert.equal(repositoryIdAtWorkspaceRailRow(repositoryRows, repositoryRowIndex), 'repository-row-id');
-  assert.equal(repositoryIdAtWorkspaceRailRow(repositoryRows, -1), null);
+  assert.equal(repositoryIdAtWorkspaceRailRow(rows, 0), null);
+  assert.equal(repositoryIdAtWorkspaceRailRow(rows, -1), null);
+  assert.equal(repositoryIdAtWorkspaceRailRow(rows, 10_000), null);
 });
 
 void test('workspace rail model does not expose thread action for headers without inline button label', () => {

@@ -481,7 +481,7 @@ void test('workspace rail collapses shortcut descriptions while retaining toggle
   assert.equal(rows.some((row) => row.includes('add project')), true);
 });
 
-void test('workspace rail renders repository section rows and actions', () => {
+void test('workspace rail omits repository section rows and actions', () => {
   const rows = renderWorkspaceRailAnsiRows(
     {
       repositories: [
@@ -507,12 +507,9 @@ void test('workspace rail renders repository section rows and actions', () => {
     14
   ).map((row) => stripAnsi(row));
 
-  assert.equal(rows.some((row) => row.includes('repositories [-]')), true);
-  assert.equal(rows.some((row) => row.includes('add repository')), true);
-  assert.equal(rows.some((row) => row.includes('harness (jmoyers/harness)')), true);
-  assert.equal(rows.some((row) => row.includes('10 commits')), true);
-  assert.equal(rows.some((row) => row.includes('30m ago')), true);
-  assert.equal(rows.some((row) => row.includes('archive repository')), true);
+  assert.equal(rows.some((row) => row.includes('repositories [-]')), false);
+  assert.equal(rows.some((row) => row.includes('add repository')), false);
+  assert.equal(rows.some((row) => row.includes('archive repository')), false);
 });
 
 void test('workspace rail row renderer tolerates malformed action and null-status title rows', () => {
@@ -545,6 +542,38 @@ void test('workspace rail row renderer tolerates malformed action and null-statu
     32
   );
   assert.equal(stripAnsi(nullStatusTitleRowAnsi).includes('◆ codex - edge'), true);
+});
+
+void test('workspace rail row renderer paints repository header and row styles for compatibility branches', () => {
+  const repositoryHeaderRowAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'repository-header',
+      text: '├─ ⎇ repositories [-]',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: null,
+      railAction: 'repositories.toggle',
+      conversationStatus: null
+    },
+    40
+  );
+  assert.equal(stripAnsi(repositoryHeaderRowAnsi).includes('repositories [-]'), true);
+
+  const repositoryRowAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'repository-row',
+      text: '│  ⎇ harness · 1 project · 10 commits · 1h ago · abc1234',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: 'repository-1',
+      railAction: 'repository.edit',
+      conversationStatus: null
+    },
+    64
+  );
+  assert.equal(stripAnsi(repositoryRowAnsi).includes('harness'), true);
 });
 
 void test('workspace rail row renderer covers active project rows muted rows and zero-width clamp', () => {
