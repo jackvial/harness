@@ -8,6 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import { parseStreamCommand } from '../src/control-plane/stream-command-parser.ts';
 import type { StreamCommand } from '../src/control-plane/stream-protocol.ts';
+import { runHarnessAnimate } from './harness-animate.ts';
 import {
   GATEWAY_RECORD_VERSION,
   isLoopbackHost,
@@ -234,7 +235,8 @@ function printUsage(): void {
       '  harness gateway stop [--force] [--timeout-ms <ms>]',
       '  harness gateway status',
       '  harness gateway restart [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
-      '  harness gateway call --json \'{"type":"session.list"}\''
+      '  harness gateway call --json \'{"type":"session.list"}\'',
+      '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]'
     ].join('\n') + '\n'
   );
 }
@@ -881,6 +883,10 @@ async function main(): Promise<number> {
       recordPath,
       logPath
     );
+  }
+
+  if (argv.length > 0 && argv[0] === 'animate') {
+    return await runHarnessAnimate(argv.slice(1));
   }
 
   const passthroughArgs = argv[0] === 'client' ? argv.slice(1) : argv;

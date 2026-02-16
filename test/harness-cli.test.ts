@@ -92,6 +92,41 @@ void test('harness gateway status reports stopped when no record exists', async 
   }
 });
 
+void test('harness animate --help prints usage', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['animate', '--help']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('harness animate [--fps <fps>]'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness animate requires explicit bounds in non-tty mode', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['animate']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('harness animate requires a TTY or explicit --frames/--duration-ms bounds'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness animate renders bounded frames without starting gateway', async () => {
+  const workspace = createWorkspace();
+  const recordPath = join(workspace, '.harness/gateway.json');
+  try {
+    const result = await runHarness(workspace, ['animate', '--frames', '1', '--seed', '7', '--no-color']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('HARNESS'), true);
+    assert.equal(existsSync(recordPath), false);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness gateway start/status/call/stop manages daemon lifecycle', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();

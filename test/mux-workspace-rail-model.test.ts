@@ -725,6 +725,23 @@ void test('workspace rail model supports collapsed repository section with click
   assert.equal(actionAtWorkspaceRailRow(rows, headerIndex), 'repositories.toggle');
 });
 
+void test('workspace rail model shows explicit empty repository message when section is expanded', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositories: [],
+      repositoriesCollapsed: false,
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null
+    },
+    14
+  );
+
+  assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('no repositories')), true);
+});
+
 void test('workspace rail model repository stat formatting covers minute unknown and non-github branches', () => {
   const rows = buildWorkspaceRailViewRows(
     {
@@ -1443,6 +1460,31 @@ void test('workspace rail model infers needs-action from approval-denied summary
   );
   assert.equal(projection.status, 'needs-action');
   assert.equal(projection.glyph, '▲');
+});
+
+void test('workspace rail conversation projection falls back to needs-input status line label', () => {
+  const projection = projectWorkspaceRailConversation(
+    {
+      sessionId: 'conversation-needs-input-detail',
+      directoryKey: 'dir',
+      title: 'task',
+      agentLabel: 'codex',
+      cpuPercent: null,
+      memoryMb: null,
+      lastKnownWork: null,
+      lastKnownWorkAt: null,
+      status: 'needs-input',
+      attentionReason: null,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      lastEventAt: null
+    },
+    {
+      nowMs: Date.parse('2026-01-01T00:00:30.000Z')
+    }
+  );
+
+  assert.equal(projection.status, 'needs-action');
+  assert.equal(projection.detailText.includes('needs input'), true);
 });
 
 void test('workspace rail model covers status inference keyword variants', () => {

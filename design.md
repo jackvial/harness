@@ -1090,6 +1090,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/harness.ts` is the canonical CLI surface (`harness`).
     - `harness` (no subcommand) is the canonical client path: it connects to the gateway of record, or starts it detached first, then launches the mux client against that remote gateway.
     - `harness gateway ...` is the canonical daemon control plane: `start|stop|status|restart|run|call`.
+    - `harness animate` is a first-party high-FPS terminal benchmark scene (ASCII tunnel/starfield) for stressing render throughput independent of gateway lifecycle.
     - gateway state is persisted as a gateway-of-record file (`.harness/gateway.json`) with host/port/auth/pid metadata; stale records are pruned on startup/stop flows.
     - client disconnect (including `Ctrl+C` in mux) does not kill the gateway; only explicit gateway stop/shutdown tears down child sessions.
   - `scripts/harness-core.ts` is the canonical mux client entrypoint (`npm run harness:core`).
