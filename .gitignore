@@ -6,6 +6,7 @@ native/ptyd/target/
 .harness/
 .v8cov/
 harness.config.jsonc
+var/
 
 assets/poem-recording.jsonl
 .cursor/

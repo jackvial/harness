@@ -569,7 +569,7 @@ Design constraints:
   - left-rail conversation activation via keyboard and mouse click with deterministic row hit-testing
   - normalized action-oriented conversation status labels (`starting`, `needs action`, `working`, `idle`, `exited`)
   - perf-core emits selector index snapshots and session projection transitions, enabling replay of icon/status-line behavior without screen scraping
-  - keybindings loaded from `harness.config.jsonc` using VS Code-style action IDs and parseable key strings
+  - keybindings loaded from `harness.config.jsonc` using VS Code-style action IDs and parseable key strings (including Home task composer actions under `mux.home.*`)
 - Next target layout iterations:
   - first-class directory/worktree actions in rail (`add/select/archive`) via control-plane commands
   - explicit background-process rows beyond conversation-host process telemetry
@@ -1094,9 +1094,11 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - multi-thread rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new thread creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
     - explicit directory selection from rail rows, with a project-focused right-pane tree view when directory mode is active
     - project-scoped actions (`new thread`, `close project`) target the selected project in project mode and preserve active-thread project affinity in thread mode
-    - a Home planning pane in the right side of mux unifies repository + task management, backed by control-plane repository/task commands
-    - Home pane supports repository add/edit/archive plus task add/edit/delete, ready/draft/complete transitions, explicit reorder, and status-priority task ordering (`in-progress`, `ready`, `draft`, `completed`)
-    - Home pane interaction model is Linear-style: click selects, double-click opens edit for task/repository rows, drag-and-drop reprioritizes rows (tasks via `task.reorder`, repositories via persisted `metadata.homePriority`), and keyboard actions are selection-focus aware
+    - a Home planning pane in the right side of mux is now repository-scoped and task-composer-first, backed by control-plane repository/task commands
+    - Home pane starts with a repository dropdown, then shows only that repository's ordered task queue plus an always-available multiline draft composer
+    - composer/edit interaction model mirrors terminal coding agents: `Enter` submits draft tasks, `Shift+Enter` inserts newline, ArrowUp boundary moves from draft into task edit, ArrowDown boundary flushes task edits and returns to draft
+    - task rows expose pinned `ready` / `draft` / `complete` controls (keyboard + mouse), while task text edits autosave through debounced `task.update`
+    - Home-pane key actions are config-first under `mux.keybindings` (`mux.home.*`) so local keymaps are remappable without code changes
     - Home pane state is hydrated from `repository.list` + `task.list` and kept live through scoped `stream.subscribe` updates
     - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread
     - thread creation opens a modal selector (`codex` or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
