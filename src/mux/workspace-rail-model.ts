@@ -110,7 +110,6 @@ const TASKS_BUTTON_LABEL = formatUiButton({
 const STARTING_TEXT_STALE_MS = 2_000;
 const WORKING_TEXT_STALE_MS = 5_000;
 const NEEDS_ACTION_TEXT_STALE_MS = 60_000;
-const RUNNING_ACTIVITY_STALE_MS = 15_000;
 
 type WorkspaceRailAction =
   | 'conversation.new'
@@ -180,18 +179,11 @@ function inferStatusFromLastKnownWork(lastKnownWork: string | null): NormalizedC
   if (
     normalized === 'idle' ||
     normalized.includes('turn complete') ||
-    normalized.includes('response.completed') ||
-    normalized.includes('response complete') ||
-    normalized.includes('completed')
+    normalized.includes('turn completed')
   ) {
     return 'idle';
   }
-  if (
-    normalized.startsWith('working:') ||
-    normalized.includes('thinking') ||
-    normalized.includes('writing') ||
-    normalized.includes('tool ')
-  ) {
+  if (normalized.startsWith('working:') || normalized === 'working') {
     return 'working';
   }
   return null;
@@ -209,13 +201,10 @@ function normalizeConversationStatus(
   }
   const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
   if (inferred !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
-    if (inferred === 'idle' && hasFreshRunningActivity(conversation, nowMs)) {
-      return 'working';
-    }
     return inferred;
   }
-  if (hasFreshRunningActivity(conversation, nowMs)) {
-    return 'working';
+  if (conversation.status === 'running') {
+    return 'starting';
   }
   return 'idle';
 }
@@ -263,35 +252,14 @@ function summaryText(value: string | null): string | null {
 }
 
 function statusLineLabel(status: NormalizedConversationStatus): string {
-  if (status === 'needs-action') {
-    return 'needs input';
-  }
-  if (status === 'working') {
-    return 'working';
-  }
-  if (status === 'exited') {
-    return 'exited';
-  }
-  return 'idle';
-}
-
-function hasFreshRunningActivity(
-  conversation: WorkspaceRailConversationSummary,
-  nowMs: number
-): boolean {
-  if (conversation.status !== 'running') {
-    return false;
-  }
-  const lastEventAtMs = parseIsoMs(conversation.lastEventAt);
-  if (!Number.isFinite(lastEventAtMs)) {
-    return false;
-  }
-  const lastKnownWorkAtMs = parseIsoMs(conversation.lastKnownWorkAt ?? null);
-  if (Number.isFinite(lastKnownWorkAtMs) && lastEventAtMs <= lastKnownWorkAtMs) {
-    return false;
-  }
-  const ageMs = Math.max(0, nowMs - lastEventAtMs);
-  return ageMs <= RUNNING_ACTIVITY_STALE_MS;
+  const labels: Record<NormalizedConversationStatus, string> = {
+    'needs-action': 'needs input',
+    starting: 'starting',
+    working: 'working',
+    idle: 'idle',
+    exited: 'exited'
+  };
+  return labels[status];
 }
 
 function controllerDisplayText(
@@ -323,23 +291,14 @@ function conversationDetailText(
     return controllerText;
   }
   const lastKnownWork = summaryText(conversation.lastKnownWork);
-  const inferredStatus = inferStatusFromLastKnownWork(lastKnownWork);
-  const suppressIdleDetailText =
-    normalizedStatus === 'working' &&
-    inferredStatus === 'idle' &&
-    hasFreshRunningActivity(conversation, nowMs);
-  if (
-    lastKnownWork !== null &&
-    isLastKnownWorkCurrent(conversation, nowMs) &&
-    !suppressIdleDetailText
-  ) {
+  if (lastKnownWork !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
     return lastKnownWork;
   }
   const attentionReason = summaryText(conversation.attentionReason);
   if (attentionReason !== null) {
     return attentionReason;
   }
-  return `${statusLineLabel(normalizedStatus)} · ${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)}`;
+  return statusLineLabel(normalizedStatus);
 }
 
 export function projectWorkspaceRailConversation(

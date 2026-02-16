@@ -406,8 +406,17 @@ export type StreamClientEnvelope =
   | StreamResizeEnvelope
   | StreamSignalEnvelope;
 
+interface StreamNotifyRecord {
+  ts: string;
+  payload: Record<string, unknown>;
+}
+
 export type StreamSessionEvent =
-  {
+  | {
+      type: 'notify';
+      record: StreamNotifyRecord;
+    }
+  | {
       type: 'session-exit';
       exit: PtyExit;
     };
@@ -756,6 +765,25 @@ function parseStreamSessionEvent(value: unknown): StreamSessionEvent | null {
       exit: {
         code: normalizedCode,
         signal: normalizedSignal
+      }
+    };
+  }
+
+  if (type === 'notify') {
+    const notifyRecord = asRecord(record['record']);
+    if (notifyRecord === null) {
+      return null;
+    }
+    const ts = readString(notifyRecord['ts']);
+    const payload = asRecord(notifyRecord['payload']);
+    if (ts === null || payload === null) {
+      return null;
+    }
+    return {
+      type: 'notify',
+      record: {
+        ts,
+        payload
       }
     };
   }

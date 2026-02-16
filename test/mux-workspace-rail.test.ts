@@ -91,9 +91,9 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(plainRows.some((row) => row.includes('📁 ~/dev/harness ─ main')), true);
   assert.equal(plainRows.some((row) => row.includes('+12 -3 │ 4 files')), true);
   assert.equal(plainRows.some((row) => row.includes('codex - untitled task 1')), true);
-  assert.equal(plainRows.some((row) => row.includes('◆ codex - untitled task 1')), true);
+  assert.equal(plainRows.some((row) => row.includes('◔ codex - untitled task 1')), true);
   assert.equal(plainRows.some((row) => row.includes('○ codex - untitled task 2')), true);
-  assert.equal(plainRows.some((row) => row.includes('working · 0.2% · 12MB')), true);
+  assert.equal(plainRows.some((row) => row.includes('starting')), true);
   assert.equal(plainRows.some((row) => row.includes('⚙ npm run dev')), true);
   assert.equal(plainRows.some((row) => row.includes('running · 3.4% · 180MB')), true);
   assert.equal(rows.some((row) => row.includes('[+ thread]')), true);
@@ -156,7 +156,7 @@ void test('workspace rail render keeps explicit completion text stable despite n
           memoryMb: 16,
           lastKnownWork: 'turn complete (812ms)',
           lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
-          status: 'running',
+          status: 'completed',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
           lastEventAt: '2026-01-01T00:00:03.000Z'
@@ -212,8 +212,8 @@ void test('workspace rail render keeps explicit completion text stable despite n
     80,
     16
   ).map((row) => stripAnsi(row));
-  assert.equal(workingRows.some((row) => row.includes('◆ codex - task')), true);
-  assert.equal(workingRows.some((row) => row.includes('working · 0.4% · 16MB')), true);
+  assert.equal(workingRows.some((row) => row.includes('○ codex - task')), true);
+  assert.equal(workingRows.some((row) => row.includes('turn complete (812ms)')), true);
 });
 
 void test('workspace rail renders no-title conversations without dash separator', () => {
@@ -241,7 +241,7 @@ void test('workspace rail renders no-title conversations without dash separator'
           cpuPercent: 0,
           memoryMb: 0,
           lastKnownWork: null,
-          status: 'running',
+          status: 'completed',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
           lastEventAt: '2026-01-01T00:00:01.000Z'
@@ -344,7 +344,7 @@ void test('workspace rail renders icon colors for needs-action exited starting a
           cpuPercent: null,
           memoryMb: null,
           lastKnownWork: null,
-          status: 'running',
+          status: 'completed',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
           lastEventAt: '2026-01-01T00:00:00.000Z'

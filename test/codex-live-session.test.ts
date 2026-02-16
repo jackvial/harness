@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
+  buildTomlStringArray,
   normalizeTerminalColorHex,
+  parseNotifyRecordLine,
   startCodexLiveSession,
   terminalHexToOscColor
 } from '../src/codex/live-session.ts';
@@ -72,6 +74,220 @@ void test('terminal color normalization and OSC formatting are deterministic', (
   assert.equal(normalizeTerminalColorHex(' bad ', '112233'), '112233');
   assert.equal(terminalHexToOscColor('010203'), 'rgb:0101/0202/0303');
   assert.equal(terminalHexToOscColor('nope'), 'rgb:d0d0/d7d7/dede');
+});
+
+void test('notify helpers format TOML arrays and parse relay records', () => {
+  assert.equal(
+    buildTomlStringArray(['/usr/bin/env', process.execPath, '--experimental-strip-types', '/tmp/relay.ts']),
+    `["/usr/bin/env","${process.execPath.replaceAll('\\', '\\\\')}","--experimental-strip-types","/tmp/relay.ts"]`
+  );
+  assert.equal(parseNotifyRecordLine('not-json'), null);
+  assert.equal(parseNotifyRecordLine('null'), null);
+  assert.equal(parseNotifyRecordLine('{"ts":1}'), null);
+  assert.equal(
+    parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":[]}'),
+    null
+  );
+  assert.equal(
+    parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":null}'),
+    null
+  );
+  assert.equal(
+    parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":"x"}'),
+    null
+  );
+  assert.equal(
+    parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"agent-turn-complete"}}')
+      ?.payload['type'],
+    'agent-turn-complete'
+  );
+});
+
+void test('codex live session emits notify events when notify hook polling is enabled', () => {
+  const broker = new FakeBroker();
+  let startOptions:
+    | {
+        command?: string;
+        commandArgs?: string[];
+        env?: NodeJS.ProcessEnv;
+        cwd?: string;
+      }
+    | undefined;
+  let pollNotify: () => void = () => undefined;
+  let hasPollNotify = false;
+  let clearedTimer = false;
+  let notifyContent = '';
+  const fakeTimer = {
+    refresh: () => fakeTimer,
+    ref: () => fakeTimer,
+    unref: () => fakeTimer,
+    hasRef: () => false
+  } as unknown as NodeJS.Timeout;
+
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: true,
+      notifyFilePath: '/tmp/harness-notify.jsonl',
+      relayScriptPath: '/tmp/relay.ts',
+      notifyPollMs: 250
+    },
+    {
+      startBroker: (options) => {
+        startOptions = options;
+        return broker;
+      },
+      readFile: () => notifyContent,
+      setIntervalFn: (callback) => {
+        pollNotify = callback;
+        hasPollNotify = true;
+        return fakeTimer;
+      },
+      clearIntervalFn: (handle) => {
+        clearedTimer = handle === fakeTimer;
+      }
+    }
+  );
+
+  const notifyTypes: string[] = [];
+  const removeListener = session.onEvent((event) => {
+    if (event.type === 'notify') {
+      const payloadType = event.record.payload['type'];
+      notifyTypes.push(typeof payloadType === 'string' ? payloadType : '');
+    }
+  });
+
+  assert.notEqual(startOptions, undefined);
+  assert.equal(startOptions?.commandArgs?.some((arg) => arg.startsWith('notify=[')), true);
+  assert.equal(hasPollNotify, true);
+
+  notifyContent = [
+    '{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"agent-turn-complete"}}',
+    '{"ts":"2026-01-01T00:00:00.100Z","payload":{"type":"approval-required"}}',
+    'malformed'
+  ].join('\n');
+  pollNotify();
+
+  assert.deepEqual(notifyTypes, ['agent-turn-complete', 'approval-required']);
+
+  removeListener();
+  session.close();
+  assert.equal(clearedTimer, true);
+});
+
+void test('codex live session notify polling handles resets, malformed lines, and read errors', () => {
+  const broker = new FakeBroker();
+  let pollNotify: () => void = () => undefined;
+  let readCallCount = 0;
+  const fakeTimer = {
+    refresh: () => fakeTimer,
+    ref: () => fakeTimer,
+    unref: () => fakeTimer,
+    hasRef: () => false
+  } as unknown as NodeJS.Timeout;
+  const missingFileError = Object.assign(new Error('missing'), { code: 'ENOENT' });
+  const deniedFileError = Object.assign(new Error('denied'), { code: 'EACCES' });
+  const notifyTypes: string[] = [];
+
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: true,
+      notifyFilePath: '/tmp/harness-notify.jsonl',
+      relayScriptPath: '/tmp/relay.ts'
+    },
+    {
+      startBroker: () => broker,
+      readFile: () => {
+        readCallCount += 1;
+        if (readCallCount === 1) {
+          throw missingFileError;
+        }
+        if (readCallCount === 2) {
+          return '{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"agent-turn-complete"}}';
+        }
+        if (readCallCount === 3) {
+          return '{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"agent-turn-complete"}}';
+        }
+        if (readCallCount === 4) {
+          return '';
+        }
+        if (readCallCount === 5) {
+          return [
+            '',
+            'malformed',
+            '{"ts":"2026-01-01T00:00:00.100Z","payload":{"type":"approval-required"}}',
+            ''
+          ].join('\n');
+        }
+        throw deniedFileError;
+      },
+      setIntervalFn: (callback) => {
+        pollNotify = callback;
+        return fakeTimer;
+      }
+    }
+  );
+
+  const removeListener = session.onEvent((event) => {
+    if (event.type === 'notify') {
+      const payloadType = event.record.payload['type'];
+      if (typeof payloadType === 'string') {
+        notifyTypes.push(payloadType);
+      }
+    }
+  });
+
+  pollNotify();
+  pollNotify();
+  pollNotify();
+  pollNotify();
+  pollNotify();
+
+  assert.deepEqual(notifyTypes, ['approval-required']);
+  assert.throws(() => {
+    pollNotify();
+  }, /denied/u);
+
+  removeListener();
+  session.close();
+});
+
+void test('codex live session tolerates notify timers that do not expose unref', () => {
+  const broker = new FakeBroker();
+  let pollNotify: () => void = () => undefined;
+  const fakeTimer = {} as unknown as NodeJS.Timeout;
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: true,
+      notifyFilePath: '/tmp/harness-notify.jsonl',
+      relayScriptPath: '/tmp/relay.ts'
+    },
+    {
+      startBroker: () => broker,
+      readFile: () => '',
+      setIntervalFn: (callback) => {
+        pollNotify = callback;
+        return fakeTimer;
+      }
+    }
+  );
+
+  pollNotify();
+  session.close();
+});
+
+void test('codex live session default notify polling handles missing relay file path', async () => {
+  const session = startCodexLiveSession({
+    command: '/bin/echo',
+    baseArgs: [],
+    args: ['ok'],
+    useNotifyHook: true,
+    notifyPollMs: 10
+  });
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, 40);
+  });
+  session.close();
 });
 
 void test('codex live session emits terminal and exit events', () => {
@@ -390,27 +606,26 @@ void test('codex live session e2e completes terminal query handshake with config
       reject(new Error('timed out waiting for startup handshake output'));
     }, 2500);
     let output = '';
+    let readyAtNs: bigint | null = null;
     const attachmentId = session.attach({
       onData: (event) => {
         output += event.chunk.toString('utf8');
         if (!/READY\r?\n/.test(output)) {
           return;
         }
-        clearTimeout(timeout);
-        session.detach(attachmentId);
-        const elapsedNs = process.hrtime.bigint() - startedAt;
-        resolve(Number(elapsedNs) / 1_000_000);
+        if (readyAtNs === null) {
+          readyAtNs = process.hrtime.bigint();
+        }
       },
       onExit: (exit) => {
-        if (exit.code === 0 && /READY\r?\n/.test(output)) {
+        clearTimeout(timeout);
+        session.detach(attachmentId);
+        if (exit.code === 0 && readyAtNs !== null) {
+          const elapsedNs = readyAtNs - startedAt;
+          resolve(Number(elapsedNs) / 1_000_000);
           return;
         }
-        clearTimeout(timeout);
-        reject(
-          new Error(
-            `startup handshake exited with code ${String(exit.code)} output=${JSON.stringify(output)}`
-          )
-        );
+        reject(new Error(`startup handshake exited with code ${String(exit.code)} output=${JSON.stringify(output)}`));
       }
     });
   });

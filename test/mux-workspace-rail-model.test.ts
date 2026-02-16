@@ -169,6 +169,62 @@ void test('workspace rail model handles empty projects and blank workspace name'
   assert.equal(blankNameRows.some((row) => row.text.includes('(unnamed)')), true);
 });
 
+void test('workspace rail model formats finite process stats and shows empty repository section copy', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositories: [],
+      repositoriesCollapsed: false,
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'worktree-local',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [],
+      processes: [
+        {
+          key: 'proc-1',
+          directoryKey: 'dir',
+          label: 'vite dev',
+          cpuPercent: 12.34,
+          memoryMb: 42.6,
+          status: 'running'
+        }
+      ],
+      activeProjectId: null,
+      activeConversationId: null
+    },
+    24
+  );
+
+  assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('12.3% · 43MB')), true);
+  assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('no repositories')), true);
+});
+
+void test('workspace rail model can render collapsed repository header from flag-only configuration', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositoriesCollapsed: true,
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null
+    },
+    12
+  );
+
+  assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('[+]')), true);
+  assert.equal(rows.some((row) => row.railAction === 'repository.add'), false);
+});
+
 void test('workspace rail model makes project header thread action clickable', () => {
   const rows = buildWorkspaceRailViewRows(
     {
@@ -270,7 +326,7 @@ void test('workspace rail model truncates content before pinned shortcuts and su
   assert.equal(truncated[2]?.text.includes('quit mux'), true);
 });
 
-void test('workspace rail model supports idle normalization custom shortcuts and row hit-testing', () => {
+void test('workspace rail model supports starting normalization custom shortcuts and row hit-testing', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -310,8 +366,8 @@ void test('workspace rail model supports idle normalization custom shortcuts and
     20
   );
 
-  assert.equal(rows.some((row) => row.text.includes('○ codex - untitled')), true);
-  assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('0.1% · 10MB')), true);
+  assert.equal(rows.some((row) => row.text.includes('◔ codex - untitled')), true);
+  assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
   assert.equal(rows.some((row) => row.text.includes('ctrl+j/k switch')), true);
   assert.equal(rows.some((row) => row.text.includes('x archive thread')), true);
   assert.equal(rows.some((row) => row.text.includes('🗑 archive thread')), false);
@@ -552,7 +608,7 @@ void test('workspace rail model supports newline-delimited shortcut hint rows', 
   assert.equal(rows.some((row) => row.text.includes('ctrl+c quit')), true);
 });
 
-void test('workspace rail model treats running sessions with missing last event as idle', () => {
+void test('workspace rail model treats running sessions with missing last event as starting', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -591,7 +647,7 @@ void test('workspace rail model treats running sessions with missing last event 
     20
   );
 
-  assert.equal(rows.some((row) => row.text.includes('○ codex - task')), true);
+  assert.equal(rows.some((row) => row.text.includes('◔ codex - task')), true);
 });
 
 void test('workspace rail model supports collapsed shortcut descriptions with clickable toggle row', () => {
@@ -791,7 +847,7 @@ void test('workspace rail model repository stat formatting covers minute unknown
   assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('2d ago')), true);
 });
 
-void test('workspace rail model repository id row helper and working fallback status line are covered', () => {
+void test('workspace rail model repository id row helper and starting fallback status line are covered', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -851,7 +907,7 @@ void test('workspace rail model repository id row helper and working fallback st
     16
   );
   const repositoryRowIndex = repositoryRows.findIndex((row) => row.kind === 'repository-row');
-  assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('working · 4.2% · 16MB')), true);
+  assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
   assert.equal(repositoryIdAtWorkspaceRailRow(repositoryRows, repositoryRowIndex), 'repository-row-id');
   assert.equal(repositoryIdAtWorkspaceRailRow(repositoryRows, -1), null);
 });
@@ -1183,7 +1239,7 @@ void test('workspace rail model shows controller ownership hints for non-local c
   assert.equal(undefinedLabelBodyRow?.text.includes('controlled by agent:agent-raw'), true);
 });
 
-void test('workspace rail model derives idle status icon from completion telemetry text when runtime status lags', () => {
+void test('workspace rail model keeps running sessions in starting when completion text is not canonical', () => {
   const projection = projectWorkspaceRailConversation(
     {
       sessionId: 'conversation-lagging-complete',
@@ -1204,11 +1260,11 @@ void test('workspace rail model derives idle status icon from completion telemet
       nowMs: Date.parse('2026-01-01T00:00:05.000Z')
     }
   );
-  assert.equal(projection.status, 'idle');
-  assert.equal(projection.glyph, '○');
+  assert.equal(projection.status, 'starting');
+  assert.equal(projection.glyph, '◔');
 });
 
-void test('workspace rail model prefers fresh running activity over stale completion telemetry text', () => {
+void test('workspace rail model keeps explicit turn completion text even with newer running events', () => {
   const projection = projectWorkspaceRailConversation(
     {
       sessionId: 'conversation-stale-complete',
@@ -1229,9 +1285,9 @@ void test('workspace rail model prefers fresh running activity over stale comple
       nowMs: Date.parse('2026-01-01T00:00:09.000Z')
     }
   );
-  assert.equal(projection.status, 'working');
-  assert.equal(projection.glyph, '◆');
-  assert.equal(projection.detailText, 'working · 0.3% · 20MB');
+  assert.equal(projection.status, 'idle');
+  assert.equal(projection.glyph, '○');
+  assert.equal(projection.detailText, 'turn complete (812ms)');
 });
 
 void test('workspace rail model keeps idle projection when last event does not advance past completion telemetry', () => {
@@ -1369,10 +1425,10 @@ void test('workspace rail model includes normalized status in fallback detail te
     (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-no-telemetry'
   );
   assert.notEqual(bodyRow, undefined);
-  assert.equal(bodyRow?.text.includes('idle · 1.2% · 33MB'), true);
+  assert.equal(bodyRow?.text.includes('starting'), true);
 });
 
-void test('workspace rail model infers needs-action and working from last-known-work text', () => {
+void test('workspace rail model infers needs-action and keeps unknown running text as starting', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -1434,7 +1490,7 @@ void test('workspace rail model infers needs-action and working from last-known-
   assert.notEqual(needsActionRow, undefined);
   assert.notEqual(workingRow, undefined);
   assert.equal(needsActionRow?.text.includes('▲ codex - approval'), true);
-  assert.equal(workingRow?.text.includes('◆ codex - streaming'), true);
+  assert.equal(workingRow?.text.includes('◔ codex - streaming'), true);
 });
 
 void test('workspace rail model infers needs-action from approval-denied summary without needs-input marker', () => {
@@ -1513,11 +1569,11 @@ void test('workspace rail model covers status inference keyword variants', () =>
   assert.equal(project('attention-required: approval').status, 'needs-action');
   assert.equal(project('approval denied by policy').status, 'needs-action');
   assert.equal(project('conversation started').status, 'starting');
-  assert.equal(project('response complete').status, 'idle');
+  assert.equal(project('response complete').status, 'starting');
   assert.equal(project('working: preparing changes').status, 'working');
-  assert.equal(project('thinking through solution').status, 'working');
-  assert.equal(project('tool execute').status, 'working');
-  assert.equal(project('unrecognized status text').status, 'idle');
+  assert.equal(project('thinking through solution').status, 'starting');
+  assert.equal(project('tool execute').status, 'starting');
+  assert.equal(project('unrecognized status text').status, 'starting');
 });
 
 void test('workspace rail model treats missing lastEventAt as current for last-known-work text', () => {
@@ -1591,8 +1647,8 @@ void test('workspace rail conversation projection exposes glyph and detail text'
       nowMs: Date.parse('2026-01-01T00:00:01.000Z')
     }
   );
-  assert.equal(projected.status, 'working');
-  assert.equal(projected.glyph, '◆');
+  assert.equal(projected.status, 'starting');
+  assert.equal(projected.glyph, '◔');
   assert.equal(projected.detailText, 'writing response…');
 });
 
@@ -1649,7 +1705,7 @@ void test('workspace rail conversation projection supports default option branch
       claimedAt: '2026-01-01T00:00:00.000Z'
     }
   });
-  assert.equal(projected.status, 'idle');
-  assert.equal(projected.glyph, '○');
+  assert.equal(projected.status, 'starting');
+  assert.equal(projected.glyph, '◔');
   assert.equal(projected.detailText.includes('controlled by'), true);
 });

@@ -79,6 +79,7 @@ export interface StartControlPlaneSessionInput {
   args: string[];
   env?: Record<string, string>;
   cwd?: string;
+  useNotifyHook?: boolean;
   initialCols: number;
   initialRows: number;
   terminalForegroundHex?: string;
@@ -284,6 +285,16 @@ function expandTildePath(pathValue: string): string {
 }
 
 function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
+  if (event.type === 'notify') {
+    return {
+      type: 'notify',
+      record: {
+        ts: event.record.ts,
+        payload: event.record.payload
+      }
+    };
+  }
+
   if (event.type === 'session-exit') {
     return {
       type: 'session-exit',
@@ -1959,6 +1970,7 @@ export class ControlPlaneStreamServer {
       const launchProfile = this.launchProfileForAgent(agentType);
       const startInput: StartControlPlaneSessionInput = {
         args: [...codexLaunchArgs, ...command.args],
+        useNotifyHook: agentType === 'codex',
         initialCols: command.initialCols,
         initialRows: command.initialRows
       };
@@ -2190,6 +2202,10 @@ export class ControlPlaneStreamServer {
 
     const mapped = mapSessionEvent(event);
     if (mapped !== null && event.type !== 'terminal-output') {
+      const observedAt =
+        mapped.type === 'session-exit'
+          ? new Date().toISOString()
+          : mapped.record.ts;
       for (const connectionId of sessionState.eventSubscriberConnectionIds) {
         this.sendToConnection(connectionId, {
           kind: 'pty.event',
@@ -2208,6 +2224,14 @@ export class ControlPlaneStreamServer {
           conversationId: sessionState.id
         }
       );
+      if (mapped.type === 'notify') {
+        this.setSessionStatus(
+          sessionState,
+          sessionState.status,
+          sessionState.attentionReason,
+          observedAt
+        );
+      }
     }
 
     if (event.type === 'session-exit') {

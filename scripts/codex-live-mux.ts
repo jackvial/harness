@@ -2157,6 +2157,9 @@ async function main(): Promise<number> {
             initialRows: input.initialRows,
             enableSnapshotModel: debugConfig.mux.serverSnapshotModelEnabled
           };
+          if (input.useNotifyHook !== undefined) {
+            sessionOptions.useNotifyHook = input.useNotifyHook;
+          }
           if (input.command !== undefined) {
             sessionOptions.command = input.command;
           }

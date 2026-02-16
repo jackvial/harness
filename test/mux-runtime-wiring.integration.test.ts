@@ -393,7 +393,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const completedConversation = conversations.get('conversation-runtime');
       assert.notEqual(completedConversation, undefined);
       assert.equal(completedConversation?.status, 'running');
-      assert.equal(completedConversation?.lastKnownWork, 'idle');
+      assert.equal(completedConversation?.lastKnownWork, 'working: thinking');
 
       const delayedMetricResponse = await postJson(
         {
@@ -431,7 +431,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const delayedMetricConversation = conversations.get('conversation-runtime');
       assert.notEqual(delayedMetricConversation, undefined);
       assert.equal(delayedMetricConversation?.status, 'running');
-      assert.equal(delayedMetricConversation?.lastKnownWork, 'idle');
+      assert.equal(delayedMetricConversation?.lastKnownWork, 'working: thinking');
 
       const postCompleteTraceResponse = await postJson(
         {
@@ -461,7 +461,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const postCompleteConversation = conversations.get('conversation-runtime');
       assert.notEqual(postCompleteConversation, undefined);
       assert.equal(postCompleteConversation?.status, 'running');
-      assert.equal(postCompleteConversation?.lastKnownWork, 'idle');
+      assert.equal(postCompleteConversation?.lastKnownWork, 'working: thinking');
 
       const resumedResponse = await postJson(
         {
@@ -813,7 +813,7 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
 
       const afterTaskTerminal = conversations.get('conversation-runtime-agent');
       assert.notEqual(afterTaskTerminal, undefined);
-      assert.equal(afterTaskTerminal?.lastKnownWork, 'task completed');
+      assert.equal(afterTaskTerminal?.lastKnownWork, 'working: thinking');
 
       const rowsAfterTaskTerminal = buildWorkspaceRailViewRows(
         {
@@ -857,7 +857,7 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
       const titleRowAfterTaskTerminal = rowsAfterTaskTerminal.find((row) => row.kind === 'conversation-title');
       const bodyRowAfterTaskTerminal = rowsAfterTaskTerminal.find((row) => row.kind === 'conversation-body');
       assert.notEqual(titleRowAfterTaskTerminal, undefined);
-      assert.equal(titleRowAfterTaskTerminal?.text.includes('○'), true);
+      assert.equal(titleRowAfterTaskTerminal?.text.includes('◆'), true);
       assert.equal(bodyRowAfterTaskTerminal?.text.includes('idle'), false);
     } finally {
       await subscription.close();

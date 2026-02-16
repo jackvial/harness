@@ -383,13 +383,33 @@ void test('lifecycle hooks normalize conversation and session lifecycle variants
     ['session.exited', 'turn.failed']
   );
 
+  const notifyIgnored = runtimeInternals.normalizeObservedEvent(
+    scope,
+    {
+      type: 'session-event',
+      sessionId: `${scope.conversationId}-notify`,
+      event: {
+        type: 'notify',
+        record: {
+          ts: new Date().toISOString(),
+          payload: { type: 'agent-turn-complete' }
+        }
+      },
+      ts: new Date().toISOString(),
+      directoryId: scope.directoryId,
+      conversationId: `${scope.conversationId}-notify`
+    },
+    8
+  );
+  assert.deepEqual(notifyIgnored, []);
+
   const ignored = runtimeInternals.normalizeObservedEvent(
     scope,
     {
       type: 'directory-upserted',
       directory: {}
     },
-    8
+    9
   );
   assert.deepEqual(ignored, []);
 });
@@ -422,8 +442,16 @@ void test('lifecycle hooks normalize codex and claude key events into unified li
 
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('foo.response.completed', 'ok', null, null), 1)
+      .normalizeObservedEvent(scope, telemetryEvent('codex.turn.e2e_duration_ms', 'turn complete (14ms)', null, null), 1)
       .some((event) => event.eventType === 'turn.completed'),
+    true
+  );
+  const defaultSummaryRuntime = new LifecycleHooksRuntime(makeConfig());
+  const defaultSummaryInternals = internals(defaultSummaryRuntime);
+  assert.equal(
+    defaultSummaryInternals
+      .normalizeObservedEvent(scope, telemetryEvent('codex.turn.e2e_duration_ms', null, null, null), 1)
+      .some((event) => (event as { summary?: string }).summary === 'turn completed'),
     true
   );
   assert.equal(
@@ -436,6 +464,18 @@ void test('lifecycle hooks normalize codex and claude key events into unified li
     runtimeInternals
       .normalizeObservedEvent(scope, telemetryEvent('claude.userpromptsubmit', 'prompt', null, null), 3)
       .some((event) => event.eventType === 'turn.started'),
+    true
+  );
+  assert.equal(
+    runtimeInternals
+      .normalizeObservedEvent(scope, telemetryEvent('claude.posttooluse', 'tool completed', null, null), 3)
+      .some((event) => event.eventType === 'tool.completed'),
+    true
+  );
+  assert.equal(
+    runtimeInternals
+      .normalizeObservedEvent(scope, telemetryEvent('custom.event', 'turn completed (22ms)', null, null), 3)
+      .some((event) => event.eventType === 'turn.completed'),
     true
   );
   assert.equal(
@@ -459,6 +499,18 @@ void test('lifecycle hooks normalize codex and claude key events into unified li
   assert.equal(
     runtimeInternals
       .normalizeObservedEvent(scope, telemetryEvent('codex.api_request', 'error upstream', null, null), 7)
+      .some((event) => event.eventType === 'turn.failed'),
+    true
+  );
+  assert.equal(
+    runtimeInternals
+      .normalizeObservedEvent(scope, telemetryEvent('codex.api_request.abort', 'request abort', null, null), 7)
+      .some((event) => event.eventType === 'turn.failed'),
+    true
+  );
+  assert.equal(
+    runtimeInternals
+      .normalizeObservedEvent(scope, telemetryEvent('codex.api_request.fatal', 'api request', 'FATAL', null), 7)
       .some((event) => event.eventType === 'turn.failed'),
     true
   );
@@ -516,10 +568,12 @@ void test('lifecycle hooks provider filtering gates claude and unknown provider 
     ...claudeEvent,
     keyEvent: {
       ...claudeEvent.keyEvent,
-      eventName: 'custom.event'
+      eventName: 'custom.event',
+      statusHint: 'needs-input'
     }
   };
   assert.deepEqual(internals(unknownDisabled).normalizeObservedEvent(scope, unknownProviderEvent, 2), []);
+  assert.notEqual(internals(claudeDisabled).normalizeObservedEvent(scope, unknownProviderEvent, 3).length, 0);
 });
 
 void test('lifecycle hooks webhook filter and timeout=0 path are exercised', async () => {
@@ -989,7 +1043,7 @@ void test('lifecycle hooks cover nullish fallback branches for telemetry key eve
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, keyEvent('response.completed', null, null), 5)
+      .normalizeObservedEvent(scope, keyEvent('codex.turn.e2e_duration_ms', 'turn complete (7ms)', null), 5)
       .some((event) => event.eventType === 'turn.completed'),
     true
   );

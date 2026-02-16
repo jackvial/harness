@@ -42,6 +42,7 @@ Harness is built for developers who want to:
 - Repository/task stream subscriptions, including scoped filters for `repositoryId` and `taskId`.
 - Dedicated mux task-management pane (opened from the left rail) with real-time repository/task sync, reorder controls, and a recently completed view.
 - Real-time typed event stream for status, telemetry, control changes, and output.
+- Codex notify-hook relay support on the same stream (`session-event notify`, including `agent-turn-complete` payloads).
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
@@ -129,6 +130,7 @@ Harness is built to expose operational truth, not hide it.
 
 - Canonical thread/session lifecycle events.
 - Typed telemetry events for status hints and recent work summaries.
+- Deliberately minimal work-status projection: `codex.user_prompt` starts work, `codex.turn.e2e_duration_ms` completes a turn; noisy fallback formats are ignored.
 - Mux projection instrumentation (`mux.session-projection.transition`) for icon/status-line timeline debugging.
 - Selector index snapshots (`mux.selector.snapshot` + `mux.selector.entry`) so threads can be referenced by visible rail index.
 - Session ownership/control transition events.

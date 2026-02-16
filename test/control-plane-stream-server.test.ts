@@ -450,6 +450,26 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   assert.equal(created[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'), true);
   assert.equal(created[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0004'), true);
 
+  created[0]!.emitEvent({
+    type: 'notify',
+    record: {
+      ts: '2026-01-01T00:00:02.000Z',
+      payload: {
+        type: 'agent-turn-complete'
+      }
+    }
+  });
+  await delay(10);
+  assert.equal(
+    observedA.some(
+      (envelope) =>
+        envelope.kind === 'pty.event' &&
+        envelope.event.type === 'notify' &&
+        envelope.event.record.payload['type'] === 'agent-turn-complete'
+    ),
+    true
+  );
+
   await writeRaw(
     { host: coldAddress.address, port: coldAddress.port },
     `${encodeStreamEnvelope({
@@ -469,6 +489,8 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
     type: 'pty.unsubscribe-events',
     sessionId: 'session-1'
   });
+  const ptyEventCountA = observedA.filter((envelope) => envelope.kind === 'pty.event').length;
+  const ptyEventCountB = observedB.filter((envelope) => envelope.kind === 'pty.event').length;
 
   created[0]!.emitEvent({
     type: 'terminal-output',
@@ -477,11 +499,8 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   });
 
   await delay(10);
-  assert.equal(observedA.some((envelope) => envelope.kind === 'pty.event'), false);
-  assert.equal(
-    observedB.some((envelope) => envelope.kind === 'pty.event'),
-    false
-  );
+  assert.equal(observedA.filter((envelope) => envelope.kind === 'pty.event').length, ptyEventCountA);
+  assert.equal(observedB.filter((envelope) => envelope.kind === 'pty.event').length, ptyEventCountB);
 
   created[0]!.emitExit({
     code: 0,

@@ -138,7 +138,7 @@ void test('parseOtlpLogEvents parses records, thread ids, summaries, and status 
   assert.equal(events[0]?.statusHint, 'running');
   assert.equal(events[0]?.summary, 'prompt: prompt accepted');
   assert.equal(events[1]?.observedAt, '2023-11-14T22:13:21.000Z');
-  assert.equal(events[1]?.statusHint, 'completed');
+  assert.equal(events[1]?.statusHint, null);
   assert.equal(events[2]?.eventName, null);
   assert.equal(events[2]?.summary, null);
   assert.equal(events[2]?.statusHint, null);
@@ -469,16 +469,18 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
   );
 
   assert.equal(events.length, 9);
-  assert.equal(events[0]?.statusHint, 'running');
+  assert.equal(events[0]?.statusHint, null);
   assert.equal(events[1]?.statusHint, 'needs-input');
-  assert.equal(events[2]?.statusHint, 'completed');
+  assert.equal(events[2]?.statusHint, null);
   assert.equal(events[3]?.summary, 'stream response.completed');
-  assert.equal(events[3]?.statusHint, 'completed');
+  assert.equal(events[3]?.statusHint, null);
   assert.equal(events[4]?.statusHint, 'needs-input');
-  assert.equal(events[5]?.statusHint, 'completed');
+  assert.equal(events[5]?.statusHint, null);
   assert.equal(events[6]?.summary?.endsWith('…'), true);
   assert.equal(events[7]?.summary, 'model request');
+  assert.equal(events[7]?.statusHint, null);
   assert.equal(events[8]?.summary, 'model request');
+  assert.equal(events[8]?.statusHint, null);
 });
 
 void test('parseOtlpLogEvents covers statusHint fallback branches for needs-input summary text and api status fields', () => {
@@ -512,6 +514,32 @@ void test('parseOtlpLogEvents covers statusHint fallback branches for needs-inpu
   assert.equal(events.length, 2);
   assert.equal(events[0]?.statusHint, 'needs-input');
   assert.equal(events[1]?.statusHint, 'needs-input');
+});
+
+void test('parseOtlpLogEvents derives needs-input status from severity when other hints are absent', () => {
+  const events = parseOtlpLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  severityText: 'ERROR',
+                  attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.summary, 'custom.event');
+  assert.equal(events[0]?.statusHint, 'needs-input');
 });
 
 void test('parseOtlpLogEvents returns empty on invalid root shape', () => {
@@ -626,7 +654,7 @@ void test('parseOtlpMetricEvents maps turn count summary and reads sum-valued po
   );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.summary, 'turn count 5');
-  assert.equal(events[0]?.statusHint, 'completed');
+  assert.equal(events[0]?.statusHint, null);
 });
 
 void test('parseOtlpMetricEvents returns empty on invalid root shape', () => {
@@ -723,7 +751,7 @@ void test('parseCodexHistoryLine parses history entries and rejects invalid line
   assert.equal(parsed?.eventName, 'user_prompt');
   assert.equal(parsed?.summary, 'hello');
   assert.equal(parsed?.providerThreadId, 'thread-h');
-  assert.equal(parsed?.statusHint, 'running');
+  assert.equal(parsed?.statusHint, null);
 
   const fallback = parseCodexHistoryLine(
     JSON.stringify({
@@ -852,7 +880,7 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
   assert.equal(negativeTimestamp?.observedAt, '2026-02-15T00:00:00.000Z');
 });
 
-void test('parseCodexHistoryLine derives completed status from summary text fallback', () => {
+void test('parseCodexHistoryLine does not derive completed status from summary text fallback', () => {
   const parsed = parseCodexHistoryLine(
     JSON.stringify({
       type: 'custom.event',
@@ -861,7 +889,7 @@ void test('parseCodexHistoryLine derives completed status from summary text fall
     '2026-02-15T00:00:00.000Z'
   );
   assert.notEqual(parsed, null);
-  assert.equal(parsed?.statusHint, 'completed');
+  assert.equal(parsed?.statusHint, null);
 });
 
 void test('extractCodexThreadId scans nested records and arrays', () => {
@@ -1126,7 +1154,7 @@ void test('codex telemetry log summaries and status hints can derive from summar
 
   assert.equal(events.length, 2);
   assert.equal(events[0]?.summary, 'custom.event (response.completed)');
-  assert.equal(events[0]?.statusHint, 'completed');
+  assert.equal(events[0]?.statusHint, null);
   assert.equal(events[1]?.summary, 'custom.event.with.body: detail body');
 });
 

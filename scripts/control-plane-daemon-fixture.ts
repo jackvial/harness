@@ -175,6 +175,9 @@ async function main(): Promise<number> {
         initialRows: input.initialRows,
         enableSnapshotModel: serverSnapshotModelEnabled
       };
+      if (input.useNotifyHook !== undefined) {
+        sessionOptions.useNotifyHook = input.useNotifyHook;
+      }
       if (input.env !== undefined) {
         sessionOptions.env = input.env;
       }

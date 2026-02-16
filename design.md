@@ -272,7 +272,7 @@ Control-plane runtime statuses:
 
 Workspace rail display statuses:
 - `starting`
-- `working` (`working: thinking` | `working: writing` | `working: tool`)
+- `working` (`working: thinking`)
 - `idle`
 - `needs-action`
 - `exited`
@@ -281,45 +281,22 @@ Display transition contract:
 
 ```txt
 session start -> starting -> idle
-user prompt -> working: thinking -> working: writing|tool -> idle
-agent-controlled prompt -> working:* -> working (until task-terminal telemetry) -> idle
+user prompt -> working: thinking
+turn e2e metric -> turn complete (...) | idle
+needs-input/error -> needs-action
+session exit -> exited
 ```
 
 High-signal classification rules:
-- `codex.conversation_starts` => `starting`
-- `codex.user_prompt` => `working: thinking`
-- `codex.sse_event`:
-  - `response.created|response.in_progress|reasoning_*` => `working: thinking`
-  - `response.output_*|content_part.*` => `working: writing`
-  - `response.completed` => `idle` for non-agent-controlled sessions; for active agent-controlled sessions this is treated as turn-level completion only (status stays `working`)
-- `codex.tool_decision|codex.tool_result` => `working: tool`
-- `codex.turn.e2e_duration_ms|codex.conversation.turn.count` => `idle` for non-agent-controlled sessions; ignored for active agent-controlled sessions
-- `codex.task.completed|codex.agent_task.completed|codex.agent.task.completed` (or task-complete summary text) => `task completed` terminal summary, eligible for `idle` even when an agent controller is still attached
-- `codex.api_request`, websocket events, trace churn (`receiving`, `handle_responses`, `stream_request`) => no status-line mutation (noise-suppressed)
-
-SQLite-derived reference sequence (captured 2026-02-15 from `session_telemetry`, `conversation-b6ba1963-5268-4c7b-8abb-b8a362d0aad2`):
-
-| telemetry_id | observed_at | event | summary | class | output transition |
-| --- | --- | --- | --- | --- | --- |
-| 19229 | 2026-02-15T21:42:10.291Z | codex.conversation_starts | conversation started (gpt-5.3-codex) | startup | `starting` |
-| (time gate) | +2s without work | n/a | n/a | startup settle | `starting -> idle` |
-| 19234 | 2026-02-15T21:42:21.349Z | codex.user_prompt | prompt submitted | prompt | `idle -> working: thinking` |
-| 19235 | 2026-02-15T21:42:22.446Z | codex.api_request | model request (1054ms) | noise-suppressed | no change |
-| 19237 | 2026-02-15T21:42:22.826Z | codex.sse_event | stream response.in_progress | thinking | stays `working: thinking` |
-| 19340 | 2026-02-15T21:42:24.975Z | codex.sse_event | stream response.output_text.delta | writing | `working: thinking -> working: writing` |
-| 19510 | 2026-02-15T21:42:29.259Z | codex.sse_event | stream response.completed | completion | `working:* -> idle` (non-agent-controlled) |
-
-Startup-only reference sequence (captured 2026-02-15 from `session_telemetry`, `conversation-c148f224-78bf-4221-89af-026118f4906d`):
-
-| telemetry_id | observed_at | event | summary | class | output transition |
-| --- | --- | --- | --- | --- | --- |
-| 33066 | 2026-02-15T23:57:07.932Z | codex.conversation_starts | conversation started (gpt-5.3-codex) | startup | `starting` |
-| 33067 | 2026-02-15T23:57:08.535Z | shell_snapshot (trace) | shell_snapshot: 1 | noise-suppressed | no change |
-| (time gate) | +2s without prompt/work | n/a | n/a | startup settle | `starting -> idle` |
+- Start-work signal: `codex.user_prompt` only.
+- Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms` only.
+- Attention signal: explicit `needs-input` / failed / error-like outcomes from structured payload fields, summary text, or severity.
+- Notify signal transport: Codex notify-hook records are surfaced as `session-event notify` on the same stream (for example payload type `agent-turn-complete`), currently informational unless a downstream consumer maps them.
+- Status-neutral noise: `codex.sse_event` `response.*`, tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
 
 Invariant:
-- Pre-prompt telemetry that looks like response churn is ignored for `working:*` transitions unless `codex.user_prompt` has already been observed in that thread timeline.
-- Active agent-controlled sessions are never allowed to render `idle` from turn-scoped completion telemetry alone (`response.completed`, turn metrics); they require explicit task-terminal telemetry.
+- No foreground/background or controller-specific status heuristics are used for telemetry classification.
+- Fallback completion formats are intentionally disabled; only explicit turn-e2e telemetry completes a turn.
 
 Notification policy:
 - Trigger sound/desktop notifications on transitions to `needs-input`, `idle` after `working:*`, or `exited`.
@@ -1126,7 +1103,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - terminal-output persistence is buffered and flushed in batches (`mux.events.flush`) so per-chunk SQLite writes do not execute directly in the PTY output hot path
     - active-session attach now resumes from the last observed PTY cursor; inactive live conversations keep event subscriptions after detach so status/telemetry stays fresh while PTY output replay remains bounded by cursor-based attach
     - key-event subscription wiring (`session-status` + `session-key-event`) that drives thread bubble status and second-line "last known work" text from provider/telemetry signals rather than local keystroke heuristics
-    - Codex OTEL normalization now maps provider-native event families (`codex.user_prompt`, `codex.api_request`, `codex.sse_event`, `codex.tool_*`, `codex.websocket_*`) plus turn-latency metrics (`codex.turn.e2e_duration_ms`) into deterministic `running/completed/needs-input` hints and concise operator-facing work summaries.
+    - Codex OTEL normalization now uses a minimal status contract: `codex.user_prompt` starts work, `codex.turn.e2e_duration_ms` completes turns, explicit needs-input/error semantics raise attention, and other telemetry families are status-neutral.
+    - Codex notify hook relay support streams `session-event notify` records (for example `agent-turn-complete`) without introducing side-channel status heuristics.
     - mux status reduction now separates high-signal status transitions from noisy telemetry chatter: trace spans are status-neutral, non-turn metrics are status-neutral, stream deltas collapse into stable human-readable progress text, and the working glyph is static (non-blinking) to reduce visual noise while preserving live progress detail in the second line.
     - OTLP timestamp normalization now treats zero/invalid nano timestamps as fallback wall-clock observations (instead of epoch `1970`), keeping telemetry timelines orderable and reducing false recency artifacts.
     - takeover-aware interaction so humans can explicitly claim/take over sessions currently controlled by automation

@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   startSingleSessionBroker,
   type BrokerAttachmentHandlers,
@@ -36,12 +41,25 @@ interface StartCodexLiveSessionOptions {
   env?: NodeJS.ProcessEnv;
   cwd?: string;
   baseArgs?: string[];
+  useNotifyHook?: boolean;
+  notifyFilePath?: string;
+  notifyPollMs?: number;
+  relayScriptPath?: string;
   maxBacklogBytes?: number;
   initialCols?: number;
   initialRows?: number;
   terminalForegroundHex?: string;
   terminalBackgroundHex?: string;
   enableSnapshotModel?: boolean;
+}
+
+interface NotifyRecord {
+  ts: string;
+  payload: NotifyPayload;
+}
+
+interface NotifyPayload {
+  [key: string]: unknown;
 }
 
 export type CodexLiveEvent =
@@ -51,16 +69,27 @@ export type CodexLiveEvent =
       chunk: Buffer;
     }
   | {
+      type: 'notify';
+      record: NotifyRecord;
+    }
+  | {
       type: 'session-exit';
       exit: PtyExit;
     };
 
 interface LiveSessionDependencies {
   startBroker?: (options?: StartPtySessionOptions, maxBacklogBytes?: number) => SessionBrokerLike;
+  readFile?: (path: string) => string;
+  setIntervalFn?: (callback: () => void, intervalMs: number) => NodeJS.Timeout;
+  clearIntervalFn?: (handle: NodeJS.Timeout) => void;
 }
 
 const DEFAULT_COMMAND = 'codex';
 const DEFAULT_BASE_ARGS = ['--no-alt-screen'];
+const DEFAULT_NOTIFY_POLL_MS = 100;
+const DEFAULT_RELAY_SCRIPT_PATH = fileURLToPath(
+  new URL('../../scripts/codex-notify-relay.ts', import.meta.url)
+);
 const DEFAULT_TERMINAL_FOREGROUND_HEX = 'd0d7de';
 const DEFAULT_TERMINAL_BACKGROUND_HEX = '0f1419';
 const DEFAULT_INDEXED_TERMINAL_HEX_BY_CODE: Readonly<Record<number, string>> = {
@@ -137,6 +166,38 @@ const DEFAULT_DA1_REPLY = '\u001b[?62;4;6;22c';
 const DEFAULT_DA2_REPLY = '\u001b[>1;10;0c';
 const CELL_PIXEL_HEIGHT = 16;
 const CELL_PIXEL_WIDTH = 8;
+
+export function buildTomlStringArray(values: string[]): string {
+  const escaped = values.map((value) => {
+    const withBackslashEscaped = value.replaceAll('\\', '\\\\');
+    const withQuoteEscaped = withBackslashEscaped.replaceAll('"', '\\"');
+    return `"${withQuoteEscaped}"`;
+  });
+  return `[${escaped.join(',')}]`;
+}
+
+export function parseNotifyRecordLine(line: string): NotifyRecord | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    return null;
+  }
+  const record = parsed as { ts?: unknown; payload?: unknown };
+  if (typeof record.ts !== 'string') {
+    return null;
+  }
+  if (typeof record.payload !== 'object' || record.payload === null || Array.isArray(record.payload)) {
+    return null;
+  }
+  return {
+    ts: record.ts,
+    payload: record.payload as NotifyPayload
+  };
+}
 
 class TerminalQueryResponder {
   private mode: TerminalQueryParserMode = 'normal';
@@ -377,11 +438,17 @@ class TerminalQueryResponder {
 
 class CodexLiveSession {
   private readonly broker: SessionBrokerLike;
+  private readonly readFile: (path: string) => string;
+  private readonly clearIntervalFn: (handle: NodeJS.Timeout) => void;
+  private readonly notifyFilePath: string;
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
   private readonly snapshotOracle: TerminalSnapshotOracle;
   private readonly snapshotModelEnabled: boolean;
   private readonly terminalQueryResponder: TerminalQueryResponder;
   private readonly brokerAttachmentId: string;
+  private readonly notifyTimer: NodeJS.Timeout | null;
+  private notifyOffset = 0;
+  private notifyRemainder = '';
   private closed = false;
 
   constructor(
@@ -394,12 +461,29 @@ class CodexLiveSession {
     this.snapshotModelEnabled = options.enableSnapshotModel ?? true;
 
     const command = options.command ?? DEFAULT_COMMAND;
+    const useNotifyHook = options.useNotifyHook ?? false;
+    const notifyPollMs = options.notifyPollMs ?? DEFAULT_NOTIFY_POLL_MS;
+    this.notifyFilePath =
+      options.notifyFilePath ??
+      join(tmpdir(), `harness-codex-notify-${process.pid}-${randomUUID()}.jsonl`);
+    const relayScriptPath = resolve(options.relayScriptPath ?? DEFAULT_RELAY_SCRIPT_PATH);
+    const notifyCommand = [
+      '/usr/bin/env',
+      process.execPath,
+      '--experimental-strip-types',
+      relayScriptPath,
+      this.notifyFilePath
+    ];
     const commandArgs = [
       ...(options.baseArgs ?? DEFAULT_BASE_ARGS),
+      ...(useNotifyHook ? ['-c', `notify=${buildTomlStringArray(notifyCommand)}`] : []),
       ...(options.args ?? [])
     ];
 
     const startBroker = dependencies.startBroker ?? startSingleSessionBroker;
+    this.readFile = dependencies.readFile ?? ((path) => readFileSync(path, 'utf8'));
+    const setIntervalFn = dependencies.setIntervalFn ?? setInterval;
+    this.clearIntervalFn = dependencies.clearIntervalFn ?? clearInterval;
 
     const startOptions: StartPtySessionOptions = {
       command,
@@ -442,6 +526,15 @@ class CodexLiveSession {
         });
       }
     });
+
+    if (useNotifyHook) {
+      this.notifyTimer = setIntervalFn(() => {
+        this.pollNotifyFile();
+      }, notifyPollMs);
+      this.notifyTimer.unref?.();
+    } else {
+      this.notifyTimer = null;
+    }
   }
 
   onEvent(listener: (event: CodexLiveEvent) => void): () => void {
@@ -494,8 +587,50 @@ class CodexLiveSession {
     }
 
     this.closed = true;
+    if (this.notifyTimer !== null) {
+      this.clearIntervalFn(this.notifyTimer);
+    }
     this.broker.detach(this.brokerAttachmentId);
     this.broker.close();
+  }
+
+  private pollNotifyFile(): void {
+    let content: string;
+    try {
+      content = this.readFile(this.notifyFilePath);
+    } catch (error) {
+      const withCode = error as { code?: unknown };
+      if (withCode.code === 'ENOENT') {
+        return;
+      }
+      throw error;
+    }
+    if (content.length < this.notifyOffset) {
+      this.notifyOffset = 0;
+      this.notifyRemainder = '';
+    }
+    const delta = content.slice(this.notifyOffset);
+    if (delta.length === 0) {
+      return;
+    }
+    this.notifyOffset = content.length;
+    const buffered = `${this.notifyRemainder}${delta}`;
+    const lines = buffered.split('\n');
+    this.notifyRemainder = lines.pop()!;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) {
+        continue;
+      }
+      const record = parseNotifyRecordLine(trimmed);
+      if (record === null) {
+        continue;
+      }
+      this.emit({
+        type: 'notify',
+        record
+      });
+    }
   }
 
   private emit(event: CodexLiveEvent): void {

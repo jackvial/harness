@@ -1487,6 +1487,27 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 17.3,
+      event: {
+        type: 'session-event',
+        sessionId: 's1',
+        event: {
+          type: 'notify',
+          record: {
+            ts: new Date(0).toISOString(),
+            payload: {
+              type: 'agent-turn-complete'
+            }
+          }
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 17.5,
       event: {
         type: 'session-control',

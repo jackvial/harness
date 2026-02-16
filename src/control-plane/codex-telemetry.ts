@@ -323,21 +323,6 @@ const NEEDS_INPUT_HINT_TOKENS = [
   'failed'
 ] as const;
 
-const COMPLETED_HINT_TOKENS = [
-  'response.completed',
-  'turn-complete',
-  'turn completed',
-  'complete'
-] as const;
-
-const RUNNING_HINT_TOKENS = [
-  'running',
-  'in-progress',
-  'in progress',
-  'started',
-  'stream'
-] as const;
-
 function statusFromOutcomeText(value: string | null): CodexStatusHint | null {
   const normalized = value?.toLowerCase().trim() ?? '';
   if (normalized.length === 0) {
@@ -345,12 +330,6 @@ function statusFromOutcomeText(value: string | null): CodexStatusHint | null {
   }
   if (includesAnySubstring(normalized, NEEDS_INPUT_HINT_TOKENS)) {
     return 'needs-input';
-  }
-  if (includesAnySubstring(normalized, COMPLETED_HINT_TOKENS)) {
-    return 'completed';
-  }
-  if (includesAnySubstring(normalized, RUNNING_HINT_TOKENS)) {
-    return 'running';
   }
   return null;
 }
@@ -452,65 +431,20 @@ export function extractCodexThreadId(payload: unknown): string | null {
   return candidates[0] as string;
 }
 
-function statusHintFromText(input: string): CodexStatusHint | null {
-  const normalized = input.toLowerCase();
-  if (
-    includesAnySubstring(normalized, [
-      'response.completed',
-      'turn-complete',
-      'turn completed',
-      'turn.e2e_duration_ms',
-      'conversation.turn.count'
-    ])
-  ) {
-    return 'completed';
-  }
-  if (
-    includesAnySubstring(normalized, [
-      'attention-required',
-      'needs-input',
-      'approval-required',
-      'denied',
-      'abort',
-      'failed'
-    ])
-  ) {
-    return 'needs-input';
-  }
-  if (
-    includesAnySubstring(normalized, [
-      'codex.user_prompt',
-      'user_prompt',
-      'api_request',
-      'response.created',
-      'codex.sse_event',
-      'codex.tool_decision',
-      'codex.tool_result',
-      'codex.websocket_request',
-      'codex.websocket_event'
-    ])
-  ) {
-    return 'running';
-  }
-  return null;
-}
-
 function deriveStatusHint(
   eventName: string | null,
   severity: string | null,
   summary: string | null,
   payload: Record<string, unknown>
 ): CodexStatusHint | null {
-  const runningEventNames = new Set([
-    'codex.user_prompt',
-    'codex.api_request',
-    'codex.sse_event',
-    'codex.tool_decision',
-    'codex.tool_result',
-    'codex.websocket_request',
-    'codex.websocket_event'
-  ]);
   const normalizedEventName = eventName?.toLowerCase().trim() ?? '';
+  if (normalizedEventName === 'codex.user_prompt') {
+    return 'running';
+  }
+  if (normalizedEventName === 'codex.turn.e2e_duration_ms') {
+    return 'completed';
+  }
+
   const payloadAttributes = asRecord(payload['attributes']) ?? {};
   const payloadBody = payload['body'];
   const outcomeHint = statusFromOutcomeText(
@@ -529,48 +463,8 @@ function deriveStatusHint(
   if (outcomeHint !== null) {
     return outcomeHint;
   }
-
-  if (runningEventNames.has(normalizedEventName)) {
-    if (
-      normalizedEventName === 'codex.api_request' ||
-      normalizedEventName === 'codex.tool_result' ||
-      normalizedEventName === 'codex.tool_decision'
-    ) {
-      const statusField = pickFieldText(payloadAttributes, payloadBody, [
-        'status',
-        'result',
-        'outcome',
-        'decision'
-      ]);
-      const statusHint = statusFromOutcomeText(statusField);
-      if (statusHint !== null) {
-        return statusHint;
-      }
-    }
-    if (normalizedEventName === 'codex.sse_event') {
-      const sseHint = statusFromOutcomeText(summary);
-      if (sseHint !== null) {
-        return sseHint;
-      }
-    }
-    return 'running';
-  }
-
-  if (
-    normalizedEventName === 'codex.turn.e2e_duration_ms' ||
-    normalizedEventName === 'codex.conversation.turn.count'
-  ) {
-    return 'completed';
-  }
-
-  if (eventName !== null) {
-    const fromEvent = statusHintFromText(eventName);
-    if (fromEvent !== null) {
-      return fromEvent;
-    }
-  }
   if (summary !== null) {
-    const fromSummary = statusHintFromText(summary);
+    const fromSummary = statusFromOutcomeText(summary);
     if (fromSummary !== null) {
       return fromSummary;
     }
@@ -579,8 +473,7 @@ function deriveStatusHint(
   if (severityHint !== null) {
     return severityHint;
   }
-  const compactPayload = JSON.stringify(payload).toLowerCase();
-  return statusHintFromText(compactPayload);
+  return statusFromOutcomeText(JSON.stringify(payload));
 }
 
 function buildLogSummary(
@@ -828,10 +721,7 @@ export function parseOtlpMetricEvents(
               ? `metric points=${String(pointCount)}`
               : `${metricName} points=${String(pointCount)}`;
         }
-        const statusHint =
-          metricName === 'codex.turn.e2e_duration_ms' || metricName === 'codex.conversation.turn.count'
-            ? 'completed'
-            : null;
+        const statusHint = metricName === 'codex.turn.e2e_duration_ms' ? 'completed' : null;
         events.push({
           source: 'otlp-metric',
           observedAt: observedAtFallback,

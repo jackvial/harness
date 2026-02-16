@@ -185,7 +185,7 @@ function providerFromSessionKeyEvent(event: Extract<StreamObservedEvent, { type:
     return 'codex';
   }
   const eventName = event.keyEvent.eventName?.toLowerCase() ?? '';
-  if (eventName.startsWith('codex.') || eventName.includes('response.completed')) {
+  if (eventName.startsWith('codex.')) {
     return 'codex';
   }
   if (
@@ -412,6 +412,9 @@ export class LifecycleHooksRuntime {
       }
       return this.dedupeSessionEvents(events);
     }
+    if (event.type === 'session-event' && event.event.type === 'notify') {
+      return [];
+    }
     if (event.type === 'session-key-event') {
       return this.normalizeSessionKeyEvent(scope, event, cursor, provider);
     }
@@ -542,7 +545,10 @@ export class LifecycleHooksRuntime {
         })
       );
     }
-    if (eventName.includes('response.completed') || summary.includes('response.completed')) {
+    if (
+      eventName === 'codex.turn.e2e_duration_ms' ||
+      summary.includes('turn complete')
+    ) {
       lifecycleEvents.push(
         this.buildLifecycleEvent(scope, event, cursor, provider, 'turn.completed', {
           sessionId: event.sessionId,

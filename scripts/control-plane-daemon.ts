@@ -165,6 +165,9 @@ async function main(): Promise<number> {
       if (input.baseArgs !== undefined) {
         sessionOptions.baseArgs = input.baseArgs;
       }
+      if (input.useNotifyHook !== undefined) {
+        sessionOptions.useNotifyHook = input.useNotifyHook;
+      }
       if (input.env !== undefined) {
         sessionOptions.env = input.env;
       }
