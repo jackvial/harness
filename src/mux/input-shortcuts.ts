@@ -310,6 +310,11 @@ function decodeInputToKeyStroke(input: Buffer): KeyStroke | null {
 }
 
 function keyStrokeToLegacyBytes(stroke: KeyStroke): Buffer | null {
+  if (stroke.key === 'enter' && stroke.shift) {
+    // Preserve Shift+Enter protocol bytes so apps that differentiate it (for newline vs submit)
+    // can handle it; collapsing to CR loses intent.
+    return null;
+  }
   let base: Buffer | null = null;
   if (stroke.ctrl) {
     if (stroke.key === 'space') {

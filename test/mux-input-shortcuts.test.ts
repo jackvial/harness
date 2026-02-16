@@ -227,6 +227,7 @@ void test('normalizeMuxKeyboardInputForPty covers legacy key mappings and fallba
     ['\u001b[95;5u', Buffer.from([0x1f])],
     ['\u001b[63;5u', Buffer.from([0x7f])],
     ['\u001b[13;1u', Buffer.from([0x0d])],
+    ['\u001b[13;2u', Buffer.from('\u001b[13;2u', 'utf8')],
     ['\u001b[9;1u', Buffer.from([0x09])],
     ['\u001b[27;1u', Buffer.from([0x1b])],
     ['\u001b[32;1u', Buffer.from([0x20])],
@@ -234,7 +235,8 @@ void test('normalizeMuxKeyboardInputForPty covers legacy key mappings and fallba
     ['\u001b[114;3u', Buffer.from('\u001br', 'utf8')],
     ['\u001b[33;5u', Buffer.from('\u001b[33;5u', 'utf8')],
     ['\u001b[broken', Buffer.from('\u001b[broken', 'utf8')],
-    ['\u001b[27;5;114~', Buffer.from([0x12])]
+    ['\u001b[27;5;114~', Buffer.from([0x12])],
+    ['\u001b[27;2;13~', Buffer.from('\u001b[27;2;13~', 'utf8')]
   ];
 
   for (const [encoded, expected] of matrix) {
