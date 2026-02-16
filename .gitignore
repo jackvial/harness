@@ -8,3 +8,4 @@ native/ptyd/target/
 harness.config.jsonc
 
 assets/poem-recording.jsonl
+.cursor/
