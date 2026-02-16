@@ -512,3 +512,358 @@ void test('mux runtime wiring integration updates rail status line and icon from
     await server.close();
   }
 });
+
+void test('mux runtime wiring integration keeps active agent sessions non-idle until task terminal telemetry', async () => {
+  const launchedSessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50
+    },
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      launchedSessions.push(session);
+      return session;
+    }
+  });
+
+  const address = server.address();
+  const telemetryAddress = server.telemetryAddressInfo();
+  assert.notEqual(telemetryAddress, null);
+
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  const conversations = new Map<string, TestConversationState>();
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-runtime-agent',
+      path: '/tmp/runtime-agent'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-runtime-agent',
+      directoryId: 'directory-runtime-agent',
+      title: 'runtime agent thread',
+      agentType: 'codex'
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-runtime-agent',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+
+    const launched = launchedSessions[0];
+    assert.notEqual(launched, undefined);
+    const exporterArg = launched?.input.args.find((entry) => entry.includes('/v1/logs/'));
+    assert.notEqual(exporterArg, undefined);
+    const tokenMatch = /\/v1\/logs\/([^"]+)/u.exec(exporterArg!);
+    assert.notEqual(tokenMatch, null);
+    const token = decodeURIComponent(tokenMatch?.[1] ?? '');
+    assert.notEqual(token.length, 0);
+
+    const subscription = await subscribeControlPlaneKeyEvents(client, {
+      onEvent: (event) => {
+        applyMuxControlPlaneKeyEvent(event, {
+          removedConversationIds: new Set<string>(),
+          ensureConversation: (sessionId, seed) => {
+            const existing = conversations.get(sessionId);
+            if (existing !== undefined) {
+              if (seed?.directoryId !== undefined) {
+                existing.directoryId = seed.directoryId;
+              }
+              return existing;
+            }
+            const created = createConversationState(sessionId);
+            if (seed?.directoryId !== undefined) {
+              created.directoryId = seed.directoryId;
+            }
+            conversations.set(sessionId, created);
+            return created;
+          }
+        });
+      }
+    });
+
+    try {
+      const telemetryBaseMs = Date.now() + 1_000;
+      const unixNanoAtOffset = (offsetMs: number): string =>
+        `${BigInt(telemetryBaseMs + offsetMs) * 1_000_000n}`;
+
+      await client.sendCommand({
+        type: 'session.claim',
+        sessionId: 'conversation-runtime-agent',
+        controllerId: 'agent-1',
+        controllerType: 'agent',
+        controllerLabel: 'agent-1'
+      });
+      await delay(25);
+
+      const promptResponse = await postJson(
+        {
+          host: telemetryAddress?.address ?? '127.0.0.1',
+          port: telemetryAddress?.port ?? 0
+        },
+        `/v1/logs/${encodeURIComponent(token)}`,
+        {
+          resourceLogs: [
+            {
+              scopeLogs: [
+                {
+                  logRecords: [
+                    {
+                      timeUnixNano: unixNanoAtOffset(100),
+                      attributes: [
+                        {
+                          key: 'event.name',
+                          value: {
+                            stringValue: 'codex.user_prompt'
+                          }
+                        }
+                      ],
+                      body: {
+                        stringValue: 'prompt submitted'
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      );
+      assert.equal(promptResponse.statusCode, 200);
+      await delay(25);
+
+      const runningConversation = conversations.get('conversation-runtime-agent');
+      assert.notEqual(runningConversation, undefined);
+      assert.equal(runningConversation?.status, 'running');
+      assert.equal(runningConversation?.controller?.controllerType, 'agent');
+      assert.equal(runningConversation?.lastKnownWork, 'working: thinking');
+
+      const completedTurnResponse = await postJson(
+        {
+          host: telemetryAddress?.address ?? '127.0.0.1',
+          port: telemetryAddress?.port ?? 0
+        },
+        `/v1/logs/${encodeURIComponent(token)}`,
+        {
+          resourceLogs: [
+            {
+              scopeLogs: [
+                {
+                  logRecords: [
+                    {
+                      timeUnixNano: unixNanoAtOffset(400),
+                      attributes: [
+                        {
+                          key: 'event.name',
+                          value: {
+                            stringValue: 'codex.sse_event'
+                          }
+                        }
+                      ],
+                      body: {
+                        stringValue: 'stream response.completed'
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      );
+      assert.equal(completedTurnResponse.statusCode, 200);
+      await delay(25);
+
+      const completedMetricResponse = await postJson(
+        {
+          host: telemetryAddress?.address ?? '127.0.0.1',
+          port: telemetryAddress?.port ?? 0
+        },
+        `/v1/metrics/${encodeURIComponent(token)}`,
+        {
+          resourceMetrics: [
+            {
+              scopeMetrics: [
+                {
+                  metrics: [
+                    {
+                      name: 'codex.turn.e2e_duration_ms',
+                      sum: {
+                        dataPoints: [
+                          {
+                            timeUnixNano: unixNanoAtOffset(700),
+                            asDouble: 611
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      );
+      assert.equal(completedMetricResponse.statusCode, 200);
+      await delay(25);
+
+      const afterTurnCompletion = conversations.get('conversation-runtime-agent');
+      assert.notEqual(afterTurnCompletion, undefined);
+      assert.equal(afterTurnCompletion?.lastKnownWork, 'working: thinking');
+
+      const rowsWhileAgentActive = buildWorkspaceRailViewRows(
+        {
+          directories: [
+            {
+              key: 'directory-runtime-agent',
+              workspaceId: 'runtime',
+              worktreeId: 'runtime',
+              git: {
+                branch: 'main',
+                changedFiles: 0,
+                additions: 0,
+                deletions: 0
+              }
+            }
+          ],
+          conversations: [
+            {
+              sessionId: 'conversation-runtime-agent',
+              directoryKey: 'directory-runtime-agent',
+              title: 'runtime agent thread',
+              agentLabel: 'codex',
+              cpuPercent: null,
+              memoryMb: null,
+              lastKnownWork: afterTurnCompletion?.lastKnownWork ?? null,
+              lastKnownWorkAt: afterTurnCompletion?.lastKnownWorkAt ?? null,
+              status: afterTurnCompletion?.status ?? 'running',
+              attentionReason: afterTurnCompletion?.attentionReason ?? null,
+              startedAt: '2026-02-15T00:00:00.000Z',
+              lastEventAt: afterTurnCompletion?.lastEventAt ?? null,
+              controller: afterTurnCompletion?.controller ?? null
+            }
+          ],
+          processes: [],
+          activeProjectId: null,
+          activeConversationId: 'conversation-runtime-agent',
+          nowMs: 0
+        },
+        30
+      );
+      const titleRowWhileAgentActive = rowsWhileAgentActive.find((row) => row.kind === 'conversation-title');
+      const bodyRowWhileAgentActive = rowsWhileAgentActive.find((row) => row.kind === 'conversation-body');
+      assert.notEqual(titleRowWhileAgentActive, undefined);
+      assert.equal(titleRowWhileAgentActive?.text.includes('◆'), true);
+      assert.equal(bodyRowWhileAgentActive?.text.includes('idle'), false);
+
+      const taskTerminalResponse = await postJson(
+        {
+          host: telemetryAddress?.address ?? '127.0.0.1',
+          port: telemetryAddress?.port ?? 0
+        },
+        `/v1/logs/${encodeURIComponent(token)}`,
+        {
+          resourceLogs: [
+            {
+              scopeLogs: [
+                {
+                  logRecords: [
+                    {
+                      timeUnixNano: unixNanoAtOffset(900),
+                      attributes: [
+                        {
+                          key: 'event.name',
+                          value: {
+                            stringValue: 'codex.task.completed'
+                          }
+                        }
+                      ],
+                      body: {
+                        stringValue: 'task completed'
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      );
+      assert.equal(taskTerminalResponse.statusCode, 200);
+      await delay(25);
+
+      const afterTaskTerminal = conversations.get('conversation-runtime-agent');
+      assert.notEqual(afterTaskTerminal, undefined);
+      assert.equal(afterTaskTerminal?.lastKnownWork, 'task completed');
+
+      const rowsAfterTaskTerminal = buildWorkspaceRailViewRows(
+        {
+          directories: [
+            {
+              key: 'directory-runtime-agent',
+              workspaceId: 'runtime',
+              worktreeId: 'runtime',
+              git: {
+                branch: 'main',
+                changedFiles: 0,
+                additions: 0,
+                deletions: 0
+              }
+            }
+          ],
+          conversations: [
+            {
+              sessionId: 'conversation-runtime-agent',
+              directoryKey: 'directory-runtime-agent',
+              title: 'runtime agent thread',
+              agentLabel: 'codex',
+              cpuPercent: null,
+              memoryMb: null,
+              lastKnownWork: afterTaskTerminal?.lastKnownWork ?? null,
+              lastKnownWorkAt: afterTaskTerminal?.lastKnownWorkAt ?? null,
+              status: afterTaskTerminal?.status ?? 'running',
+              attentionReason: afterTaskTerminal?.attentionReason ?? null,
+              startedAt: '2026-02-15T00:00:00.000Z',
+              lastEventAt: afterTaskTerminal?.lastEventAt ?? null,
+              controller: afterTaskTerminal?.controller ?? null
+            }
+          ],
+          processes: [],
+          activeProjectId: null,
+          activeConversationId: 'conversation-runtime-agent',
+          nowMs: 0
+        },
+        30
+      );
+      const titleRowAfterTaskTerminal = rowsAfterTaskTerminal.find((row) => row.kind === 'conversation-title');
+      const bodyRowAfterTaskTerminal = rowsAfterTaskTerminal.find((row) => row.kind === 'conversation-body');
+      assert.notEqual(titleRowAfterTaskTerminal, undefined);
+      assert.equal(titleRowAfterTaskTerminal?.text.includes('○'), true);
+      assert.equal(bodyRowAfterTaskTerminal?.text.includes('idle'), false);
+    } finally {
+      await subscription.close();
+    }
+  } finally {
+    client.close();
+    await server.close();
+  }
+});

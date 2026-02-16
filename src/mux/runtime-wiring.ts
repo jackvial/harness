@@ -47,6 +47,14 @@ const RUNNING_STATUS_HINT_EVENT_NAMES = new Set([
   'codex.websocket_event'
 ]);
 
+const AGENT_TERMINAL_EVENT_NAMES = new Set([
+  'codex.task.completed',
+  'codex.agent_task.completed',
+  'codex.agent.task.completed'
+]);
+
+const AGENT_TERMINAL_SUMMARY_TOKENS = ['task completed', 'task complete'] as const;
+
 function parseIsoMs(value: string | null): number {
   if (value === null) {
     return Number.NaN;
@@ -102,6 +110,26 @@ function normalizeSummary(value: string | null): string {
   return (value ?? '').trim();
 }
 
+function hasActiveAgentController(target: MuxRuntimeConversationState): boolean {
+  return target.status === 'running' && target.controller?.controllerType === 'agent';
+}
+
+function isAgentTerminalSummary(value: string): boolean {
+  return includesAny(value, AGENT_TERMINAL_SUMMARY_TOKENS);
+}
+
+function isAgentTerminalTelemetry(telemetry: Omit<MuxTelemetrySummaryInput, 'observedAt'>): boolean {
+  const eventName = normalizeEventName(telemetry.eventName);
+  if (AGENT_TERMINAL_EVENT_NAMES.has(eventName)) {
+    return true;
+  }
+  if (eventName === 'codex.sse_event') {
+    return false;
+  }
+  const summary = normalizeSummary(telemetry.summary).toLowerCase();
+  return summary.length > 0 && isAgentTerminalSummary(summary);
+}
+
 function projectSseSummary(summary: string): string | null {
   const normalized = summary.toLowerCase();
   if (normalized.includes('response.completed')) {
@@ -146,6 +174,12 @@ function projectSseSummary(summary: string): string | null {
 function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'observedAt'>): ProjectedTelemetrySummary {
   const eventName = normalizeEventName(telemetry.eventName);
   const summary = normalizeSummary(telemetry.summary);
+  if (isAgentTerminalTelemetry(telemetry)) {
+    return {
+      text: 'task completed',
+      heartbeat: false
+    };
+  }
   if (telemetry.source === 'otlp-trace') {
     return {
       text: null,
@@ -229,6 +263,9 @@ export function applyTelemetrySummaryToConversation<TConversation extends MuxRun
   const projected = projectTelemetrySummary(telemetry);
   if (projected.text !== null) {
     const eventName = normalizeEventName(telemetry.eventName);
+    if (projected.text === 'idle' && hasActiveAgentController(target) && !isAgentTerminalTelemetry(telemetry)) {
+      return;
+    }
     const existingWork = target.lastKnownWork;
     const existingWorkIsRunning = statusFromTelemetryText(existingWork) === 'running';
     if (

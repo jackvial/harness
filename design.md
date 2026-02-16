@@ -282,6 +282,7 @@ Display transition contract:
 ```txt
 session start -> starting -> idle
 user prompt -> working: thinking -> working: writing|tool -> idle
+agent-controlled prompt -> working:* -> working (until task-terminal telemetry) -> idle
 ```
 
 High-signal classification rules:
@@ -290,9 +291,10 @@ High-signal classification rules:
 - `codex.sse_event`:
   - `response.created|response.in_progress|reasoning_*` => `working: thinking`
   - `response.output_*|content_part.*` => `working: writing`
-  - `response.completed` => `idle`
+  - `response.completed` => `idle` for non-agent-controlled sessions; for active agent-controlled sessions this is treated as turn-level completion only (status stays `working`)
 - `codex.tool_decision|codex.tool_result` => `working: tool`
-- `codex.turn.e2e_duration_ms|codex.conversation.turn.count` => `idle`
+- `codex.turn.e2e_duration_ms|codex.conversation.turn.count` => `idle` for non-agent-controlled sessions; ignored for active agent-controlled sessions
+- `codex.task.completed|codex.agent_task.completed|codex.agent.task.completed` (or task-complete summary text) => `task completed` terminal summary, eligible for `idle` even when an agent controller is still attached
 - `codex.api_request`, websocket events, trace churn (`receiving`, `handle_responses`, `stream_request`) => no status-line mutation (noise-suppressed)
 
 SQLite-derived reference sequence (captured 2026-02-15 from `session_telemetry`, `conversation-b6ba1963-5268-4c7b-8abb-b8a362d0aad2`):
@@ -305,7 +307,7 @@ SQLite-derived reference sequence (captured 2026-02-15 from `session_telemetry`,
 | 19235 | 2026-02-15T21:42:22.446Z | codex.api_request | model request (1054ms) | noise-suppressed | no change |
 | 19237 | 2026-02-15T21:42:22.826Z | codex.sse_event | stream response.in_progress | thinking | stays `working: thinking` |
 | 19340 | 2026-02-15T21:42:24.975Z | codex.sse_event | stream response.output_text.delta | writing | `working: thinking -> working: writing` |
-| 19510 | 2026-02-15T21:42:29.259Z | codex.sse_event | stream response.completed | completion | `working:* -> idle` |
+| 19510 | 2026-02-15T21:42:29.259Z | codex.sse_event | stream response.completed | completion | `working:* -> idle` (non-agent-controlled) |
 
 Startup-only reference sequence (captured 2026-02-15 from `session_telemetry`, `conversation-c148f224-78bf-4221-89af-026118f4906d`):
 
@@ -317,6 +319,7 @@ Startup-only reference sequence (captured 2026-02-15 from `session_telemetry`, `
 
 Invariant:
 - Pre-prompt telemetry that looks like response churn is ignored for `working:*` transitions unless `codex.user_prompt` has already been observed in that thread timeline.
+- Active agent-controlled sessions are never allowed to render `idle` from turn-scoped completion telemetry alone (`response.completed`, turn metrics); they require explicit task-terminal telemetry.
 
 Notification policy:
 - Trigger sound/desktop notifications on transitions to `needs-input`, `idle` after `working:*`, or `exited`.

@@ -324,14 +324,14 @@ function conversationDetailText(
   }
   const lastKnownWork = summaryText(conversation.lastKnownWork);
   const inferredStatus = inferStatusFromLastKnownWork(lastKnownWork);
+  const suppressIdleDetailText =
+    normalizedStatus === 'working' &&
+    inferredStatus === 'idle' &&
+    hasFreshRunningActivity(conversation, nowMs);
   if (
     lastKnownWork !== null &&
     isLastKnownWorkCurrent(conversation, nowMs) &&
-    !(
-      normalizedStatus === 'working' &&
-      inferredStatus === 'idle' &&
-      hasFreshRunningActivity(conversation, nowMs)
-    )
+    !suppressIdleDetailText
   ) {
     return lastKnownWork;
   }

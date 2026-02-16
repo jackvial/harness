@@ -308,6 +308,14 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
   assert.equal(
     telemetrySummaryText({
       source: 'otlp-log',
+      eventName: 'codex.task.completed',
+      summary: null
+    }),
+    'task completed'
+  );
+  assert.equal(
+    telemetrySummaryText({
+      source: 'otlp-log',
       eventName: 'codex.api_request',
       summary: 'x'.repeat(150)
     }),
@@ -1015,6 +1023,49 @@ void test('runtime wiring ignores delayed turn metric text once response complet
   assert.equal(conversation.lastKnownWork, 'idle');
   assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:24.000Z');
   assert.equal(conversation.lastTelemetrySource, 'otlp-metric');
+});
+
+void test('runtime wiring suppresses turn-level idle summaries for active agent controllers', () => {
+  const conversation = createConversationState('conversation-active-agent-idle-guard', {
+    status: 'running',
+    controller: {
+      controllerId: 'agent-1',
+      controllerType: 'agent',
+      controllerLabel: 'agent-1',
+      claimedAt: '2026-02-15T00:00:00.000Z'
+    },
+    lastKnownWork: 'working: writing',
+    lastKnownWorkAt: '2026-02-15T00:00:01.000Z',
+    lastTelemetrySource: 'otlp-log'
+  });
+
+  applyTelemetrySummaryToConversation(conversation, {
+    source: 'otlp-log',
+    eventName: 'codex.sse_event',
+    summary: 'stream response.completed',
+    observedAt: '2026-02-15T00:00:02.000Z'
+  });
+  assert.equal(conversation.lastKnownWork, 'working: writing');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:01.000Z');
+
+  applyTelemetrySummaryToConversation(conversation, {
+    source: 'otlp-metric',
+    eventName: 'codex.turn.e2e_duration_ms',
+    summary: 'turn complete (611ms)',
+    observedAt: '2026-02-15T00:00:03.000Z'
+  });
+  assert.equal(conversation.lastKnownWork, 'working: writing');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:01.000Z');
+
+  applyTelemetrySummaryToConversation(conversation, {
+    source: 'otlp-log',
+    eventName: 'codex.task.completed',
+    summary: 'task completed',
+    observedAt: '2026-02-15T00:00:04.000Z'
+  });
+  assert.equal(conversation.lastKnownWork, 'task completed');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:04.000Z');
+  assert.equal(conversation.lastTelemetrySource, 'otlp-log');
 });
 
 void test('runtime wiring applies only eligible status hints for telemetry events', () => {
