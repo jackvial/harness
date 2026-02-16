@@ -174,7 +174,7 @@ Pass-through stream invariants:
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
-- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji); `ctrl+j/h` cycles visible left-nav selection in visual order: Home -> repository group -> project header -> project threads -> next visible item.
+- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji); `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> repository group -> project header -> project threads -> next visible item.
 - Repository/task planning is exposed through a dedicated Home entry in the left rail; Home unifies repository and task CRUD in one scrollable right-pane view while control-plane repository/task commands and subscriptions remain the source of truth.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped, auto-upserted into canonical repository records, and reused for rail grouping.
 - Left rail projects are grouped by canonical repository; projects with no detected canonical remote are grouped under `untracked`.

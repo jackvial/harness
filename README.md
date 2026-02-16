@@ -28,7 +28,7 @@ Harness is built for developers who want to:
 ## Core Capabilities
 
 - Multi-project rail with fast thread switching and live status indicators.
-- `ctrl+j/h` cycles the full left-nav order of visible items (Home, repository groups, project headers, then project threads).
+- `ctrl+j/k` cycles the full left-nav order of visible items (Home, repository groups, project headers, then project threads).
 - `left/right` collapses or expands the selected repository group; `ctrl+k ctrl+0` collapses all groups, `ctrl+k ctrl+j` expands all groups.
 - Projects can remain empty; threads start only via explicit `new thread` actions.
 - Parallel `codex` and `terminal` threads in the same workspace.

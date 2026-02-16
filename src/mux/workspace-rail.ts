@@ -141,9 +141,6 @@ function drawTreeRow(
     return;
   }
   const buttonWidth = Math.max(0, measureDisplayWidth(buttonLabel));
-  if (buttonWidth <= 0) {
-    return;
-  }
   const buttonStart = alignButtonRight
     ? Math.max(0, surface.cols - buttonWidth)
     : buttonTextStart;

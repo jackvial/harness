@@ -560,7 +560,7 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const addProject = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
   const closeProject = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
   const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
-  const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+h';
+  const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
   return `${newConversation} new  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ←/→ collapse/expand  ${interrupt} quit`;

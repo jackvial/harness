@@ -403,7 +403,7 @@ void test('workspace rail model supports starting normalization custom shortcuts
 
   assert.equal(rows.some((row) => row.text.includes('◔ codex - untitled')), true);
   assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
-  assert.equal(rows.some((row) => row.text.includes('ctrl+j/h switch')), true);
+  assert.equal(rows.some((row) => row.text.includes('ctrl+j/k switch')), true);
   assert.equal(rows.some((row) => row.text.includes('x archive thread')), true);
   assert.equal(rows.some((row) => row.text.includes('🗑 archive thread')), false);
   assert.equal(rows.some((row) => row.text.includes('add project')), true);

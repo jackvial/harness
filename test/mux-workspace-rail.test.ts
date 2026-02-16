@@ -275,7 +275,7 @@ void test('workspace rail keeps shortcut actions pinned to bottom rows when vert
   );
 
   assert.equal(rows.length, 6);
-  assert.equal(rows[0]?.includes('ctrl+j/h switch nav'), true);
+  assert.equal(rows[0]?.includes('ctrl+j/k switch nav'), true);
   assert.equal(rows[1]?.includes('expand repo'), true);
   assert.equal(rows[4]?.includes('collapse all repos'), true);
   assert.equal(rows[5]?.includes('ctrl+c quit mux'), true);

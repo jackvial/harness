@@ -555,7 +555,7 @@ function shortcutDescriptionRows(shortcutHint: string | undefined): readonly str
       'ctrl+l take over thread',
       'ctrl+o add project',
       'ctrl+w close project',
-      'ctrl+j/h switch nav',
+      'ctrl+j/k switch nav',
       '→ expand repo',
       '← collapse repo',
       'ctrl+k ctrl+j expand all repos',
