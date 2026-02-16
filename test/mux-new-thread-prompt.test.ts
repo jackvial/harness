@@ -45,6 +45,55 @@ void test('new thread prompt reduces keyboard input into selection and submit', 
   assert.equal(submitted.nextState.selectedAgentType, 'terminal');
 });
 
+void test('new thread prompt decodes encoded key protocols and ignores unrelated escape sequences', () => {
+  const initial = createNewThreadPromptState('directory-encoded');
+  const kittyTerminal = reduceNewThreadPromptInput(initial, Buffer.from('\u001b[116u', 'utf8'));
+  assert.equal(kittyTerminal.nextState.selectedAgentType, 'terminal');
+  assert.equal(kittyTerminal.submit, false);
+
+  const modifyOtherCodex = reduceNewThreadPromptInput(
+    kittyTerminal.nextState,
+    Buffer.from('\u001b[27;1;99~', 'utf8')
+  );
+  assert.equal(modifyOtherCodex.nextState.selectedAgentType, 'codex');
+  assert.equal(modifyOtherCodex.submit, false);
+
+  const ignoredMouseEscape = reduceNewThreadPromptInput(
+    modifyOtherCodex.nextState,
+    Buffer.from('\u001b[<64;77;3M', 'utf8')
+  );
+  assert.equal(ignoredMouseEscape.nextState.selectedAgentType, 'codex');
+  assert.equal(ignoredMouseEscape.submit, false);
+
+  const ignoredOutOfRangeKitty = reduceNewThreadPromptInput(
+    ignoredMouseEscape.nextState,
+    Buffer.from('\u001b[1000u', 'utf8')
+  );
+  assert.equal(ignoredOutOfRangeKitty.nextState.selectedAgentType, 'codex');
+  assert.equal(ignoredOutOfRangeKitty.submit, false);
+
+  const ignoredMalformedKittyPayload = reduceNewThreadPromptInput(
+    ignoredOutOfRangeKitty.nextState,
+    Buffer.from('\u001b[116;badu', 'utf8')
+  );
+  assert.equal(ignoredMalformedKittyPayload.nextState.selectedAgentType, 'codex');
+  assert.equal(ignoredMalformedKittyPayload.submit, false);
+
+  const ignoredMalformedModifyOtherKeysPayload = reduceNewThreadPromptInput(
+    ignoredMalformedKittyPayload.nextState,
+    Buffer.from('\u001b[27;1;bad~', 'utf8')
+  );
+  assert.equal(ignoredMalformedModifyOtherKeysPayload.nextState.selectedAgentType, 'codex');
+  assert.equal(ignoredMalformedModifyOtherKeysPayload.submit, false);
+
+  const newlineSubmit = reduceNewThreadPromptInput(
+    ignoredMalformedModifyOtherKeysPayload.nextState,
+    Uint8Array.from([0x0a])
+  );
+  assert.equal(newlineSubmit.nextState.selectedAgentType, 'codex');
+  assert.equal(newlineSubmit.submit, true);
+});
+
 void test('new thread prompt row mapping and body lines remain deterministic', () => {
   const state = createNewThreadPromptState('directory-2');
   const body = newThreadPromptBodyLines(state, {

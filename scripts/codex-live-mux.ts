@@ -6278,7 +6278,9 @@ async function main(): Promise<number> {
       markDirty();
       return true;
     }
+    const maybeMouseSequence = input.includes(0x3c);
     if (
+      maybeMouseSequence &&
       dismissModalOnOutsideClick(input, () => {
         newThreadPrompt = null;
         markDirty();
