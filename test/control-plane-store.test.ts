@@ -901,6 +901,37 @@ void test('control-plane store thread-id lookup falls back when json_extract pat
   }
 });
 
+void test('control-plane store thread-id lookup supports legacy codex.threadId adapter state', () => {
+  const store = new SqliteControlPlaneStore(':memory:');
+  try {
+    store.upsertDirectory({
+      directoryId: 'directory-legacy-thread-id',
+      tenantId: 'tenant-legacy-thread-id',
+      userId: 'user-legacy-thread-id',
+      workspaceId: 'workspace-legacy-thread-id',
+      path: '/tmp/legacy-thread-id'
+    });
+    store.createConversation({
+      conversationId: 'conversation-legacy-thread-id',
+      directoryId: 'directory-legacy-thread-id',
+      title: 'legacy thread',
+      agentType: 'codex',
+      adapterState: {
+        codex: {
+          threadId: 'thread-legacy-id'
+        }
+      }
+    });
+
+    assert.equal(
+      store.findConversationIdByCodexThreadId('thread-legacy-id'),
+      'conversation-legacy-thread-id'
+    );
+  } finally {
+    store.close();
+  }
+});
+
 void test('control-plane store supports deleting conversations and rejects missing ids', () => {
   const store = new SqliteControlPlaneStore(':memory:');
   try {

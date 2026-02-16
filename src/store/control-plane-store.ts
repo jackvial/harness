@@ -1046,13 +1046,16 @@ export class SqliteControlPlaneStore {
           `
           SELECT conversation_id
           FROM conversations
-          WHERE json_extract(adapter_state_json, '$.codex.resumeSessionId') = ?
+          WHERE (
+            json_extract(adapter_state_json, '$.codex.resumeSessionId') = ?
+            OR json_extract(adapter_state_json, '$.codex.threadId') = ?
+          )
             AND archived_at IS NULL
           ORDER BY created_at DESC, conversation_id DESC
           LIMIT 1
         `
         )
-        .get(normalized);
+        .get(normalized, normalized);
       if (direct !== undefined) {
         const row = asRecord(direct);
         return asString(row.conversation_id, 'conversation_id');
@@ -1071,8 +1074,13 @@ export class SqliteControlPlaneStore {
       if (typeof codex !== 'object' || codex === null || Array.isArray(codex)) {
         continue;
       }
-      const resumeSessionId = (codex as Record<string, unknown>)['resumeSessionId'];
+      const codexState = codex as Record<string, unknown>;
+      const resumeSessionId = codexState['resumeSessionId'];
       if (typeof resumeSessionId === 'string' && resumeSessionId.trim() === normalized) {
+        return conversation.conversationId;
+      }
+      const legacyThreadId = codexState['threadId'];
+      if (typeof legacyThreadId === 'string' && legacyThreadId.trim() === normalized) {
         return conversation.conversationId;
       }
     }
