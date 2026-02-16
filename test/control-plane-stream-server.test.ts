@@ -3709,3 +3709,279 @@ void test('stream server telemetry listener handles close-before-start and port 
     await first.close();
   }
 });
+
+void test('stream server exposes repository and task commands', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-task-1',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1',
+      path: '/tmp/harness-task-1'
+    });
+    const subscribedRepository = await client.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1',
+      repositoryId: 'repository-1',
+      includeOutput: false,
+      afterCursor: 0
+    });
+    const repositorySubscriptionId = subscribedRepository['subscriptionId'] as string;
+    const subscribedTask = await client.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1',
+      taskId: 'task-1',
+      includeOutput: false,
+      afterCursor: 0
+    });
+    const taskSubscriptionId = subscribedTask['subscriptionId'] as string;
+
+    const upsertedRepository = await client.sendCommand({
+      type: 'repository.upsert',
+      repositoryId: 'repository-1',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1',
+      name: 'Harness',
+      remoteUrl: 'https://github.com/acme/harness.git',
+      defaultBranch: 'main',
+      metadata: {
+        owner: 'acme'
+      }
+    });
+    const repositoryRecord = upsertedRepository['repository'] as Record<string, unknown>;
+    assert.equal(repositoryRecord['repositoryId'], 'repository-1');
+    assert.equal(repositoryRecord['defaultBranch'], 'main');
+
+    const fetchedRepository = await client.sendCommand({
+      type: 'repository.get',
+      repositoryId: 'repository-1'
+    });
+    assert.equal((fetchedRepository['repository'] as Record<string, unknown>)['name'], 'Harness');
+
+    const updatedRepository = await client.sendCommand({
+      type: 'repository.update',
+      repositoryId: 'repository-1',
+      name: 'Harness Updated',
+      remoteUrl: 'https://github.com/acme/harness-2.git',
+      defaultBranch: 'develop'
+    });
+    assert.equal(
+      (updatedRepository['repository'] as Record<string, unknown>)['remoteUrl'],
+      'https://github.com/acme/harness-2.git'
+    );
+
+    const listedRepositories = await client.sendCommand({
+      type: 'repository.list',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1'
+    });
+    const repositoryRows = listedRepositories['repositories'] as Array<Record<string, unknown>>;
+    assert.equal(repositoryRows.length, 1);
+
+    await client.sendCommand({
+      type: 'task.create',
+      taskId: 'task-1',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1',
+      repositoryId: 'repository-1',
+      title: 'Implement repository API',
+      description: 'Add stream commands for repositories'
+    });
+    await client.sendCommand({
+      type: 'task.create',
+      taskId: 'task-2',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1',
+      title: 'Implement task API',
+      description: 'Add stream commands for tasks'
+    });
+
+    const readyTask = await client.sendCommand({
+      type: 'task.ready',
+      taskId: 'task-1'
+    });
+    assert.equal((readyTask['task'] as Record<string, unknown>)['status'], 'ready');
+
+    const claimedTask = await client.sendCommand({
+      type: 'task.claim',
+      taskId: 'task-1',
+      controllerId: 'agent-1',
+      directoryId: 'directory-task-1',
+      branchName: 'feature/task-api',
+      baseBranch: 'main'
+    });
+    const claimedTaskRecord = claimedTask['task'] as Record<string, unknown>;
+    assert.equal(claimedTaskRecord['status'], 'in-progress');
+    assert.equal(claimedTaskRecord['claimedByControllerId'], 'agent-1');
+    assert.equal(claimedTaskRecord['claimedByDirectoryId'], 'directory-task-1');
+
+    const completedTask = await client.sendCommand({
+      type: 'task.complete',
+      taskId: 'task-1'
+    });
+    assert.equal((completedTask['task'] as Record<string, unknown>)['status'], 'completed');
+
+    const queuedTask = await client.sendCommand({
+      type: 'task.queue',
+      taskId: 'task-1'
+    });
+    assert.equal((queuedTask['task'] as Record<string, unknown>)['status'], 'ready');
+
+    const updatedTask = await client.sendCommand({
+      type: 'task.update',
+      taskId: 'task-2',
+      repositoryId: 'repository-1',
+      title: 'Implement task API v2'
+    });
+    assert.equal((updatedTask['task'] as Record<string, unknown>)['repositoryId'], 'repository-1');
+
+    const reordered = await client.sendCommand({
+      type: 'task.reorder',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1',
+      orderedTaskIds: ['task-2', 'task-1']
+    });
+    const reorderedTasks = reordered['tasks'] as Array<Record<string, unknown>>;
+    assert.equal(reorderedTasks[0]?.['taskId'], 'task-2');
+    assert.equal(reorderedTasks[0]?.['orderIndex'], 0);
+    assert.equal(reorderedTasks[1]?.['taskId'], 'task-1');
+    assert.equal(reorderedTasks[1]?.['orderIndex'], 1);
+
+    const listedTasks = await client.sendCommand({
+      type: 'task.list',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1'
+    });
+    const taskRows = listedTasks['tasks'] as Array<Record<string, unknown>>;
+    assert.equal(taskRows.length, 2);
+
+    const fetchedTask = await client.sendCommand({
+      type: 'task.get',
+      taskId: 'task-1'
+    });
+    assert.equal((fetchedTask['task'] as Record<string, unknown>)['taskId'], 'task-1');
+
+    await client.sendCommand({
+      type: 'task.delete',
+      taskId: 'task-2'
+    });
+    await assert.rejects(
+      client.sendCommand({
+        type: 'task.get',
+        taskId: 'task-2'
+      }),
+      /task not found/
+    );
+
+    await client.sendCommand({
+      type: 'repository.archive',
+      repositoryId: 'repository-1'
+    });
+    const listedActiveRepositories = await client.sendCommand({
+      type: 'repository.list',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1'
+    });
+    assert.deepEqual(listedActiveRepositories['repositories'], []);
+
+    const listedArchivedRepositories = await client.sendCommand({
+      type: 'repository.list',
+      tenantId: 'tenant-task-1',
+      userId: 'user-task-1',
+      workspaceId: 'workspace-task-1',
+      includeArchived: true
+    });
+    const archivedRows = listedArchivedRepositories['repositories'] as Array<Record<string, unknown>>;
+    assert.equal(archivedRows.length, 1);
+    assert.equal(typeof archivedRows[0]?.['archivedAt'], 'string');
+
+    await assert.rejects(
+      client.sendCommand({
+        type: 'repository.get',
+        repositoryId: 'repository-missing'
+      }),
+      /repository not found/
+    );
+
+    await delay(20);
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === repositorySubscriptionId &&
+          envelope.event.type === 'repository-upserted'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === repositorySubscriptionId &&
+          envelope.event.type === 'repository-updated'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === repositorySubscriptionId &&
+          envelope.event.type === 'repository-archived'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === taskSubscriptionId &&
+          envelope.event.type === 'task-created'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === taskSubscriptionId &&
+          envelope.event.type === 'task-updated'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === taskSubscriptionId &&
+          envelope.event.type === 'task-deleted'
+      ),
+      false
+    );
+  } finally {
+    client.close();
+    await server.close();
+  }
+});

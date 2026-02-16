@@ -90,11 +90,126 @@ interface ConversationDeleteCommand {
   conversationId: string;
 }
 
+export type StreamTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
+
+interface RepositoryUpsertCommand {
+  type: 'repository.upsert';
+  repositoryId?: string;
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  name: string;
+  remoteUrl: string;
+  defaultBranch?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface RepositoryGetCommand {
+  type: 'repository.get';
+  repositoryId: string;
+}
+
+interface RepositoryListCommand {
+  type: 'repository.list';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  includeArchived?: boolean;
+  limit?: number;
+}
+
+interface RepositoryUpdateCommand {
+  type: 'repository.update';
+  repositoryId: string;
+  name?: string;
+  remoteUrl?: string;
+  defaultBranch?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface RepositoryArchiveCommand {
+  type: 'repository.archive';
+  repositoryId: string;
+}
+
+interface TaskCreateCommand {
+  type: 'task.create';
+  taskId?: string;
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  repositoryId?: string;
+  title: string;
+  description?: string;
+}
+
+interface TaskGetCommand {
+  type: 'task.get';
+  taskId: string;
+}
+
+interface TaskListCommand {
+  type: 'task.list';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  repositoryId?: string;
+  status?: StreamTaskStatus;
+  limit?: number;
+}
+
+interface TaskUpdateCommand {
+  type: 'task.update';
+  taskId: string;
+  title?: string;
+  description?: string;
+  repositoryId?: string | null;
+}
+
+interface TaskDeleteCommand {
+  type: 'task.delete';
+  taskId: string;
+}
+
+interface TaskClaimCommand {
+  type: 'task.claim';
+  taskId: string;
+  controllerId: string;
+  directoryId?: string;
+  branchName?: string;
+  baseBranch?: string;
+}
+
+interface TaskCompleteCommand {
+  type: 'task.complete';
+  taskId: string;
+}
+
+interface TaskQueueCommand {
+  type: 'task.queue';
+  taskId: string;
+}
+
+interface TaskReadyCommand {
+  type: 'task.ready';
+  taskId: string;
+}
+
+interface TaskReorderCommand {
+  type: 'task.reorder';
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  orderedTaskIds: string[];
+}
+
 interface StreamSubscribeCommand {
   type: 'stream.subscribe';
   tenantId?: string;
   userId?: string;
   workspaceId?: string;
+  repositoryId?: string;
+  taskId?: string;
   directoryId?: string;
   conversationId?: string;
   includeOutput?: boolean;
@@ -215,6 +330,21 @@ export type StreamCommand =
   | ConversationArchiveCommand
   | ConversationUpdateCommand
   | ConversationDeleteCommand
+  | RepositoryUpsertCommand
+  | RepositoryGetCommand
+  | RepositoryListCommand
+  | RepositoryUpdateCommand
+  | RepositoryArchiveCommand
+  | TaskCreateCommand
+  | TaskGetCommand
+  | TaskListCommand
+  | TaskUpdateCommand
+  | TaskDeleteCommand
+  | TaskClaimCommand
+  | TaskCompleteCommand
+  | TaskQueueCommand
+  | TaskReadyCommand
+  | TaskReorderCommand
   | StreamSubscribeCommand
   | StreamUnsubscribeCommand
   | SessionListCommand
@@ -302,6 +432,37 @@ export type StreamObservedEvent =
   | {
       type: 'conversation-deleted';
       conversationId: string;
+      ts: string;
+    }
+  | {
+      type: 'repository-upserted';
+      repository: Record<string, unknown>;
+    }
+  | {
+      type: 'repository-updated';
+      repository: Record<string, unknown>;
+    }
+  | {
+      type: 'repository-archived';
+      repositoryId: string;
+      ts: string;
+    }
+  | {
+      type: 'task-created';
+      task: Record<string, unknown>;
+    }
+  | {
+      type: 'task-updated';
+      task: Record<string, unknown>;
+    }
+  | {
+      type: 'task-deleted';
+      taskId: string;
+      ts: string;
+    }
+  | {
+      type: 'task-reordered';
+      tasks: Record<string, unknown>[];
       ts: string;
     }
   | {
@@ -802,6 +963,100 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       conversationId,
+      ts
+    };
+  }
+
+  if (type === 'repository-upserted') {
+    const repository = asRecord(record['repository']);
+    if (repository === null) {
+      return null;
+    }
+    return {
+      type,
+      repository
+    };
+  }
+
+  if (type === 'repository-updated') {
+    const repository = asRecord(record['repository']);
+    if (repository === null) {
+      return null;
+    }
+    return {
+      type,
+      repository
+    };
+  }
+
+  if (type === 'repository-archived') {
+    const repositoryId = readString(record['repositoryId']);
+    const ts = readString(record['ts']);
+    if (repositoryId === null || ts === null) {
+      return null;
+    }
+    return {
+      type,
+      repositoryId,
+      ts
+    };
+  }
+
+  if (type === 'task-created') {
+    const task = asRecord(record['task']);
+    if (task === null) {
+      return null;
+    }
+    return {
+      type,
+      task
+    };
+  }
+
+  if (type === 'task-updated') {
+    const task = asRecord(record['task']);
+    if (task === null) {
+      return null;
+    }
+    return {
+      type,
+      task
+    };
+  }
+
+  if (type === 'task-deleted') {
+    const taskId = readString(record['taskId']);
+    const ts = readString(record['ts']);
+    if (taskId === null || ts === null) {
+      return null;
+    }
+    return {
+      type,
+      taskId,
+      ts
+    };
+  }
+
+  if (type === 'task-reordered') {
+    const tasksValue = record['tasks'];
+    if (!Array.isArray(tasksValue)) {
+      return null;
+    }
+    const tasks: Record<string, unknown>[] = [];
+    for (const entry of tasksValue) {
+      const normalized = asRecord(entry);
+      if (normalized === null) {
+        return null;
+      }
+      tasks.push(normalized);
+    }
+    const ts = readString(record['ts']);
+    if (ts === null) {
+      return null;
+    }
+    return {
+      type,
+      tasks,
       ts
     };
   }

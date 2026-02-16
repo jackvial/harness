@@ -494,6 +494,8 @@ Core tables:
 - `tenant_memberships`
 - `workspaces`
 - `worktrees`
+- `repositories`
+- `tasks`
 - `conversations`
 - `turns`
 - `events` (append-only canonical state history)
@@ -1052,6 +1054,15 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - conversation persistence now includes adapter-scoped state (`adapter_state_json`) so provider-native resume identifiers can survive daemon/client restarts.
     - per-session adapter state is updated from scoped provider events and reused on next launch, enabling conversation continuity (for Codex: `codex resume <session-id>`).
     - Codex launch mode defaults are config-first and directory-aware (`codex.launch.defaultMode` + `codex.launch.directoryModes`), with repo default set to `yolo`.
+    - repository/task planning primitives are persisted in the same SQLite store:
+      - `repositories` (`repository_id`, remote URL, default branch, metadata, archive state)
+      - `tasks` (task records with CRUD, explicit ordering, claim, complete, and ready transitions)
+    - control-plane stream commands now expose this model directly:
+      - repositories: `repository.upsert`, `repository.get`, `repository.list`, `repository.update`, `repository.archive`
+      - tasks: `task.create`, `task.get`, `task.list`, `task.update`, `task.delete`, `task.claim`, `task.complete`, `task.ready`, `task.queue` (compat alias), `task.reorder`
+      - task lifecycle baseline: `draft -> ready -> in-progress -> completed`
+    - stream subscriptions also carry repository/task mutations, with optional `repositoryId` and `taskId` filters on `stream.subscribe`.
+    - thread/worktree-level planning linkage is deferred; directory-based task claims are supported now.
   - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
     - command ids are UUID-based and auth handshake is supported in `connectControlPlaneStreamClient`.
     - remote connect now supports bounded retry windows (`connectRetryWindowMs` + `connectRetryDelayMs`) to tolerate control-plane cold starts without requiring client-side sleep loops.

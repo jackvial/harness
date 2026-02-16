@@ -15,6 +15,8 @@ export interface AgentRealtimeSubscriptionFilter {
   tenantId?: string;
   userId?: string;
   workspaceId?: string;
+  repositoryId?: string;
+  taskId?: string;
   directoryId?: string;
   conversationId?: string;
   includeOutput?: boolean;
@@ -38,6 +40,13 @@ interface AgentEventTypeMap {
   'conversation.updated': Extract<StreamObservedEvent, { type: 'conversation-updated' }>;
   'conversation.archived': Extract<StreamObservedEvent, { type: 'conversation-archived' }>;
   'conversation.deleted': Extract<StreamObservedEvent, { type: 'conversation-deleted' }>;
+  'repository.upserted': Extract<StreamObservedEvent, { type: 'repository-upserted' }>;
+  'repository.updated': Extract<StreamObservedEvent, { type: 'repository-updated' }>;
+  'repository.archived': Extract<StreamObservedEvent, { type: 'repository-archived' }>;
+  'task.created': Extract<StreamObservedEvent, { type: 'task-created' }>;
+  'task.updated': Extract<StreamObservedEvent, { type: 'task-updated' }>;
+  'task.deleted': Extract<StreamObservedEvent, { type: 'task-deleted' }>;
+  'task.reordered': Extract<StreamObservedEvent, { type: 'task-reordered' }>;
   'session.status': Extract<StreamObservedEvent, { type: 'session-status' }>;
   'session.event': Extract<StreamObservedEvent, { type: 'session-event' }>;
   'session.telemetry': Extract<StreamObservedEvent, { type: 'session-key-event' }>;
@@ -136,6 +145,27 @@ function mapObservedEventType(observed: StreamObservedEvent): AgentRealtimeEvent
   }
   if (observed.type === 'conversation-deleted') {
     return 'conversation.deleted';
+  }
+  if (observed.type === 'repository-upserted') {
+    return 'repository.upserted';
+  }
+  if (observed.type === 'repository-updated') {
+    return 'repository.updated';
+  }
+  if (observed.type === 'repository-archived') {
+    return 'repository.archived';
+  }
+  if (observed.type === 'task-created') {
+    return 'task.created';
+  }
+  if (observed.type === 'task-updated') {
+    return 'task.updated';
+  }
+  if (observed.type === 'task-deleted') {
+    return 'task.deleted';
+  }
+  if (observed.type === 'task-reordered') {
+    return 'task.reordered';
   }
   if (observed.type === 'session-status') {
     return 'session.status';
@@ -258,6 +288,8 @@ export class HarnessAgentRealtimeClient {
       tenantId?: string;
       userId?: string;
       workspaceId?: string;
+      repositoryId?: string;
+      taskId?: string;
       directoryId?: string;
       conversationId?: string;
       includeOutput?: boolean;
@@ -274,6 +306,12 @@ export class HarnessAgentRealtimeClient {
     }
     if (options.subscription?.workspaceId !== undefined) {
       command.workspaceId = options.subscription.workspaceId;
+    }
+    if (options.subscription?.repositoryId !== undefined) {
+      command.repositoryId = options.subscription.repositoryId;
+    }
+    if (options.subscription?.taskId !== undefined) {
+      command.taskId = options.subscription.taskId;
     }
     if (options.subscription?.directoryId !== undefined) {
       command.directoryId = options.subscription.directoryId;

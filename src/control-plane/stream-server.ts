@@ -30,6 +30,8 @@ import {
   SqliteControlPlaneStore,
   type ControlPlaneConversationRecord,
   type ControlPlaneDirectoryRecord,
+  type ControlPlaneRepositoryRecord,
+  type ControlPlaneTaskRecord,
   type ControlPlaneTelemetrySummary
 } from '../store/control-plane-store.ts';
 import {
@@ -163,6 +165,8 @@ interface StreamSubscriptionFilter {
   tenantId?: string;
   userId?: string;
   workspaceId?: string;
+  repositoryId?: string;
+  taskId?: string;
   directoryId?: string;
   conversationId?: string;
   includeOutput: boolean;
@@ -1252,6 +1256,427 @@ export class ControlPlaneStreamServer {
       };
     }
 
+    if (command.type === 'repository.upsert') {
+      const input: {
+        repositoryId: string;
+        tenantId: string;
+        userId: string;
+        workspaceId: string;
+        name: string;
+        remoteUrl: string;
+        defaultBranch?: string;
+        metadata?: Record<string, unknown>;
+      } = {
+        repositoryId: command.repositoryId ?? `repository-${randomUUID()}`,
+        tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
+        userId: command.userId ?? DEFAULT_USER_ID,
+        workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+        name: command.name,
+        remoteUrl: command.remoteUrl
+      };
+      if (command.defaultBranch !== undefined) {
+        input.defaultBranch = command.defaultBranch;
+      }
+      if (command.metadata !== undefined) {
+        input.metadata = command.metadata;
+      }
+      const repository = this.stateStore.upsertRepository(input);
+      this.publishObservedEvent(
+        {
+          tenantId: repository.tenantId,
+          userId: repository.userId,
+          workspaceId: repository.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'repository-upserted',
+          repository: this.repositoryRecord(repository)
+        }
+      );
+      return {
+        repository: this.repositoryRecord(repository)
+      };
+    }
+
+    if (command.type === 'repository.get') {
+      const repository = this.stateStore.getRepository(command.repositoryId);
+      if (repository === null) {
+        throw new Error(`repository not found: ${command.repositoryId}`);
+      }
+      return {
+        repository: this.repositoryRecord(repository)
+      };
+    }
+
+    if (command.type === 'repository.list') {
+      const query: {
+        tenantId?: string;
+        userId?: string;
+        workspaceId?: string;
+        includeArchived?: boolean;
+        limit?: number;
+      } = {};
+      if (command.tenantId !== undefined) {
+        query.tenantId = command.tenantId;
+      }
+      if (command.userId !== undefined) {
+        query.userId = command.userId;
+      }
+      if (command.workspaceId !== undefined) {
+        query.workspaceId = command.workspaceId;
+      }
+      if (command.includeArchived !== undefined) {
+        query.includeArchived = command.includeArchived;
+      }
+      if (command.limit !== undefined) {
+        query.limit = command.limit;
+      }
+      const repositories = this.stateStore
+        .listRepositories(query)
+        .map((repository) => this.repositoryRecord(repository));
+      return {
+        repositories
+      };
+    }
+
+    if (command.type === 'repository.update') {
+      const update: {
+        name?: string;
+        remoteUrl?: string;
+        defaultBranch?: string;
+        metadata?: Record<string, unknown>;
+      } = {};
+      if (command.name !== undefined) {
+        update.name = command.name;
+      }
+      if (command.remoteUrl !== undefined) {
+        update.remoteUrl = command.remoteUrl;
+      }
+      if (command.defaultBranch !== undefined) {
+        update.defaultBranch = command.defaultBranch;
+      }
+      if (command.metadata !== undefined) {
+        update.metadata = command.metadata;
+      }
+      const updated = this.stateStore.updateRepository(command.repositoryId, update);
+      if (updated === null) {
+        throw new Error(`repository not found: ${command.repositoryId}`);
+      }
+      this.publishObservedEvent(
+        {
+          tenantId: updated.tenantId,
+          userId: updated.userId,
+          workspaceId: updated.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'repository-updated',
+          repository: this.repositoryRecord(updated)
+        }
+      );
+      return {
+        repository: this.repositoryRecord(updated)
+      };
+    }
+
+    if (command.type === 'repository.archive') {
+      const archived = this.stateStore.archiveRepository(command.repositoryId);
+      this.publishObservedEvent(
+        {
+          tenantId: archived.tenantId,
+          userId: archived.userId,
+          workspaceId: archived.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'repository-archived',
+          repositoryId: archived.repositoryId,
+          ts: archived.archivedAt as string
+        }
+      );
+      return {
+        repository: this.repositoryRecord(archived)
+      };
+    }
+
+    if (command.type === 'task.create') {
+      const input: {
+        taskId: string;
+        tenantId: string;
+        userId: string;
+        workspaceId: string;
+        repositoryId?: string;
+        title: string;
+        description?: string;
+      } = {
+        taskId: command.taskId ?? `task-${randomUUID()}`,
+        tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
+        userId: command.userId ?? DEFAULT_USER_ID,
+        workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+        title: command.title
+      };
+      if (command.repositoryId !== undefined) {
+        input.repositoryId = command.repositoryId;
+      }
+      if (command.description !== undefined) {
+        input.description = command.description;
+      }
+      const task = this.stateStore.createTask(input);
+      this.publishObservedEvent(
+        {
+          tenantId: task.tenantId,
+          userId: task.userId,
+          workspaceId: task.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-created',
+          task: this.taskRecord(task)
+        }
+      );
+      return {
+        task: this.taskRecord(task)
+      };
+    }
+
+    if (command.type === 'task.get') {
+      const task = this.stateStore.getTask(command.taskId);
+      if (task === null) {
+        throw new Error(`task not found: ${command.taskId}`);
+      }
+      return {
+        task: this.taskRecord(task)
+      };
+    }
+
+    if (command.type === 'task.list') {
+      const query: {
+        tenantId?: string;
+        userId?: string;
+        workspaceId?: string;
+        repositoryId?: string;
+        status?: 'draft' | 'ready' | 'in-progress' | 'completed';
+        limit?: number;
+      } = {};
+      if (command.tenantId !== undefined) {
+        query.tenantId = command.tenantId;
+      }
+      if (command.userId !== undefined) {
+        query.userId = command.userId;
+      }
+      if (command.workspaceId !== undefined) {
+        query.workspaceId = command.workspaceId;
+      }
+      if (command.repositoryId !== undefined) {
+        query.repositoryId = command.repositoryId;
+      }
+      if (command.status !== undefined) {
+        query.status = command.status;
+      }
+      if (command.limit !== undefined) {
+        query.limit = command.limit;
+      }
+      const tasks = this.stateStore
+        .listTasks(query)
+        .map((task) => this.taskRecord(task));
+      return {
+        tasks
+      };
+    }
+
+    if (command.type === 'task.update') {
+      const update: {
+        title?: string;
+        description?: string;
+        repositoryId?: string | null;
+      } = {};
+      if (command.title !== undefined) {
+        update.title = command.title;
+      }
+      if (command.description !== undefined) {
+        update.description = command.description;
+      }
+      if (command.repositoryId !== undefined) {
+        update.repositoryId = command.repositoryId;
+      }
+      const updated = this.stateStore.updateTask(command.taskId, update);
+      if (updated === null) {
+        throw new Error(`task not found: ${command.taskId}`);
+      }
+      this.publishObservedEvent(
+        {
+          tenantId: updated.tenantId,
+          userId: updated.userId,
+          workspaceId: updated.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-updated',
+          task: this.taskRecord(updated)
+        }
+      );
+      return {
+        task: this.taskRecord(updated)
+      };
+    }
+
+    if (command.type === 'task.delete') {
+      const existing = this.stateStore.getTask(command.taskId);
+      if (existing === null) {
+        throw new Error(`task not found: ${command.taskId}`);
+      }
+      this.stateStore.deleteTask(command.taskId);
+      this.publishObservedEvent(
+        {
+          tenantId: existing.tenantId,
+          userId: existing.userId,
+          workspaceId: existing.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-deleted',
+          taskId: existing.taskId,
+          ts: new Date().toISOString()
+        }
+      );
+      return {
+        deleted: true
+      };
+    }
+
+    if (command.type === 'task.claim') {
+      const input: {
+        taskId: string;
+        controllerId: string;
+        directoryId?: string;
+        branchName?: string;
+        baseBranch?: string;
+      } = {
+        taskId: command.taskId,
+        controllerId: command.controllerId
+      };
+      if (command.directoryId !== undefined) {
+        input.directoryId = command.directoryId;
+      }
+      if (command.branchName !== undefined) {
+        input.branchName = command.branchName;
+      }
+      if (command.baseBranch !== undefined) {
+        input.baseBranch = command.baseBranch;
+      }
+      const task = this.stateStore.claimTask(input);
+      this.publishObservedEvent(
+        {
+          tenantId: task.tenantId,
+          userId: task.userId,
+          workspaceId: task.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-updated',
+          task: this.taskRecord(task)
+        }
+      );
+      return {
+        task: this.taskRecord(task)
+      };
+    }
+
+    if (command.type === 'task.complete') {
+      const task = this.stateStore.completeTask(command.taskId);
+      this.publishObservedEvent(
+        {
+          tenantId: task.tenantId,
+          userId: task.userId,
+          workspaceId: task.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-updated',
+          task: this.taskRecord(task)
+        }
+      );
+      return {
+        task: this.taskRecord(task)
+      };
+    }
+
+    if (command.type === 'task.queue') {
+      const task = this.stateStore.readyTask(command.taskId);
+      this.publishObservedEvent(
+        {
+          tenantId: task.tenantId,
+          userId: task.userId,
+          workspaceId: task.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-updated',
+          task: this.taskRecord(task)
+        }
+      );
+      return {
+        task: this.taskRecord(task)
+      };
+    }
+
+    if (command.type === 'task.ready') {
+      const task = this.stateStore.readyTask(command.taskId);
+      this.publishObservedEvent(
+        {
+          tenantId: task.tenantId,
+          userId: task.userId,
+          workspaceId: task.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-updated',
+          task: this.taskRecord(task)
+        }
+      );
+      return {
+        task: this.taskRecord(task)
+      };
+    }
+
+    if (command.type === 'task.reorder') {
+      const tasks = this.stateStore
+        .reorderTasks({
+          tenantId: command.tenantId,
+          userId: command.userId,
+          workspaceId: command.workspaceId,
+          orderedTaskIds: command.orderedTaskIds
+        })
+        .map((task) => this.taskRecord(task));
+      this.publishObservedEvent(
+        {
+          tenantId: command.tenantId,
+          userId: command.userId,
+          workspaceId: command.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-reordered',
+          tasks,
+          ts: new Date().toISOString()
+        }
+      );
+      return {
+        tasks
+      };
+    }
+
     if (command.type === 'stream.subscribe') {
       const subscriptionId = `subscription-${randomUUID()}`;
       const filter: StreamSubscriptionFilter = {
@@ -1265,6 +1690,12 @@ export class ControlPlaneStreamServer {
       }
       if (command.workspaceId !== undefined) {
         filter.workspaceId = command.workspaceId;
+      }
+      if (command.repositoryId !== undefined) {
+        filter.repositoryId = command.repositoryId;
+      }
+      if (command.taskId !== undefined) {
+        filter.taskId = command.taskId;
       }
       if (command.directoryId !== undefined) {
         filter.directoryId = command.directoryId;
@@ -1845,6 +2276,45 @@ export class ControlPlaneStreamServer {
     };
   }
 
+  private eventIncludesRepositoryId(event: StreamObservedEvent, repositoryId: string): boolean {
+    if (event.type === 'repository-upserted' || event.type === 'repository-updated') {
+      return event.repository['repositoryId'] === repositoryId;
+    }
+    if (event.type === 'repository-archived') {
+      return event.repositoryId === repositoryId;
+    }
+    if (event.type === 'task-created' || event.type === 'task-updated') {
+      return event.task['repositoryId'] === repositoryId;
+    }
+    if (event.type === 'task-reordered') {
+      for (const task of event.tasks) {
+        if (task['repositoryId'] === repositoryId) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return false;
+  }
+
+  private eventIncludesTaskId(event: StreamObservedEvent, taskId: string): boolean {
+    if (event.type === 'task-created' || event.type === 'task-updated') {
+      return event.task['taskId'] === taskId;
+    }
+    if (event.type === 'task-deleted') {
+      return event.taskId === taskId;
+    }
+    if (event.type === 'task-reordered') {
+      for (const task of event.tasks) {
+        if (task['taskId'] === taskId) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return false;
+  }
+
   private matchesObservedFilter(
     scope: StreamObservedScope,
     event: StreamObservedEvent,
@@ -1860,6 +2330,15 @@ export class ControlPlaneStreamServer {
       return false;
     }
     if (filter.workspaceId !== undefined && scope.workspaceId !== filter.workspaceId) {
+      return false;
+    }
+    if (
+      filter.repositoryId !== undefined &&
+      !this.eventIncludesRepositoryId(event, filter.repositoryId)
+    ) {
+      return false;
+    }
+    if (filter.taskId !== undefined && !this.eventIncludesTaskId(event, filter.taskId)) {
       return false;
     }
     if (filter.directoryId !== undefined && scope.directoryId !== filter.directoryId) {
@@ -1927,6 +2406,43 @@ export class ControlPlaneStreamServer {
       runtimeLastEventAt: conversation.runtimeLastEventAt,
       runtimeLastExit: conversation.runtimeLastExit,
       adapterState: conversation.adapterState
+    };
+  }
+
+  private repositoryRecord(repository: ControlPlaneRepositoryRecord): Record<string, unknown> {
+    return {
+      repositoryId: repository.repositoryId,
+      tenantId: repository.tenantId,
+      userId: repository.userId,
+      workspaceId: repository.workspaceId,
+      name: repository.name,
+      remoteUrl: repository.remoteUrl,
+      defaultBranch: repository.defaultBranch,
+      metadata: repository.metadata,
+      createdAt: repository.createdAt,
+      archivedAt: repository.archivedAt
+    };
+  }
+
+  private taskRecord(task: ControlPlaneTaskRecord): Record<string, unknown> {
+    return {
+      taskId: task.taskId,
+      tenantId: task.tenantId,
+      userId: task.userId,
+      workspaceId: task.workspaceId,
+      repositoryId: task.repositoryId,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      orderIndex: task.orderIndex,
+      claimedByControllerId: task.claimedByControllerId,
+      claimedByDirectoryId: task.claimedByDirectoryId,
+      branchName: task.branchName,
+      baseBranch: task.baseBranch,
+      claimedAt: task.claimedAt,
+      completedAt: task.completedAt,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt
     };
   }
 

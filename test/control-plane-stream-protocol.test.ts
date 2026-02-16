@@ -122,12 +122,175 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c0eb',
+      command: {
+        type: 'repository.upsert',
+        repositoryId: 'repository-1',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        name: 'harness',
+        remoteUrl: 'https://github.com/acme/harness.git',
+        defaultBranch: 'main',
+        metadata: {
+          owner: 'acme'
+        }
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ec',
+      command: {
+        type: 'repository.get',
+        repositoryId: 'repository-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ed',
+      command: {
+        type: 'repository.list',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        includeArchived: true,
+        limit: 20
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ee',
+      command: {
+        type: 'repository.update',
+        repositoryId: 'repository-1',
+        name: 'harness-2',
+        remoteUrl: 'https://github.com/acme/harness-2.git',
+        defaultBranch: 'develop',
+        metadata: {
+          owner: 'acme',
+          tier: 'core'
+        }
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ef',
+      command: {
+        type: 'repository.archive',
+        repositoryId: 'repository-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0eg',
+      command: {
+        type: 'task.create',
+        taskId: 'task-1',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        repositoryId: 'repository-1',
+        title: 'Implement task queue',
+        description: 'Build CRUD and claim/reorder semantics'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0eh',
+      command: {
+        type: 'task.get',
+        taskId: 'task-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ei',
+      command: {
+        type: 'task.list',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        repositoryId: 'repository-1',
+        status: 'ready',
+        limit: 20
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ej',
+      command: {
+        type: 'task.update',
+        taskId: 'task-1',
+        title: 'Implement queue API',
+        description: 'Allow reassignment',
+        repositoryId: null
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ek',
+      command: {
+        type: 'task.delete',
+        taskId: 'task-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0el',
+      command: {
+        type: 'task.claim',
+        taskId: 'task-1',
+        controllerId: 'agent-1',
+        directoryId: 'directory-1',
+        branchName: 'feature/task-queue',
+        baseBranch: 'main'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0em',
+      command: {
+        type: 'task.complete',
+        taskId: 'task-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0en',
+      command: {
+        type: 'task.queue',
+        taskId: 'task-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0eo',
+      command: {
+        type: 'task.ready',
+        taskId: 'task-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ep',
+      command: {
+        type: 'task.reorder',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        orderedTaskIds: ['task-2', 'task-1']
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c0f',
       command: {
         type: 'stream.subscribe',
         tenantId: 'tenant-local',
         userId: 'user-local',
         workspaceId: 'workspace-local',
+        repositoryId: 'repository-1',
+        taskId: 'task-1',
         directoryId: 'directory-1',
         conversationId: 'conversation-1',
         includeOutput: true,
@@ -478,10 +641,120 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
     },
     {
       kind: 'command',
+      commandId: 'c2repository',
+      command: {
+        type: 'repository.upsert',
+        name: 'harness',
+        remoteUrl: 'https://github.com/acme/harness.git',
+        metadata: []
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2repositoryb',
+      command: {
+        type: 'repository.list',
+        includeArchived: 'true'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2repositoryc',
+      command: {
+        type: 'repository.update',
+        repositoryId: 'repository-1',
+        metadata: []
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2repositoryd',
+      command: {
+        type: 'repository.archive'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2task',
+      command: {
+        type: 'task.create',
+        title: 'a',
+        tenantId: 4
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taskb',
+      command: {
+        type: 'task.list',
+        status: 'bad-status'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taskc',
+      command: {
+        type: 'task.list',
+        limit: 0
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taskd',
+      command: {
+        type: 'task.update',
+        taskId: 'task-1',
+        repositoryId: 7
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taske',
+      command: {
+        type: 'task.claim',
+        taskId: 'task-1',
+        controllerId: 7
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taskf',
+      command: {
+        type: 'task.complete'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taskg',
+      command: {
+        type: 'task.queue'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taskh',
+      command: {
+        type: 'task.ready'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taski',
+      command: {
+        type: 'task.reorder',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        orderedTaskIds: 'task-1'
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c2stream',
       command: {
         type: 'stream.subscribe',
-        includeOutput: 'yes'
+        includeOutput: 'yes',
+        repositoryId: 'repository-1'
       }
     },
     {
@@ -489,7 +762,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       commandId: 'c2streamb',
       command: {
         type: 'stream.subscribe',
-        afterCursor: -1
+        afterCursor: -1,
+        taskId: 'task-1'
       }
     },
     {
@@ -1073,6 +1347,93 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 16.6,
+      event: {
+        type: 'repository-upserted',
+        repository: {
+          repositoryId: 'repository-1',
+          name: 'harness'
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 16.7,
+      event: {
+        type: 'repository-updated',
+        repository: {
+          repositoryId: 'repository-1',
+          name: 'harness-2'
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 16.8,
+      event: {
+        type: 'repository-archived',
+        repositoryId: 'repository-1',
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 16.9,
+      event: {
+        type: 'task-created',
+        task: {
+          taskId: 'task-1',
+          repositoryId: 'repository-1'
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 16.91,
+      event: {
+        type: 'task-updated',
+        task: {
+          taskId: 'task-1',
+          status: 'in-progress'
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 16.92,
+      event: {
+        type: 'task-deleted',
+        taskId: 'task-1',
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 16.93,
+      event: {
+        type: 'task-reordered',
+        tasks: [
+          {
+            taskId: 'task-2',
+            orderIndex: 0
+          },
+          {
+            taskId: 'task-1',
+            orderIndex: 1
+          }
+        ],
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 17,
       event: {
         type: 'session-event',
@@ -1321,6 +1682,90 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'directory-archived',
         directoryId: 'directory-1'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'repository-upserted',
+        repository: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'repository-updated'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'repository-archived',
+        repositoryId: 'repository-1',
+        ts: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'task-created',
+        task: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'task-updated'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'task-deleted',
+        taskId: null,
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'task-reordered',
+        tasks: {},
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'task-reordered',
+        tasks: [null],
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'task-reordered',
+        tasks: [],
+        ts: null
       }
     },
     {

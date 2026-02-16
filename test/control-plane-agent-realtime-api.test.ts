@@ -634,6 +634,16 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     updatedAt: '2026-02-01T00:00:00.000Z',
     adapterState: null
   };
+  const repositoryPayload = {
+    repositoryId: 'repository-1',
+    name: 'harness',
+    remoteUrl: 'https://github.com/acme/harness.git'
+  };
+  const taskPayload = {
+    taskId: 'task-1',
+    repositoryId: 'repository-1',
+    status: 'ready'
+  };
   const timestamp = '2026-02-01T00:00:00.000Z';
   const mappedEvents: StreamObservedEvent[] = [
     {
@@ -661,6 +671,37 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     {
       type: 'conversation-deleted',
       conversationId: 'conversation-1',
+      ts: timestamp
+    },
+    {
+      type: 'repository-upserted',
+      repository: repositoryPayload
+    },
+    {
+      type: 'repository-updated',
+      repository: repositoryPayload
+    },
+    {
+      type: 'repository-archived',
+      repositoryId: 'repository-1',
+      ts: timestamp
+    },
+    {
+      type: 'task-created',
+      task: taskPayload
+    },
+    {
+      type: 'task-updated',
+      task: taskPayload
+    },
+    {
+      type: 'task-deleted',
+      taskId: 'task-1',
+      ts: timestamp
+    },
+    {
+      type: 'task-reordered',
+      tasks: [taskPayload],
       ts: timestamp
     },
     {
@@ -742,6 +783,13 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     'conversation.updated',
     'conversation.archived',
     'conversation.deleted',
+    'repository.upserted',
+    'repository.updated',
+    'repository.archived',
+    'task.created',
+    'task.updated',
+    'task.deleted',
+    'task.reordered',
     'session.status',
     'session.event',
     'session.telemetry',

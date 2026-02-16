@@ -273,10 +273,394 @@ function parseConversationDelete(record: CommandRecord): StreamCommand | null {
   };
 }
 
+function parseRepositoryUpsert(record: CommandRecord): StreamCommand | null {
+  const name = readString(record['name']);
+  const remoteUrl = readString(record['remoteUrl']);
+  if (name === null || remoteUrl === null) {
+    return null;
+  }
+  const repositoryId = readOptionalString(record, 'repositoryId');
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const defaultBranch = readOptionalString(record, 'defaultBranch');
+  if (
+    repositoryId === undefined ||
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    defaultBranch === undefined
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'repository.upsert',
+    name,
+    remoteUrl
+  };
+  if (repositoryId !== null) {
+    command.repositoryId = repositoryId;
+  }
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (defaultBranch !== null) {
+    command.defaultBranch = defaultBranch;
+  }
+  if (record['metadata'] !== undefined) {
+    const metadata = asRecord(record['metadata']);
+    if (metadata === null) {
+      return null;
+    }
+    command.metadata = metadata;
+  }
+  return command;
+}
+
+function parseRepositoryGet(record: CommandRecord): StreamCommand | null {
+  const repositoryId = readString(record['repositoryId']);
+  if (repositoryId === null) {
+    return null;
+  }
+  return {
+    type: 'repository.get',
+    repositoryId
+  };
+}
+
+function parseRepositoryList(record: CommandRecord): StreamCommand | null {
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const includeArchived = readOptionalBoolean(record, 'includeArchived');
+  const limit = readOptionalInteger(record, 'limit', 1);
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    includeArchived === undefined ||
+    limit === undefined
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'repository.list'
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (includeArchived !== null) {
+    command.includeArchived = includeArchived;
+  }
+  if (limit !== null) {
+    command.limit = limit;
+  }
+  return command;
+}
+
+function parseRepositoryUpdate(record: CommandRecord): StreamCommand | null {
+  const repositoryId = readString(record['repositoryId']);
+  if (repositoryId === null) {
+    return null;
+  }
+  const name = readOptionalString(record, 'name');
+  const remoteUrl = readOptionalString(record, 'remoteUrl');
+  const defaultBranch = readOptionalString(record, 'defaultBranch');
+  if (name === undefined || remoteUrl === undefined || defaultBranch === undefined) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'repository.update',
+    repositoryId
+  };
+  if (name !== null) {
+    command.name = name;
+  }
+  if (remoteUrl !== null) {
+    command.remoteUrl = remoteUrl;
+  }
+  if (defaultBranch !== null) {
+    command.defaultBranch = defaultBranch;
+  }
+  if (record['metadata'] !== undefined) {
+    const metadata = asRecord(record['metadata']);
+    if (metadata === null) {
+      return null;
+    }
+    command.metadata = metadata;
+  }
+  return command;
+}
+
+function parseRepositoryArchive(record: CommandRecord): StreamCommand | null {
+  const repositoryId = readString(record['repositoryId']);
+  if (repositoryId === null) {
+    return null;
+  }
+  return {
+    type: 'repository.archive',
+    repositoryId
+  };
+}
+
+function parseTaskCreate(record: CommandRecord): StreamCommand | null {
+  const title = readString(record['title']);
+  if (title === null) {
+    return null;
+  }
+  const taskId = readOptionalString(record, 'taskId');
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const repositoryId = readOptionalString(record, 'repositoryId');
+  const description = readOptionalString(record, 'description');
+  if (
+    taskId === undefined ||
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    repositoryId === undefined ||
+    description === undefined
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'task.create',
+    title
+  };
+  if (taskId !== null) {
+    command.taskId = taskId;
+  }
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (repositoryId !== null) {
+    command.repositoryId = repositoryId;
+  }
+  if (description !== null) {
+    command.description = description;
+  }
+  return command;
+}
+
+function parseTaskGet(record: CommandRecord): StreamCommand | null {
+  const taskId = readString(record['taskId']);
+  if (taskId === null) {
+    return null;
+  }
+  return {
+    type: 'task.get',
+    taskId
+  };
+}
+
+function parseTaskList(record: CommandRecord): StreamCommand | null {
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const repositoryId = readOptionalString(record, 'repositoryId');
+  const status = readOptionalString(record, 'status');
+  const limit = readOptionalInteger(record, 'limit', 1);
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    repositoryId === undefined ||
+    status === undefined ||
+    limit === undefined
+  ) {
+    return null;
+  }
+  if (
+    status !== null &&
+    status !== 'draft' &&
+    status !== 'ready' &&
+    status !== 'queued' &&
+    status !== 'in-progress' &&
+    status !== 'completed'
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'task.list'
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (repositoryId !== null) {
+    command.repositoryId = repositoryId;
+  }
+  if (status !== null) {
+    command.status = status === 'queued' ? 'ready' : status;
+  }
+  if (limit !== null) {
+    command.limit = limit;
+  }
+  return command;
+}
+
+function parseTaskUpdate(record: CommandRecord): StreamCommand | null {
+  const taskId = readString(record['taskId']);
+  if (taskId === null) {
+    return null;
+  }
+  const title = readOptionalString(record, 'title');
+  const description = readOptionalString(record, 'description');
+  if (title === undefined || description === undefined) {
+    return null;
+  }
+  let repositoryId: string | null | undefined;
+  if (record['repositoryId'] === undefined) {
+    repositoryId = undefined;
+  } else if (record['repositoryId'] === null) {
+    repositoryId = null;
+  } else if (typeof record['repositoryId'] === 'string') {
+    repositoryId = record['repositoryId'];
+  } else {
+    return null;
+  }
+
+  const command: StreamCommand = {
+    type: 'task.update',
+    taskId
+  };
+  if (title !== null) {
+    command.title = title;
+  }
+  if (description !== null) {
+    command.description = description;
+  }
+  if (repositoryId !== undefined) {
+    command.repositoryId = repositoryId;
+  }
+  return command;
+}
+
+function parseTaskDelete(record: CommandRecord): StreamCommand | null {
+  const taskId = readString(record['taskId']);
+  if (taskId === null) {
+    return null;
+  }
+  return {
+    type: 'task.delete',
+    taskId
+  };
+}
+
+function parseTaskClaim(record: CommandRecord): StreamCommand | null {
+  const taskId = readString(record['taskId']);
+  const controllerId = readString(record['controllerId']);
+  if (taskId === null || controllerId === null) {
+    return null;
+  }
+  const directoryId = readOptionalString(record, 'directoryId');
+  const branchName = readOptionalString(record, 'branchName');
+  const baseBranch = readOptionalString(record, 'baseBranch');
+  if (directoryId === undefined || branchName === undefined || baseBranch === undefined) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'task.claim',
+    taskId,
+    controllerId
+  };
+  if (directoryId !== null) {
+    command.directoryId = directoryId;
+  }
+  if (branchName !== null) {
+    command.branchName = branchName;
+  }
+  if (baseBranch !== null) {
+    command.baseBranch = baseBranch;
+  }
+  return command;
+}
+
+function parseTaskComplete(record: CommandRecord): StreamCommand | null {
+  const taskId = readString(record['taskId']);
+  if (taskId === null) {
+    return null;
+  }
+  return {
+    type: 'task.complete',
+    taskId
+  };
+}
+
+function parseTaskQueue(record: CommandRecord): StreamCommand | null {
+  const taskId = readString(record['taskId']);
+  if (taskId === null) {
+    return null;
+  }
+  return {
+    type: 'task.queue',
+    taskId
+  };
+}
+
+function parseTaskReady(record: CommandRecord): StreamCommand | null {
+  const taskId = readString(record['taskId']);
+  if (taskId === null) {
+    return null;
+  }
+  return {
+    type: 'task.ready',
+    taskId
+  };
+}
+
+function parseTaskReorder(record: CommandRecord): StreamCommand | null {
+  const tenantId = readString(record['tenantId']);
+  const userId = readString(record['userId']);
+  const workspaceId = readString(record['workspaceId']);
+  const orderedTaskIds = record['orderedTaskIds'];
+  if (
+    tenantId === null ||
+    userId === null ||
+    workspaceId === null ||
+    !isStringArray(orderedTaskIds)
+  ) {
+    return null;
+  }
+  return {
+    type: 'task.reorder',
+    tenantId,
+    userId,
+    workspaceId,
+    orderedTaskIds
+  };
+}
+
 function parseStreamSubscribe(record: CommandRecord): StreamCommand | null {
   const tenantId = readOptionalString(record, 'tenantId');
   const userId = readOptionalString(record, 'userId');
   const workspaceId = readOptionalString(record, 'workspaceId');
+  const repositoryId = readOptionalString(record, 'repositoryId');
+  const taskId = readOptionalString(record, 'taskId');
   const directoryId = readOptionalString(record, 'directoryId');
   const conversationId = readOptionalString(record, 'conversationId');
   const includeOutput = readOptionalBoolean(record, 'includeOutput');
@@ -285,6 +669,8 @@ function parseStreamSubscribe(record: CommandRecord): StreamCommand | null {
     tenantId === undefined ||
     userId === undefined ||
     workspaceId === undefined ||
+    repositoryId === undefined ||
+    taskId === undefined ||
     directoryId === undefined ||
     conversationId === undefined ||
     includeOutput === undefined ||
@@ -303,6 +689,12 @@ function parseStreamSubscribe(record: CommandRecord): StreamCommand | null {
   }
   if (workspaceId !== null) {
     command.workspaceId = workspaceId;
+  }
+  if (repositoryId !== null) {
+    command.repositoryId = repositoryId;
+  }
+  if (taskId !== null) {
+    command.taskId = taskId;
   }
   if (directoryId !== null) {
     command.directoryId = directoryId;
@@ -596,6 +988,21 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'conversation.archive': parseConversationArchive,
   'conversation.update': parseConversationUpdate,
   'conversation.delete': parseConversationDelete,
+  'repository.upsert': parseRepositoryUpsert,
+  'repository.get': parseRepositoryGet,
+  'repository.list': parseRepositoryList,
+  'repository.update': parseRepositoryUpdate,
+  'repository.archive': parseRepositoryArchive,
+  'task.create': parseTaskCreate,
+  'task.get': parseTaskGet,
+  'task.list': parseTaskList,
+  'task.update': parseTaskUpdate,
+  'task.delete': parseTaskDelete,
+  'task.claim': parseTaskClaim,
+  'task.complete': parseTaskComplete,
+  'task.queue': parseTaskQueue,
+  'task.ready': parseTaskReady,
+  'task.reorder': parseTaskReorder,
   'stream.subscribe': parseStreamSubscribe,
   'stream.unsubscribe': parseStreamUnsubscribe,
   'session.list': parseSessionList,

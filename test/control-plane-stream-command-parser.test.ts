@@ -19,6 +19,261 @@ void test('parseStreamCommand parses known commands with default registry', () =
   });
 });
 
+void test('parseStreamCommand parses repository and task commands', () => {
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'repository.upsert',
+      repositoryId: 'repository-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      name: 'Harness',
+      remoteUrl: 'https://github.com/acme/harness.git',
+      defaultBranch: 'main',
+      metadata: {
+        owner: 'acme'
+      }
+    }),
+    {
+      type: 'repository.upsert',
+      repositoryId: 'repository-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      name: 'Harness',
+      remoteUrl: 'https://github.com/acme/harness.git',
+      defaultBranch: 'main',
+      metadata: {
+        owner: 'acme'
+      }
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'repository.get',
+      repositoryId: 'repository-1'
+    }),
+    {
+      type: 'repository.get',
+      repositoryId: 'repository-1'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'repository.list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      includeArchived: true,
+      limit: 25
+    }),
+    {
+      type: 'repository.list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      includeArchived: true,
+      limit: 25
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'repository.update',
+      repositoryId: 'repository-1',
+      name: 'Harness 2',
+      remoteUrl: 'https://github.com/acme/harness-2.git',
+      defaultBranch: 'develop',
+      metadata: {
+        archivedReason: null
+      }
+    }),
+    {
+      type: 'repository.update',
+      repositoryId: 'repository-1',
+      name: 'Harness 2',
+      remoteUrl: 'https://github.com/acme/harness-2.git',
+      defaultBranch: 'develop',
+      metadata: {
+        archivedReason: null
+      }
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'repository.archive',
+      repositoryId: 'repository-1'
+    }),
+    {
+      type: 'repository.archive',
+      repositoryId: 'repository-1'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.create',
+      taskId: 'task-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      title: 'Implement task API',
+      description: 'Expose task CRUD via stream commands'
+    }),
+    {
+      type: 'task.create',
+      taskId: 'task-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      title: 'Implement task API',
+      description: 'Expose task CRUD via stream commands'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.get',
+      taskId: 'task-1'
+    }),
+    {
+      type: 'task.get',
+      taskId: 'task-1'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      status: 'queued',
+      limit: 50
+    }),
+    {
+      type: 'task.list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      status: 'ready',
+      limit: 50
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-1',
+      title: 'Implement task API v2',
+      description: 'allow null repository',
+      repositoryId: null
+    }),
+    {
+      type: 'task.update',
+      taskId: 'task-1',
+      title: 'Implement task API v2',
+      description: 'allow null repository',
+      repositoryId: null
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.delete',
+      taskId: 'task-1'
+    }),
+    {
+      type: 'task.delete',
+      taskId: 'task-1'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.claim',
+      taskId: 'task-1',
+      controllerId: 'agent-1',
+      directoryId: 'directory-1',
+      branchName: 'feature/task-api',
+      baseBranch: 'main'
+    }),
+    {
+      type: 'task.claim',
+      taskId: 'task-1',
+      controllerId: 'agent-1',
+      directoryId: 'directory-1',
+      branchName: 'feature/task-api',
+      baseBranch: 'main'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.complete',
+      taskId: 'task-1'
+    }),
+    {
+      type: 'task.complete',
+      taskId: 'task-1'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.queue',
+      taskId: 'task-1'
+    }),
+    {
+      type: 'task.queue',
+      taskId: 'task-1'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.ready',
+      taskId: 'task-1'
+    }),
+    {
+      type: 'task.ready',
+      taskId: 'task-1'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.reorder',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      orderedTaskIds: ['task-2', 'task-1']
+    }),
+    {
+      type: 'task.reorder',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      orderedTaskIds: ['task-2', 'task-1']
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      taskId: 'task-1',
+      includeOutput: false,
+      afterCursor: 0
+    }),
+    {
+      type: 'stream.subscribe',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      taskId: 'task-1',
+      includeOutput: false,
+      afterCursor: 0
+    }
+  );
+});
+
 void test('parseStreamCommand rejects unknown or malformed command shapes', () => {
   assert.equal(parseStreamCommand(null), null);
   assert.equal(
@@ -64,6 +319,109 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'pty.attach'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.upsert',
+      name: 'Harness',
+      remoteUrl: 'https://github.com/acme/harness.git',
+      metadata: []
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.list',
+      includeArchived: 'yes'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.update',
+      repositoryId: 'repository-1',
+      metadata: []
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.archive'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.create',
+      title: 'Missing scope',
+      tenantId: 123
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.list',
+      status: 'invalid'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.list',
+      limit: 0
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-1',
+      repositoryId: 5
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.claim',
+      taskId: 'task-1',
+      controllerId: 99
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.complete'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.queue'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.ready'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.reorder',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      orderedTaskIds: 'task-1'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'stream.subscribe',
+      repositoryId: 1
     }),
     null
   );

@@ -16,7 +16,7 @@ If you are running one agent at a time, you are serializing work that can run co
 
 Harness is built for developers who want to:
 - run 5-6 branches in parallel on one machine,
-- queue up independent tasks as isolated threads,
+- queue up independent tasks that can be claimed by available agents,
 - switch between threads instantly,
 - intervene when needed,
 - and program the whole system from code.
@@ -33,6 +33,11 @@ Harness is built for developers who want to:
 - Fresh context per thread by default (plus persisted continuity when supported).
 - Session control ownership: claim/release/takeover semantics for human-agent handoff.
 - Thread lifecycle management: create, rename, archive, and restore-ready metadata.
+- Tracked repository catalog decoupled from directory projects (many projects can map to one repo).
+- Programmatic repository model with full CRUD and archive semantics.
+- Programmatic task lifecycle with full CRUD, explicit ordering, `draft -> ready -> in-progress -> completed`, plus ready/reset transitions.
+- Repository/task control-plane stream commands (`repository.*`, `task.*`) for automation and UI clients.
+- Repository/task stream subscriptions, including scoped filters for `repositoryId` and `taskId`.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
