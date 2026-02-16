@@ -249,6 +249,9 @@ const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
+const DEFAULT_CODEX_HISTORY_POLL_MS = 5000;
+const HISTORY_POLL_JITTER_RATIO = 0.35;
+const HISTORY_POLL_MAX_DELAY_MS = 60_000;
 const DEFAULT_BOOTSTRAP_SESSION_COLS = 80;
 const DEFAULT_BOOTSTRAP_SESSION_ROWS = 24;
 const DEFAULT_TENANT_ID = 'tenant-local';
@@ -317,8 +320,15 @@ function normalizeCodexHistoryConfig(
   return {
     enabled: input?.enabled ?? false,
     filePath: input?.filePath ?? '~/.codex/history.jsonl',
-    pollMs: Math.max(25, input?.pollMs ?? 500)
+    pollMs: Math.max(25, input?.pollMs ?? DEFAULT_CODEX_HISTORY_POLL_MS)
   };
+}
+
+function jitterDelayMs(baseMs: number): number {
+  const clampedBaseMs = Math.max(25, Math.floor(baseMs));
+  const jitterWindowMs = Math.max(1, Math.floor(clampedBaseMs * HISTORY_POLL_JITTER_RATIO));
+  const jitterOffsetMs = Math.floor((Math.random() * (2 * jitterWindowMs + 1)) - jitterWindowMs);
+  return Math.max(25, clampedBaseMs + jitterOffsetMs);
 }
 
 function normalizeGitStatusMonitorConfig(input: GitStatusMonitorConfig | undefined): GitStatusMonitorConfig {
@@ -720,11 +730,14 @@ export class ControlPlaneStreamServer {
       return;
     }
     this.historyIdleStreak = 0;
-    this.historyNextAllowedPollAtMs = 0;
-    this.historyPollTimer = setInterval(() => {
-      void this.pollHistoryFile();
-    }, this.codexHistory.pollMs);
+    this.historyNextAllowedPollAtMs = Date.now() + jitterDelayMs(this.codexHistory.pollMs);
+    const pollTickMs = Math.max(250, Math.floor(this.codexHistory.pollMs / 4));
+    this.historyPollTimer = setInterval(this.pollHistoryTimerTick.bind(this), pollTickMs);
     this.historyPollTimer.unref();
+  }
+
+  private pollHistoryTimerTick(): void {
+    void this.pollHistoryFile();
   }
 
   private stopHistoryPolling(): void {
@@ -1203,16 +1216,17 @@ export class ControlPlaneStreamServer {
       const consumedNewBytes = await this.pollHistoryFileUnsafe();
       if (consumedNewBytes) {
         this.historyIdleStreak = 0;
-        this.historyNextAllowedPollAtMs = Date.now() + this.codexHistory.pollMs;
+        this.historyNextAllowedPollAtMs = Date.now() + jitterDelayMs(this.codexHistory.pollMs);
       } else {
         this.historyIdleStreak = Math.min(this.historyIdleStreak + 1, 4);
-        const backoffMs = Math.min(5000, this.codexHistory.pollMs * (1 << this.historyIdleStreak));
-        this.historyNextAllowedPollAtMs = Date.now() + backoffMs;
+        const backoffMs = Math.min(HISTORY_POLL_MAX_DELAY_MS, this.codexHistory.pollMs * (1 << this.historyIdleStreak));
+        this.historyNextAllowedPollAtMs = Date.now() + jitterDelayMs(backoffMs);
       }
     } catch {
       // History ingestion is best-effort and should never crash the control-plane runtime.
       this.historyIdleStreak = Math.min(this.historyIdleStreak + 1, 4);
-      this.historyNextAllowedPollAtMs = Date.now() + Math.min(5000, this.codexHistory.pollMs * 4);
+      const backoffMs = Math.min(HISTORY_POLL_MAX_DELAY_MS, this.codexHistory.pollMs * (1 << this.historyIdleStreak));
+      this.historyNextAllowedPollAtMs = Date.now() + jitterDelayMs(backoffMs);
     } finally {
       this.historyPollInFlight = false;
     }

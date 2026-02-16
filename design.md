@@ -1037,6 +1037,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - when enabled in `harness.config.jsonc`, the server hosts a local OTLP HTTP receiver and appends Codex `-c` overrides on launch so logs/metrics/traces (including optional prompt text) stream directly into Harness.
     - Codex `history.jsonl` tail ingestion is supported as a parallel enrichment path, with thread-id correlation into conversation ids and shared SQLite persistence.
     - history ingestion uses non-blocking incremental reads from the last byte offset; the gateway no longer rereads the full history file each poll.
+    - history polling defaults to a slower 5s baseline with jittered scheduling/backoff to decorrelate concurrent sessions and avoid synchronized background spikes.
     - git status monitoring runs in the control-plane runtime and emits `directory-git-updated` observed events; client-side git polling workers are removed.
     - control-plane git monitoring is throttled by config (`pollMs`, `maxConcurrency`, and per-directory refresh floor) to bound background polling cost under large directory sets.
     - exited sessions are tombstoned with TTL-based cleanup to avoid unbounded daemon memory growth while preserving short-lived post-exit status/snapshot queries.

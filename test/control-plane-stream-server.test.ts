@@ -3907,6 +3907,101 @@ void test('stream server ingests codex history lines and supports reset when fil
   }
 });
 
+void test('stream server history poll applies jittered scheduling and idle backoff', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true,
+      captureVerboseEvents: true
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: '~/missing-history-jitter.jsonl',
+      pollMs: 1000
+    }
+  });
+  const internals = server as unknown as {
+    pollHistoryFile: () => Promise<void>;
+    pollHistoryFileUnsafe: () => Promise<boolean>;
+    historyNextAllowedPollAtMs: number;
+    historyIdleStreak: number;
+  };
+  let pollCalls = 0;
+  internals.pollHistoryFileUnsafe = () => {
+    pollCalls += 1;
+    return Promise.resolve(pollCalls === 1);
+  };
+
+  try {
+    internals.historyNextAllowedPollAtMs = 0;
+    const beforeSuccessPoll = Date.now();
+    await internals.pollHistoryFile();
+    const successDelayMs = internals.historyNextAllowedPollAtMs - beforeSuccessPoll;
+    assert.equal(pollCalls, 1);
+    assert.ok(successDelayMs >= 550, `expected >= 550ms; got ${String(successDelayMs)}ms`);
+    assert.ok(successDelayMs <= 1500, `expected <= 1500ms; got ${String(successDelayMs)}ms`);
+
+    await internals.pollHistoryFile();
+    assert.equal(pollCalls, 1);
+
+    internals.historyNextAllowedPollAtMs = 0;
+    const beforeIdlePoll = Date.now();
+    await internals.pollHistoryFile();
+    const idleDelayMs = internals.historyNextAllowedPollAtMs - beforeIdlePoll;
+    assert.equal(internals.historyIdleStreak, 1);
+    assert.ok(idleDelayMs >= 1200, `expected >= 1200ms; got ${String(idleDelayMs)}ms`);
+    assert.ok(idleDelayMs <= 2800, `expected <= 2800ms; got ${String(idleDelayMs)}ms`);
+  } finally {
+    await server.close();
+  }
+});
+
+void test('stream server history polling helpers start once and stop cleanly', async () => {
+  const server = new ControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexTelemetry: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true,
+      captureVerboseEvents: true
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: '~/missing-history-jitter.jsonl',
+      pollMs: 1000
+    }
+  });
+  const internals = server as unknown as {
+    historyPollTimer: NodeJS.Timeout | null;
+    startHistoryPollingIfEnabled: () => void;
+    stopHistoryPolling: () => void;
+    pollHistoryTimerTick: () => void;
+  };
+  try {
+    assert.equal(internals.historyPollTimer, null);
+    internals.startHistoryPollingIfEnabled();
+    assert.notEqual(internals.historyPollTimer, null);
+    internals.pollHistoryTimerTick();
+    const firstTimer = internals.historyPollTimer;
+    internals.startHistoryPollingIfEnabled();
+    assert.equal(internals.historyPollTimer, firstTimer);
+    internals.stopHistoryPolling();
+    assert.equal(internals.historyPollTimer, null);
+  } finally {
+    await server.close();
+  }
+});
+
 void test('stream server skips codex telemetry arg injection for non-codex agents', async () => {
   const created: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({

@@ -198,7 +198,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
     history: {
       enabled: true,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 500
+      pollMs: 5000
     },
     launch: {
       defaultMode: 'yolo',
