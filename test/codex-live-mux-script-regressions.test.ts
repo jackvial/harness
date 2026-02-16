@@ -205,7 +205,7 @@ void test('codex-live-mux wires repository rail section and control-plane reposi
 
   assert.equal(source.includes('repositoriesCollapsed'), true);
   assert.equal(source.includes('showTaskPlanningUi: SHOW_TASK_PLANNING_UI'), true);
-  assert.equal(source.includes('const SHOW_TASK_PLANNING_UI = false;'), true);
+  assert.equal(source.includes('const SHOW_TASK_PLANNING_UI = true;'), true);
   assert.equal(source.includes("type: 'repository.list'"), true);
   assert.equal(source.includes("type: 'repository.upsert'"), true);
   assert.equal(source.includes("type: 'repository.update'"), true);
@@ -214,17 +214,17 @@ void test('codex-live-mux wires repository rail section and control-plane reposi
   assert.equal(source.includes('openRepositoryPromptForEdit'), true);
 });
 
-void test('codex-live-mux includes a realtime tasks management pane with draft/ready transitions', () => {
+void test('codex-live-mux includes a realtime home planning pane with draft/ready transitions', () => {
   const source = readLegacySource();
   const uiSource = readUiModuleSource();
 
-  assert.equal(source.includes("let mainPaneMode: 'conversation' | 'project' | 'tasks' = 'conversation';"), true);
+  assert.equal(source.includes("let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';"), true);
   assert.equal(source.includes('buildTaskPaneSnapshot('), true);
   assert.equal(source.includes('subscribeTaskPlanningEvents'), true);
   assert.equal(source.includes("type: 'stream.subscribe'"), true);
   assert.equal(source.includes('if (envelope.kind === \'stream.event\') {'), true);
   assert.equal(source.includes("type: 'task.draft'"), true);
-  assert.equal(source.includes("if (selectedAction === 'tasks.open')"), true);
+  assert.equal(source.includes("if (selectedAction === 'home.open')"), true);
   assert.equal(uiSource.includes('TASKS_PANE_ADD_TASK_BUTTON_LABEL'), true);
 });
 

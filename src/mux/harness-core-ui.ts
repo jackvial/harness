@@ -9,6 +9,8 @@ export type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 export type TaskPaneAction =
   | 'task.create'
   | 'repository.create'
+  | 'repository.edit'
+  | 'repository.archive'
   | 'task.edit'
   | 'task.delete'
   | 'task.ready'
@@ -35,6 +37,8 @@ interface ProjectPaneWrappedLine {
 export interface TaskPaneRepositoryRecord {
   readonly repositoryId: string;
   readonly name: string;
+  readonly remoteUrl?: string;
+  readonly defaultBranch?: string;
   readonly archivedAt: string | null;
 }
 
@@ -53,6 +57,7 @@ export interface TaskPaneTaskRecord {
 export interface TaskPaneSnapshotLine {
   readonly text: string;
   readonly taskId: string | null;
+  readonly repositoryId: string | null;
   readonly action: TaskPaneAction | null;
 }
 
@@ -63,12 +68,14 @@ export interface TaskPaneSnapshot {
 interface TaskPaneWrappedLine {
   readonly text: string;
   readonly taskId: string | null;
+  readonly repositoryId: string | null;
   readonly action: TaskPaneAction | null;
 }
 
 export interface TaskPaneView {
   readonly rows: readonly string[];
   readonly taskIds: readonly (string | null)[];
+  readonly repositoryIds: readonly (string | null)[];
   readonly actions: readonly (TaskPaneAction | null)[];
   readonly top: number;
 }
@@ -88,6 +95,14 @@ export const TASKS_PANE_ADD_TASK_BUTTON_LABEL = formatUiButton({
 export const TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL = formatUiButton({
   label: 'add repository',
   prefixIcon: '+'
+});
+export const TASKS_PANE_EDIT_REPOSITORY_BUTTON_LABEL = formatUiButton({
+  label: 'edit repository',
+  prefixIcon: 'e'
+});
+export const TASKS_PANE_ARCHIVE_REPOSITORY_BUTTON_LABEL = formatUiButton({
+  label: 'archive repository',
+  prefixIcon: 'x'
 });
 export const TASKS_PANE_EDIT_TASK_BUTTON_LABEL = formatUiButton({
   label: 'edit task',
@@ -188,6 +203,64 @@ export function sortTasksByOrder<T extends TaskPaneTaskRecord>(tasks: readonly T
   });
 }
 
+function taskStatusSortRank(status: TaskStatus): number {
+  if (status === 'in-progress') {
+    return 0;
+  }
+  if (status === 'ready') {
+    return 1;
+  }
+  if (status === 'draft') {
+    return 2;
+  }
+  return 3;
+}
+
+function taskStatusGlyph(status: TaskStatus): string {
+  if (status === 'in-progress') {
+    return '▶';
+  }
+  if (status === 'ready') {
+    return '◆';
+  }
+  if (status === 'draft') {
+    return '◇';
+  }
+  return '✓';
+}
+
+function repositoryRemoteLabel(remoteUrl: string | undefined): string {
+  const normalized = (remoteUrl ?? '').trim();
+  if (normalized.length === 0) {
+    return '(no remote)';
+  }
+  const match = /github\.com[/:]([^/\s]+\/[^/\s]+?)(?:\.git)?(?:\/)?$/iu.exec(normalized);
+  if (match !== null) {
+    return `github.com/${match[1] as string}`;
+  }
+  return normalized
+    .replace(/^https?:\/\//iu, '')
+    .replace(/\.git$/iu, '');
+}
+
+export function sortTasksForHomePane<T extends TaskPaneTaskRecord>(tasks: readonly T[]): readonly T[] {
+  return [...tasks].sort((left, right) => {
+    const statusCompare = taskStatusSortRank(left.status) - taskStatusSortRank(right.status);
+    if (statusCompare !== 0) {
+      return statusCompare;
+    }
+    if (left.orderIndex !== right.orderIndex) {
+      return left.orderIndex - right.orderIndex;
+    }
+    const leftCreatedAt = parseIsoTimestampMs(left.createdAt);
+    const rightCreatedAt = parseIsoTimestampMs(right.createdAt);
+    if (Number.isFinite(leftCreatedAt) && Number.isFinite(rightCreatedAt) && leftCreatedAt !== rightCreatedAt) {
+      return leftCreatedAt - rightCreatedAt;
+    }
+    return left.taskId.localeCompare(right.taskId);
+  });
+}
+
 function buildProjectPaneWrappedLines(snapshot: ProjectPaneSnapshot, cols: number): readonly ProjectPaneWrappedLine[] {
   const safeCols = Math.max(1, cols);
   const wrapped: ProjectPaneWrappedLine[] = [];
@@ -219,6 +292,7 @@ function buildTaskPaneWrappedLines(snapshot: TaskPaneSnapshot, cols: number): re
       wrapped.push({
         text: segment,
         taskId: line.taskId,
+        repositoryId: line.repositoryId,
         action: line.action
       });
     }
@@ -227,6 +301,7 @@ function buildTaskPaneWrappedLines(snapshot: TaskPaneSnapshot, cols: number): re
     wrapped.push({
       text: '',
       taskId: null,
+      repositoryId: null,
       action: null
     });
   }
@@ -333,6 +408,7 @@ export function buildTaskPaneSnapshot(
   repositories: ReadonlyMap<string, TaskPaneRepositoryRecord>,
   tasks: ReadonlyMap<string, TaskPaneTaskRecord>,
   selectedTaskId: string | null,
+  selectedRepositoryId: string | null,
   nowMs: number,
   notice: string | null
 ): TaskPaneSnapshot {
@@ -340,88 +416,106 @@ export function buildTaskPaneSnapshot(
   const repositoryNameById = new Map<string, string>(
     activeRepositories.map((repository) => [repository.repositoryId, repository.name] as const)
   );
-  const orderedTasks = sortTasksByOrder([...tasks.values()]);
+  const orderedTasks = sortTasksForHomePane([...tasks.values()]);
   const activeTasks = orderedTasks.filter((task) => task.status !== 'completed');
-  const completedTasks = orderedTasks
-    .filter((task) => task.status === 'completed')
-    .sort((left, right) => {
-      const leftCompletedAt = parseIsoTimestampMs(left.completedAt);
-      const rightCompletedAt = parseIsoTimestampMs(right.completedAt);
-      if (Number.isFinite(leftCompletedAt) && Number.isFinite(rightCompletedAt)) {
-        return rightCompletedAt - leftCompletedAt;
-      }
-      return right.updatedAt.localeCompare(left.updatedAt);
-    });
+  const completedTasks = orderedTasks.filter((task) => task.status === 'completed');
   const effectiveSelectedTaskId =
     (selectedTaskId !== null && tasks.has(selectedTaskId) ? selectedTaskId : null) ??
     activeTasks[0]?.taskId ??
+    orderedTasks[0]?.taskId ??
+    null;
+  const effectiveSelectedRepositoryId =
+    (selectedRepositoryId !== null && repositories.has(selectedRepositoryId) ? selectedRepositoryId : null) ??
+    activeRepositories[0]?.repositoryId ??
     null;
   const lines: TaskPaneSnapshotLine[] = [];
-  const push = (text: string, taskId: string | null = null, action: TaskPaneAction | null = null): void => {
+  const push = (
+    text: string,
+    taskId: string | null = null,
+    repositoryId: string | null = null,
+    action: TaskPaneAction | null = null
+  ): void => {
     lines.push({
       text,
       taskId,
+      repositoryId,
       action
     });
   };
 
-  push('tasks');
+  push('home');
   push(
-    `repositories ${String(activeRepositories.length)} · active ${String(activeTasks.length)} · completed ${String(
-      completedTasks.length
-    )}`
+    `repositories ${String(activeRepositories.length)} · in-progress ${String(
+      orderedTasks.filter((task) => task.status === 'in-progress').length
+    )} · ready ${String(orderedTasks.filter((task) => task.status === 'ready').length)} · draft ${String(
+      orderedTasks.filter((task) => task.status === 'draft').length
+    )} · completed ${String(completedTasks.length)}`
   );
   if (notice !== null) {
     push(`notice: ${notice}`);
   }
   push('');
-  push(TASKS_PANE_ADD_TASK_BUTTON_LABEL, null, 'task.create');
-  push(TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL, null, 'repository.create');
-  push(TASKS_PANE_EDIT_TASK_BUTTON_LABEL, null, 'task.edit');
-  push(TASKS_PANE_DELETE_TASK_BUTTON_LABEL, null, 'task.delete');
-  push(TASKS_PANE_READY_TASK_BUTTON_LABEL, null, 'task.ready');
-  push(TASKS_PANE_DRAFT_TASK_BUTTON_LABEL, null, 'task.draft');
-  push(TASKS_PANE_COMPLETE_TASK_BUTTON_LABEL, null, 'task.complete');
-  push(TASKS_PANE_REORDER_UP_BUTTON_LABEL, null, 'task.reorder-up');
-  push(TASKS_PANE_REORDER_DOWN_BUTTON_LABEL, null, 'task.reorder-down');
-  push('');
-  push('active tasks');
-  if (activeTasks.length === 0) {
-    push('  no active tasks');
+  push('repositories');
+  if (activeRepositories.length === 0) {
+    push('  no repositories');
   } else {
-    for (let index = 0; index < activeTasks.length; index += 1) {
-      const task = activeTasks[index]!;
+    for (const repository of activeRepositories) {
+      const selected = repository.repositoryId === effectiveSelectedRepositoryId ? '▸' : ' ';
+      const repositoryName = repository.name.trim().length === 0 ? '(unnamed repository)' : repository.name.trim();
+      const branch = repository.defaultBranch?.trim() ?? '';
+      const branchLabel = branch.length === 0 ? 'main' : branch;
+      push(
+        `${selected} ⎇ ${repositoryName} · ${repositoryRemoteLabel(repository.remoteUrl)} · ${branchLabel}`,
+        null,
+        repository.repositoryId
+      );
+    }
+  }
+  push(TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL, null, null, 'repository.create');
+  push(TASKS_PANE_EDIT_REPOSITORY_BUTTON_LABEL, null, null, 'repository.edit');
+  push(TASKS_PANE_ARCHIVE_REPOSITORY_BUTTON_LABEL, null, null, 'repository.archive');
+  push('');
+  push('tasks');
+  if (orderedTasks.length === 0) {
+    push('  no tasks');
+  } else {
+    for (let index = 0; index < orderedTasks.length; index += 1) {
+      const task = orderedTasks[index]!;
       const selected = task.taskId === effectiveSelectedTaskId ? '▸' : ' ';
       const repositoryName =
         (task.repositoryId !== null ? repositoryNameById.get(task.repositoryId) : null) ??
         '(missing repository)';
-      push(`${selected} ${String(index + 1)}. [${task.status}] ${task.title}`, task.taskId);
-      push(`    ${repositoryName} · updated ${formatRelativeIsoTime(nowMs, task.updatedAt)}`, task.taskId);
+      push(
+        `${selected} ${taskStatusGlyph(task.status)} ${task.title}`,
+        task.taskId,
+        task.repositoryId
+      );
+      push(
+        `    ${repositoryName} · ${task.status} · updated ${formatRelativeIsoTime(nowMs, task.updatedAt)}`,
+        task.taskId,
+        task.repositoryId
+      );
       const description = task.description.trim();
       if (description.length > 0) {
-        push(`    ${description}`, task.taskId);
+        push(`    ${description}`, task.taskId, task.repositoryId);
       }
-      if (index + 1 < activeTasks.length) {
+      if (index + 1 < orderedTasks.length) {
         push('');
       }
     }
   }
   push('');
-  push('recently completed');
-  if (completedTasks.length === 0) {
-    push('  nothing completed yet');
-  } else {
-    for (const task of completedTasks.slice(0, 8)) {
-      const repositoryName =
-        (task.repositoryId !== null ? repositoryNameById.get(task.repositoryId) : null) ??
-        '(missing repository)';
-      const completedLabel = formatRelativeIsoTime(nowMs, task.completedAt ?? task.updatedAt);
-      push(`  ✓ ${task.title} · ${repositoryName} · ${completedLabel}`, task.taskId);
-    }
-  }
+  push(TASKS_PANE_ADD_TASK_BUTTON_LABEL, null, null, 'task.create');
+  push(TASKS_PANE_EDIT_TASK_BUTTON_LABEL, null, null, 'task.edit');
+  push(TASKS_PANE_DELETE_TASK_BUTTON_LABEL, null, null, 'task.delete');
+  push(TASKS_PANE_READY_TASK_BUTTON_LABEL, null, null, 'task.ready');
+  push(TASKS_PANE_DRAFT_TASK_BUTTON_LABEL, null, null, 'task.draft');
+  push(TASKS_PANE_COMPLETE_TASK_BUTTON_LABEL, null, null, 'task.complete');
+  push(TASKS_PANE_REORDER_UP_BUTTON_LABEL, null, null, 'task.reorder-up');
+  push(TASKS_PANE_REORDER_DOWN_BUTTON_LABEL, null, null, 'task.reorder-down');
   push('');
-  push('keys: n new  e edit  x delete  r ready  d draft  c complete  [ up  ] down');
-  push('click rows to select and run actions');
+  push('keys: j/k move  enter edit  n new task  r ready  d draft  c complete');
+  push('keys: [ ] reorder  click rows to select and run actions');
   return {
     lines
   };
@@ -443,12 +537,14 @@ export function buildTaskPaneRows(
     viewport.push({
       text: '',
       taskId: null,
+      repositoryId: null,
       action: null
     });
   }
   return {
     rows: viewport.map((row) => padOrTrimDisplay(row.text, safeCols)),
     taskIds: viewport.map((row) => row.taskId),
+    repositoryIds: viewport.map((row) => row.repositoryId),
     actions: viewport.map((row) => row.action),
     top: nextTop
   };
@@ -462,4 +558,9 @@ export function taskPaneActionAtRow(view: TaskPaneView, rowIndex: number): TaskP
 export function taskPaneTaskIdAtRow(view: TaskPaneView, rowIndex: number): string | null {
   const normalizedRow = Math.max(0, Math.min(view.taskIds.length - 1, rowIndex));
   return view.taskIds[normalizedRow] ?? null;
+}
+
+export function taskPaneRepositoryIdAtRow(view: TaskPaneView, rowIndex: number): string | null {
+  const normalizedRow = Math.max(0, Math.min(view.repositoryIds.length - 1, rowIndex));
+  return view.repositoryIds[normalizedRow] ?? null;
 }

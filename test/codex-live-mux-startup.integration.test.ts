@@ -330,7 +330,7 @@ void test(
 );
 
 void test(
-  'codex-live-mux hides repository and task controls from the rail while keeping project actions',
+  'codex-live-mux shows home, repository, and project controls on the rail',
   { timeout: 20000 },
   async () => {
     const workspace = createWorkspace();
@@ -338,11 +338,11 @@ void test(
     try {
       const result = await captureMuxBootOutput(workspace, 1800);
       const output = result.output;
-      assert.equal(output.includes('repositories [-]'), false);
-      assert.equal(output.includes('[ > add repository ]'), false);
-      assert.equal(output.includes('no repositories'), false);
+      assert.equal(output.includes('[ ⌂ home ]'), true);
+      assert.equal(output.includes('repositories [-]'), true);
+      assert.equal(output.includes('[ > add repository ]'), true);
+      assert.equal(output.includes('no repositories'), true);
       assert.equal(output.includes('[ > add project ]'), true);
-      assert.equal(output.includes('[ # tasks ]'), false);
       assert.equal(output.includes('[ + new thread ]'), true);
       assert.equal(output.includes('○ codex'), false);
     } finally {

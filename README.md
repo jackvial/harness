@@ -39,7 +39,7 @@ Harness is built for developers who want to:
 - Programmatic task lifecycle with full CRUD, explicit ordering, `draft -> ready -> in-progress -> completed`, plus ready/reset transitions.
 - Repository/task control-plane stream commands (`repository.*`, `task.*`) for automation and UI clients.
 - Repository/task stream subscriptions, including scoped filters for `repositoryId` and `taskId`.
-- Repository/task UI surfaces in the mux rail are temporarily hidden; the underlying repository/task APIs and stream model remain fully available.
+- Home planning pane in mux now unifies repository + task workflows with one click target in the left rail.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Codex notify-hook relay support on the same stream (`session-event notify`, including `agent-turn-complete` payloads).
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).

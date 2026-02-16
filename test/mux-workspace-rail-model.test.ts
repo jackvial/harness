@@ -124,7 +124,7 @@ void test('workspace rail model builds rows with conversation spacing and proces
   );
   assert.equal(rows.some((row) => row.kind === 'shortcut-body' && row.text.includes('ctrl+t')), true);
   assert.equal(rows[rows.length - 1]?.kind, 'shortcut-body');
-  assert.equal(rows[0]?.railAction, 'tasks.open');
+  assert.equal(rows[0]?.railAction, 'home.open');
   const addProjectRowIndex = rows.findIndex((row) => row.railAction === 'project.add');
   const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
   assert.equal(addProjectRowIndex >= 0, true);
@@ -144,7 +144,7 @@ void test('workspace rail model handles empty projects and blank workspace name'
     40
   );
   assert.equal(noDirectoryRows.some((row) => row.text.includes('no projects')), true);
-  assert.equal(noDirectoryRows[0]?.railAction, 'tasks.open');
+  assert.equal(noDirectoryRows[0]?.railAction, 'home.open');
   const noDirectoryAddProjectRowIndex = noDirectoryRows.findIndex(
     (row) => row.railAction === 'project.add'
   );
@@ -202,13 +202,13 @@ void test('workspace rail model can hide repository and task controls from the r
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:00:10.000Z')
     },
-    16
+    18
   );
 
   assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
   assert.equal(rows.some((row) => row.kind === 'repository-row'), false);
   assert.equal(rows.some((row) => row.railAction === 'repository.add'), false);
-  assert.equal(rows.some((row) => row.railAction === 'tasks.open'), false);
+  assert.equal(rows.some((row) => row.railAction === 'home.open'), false);
   assert.equal(rows.some((row) => row.railAction === 'project.add'), true);
 });
 
@@ -261,7 +261,7 @@ void test('workspace rail model can render collapsed repository header from flag
       activeProjectId: null,
       activeConversationId: null
     },
-    12
+    13
   );
 
   assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('[+]')), true);
@@ -424,6 +424,7 @@ void test('workspace rail model supports starting normalization custom shortcuts
   assert.equal(actionAtWorkspaceRailRow(rows, shortcutHeaderRowIndex), 'shortcuts.toggle');
   assert.equal(actionAtWorkspaceRailRow(rows, -1), null);
   assert.equal(actionAtWorkspaceRailRow(rows, 100), null);
+  assert.equal(rows[0]?.railAction, 'home.open');
   const projectAddRowIndex = rows.findIndex((row) => row.railAction === 'project.add');
   assert.equal(projectAddRowIndex >= 0, true);
   assert.equal(actionAtWorkspaceRailCell(rows, projectAddRowIndex, 0), 'project.add');
@@ -509,7 +510,7 @@ void test('workspace rail model limits active project styling to header and git 
       activeConversationId: null,
       projectSelectionEnabled: true
     },
-    16
+    18
   );
   const header = rows.find((row) => row.kind === 'dir-header');
   const meta = rows.find((row) => row.kind === 'dir-meta');
@@ -560,7 +561,7 @@ void test('workspace rail model does not mark project active while selection mod
       projectSelectionEnabled: false,
       nowMs: Date.parse('2026-01-01T00:00:05.000Z')
     },
-    16
+    18
   );
 
   const header = rows.find((row) => row.kind === 'dir-header');
@@ -606,7 +607,7 @@ void test('workspace rail model does not mark conversation active while project 
       projectSelectionEnabled: true,
       nowMs: Date.parse('2026-01-01T00:00:05.000Z')
     },
-    16
+    18
   );
 
   const header = rows.find((row) => row.kind === 'dir-header');
@@ -817,7 +818,7 @@ void test('workspace rail model supports collapsed repository section with click
       activeProjectId: null,
       activeConversationId: null
     },
-    12
+    13
   );
   const headerIndex = rows.findIndex((row) => row.kind === 'repository-header');
   assert.equal(headerIndex >= 0, true);
@@ -949,7 +950,7 @@ void test('workspace rail model repository id row helper and starting fallback s
       activeProjectId: null,
       activeConversationId: null
     },
-    16
+    18
   );
   const repositoryRowIndex = repositoryRows.findIndex((row) => row.kind === 'repository-row');
   assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
@@ -966,7 +967,7 @@ void test('workspace rail model does not expose thread action for headers withou
       activeProjectId: null,
       activeConversationId: null
     },
-    12
+    13
   );
   const noProjectsHeaderRowIndex = rows.findIndex(
     (row) => row.kind === 'dir-header' && row.text.includes('no projects')
@@ -1464,7 +1465,7 @@ void test('workspace rail model includes normalized status in fallback detail te
       activeConversationId: 'conversation-no-telemetry',
       nowMs: Date.parse('2026-01-01T00:00:30.000Z')
     },
-    16
+    18
   );
   const bodyRow = rows.find(
     (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-no-telemetry'
@@ -1657,7 +1658,7 @@ void test('workspace rail model treats missing lastEventAt as current for last-k
       activeConversationId: 'conversation-no-last-event',
       nowMs: Date.parse('2026-01-01T00:00:10.000Z')
     },
-    16
+    18
   );
   const titleRow = rows.find(
     (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-no-last-event'

@@ -91,8 +91,10 @@ import {
   projectPaneActionAtRow,
   resolveGoldenModalSize,
   sortedRepositoryList,
+  sortTasksForHomePane,
   sortTasksByOrder,
   taskPaneActionAtRow,
+  taskPaneRepositoryIdAtRow,
   taskPaneTaskIdAtRow,
   type ProjectPaneSnapshot,
   type TaskPaneAction,
@@ -1552,7 +1554,7 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
-const SHOW_TASK_PLANNING_UI = false;
+const SHOW_TASK_PLANNING_UI = true;
 
 function buildRailModel(
   repositories: ReadonlyMap<string, ControlPlaneRepositoryRecord>,
@@ -2201,17 +2203,19 @@ async function main(): Promise<number> {
   }
   directoryUpsertSpan.end();
   let activeDirectoryId: string | null = persistedDirectory.directoryId;
-  let mainPaneMode: 'conversation' | 'project' | 'tasks' = 'conversation';
+  let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';
   let projectPaneSnapshot: ProjectPaneSnapshot | null = null;
   let projectPaneScrollTop = 0;
   let taskPaneScrollTop = 0;
   let latestTaskPaneView: TaskPaneView = {
     rows: [],
     taskIds: [],
+    repositoryIds: [],
     actions: [],
     top: 0
   };
   let taskPaneSelectedTaskId: string | null = null;
+  let taskPaneSelectedRepositoryId: string | null = null;
   let taskPaneNotice: string | null = null;
 
   const sessionEnv = {
@@ -4286,8 +4290,15 @@ async function main(): Promise<number> {
     if (taskPaneSelectedTaskId !== null && tasks.has(taskPaneSelectedTaskId)) {
       return;
     }
-    const activeTasks = orderedTaskRecords().filter((task) => task.status !== 'completed');
+    const activeTasks = sortTasksForHomePane([...tasks.values()]).filter((task) => task.status !== 'completed');
     taskPaneSelectedTaskId = activeTasks[0]?.taskId ?? null;
+  }
+
+  function syncTaskPaneRepositorySelection(): void {
+    if (taskPaneSelectedRepositoryId !== null && repositories.has(taskPaneSelectedRepositoryId)) {
+      return;
+    }
+    taskPaneSelectedRepositoryId = activeRepositoryIds()[0] ?? null;
   }
 
   const selectedTaskRecord = (): ControlPlaneTaskRecord | null => {
@@ -4301,8 +4312,8 @@ async function main(): Promise<number> {
     return sortedRepositoryList(repositories).map((repository) => repository.repositoryId);
   };
 
-  const enterTaskPane = (): void => {
-    mainPaneMode = 'tasks';
+  const enterHomePane = (): void => {
+    mainPaneMode = 'home';
     projectPaneSnapshot = null;
     projectPaneScrollTop = 0;
     selection = null;
@@ -4311,6 +4322,7 @@ async function main(): Promise<number> {
     taskPaneScrollTop = 0;
     taskPaneNotice = null;
     syncTaskPaneSelection();
+    syncTaskPaneRepositorySelection();
     forceFullClear = true;
     previousRows = [];
     markDirty();
@@ -4335,6 +4347,7 @@ async function main(): Promise<number> {
       }
       repositories.set(repository.repositoryId, repository);
     }
+    syncTaskPaneRepositorySelection();
 
     const tasksResult = await streamClient.sendCommand({
       type: 'task.list',
@@ -4356,6 +4369,7 @@ async function main(): Promise<number> {
       tasks.set(task.taskId, task);
     }
     syncTaskPaneSelection();
+    syncTaskPaneRepositorySelection();
     markDirty();
   }
 
@@ -4364,6 +4378,7 @@ async function main(): Promise<number> {
       const repository = parseRepositoryRecord(observed.repository);
       if (repository !== null) {
         repositories.set(repository.repositoryId, repository);
+        syncTaskPaneRepositorySelection();
         markDirty();
       }
       return;
@@ -4375,6 +4390,7 @@ async function main(): Promise<number> {
           ...repository,
           archivedAt: observed.ts
         });
+        syncTaskPaneRepositorySelection();
         markDirty();
       }
       return;
@@ -4563,7 +4579,7 @@ async function main(): Promise<number> {
   };
 
   const moveTaskSelection = (direction: 1 | -1): void => {
-    const activeTasks = orderedTaskRecords().filter((task) => task.status !== 'completed');
+    const activeTasks = sortTasksForHomePane([...tasks.values()]).filter((task) => task.status !== 'completed');
     if (activeTasks.length === 0) {
       taskPaneSelectedTaskId = null;
       markDirty();
@@ -4668,6 +4684,30 @@ async function main(): Promise<number> {
     if (action === 'repository.create') {
       taskPaneNotice = null;
       openRepositoryPromptForCreate();
+      return;
+    }
+    if (action === 'repository.edit') {
+      const selectedRepositoryId = taskPaneSelectedRepositoryId;
+      if (selectedRepositoryId === null || !repositories.has(selectedRepositoryId)) {
+        taskPaneNotice = 'select a repository first';
+        markDirty();
+        return;
+      }
+      taskPaneNotice = null;
+      openRepositoryPromptForEdit(selectedRepositoryId);
+      return;
+    }
+    if (action === 'repository.archive') {
+      const selectedRepositoryId = taskPaneSelectedRepositoryId;
+      if (selectedRepositoryId === null || !repositories.has(selectedRepositoryId)) {
+        taskPaneNotice = 'select a repository first';
+        markDirty();
+        return;
+      }
+      queueControlPlaneOp(async () => {
+        await archiveRepositoryById(selectedRepositoryId);
+        syncTaskPaneRepositorySelection();
+      }, 'tasks-archive-repository');
       return;
     }
     const selected = selectedTaskRecord();
@@ -4839,6 +4879,7 @@ async function main(): Promise<number> {
     repositories.set(repository.repositoryId, repository);
     rebuildRepositoryRemoteIndex();
     syncRepositoryAssociationsWithDirectorySnapshots();
+    syncTaskPaneRepositorySelection();
     markDirty();
   };
 
@@ -4850,6 +4891,7 @@ async function main(): Promise<number> {
     repositories.delete(repositoryId);
     rebuildRepositoryRemoteIndex();
     syncRepositoryAssociationsWithDirectorySnapshots();
+    syncTaskPaneRepositorySelection();
     markDirty();
   };
 
@@ -5113,8 +5155,8 @@ async function main(): Promise<number> {
       mainPaneMode === 'project' &&
       activeDirectoryId !== null &&
       directories.has(activeDirectoryId);
-    const taskPaneActive = mainPaneMode === 'tasks';
-    if (!projectPaneActive && !taskPaneActive && activeConversationId === null) {
+    const homePaneActive = mainPaneMode === 'home';
+    if (!projectPaneActive && !homePaneActive && activeConversationId === null) {
       dirty = false;
       return;
     }
@@ -5122,12 +5164,12 @@ async function main(): Promise<number> {
 
     const active =
       activeConversationId === null ? null : conversations.get(activeConversationId) ?? null;
-    if (!projectPaneActive && !taskPaneActive && active === null) {
+    if (!projectPaneActive && !homePaneActive && active === null) {
       dirty = false;
       return;
     }
     const rightFrame =
-      !projectPaneActive && !taskPaneActive && active !== null ? active.oracle.snapshotWithoutHash() : null;
+      !projectPaneActive && !homePaneActive && active !== null ? active.oracle.snapshotWithoutHash() : null;
     const renderSelection =
       rightFrame !== null && selectionDrag !== null && selectionDrag.hasDragged
         ? {
@@ -5165,6 +5207,7 @@ async function main(): Promise<number> {
     latestTaskPaneView = {
       rows: [],
       taskIds: [],
+      repositoryIds: [],
       actions: [],
       top: 0
     };
@@ -5172,11 +5215,12 @@ async function main(): Promise<number> {
       rightRows = Array.from({ length: layout.paneRows }, (_value, row) =>
         renderSnapshotAnsiRow(rightFrame, row, layout.rightCols)
       );
-    } else if (taskPaneActive) {
+    } else if (homePaneActive) {
       const snapshot = buildTaskPaneSnapshot(
         repositories,
         tasks,
         taskPaneSelectedTaskId,
+        taskPaneSelectedRepositoryId,
         Date.now(),
         taskPaneNotice
       );
@@ -6037,7 +6081,7 @@ async function main(): Promise<number> {
   };
 
   const handleTaskPaneShortcutInput = (input: Buffer): boolean => {
-    if (mainPaneMode !== 'tasks') {
+    if (mainPaneMode !== 'home') {
       return false;
     }
     let handled = false;
@@ -6307,7 +6351,7 @@ async function main(): Promise<number> {
         if (target === 'right') {
           if (mainPaneMode === 'project') {
             projectPaneScrollTop = Math.max(0, projectPaneScrollTop + wheelDelta);
-          } else if (mainPaneMode === 'tasks') {
+          } else if (mainPaneMode === 'home') {
             taskPaneScrollTop = Math.max(0, taskPaneScrollTop + wheelDelta);
           } else if (inputConversation !== null) {
             inputConversation.oracle.scrollViewport(wheelDelta);
@@ -6348,15 +6392,23 @@ async function main(): Promise<number> {
       }
       const taskPaneActionClick =
         target === 'right' &&
-        mainPaneMode === 'tasks' &&
+        mainPaneMode === 'home' &&
         isLeftButtonPress(token.event.code, token.event.final) &&
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
       if (taskPaneActionClick) {
         const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
+        const repositoryId = taskPaneRepositoryIdAtRow(latestTaskPaneView, rowIndex);
+        if (repositoryId !== null) {
+          taskPaneSelectedRepositoryId = repositoryId;
+          taskPaneNotice = null;
+          markDirty();
+          continue;
+        }
         const taskId = taskPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
         if (taskId !== null) {
           taskPaneSelectedTaskId = taskId;
+          taskPaneNotice = null;
           markDirty();
           continue;
         }
@@ -6459,9 +6511,9 @@ async function main(): Promise<number> {
           markDirty();
           continue;
         }
-        if (selectedAction === 'tasks.open') {
+        if (selectedAction === 'home.open') {
           conversationTitleEditClickState = null;
-          enterTaskPane();
+          enterHomePane();
           markDirty();
           continue;
         }

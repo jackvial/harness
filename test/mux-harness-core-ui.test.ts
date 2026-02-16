@@ -11,8 +11,10 @@ import {
   PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL,
   TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL,
   TASKS_PANE_ADD_TASK_BUTTON_LABEL,
+  TASKS_PANE_ARCHIVE_REPOSITORY_BUTTON_LABEL,
   TASKS_PANE_COMPLETE_TASK_BUTTON_LABEL,
   TASKS_PANE_DELETE_TASK_BUTTON_LABEL,
+  TASKS_PANE_EDIT_REPOSITORY_BUTTON_LABEL,
   TASKS_PANE_DRAFT_TASK_BUTTON_LABEL,
   TASKS_PANE_EDIT_TASK_BUTTON_LABEL,
   TASKS_PANE_READY_TASK_BUTTON_LABEL,
@@ -25,8 +27,10 @@ import {
   projectPaneActionAtRow,
   resolveGoldenModalSize,
   sortedRepositoryList,
+  sortTasksForHomePane,
   sortTasksByOrder,
   taskPaneActionAtRow,
+  taskPaneRepositoryIdAtRow,
   taskPaneTaskIdAtRow,
   type ProjectPaneSnapshot,
   type ProjectPaneAction,
@@ -62,6 +66,7 @@ void test('harness-core ui exports remain reachable from test/src import graph',
   const snapshotLine: TaskPaneSnapshotLine = {
     text: 'line',
     taskId: 'task-1',
+    repositoryId: null,
     action: taskAction
   };
   const snapshot: TaskPaneSnapshot = {
@@ -75,6 +80,8 @@ void test('harness-core ui exports remain reachable from test/src import graph',
   assert.equal(PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_ADD_TASK_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL.length > 0, true);
+  assert.equal(TASKS_PANE_EDIT_REPOSITORY_BUTTON_LABEL.length > 0, true);
+  assert.equal(TASKS_PANE_ARCHIVE_REPOSITORY_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_EDIT_TASK_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_DELETE_TASK_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_READY_TASK_BUTTON_LABEL.length > 0, true);
@@ -218,6 +225,64 @@ void test('sortTasksByOrder handles mixed finite and invalid createdAt timestamp
   assert.equal(ordered.length, 2);
 });
 
+void test('sortTasksForHomePane orders tasks by status priority before order index', () => {
+  const ordered = sortTasksForHomePane([
+    task({
+      taskId: 'in-progress-late',
+      status: 'in-progress',
+      orderIndex: 0,
+      createdAt: '2026-01-01T00:00:01.000Z'
+    }),
+    task({
+      taskId: 'draft-a',
+      status: 'draft',
+      orderIndex: 0
+    }),
+    task({
+      taskId: 'in-progress-early',
+      status: 'in-progress',
+      orderIndex: 0,
+      createdAt: '2026-01-01T00:00:00.000Z'
+    }),
+    task({
+      taskId: 'ready-a',
+      status: 'ready',
+      orderIndex: 0
+    }),
+    task({
+      taskId: 'completed-a',
+      status: 'completed',
+      orderIndex: 0
+    })
+  ]);
+
+  assert.deepEqual(
+    ordered.map((entry) => entry.taskId),
+    ['in-progress-early', 'in-progress-late', 'ready-a', 'draft-a', 'completed-a']
+  );
+});
+
+void test('sortTasksForHomePane falls back to task id when status order and createdAt are identical', () => {
+  const ordered = sortTasksForHomePane([
+    task({
+      taskId: 'ready-z',
+      status: 'ready',
+      orderIndex: 1,
+      createdAt: '2026-01-01T00:00:00.000Z'
+    }),
+    task({
+      taskId: 'ready-a',
+      status: 'ready',
+      orderIndex: 1,
+      createdAt: '2026-01-01T00:00:00.000Z'
+    })
+  ]);
+  assert.deepEqual(
+    ordered.map((entry) => entry.taskId),
+    ['ready-a', 'ready-z']
+  );
+});
+
 void test('buildProjectPaneSnapshot and row helpers expose action rows and clamp viewport state', () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-core-ui-project-'));
   try {
@@ -265,56 +330,74 @@ void test('buildProjectPaneSnapshot falls back to full path when basename is emp
   assert.equal(snapshot.lines[0], 'project /');
 });
 
-void test('buildTaskPaneSnapshot renders active/completed sections with relative timestamps', () => {
+void test('buildTaskPaneSnapshot renders home repositories and status-priority tasks', () => {
   const repositories = new Map<string, TaskPaneRepositoryRecord>([
-    ['repo-1', { repositoryId: 'repo-1', name: 'api', archivedAt: null }]
+    [
+      'repo-1',
+      {
+        repositoryId: 'repo-1',
+        name: 'api',
+        remoteUrl: 'https://github.com/acme/api.git',
+        defaultBranch: 'main',
+        archivedAt: null
+      }
+    ],
+    [
+      'repo-2',
+      {
+        repositoryId: 'repo-2',
+        name: 'external',
+        remoteUrl: 'https://example.com/team/tooling.git',
+        defaultBranch: 'trunk',
+        archivedAt: null
+      }
+    ]
   ]);
   const tasks = new Map<string, TaskPaneTaskRecord>([
     [
-      'task-active',
+      'task-ready',
       task({
-        taskId: 'task-active',
+        taskId: 'task-ready',
         repositoryId: 'repo-1',
-        title: 'Active Task',
+        title: 'Ready Task',
         description: '  implement endpoint  ',
         status: 'ready',
-        orderIndex: 0,
+        orderIndex: 1,
         updatedAt: '2025-12-31T23:59:30.000Z',
         createdAt: '2025-12-31T10:00:00.000Z'
       })
     ],
     [
-      'task-missing-repo',
+      'task-in-progress',
       task({
-        taskId: 'task-missing-repo',
-        repositoryId: 'repo-missing',
-        title: 'Unknown Repo',
+        taskId: 'task-in-progress',
+        repositoryId: 'repo-1',
+        title: 'In Progress',
         description: '',
-        status: 'draft',
-        orderIndex: 1,
-        updatedAt: 'invalid',
+        status: 'in-progress',
+        orderIndex: 7,
+        updatedAt: '2025-12-31T23:58:00.000Z',
         createdAt: '2025-12-31T11:00:00.000Z'
       })
     ],
     [
-      'task-complete-new',
+      'task-draft',
       task({
-        taskId: 'task-complete-new',
+        taskId: 'task-draft',
         repositoryId: 'repo-1',
-        title: 'Newest Complete',
-        status: 'completed',
-        orderIndex: 2,
-        completedAt: '2025-12-31T22:00:00.000Z',
-        updatedAt: '2025-12-31T22:00:00.000Z',
-        createdAt: '2025-12-30T00:00:00.000Z'
+        title: 'Draft Task',
+        status: 'draft',
+        orderIndex: 0,
+        updatedAt: 'invalid',
+        createdAt: '2025-12-31T09:00:00.000Z'
       })
     ],
     [
-      'task-complete-old',
+      'task-complete',
       task({
-        taskId: 'task-complete-old',
-        repositoryId: 'repo-1',
-        title: 'Older Complete',
+        taskId: 'task-complete',
+        repositoryId: 'repo-missing',
+        title: 'Complete Task',
         status: 'completed',
         orderIndex: 3,
         completedAt: '2025-12-30T00:00:00.000Z',
@@ -324,55 +407,55 @@ void test('buildTaskPaneSnapshot renders active/completed sections with relative
     ]
   ]);
 
-  const snapshot = buildTaskPaneSnapshot(repositories, tasks, 'missing-selection', NOW_MS, 'hello');
+  const snapshot = buildTaskPaneSnapshot(repositories, tasks, 'missing-selection', null, NOW_MS, 'hello');
   const lines = snapshot.lines.map((entry) => entry.text);
 
+  assert.equal(lines[0], 'home');
+  assert.equal(lines.includes('repositories'), true);
+  assert.equal(lines.includes('tasks'), true);
   assert.equal(lines.includes('notice: hello'), true);
-  assert.equal(lines.some((line) => line.includes('▸ 1. [ready] Active Task')), true);
+  assert.equal(lines.some((line) => line.includes('github.com/acme/api')), true);
+  assert.equal(lines.some((line) => line.includes('example.com/team/tooling')), true);
+  assert.equal(lines.some((line) => line.includes(TASKS_PANE_EDIT_REPOSITORY_BUTTON_LABEL)), true);
+  assert.equal(lines.some((line) => line.includes(TASKS_PANE_ARCHIVE_REPOSITORY_BUTTON_LABEL)), true);
   assert.equal(lines.some((line) => line.includes('implement endpoint')), true);
-  assert.equal(lines.some((line) => line.includes('(missing repository) · updated unknown')), true);
-  assert.equal(lines.some((line) => line.includes('Newest Complete')), true);
-  assert.equal(lines.some((line) => line.includes('Older Complete')), true);
+  assert.equal(lines.some((line) => line.includes('(missing repository) · completed')), true);
+
+  const inProgressIndex = lines.findIndex((line) => line.includes('▶ In Progress'));
+  const readyIndex = lines.findIndex((line) => line.includes('◆ Ready Task'));
+  const draftIndex = lines.findIndex((line) => line.includes('◇ Draft Task'));
+  const completedIndex = lines.findIndex((line) => line.includes('✓ Complete Task'));
+  assert.equal(inProgressIndex >= 0, true);
+  assert.equal(readyIndex > inProgressIndex, true);
+  assert.equal(draftIndex > readyIndex, true);
+  assert.equal(completedIndex > draftIndex, true);
 });
 
-void test('buildTaskPaneSnapshot handles empty active/completed groups and updatedAt fallback sorting', () => {
-  const repositories = new Map<string, TaskPaneRepositoryRecord>();
-  const tasks = new Map<string, TaskPaneTaskRecord>([
+void test('buildTaskPaneSnapshot handles empty repository/task groups', () => {
+  const emptySnapshot = buildTaskPaneSnapshot(new Map(), new Map(), null, null, NOW_MS, null);
+  const emptyLines = emptySnapshot.lines.map((entry) => entry.text);
+  assert.equal(emptyLines.includes('  no repositories'), true);
+  assert.equal(emptyLines.includes('  no tasks'), true);
+});
+
+void test('buildTaskPaneSnapshot renders unnamed repository fallback and default branch text', () => {
+  const repositories = new Map<string, TaskPaneRepositoryRecord>([
     [
-      'task-a',
-      task({
-        taskId: 'task-a',
-        title: 'A',
-        status: 'completed',
-        completedAt: 'invalid',
-        updatedAt: '2025-12-31T00:00:00.000Z',
-        createdAt: '2025-12-31T00:00:00.000Z'
-      })
-    ],
-    [
-      'task-b',
-      task({
-        taskId: 'task-b',
-        title: 'B',
-        status: 'completed',
-        completedAt: 'invalid',
-        updatedAt: '2026-01-01T00:00:00.000Z',
-        createdAt: '2025-12-31T01:00:00.000Z'
-      })
+      'repo-empty',
+      {
+        repositoryId: 'repo-empty',
+        name: '   ',
+        remoteUrl: '',
+        defaultBranch: '',
+        archivedAt: null
+      }
     ]
   ]);
-
-  const completedSnapshot = buildTaskPaneSnapshot(repositories, tasks, null, NOW_MS, null);
-  const completedLines = completedSnapshot.lines.map((entry) => entry.text);
-  assert.equal(completedLines.includes('active tasks'), true);
-  assert.equal(completedLines.includes('  no active tasks'), true);
-  assert.equal(completedLines.some((line) => line.includes('✓ B')), true);
-  assert.equal(completedLines.some((line) => line.includes('✓ A')), true);
-
-  const emptySnapshot = buildTaskPaneSnapshot(new Map(), new Map(), null, NOW_MS, null);
-  const emptyLines = emptySnapshot.lines.map((entry) => entry.text);
-  assert.equal(emptyLines.includes('  no active tasks'), true);
-  assert.equal(emptyLines.includes('  nothing completed yet'), true);
+  const snapshot = buildTaskPaneSnapshot(repositories, new Map(), null, null, NOW_MS, null);
+  const lines = snapshot.lines.map((entry) => entry.text);
+  assert.equal(lines.some((line) => line.includes('(unnamed repository)')), true);
+  assert.equal(lines.some((line) => line.includes('(no remote)')), true);
+  assert.equal(lines.some((line) => line.includes('· main')), true);
 });
 
 void test('buildTaskPaneSnapshot covers relative-time buckets and future timestamp clamping', () => {
@@ -432,7 +515,7 @@ void test('buildTaskPaneSnapshot covers relative-time buckets and future timesta
     ]
   ]);
 
-  const snapshot = buildTaskPaneSnapshot(new Map(), tasks, null, NOW_MS, null);
+  const snapshot = buildTaskPaneSnapshot(new Map(), tasks, null, null, NOW_MS, null);
   const lines = snapshot.lines.map((entry) => entry.text);
   assert.equal(lines.some((line) => line.includes('updated 15s ago')), true);
   assert.equal(lines.some((line) => line.includes('updated 10m ago')), true);
@@ -464,7 +547,7 @@ void test('buildTaskPaneSnapshot handles mixed finite and invalid completedAt ti
       })
     ]
   ]);
-  const snapshot = buildTaskPaneSnapshot(new Map(), tasks, null, NOW_MS, null);
+  const snapshot = buildTaskPaneSnapshot(new Map(), tasks, null, null, NOW_MS, null);
   assert.equal(snapshot.lines.some((line) => line.text.includes('valid')), true);
   assert.equal(snapshot.lines.some((line) => line.text.includes('invalid')), true);
 });
@@ -489,22 +572,25 @@ void test('buildTaskPaneRows wraps and pads rows while preserving task/action me
     ]
   ]);
 
-  const snapshot = buildTaskPaneSnapshot(repositories, tasks, 'task-1', NOW_MS, null);
+  const snapshot = buildTaskPaneSnapshot(repositories, tasks, 'task-1', 'repo-1', NOW_MS, null);
   const view = buildTaskPaneRows(snapshot, 16, 6, 0);
   assert.equal(view.rows.length, 6);
   assert.equal(view.top >= 0, true);
-  assert.equal(view.actions.includes('task.create'), true);
-  const actionIndex = view.actions.findIndex((entry) => entry !== null);
-  assert.notEqual(actionIndex, -1);
-  assert.notEqual(taskPaneActionAtRow(view, actionIndex), null);
 
   const clamped = buildTaskPaneRows(snapshot, 16, 6, 100);
   assert.equal(clamped.top >= 0, true);
   assert.equal(clamped.top > 0, true);
   const taskWindow = buildTaskPaneRows(snapshot, 16, 30, 0);
+  assert.equal(taskWindow.actions.includes('task.create'), true);
+  const actionIndex = taskWindow.actions.findIndex((entry) => entry !== null);
+  assert.notEqual(actionIndex, -1);
+  assert.notEqual(taskPaneActionAtRow(taskWindow, actionIndex), null);
   const taskIndex = taskWindow.taskIds.findIndex((entry) => entry !== null);
+  const repositoryIndex = taskWindow.repositoryIds.findIndex((entry) => entry !== null);
   assert.notEqual(taskIndex, -1);
+  assert.notEqual(repositoryIndex, -1);
   assert.notEqual(taskPaneTaskIdAtRow(taskWindow, taskIndex), null);
+  assert.notEqual(taskPaneRepositoryIdAtRow(taskWindow, repositoryIndex), null);
 });
 
 void test('buildTaskPaneRows and row accessors handle empty snapshots and out-of-range rows', () => {
@@ -512,13 +598,16 @@ void test('buildTaskPaneRows and row accessors handle empty snapshots and out-of
   assert.deepEqual(view.rows, ['          ', '          ']);
   assert.equal(taskPaneActionAtRow(view, -99), null);
   assert.equal(taskPaneTaskIdAtRow(view, 99), null);
+  assert.equal(taskPaneRepositoryIdAtRow(view, 99), null);
 
   const emptyView: TaskPaneView = {
     rows: [],
     taskIds: [],
+    repositoryIds: [],
     actions: [],
     top: 0
   };
   assert.equal(taskPaneActionAtRow(emptyView, 0), null);
   assert.equal(taskPaneTaskIdAtRow(emptyView, 0), null);
+  assert.equal(taskPaneRepositoryIdAtRow(emptyView, 0), null);
 });

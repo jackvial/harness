@@ -121,9 +121,9 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   const addProjectRowPlain = stripAnsi(addProjectRow ?? '');
   assert.equal(addProjectRowPlain.trimStart().startsWith('[ > add project ]'), true);
   assert.equal(addProjectRowPlain.indexOf('[ > add project ]') > 35, true);
-  const tasksRow = rows.find((row) => row.includes('[ # tasks ]'));
-  assert.notEqual(tasksRow, undefined);
-  assert.equal(tasksRow?.includes('\u001b[0;38;5;230;48;5;237m[ # tasks ]'), true);
+  const homeRow = rows.find((row) => row.includes('[ ⌂ home ]'));
+  assert.notEqual(homeRow, undefined);
+  assert.equal(homeRow?.includes('\u001b[0;38;5;230;48;5;237m[ ⌂ home ]'), true);
   const threadButtonRow = rows.find((row) => row.includes('[+ thread]'));
   assert.notEqual(threadButtonRow, undefined);
   assert.equal(threadButtonRow?.includes('\u001b[0;38;5;230;48;5;237m[+ thread]'), true);
@@ -171,7 +171,7 @@ void test('workspace rail render keeps explicit completion text stable despite n
       nowMs: Date.parse('2026-01-01T00:00:04.000Z')
     },
     80,
-    16
+    18
   ).map((row) => stripAnsi(row));
   assert.equal(completeRows.some((row) => row.includes('○ codex - task')), true);
   assert.equal(completeRows.some((row) => row.includes('turn complete (812ms)')), true);
@@ -213,7 +213,7 @@ void test('workspace rail render keeps explicit completion text stable despite n
       nowMs: Date.parse('2026-01-01T00:00:09.000Z')
     },
     80,
-    16
+    18
   ).map((row) => stripAnsi(row));
   assert.equal(workingRows.some((row) => row.includes('○ codex - task')), true);
   assert.equal(workingRows.some((row) => row.includes('turn complete (812ms)')), true);
@@ -387,7 +387,7 @@ void test('workspace rail renders icon colors for needs-action exited starting a
       nowMs: Date.parse('2026-01-01T00:01:00.000Z')
     },
     80,
-    24
+    26
   );
 
   const plainRows = rows.map((row) => stripAnsi(row));
@@ -449,7 +449,7 @@ void test('workspace rail renders no-project header without inline thread action
       nowMs: Date.parse('2026-01-01T00:00:00.000Z')
     },
     48,
-    12
+    13
   );
 
   const plainRows = rows.map((row) => stripAnsi(row));
