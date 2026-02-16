@@ -28,6 +28,7 @@ Harness is built for developers who want to:
 ## Core Capabilities
 
 - Multi-project rail with fast thread switching and live status indicators.
+- Projects can remain empty; threads start only via explicit `new thread` actions.
 - Parallel `codex` and `terminal` threads in the same workspace.
 - Fresh context per thread by default (plus persisted continuity when supported).
 - Session control ownership: claim/release/takeover semantics for human-agent handoff.

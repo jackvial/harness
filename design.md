@@ -172,6 +172,7 @@ Pass-through stream invariants:
 - The left rail includes clickable action rows (new thread, archive thread, add project, close project) with keybind parity.
 - Project rows in the left rail are selectable; selecting a project switches the right pane into a project view and scopes project actions to that explicit selection.
 - `new thread` preserves thread-project affinity when a thread row is selected; in project view it uses the selected project.
+- Projects may remain thread-empty; mux does not auto-seed a thread on startup/project-add/fallback and instead exposes explicit `new thread` entry points.
 - Creating a thread uses a modal agent-type chooser (`codex` or `terminal`); terminal threads launch a plain interactive shell over the same PTY/control-plane path.
 - Clicking the active thread title row enters inline title-edit mode; edits update locally immediately and persist through debounced `conversation.update` control-plane commands.
 - The pane separator is draggable; divider moves recompute layout and PTY resize through the normal mux resize path.
@@ -1080,6 +1081,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - multi-thread rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new thread creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
     - explicit directory selection from rail rows, with a project-focused right-pane tree view when directory mode is active
     - project-scoped actions (`new thread`, `close project`) target the selected project in project mode and preserve active-thread project affinity in thread mode
+    - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread
     - thread creation opens a modal selector (`codex` or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
     - left rail composition uses project-wrapped thread blocks with inline git summary and per-thread telemetry (CPU/memory sampled from `ps` via `processId`)
     - git summary uses an adaptive per-project scheduler (`mux.background.git-summary`) with config-driven active/idle/burst intervals and bounded concurrency (`mux.git.*`), while process-usage sampling (`mux.background.process-usage`) remains opt-in through `HARNESS_MUX_BACKGROUND_PROBES=1`

@@ -47,8 +47,19 @@ void test('codex-live-mux no longer seeds untitled task placeholder titles', () 
   const source = readFileSync(scriptPath, 'utf8');
 
   assert.equal(source.includes('untitled task'), false);
-  assert.equal(source.includes("const initialTitle = '';"), true);
   assert.equal(source.includes("const title = '';"), true);
+});
+
+void test('codex-live-mux keeps projects empty until explicit new-thread creation', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes('options.initialConversationId'), false);
+  assert.equal(source.includes("await createAndActivateConversationInDirectory(directory.directoryId, 'codex');"), false);
+  assert.equal(source.includes("await createAndActivateConversationInDirectory(fallbackDirectoryId, 'codex');"), false);
+  assert.equal(source.includes('enterProjectPane(directory.directoryId);'), true);
+  assert.equal(source.includes('enterProjectPane(fallbackDirectoryId);'), true);
+  assert.equal(source.includes("activeConversationId = ordered[0] ?? null;"), true);
 });
 
 void test('codex-live-mux enforces selection-gated close/archive shortcuts and inline project actions', () => {

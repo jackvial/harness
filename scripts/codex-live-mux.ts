@@ -2490,30 +2490,12 @@ async function main(): Promise<number> {
   };
 
   await hydrateConversationList();
-  if (conversations.size === 0) {
-    const targetDirectoryId = resolveActiveDirectoryId();
-    if (targetDirectoryId === null) {
-      throw new Error('cannot create initial thread without an active directory');
-    }
-    const initialTitle = '';
-    await streamClient.sendCommand({
-      type: 'conversation.create',
-      conversationId: options.initialConversationId,
-      directoryId: targetDirectoryId,
-      title: initialTitle,
-      agentType: 'codex',
-      adapterState: {}
-    });
-    ensureConversation(options.initialConversationId, {
-      directoryId: targetDirectoryId,
-      title: initialTitle,
-      agentType: 'codex',
-      adapterState: {}
-    });
-  }
   if (activeConversationId === null) {
     const ordered = conversationOrder(conversations);
-    activeConversationId = ordered[0] ?? options.initialConversationId;
+    activeConversationId = ordered[0] ?? null;
+  }
+  if (activeConversationId === null && resolveActiveDirectoryId() !== null) {
+    mainPaneMode = 'project';
   }
 
   const gitSummaryByDirectoryId = new Map<string, GitSummary>();
@@ -3998,8 +3980,11 @@ async function main(): Promise<number> {
       }
       const fallbackDirectoryId = resolveActiveDirectoryId();
       if (fallbackDirectoryId !== null) {
-        await createAndActivateConversationInDirectory(fallbackDirectoryId, 'codex');
+        enterProjectPane(fallbackDirectoryId);
+        markDirty();
+        return;
       }
+      markDirty();
       return;
     }
 
@@ -4056,7 +4041,8 @@ async function main(): Promise<number> {
       await activateConversation(targetConversationId);
       return;
     }
-    await createAndActivateConversationInDirectory(directory.directoryId, 'codex');
+    enterProjectPane(directory.directoryId);
+    markDirty();
   };
 
   const closeDirectory = async (directoryId: string): Promise<void> => {
@@ -4127,7 +4113,8 @@ async function main(): Promise<number> {
       return;
     }
     if (fallbackDirectoryId !== null) {
-      await createAndActivateConversationInDirectory(fallbackDirectoryId, 'codex');
+      enterProjectPane(fallbackDirectoryId);
+      markDirty();
       return;
     }
 
