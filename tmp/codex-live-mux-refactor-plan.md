@@ -100,7 +100,7 @@ bun run loc:verify:enforce
 
 - [x] Phase 0 started
 - [x] Phase 0 completed
-- [ ] Phase 1 completed
+- [x] Phase 1 completed
 - [~] Phase 2 in progress
 - [ ] Phase 3 completed
 - [ ] Phase 4 completed
@@ -146,3 +146,19 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux.ts`: 6048 -> 5894 LOC
+
+### Checkpoint 2 (2026-02-17): thin entrypoint wrapper
+
+- Moved runtime implementation file:
+  - `scripts/codex-live-mux.ts` -> `scripts/codex-live-mux-runtime.ts`
+- Replaced `scripts/codex-live-mux.ts` with a thin wrapper:
+  - `await import('./codex-live-mux-runtime.ts');`
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC state:
+  - `scripts/codex-live-mux.ts`: thin wrapper
+  - `scripts/codex-live-mux-runtime.ts`: 5894 LOC (current primary target)
