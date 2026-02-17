@@ -485,3 +485,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4875 -> 4873 LOC
+
+### Checkpoint 24 (2026-02-17): left-rail action dispatch helper extraction
+
+- Added `src/mux/live-mux/left-rail-actions.ts`:
+  - left-rail action click handler for conversation/project/repository/shortcuts actions
+  - callback-driven side effects preserving existing mark-dirty behavior per action
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate selected left-rail action branching through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4873 -> 4829 LOC

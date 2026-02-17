@@ -231,6 +231,7 @@ import {
 import { requestStop as requestStopHelper } from '../src/mux/live-mux/runtime-shutdown.ts';
 import { routeInputTokensForConversation as routeInputTokensForConversationHelper } from '../src/mux/live-mux/input-forwarding.ts';
 import { handleProjectPaneActionClick as handleProjectPaneActionClickHelper } from '../src/mux/live-mux/project-pane-pointer.ts';
+import { handleLeftRailActionClick as handleLeftRailActionClickHelper } from '../src/mux/live-mux/left-rail-actions.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4717,100 +4718,55 @@ async function main(): Promise<number> {
           selectionDrag = null;
           releaseViewportPinForSelection();
         }
-        if (selectedAction === 'conversation.new') {
-          conversationTitleEditClickState = null;
-          const targetDirectoryId = selectedProjectId ?? resolveDirectoryForAction();
-          if (targetDirectoryId !== null) {
-            openNewThreadPrompt(targetDirectoryId);
-          }
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'conversation.delete') {
-          conversationTitleEditClickState = null;
-          if (activeConversationId !== null) {
-            const targetConversationId = activeConversationId;
-            queueControlPlaneOp(async () => {
-              await archiveConversation(targetConversationId);
-            }, 'mouse-archive-conversation');
-          }
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'project.add') {
-          conversationTitleEditClickState = null;
-          repositoryPrompt = null;
-          addDirectoryPrompt = {
-            value: '',
-            error: null,
-          };
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'repository.add') {
-          conversationTitleEditClickState = null;
-          openRepositoryPromptForCreate();
-          continue;
-        }
-        if (selectedAction === 'repository.edit') {
-          conversationTitleEditClickState = null;
-          if (selectedRepositoryId !== null && repositories.has(selectedRepositoryId)) {
-            openRepositoryPromptForEdit(selectedRepositoryId);
-          }
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'repository.archive') {
-          conversationTitleEditClickState = null;
-          if (selectedRepositoryId !== null && repositories.has(selectedRepositoryId)) {
-            queueControlPlaneOp(async () => {
-              await archiveRepositoryById(selectedRepositoryId);
-            }, 'mouse-archive-repository');
-          }
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'repository.toggle') {
-          conversationTitleEditClickState = null;
-          if (selectedRepositoryId !== null) {
-            toggleRepositoryGroup(selectedRepositoryId);
-            selectLeftNavRepository(selectedRepositoryId);
-          }
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'repositories.toggle') {
-          conversationTitleEditClickState = null;
-          if (repositoriesCollapsed) {
-            expandAllRepositoryGroups();
-          } else {
-            collapseAllRepositoryGroups();
-          }
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'home.open') {
-          conversationTitleEditClickState = null;
-          enterHomePane();
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'project.close') {
-          conversationTitleEditClickState = null;
-          const targetDirectoryId = selectedProjectId ?? resolveDirectoryForAction();
-          if (targetDirectoryId !== null) {
-            queueControlPlaneOp(async () => {
-              await closeDirectory(targetDirectoryId);
-            }, 'mouse-close-directory');
-          }
-          markDirty();
-          continue;
-        }
-        if (selectedAction === 'shortcuts.toggle') {
-          conversationTitleEditClickState = null;
-          shortcutsCollapsed = !shortcutsCollapsed;
-          queuePersistMuxUiState();
-          markDirty();
+        if (
+          handleLeftRailActionClickHelper({
+            action: selectedAction,
+            selectedProjectId,
+            selectedRepositoryId,
+            activeConversationId,
+            repositoriesCollapsed,
+            clearConversationTitleEditClickState: () => {
+              conversationTitleEditClickState = null;
+            },
+            resolveDirectoryForAction,
+            openNewThreadPrompt,
+            queueArchiveConversation: (conversationId) => {
+              queueControlPlaneOp(async () => {
+                await archiveConversation(conversationId);
+              }, 'mouse-archive-conversation');
+            },
+            openAddDirectoryPrompt: () => {
+              repositoryPrompt = null;
+              addDirectoryPrompt = {
+                value: '',
+                error: null,
+              };
+            },
+            openRepositoryPromptForCreate,
+            repositoryExists: (repositoryId) => repositories.has(repositoryId),
+            openRepositoryPromptForEdit,
+            queueArchiveRepository: (repositoryId) => {
+              queueControlPlaneOp(async () => {
+                await archiveRepositoryById(repositoryId);
+              }, 'mouse-archive-repository');
+            },
+            toggleRepositoryGroup,
+            selectLeftNavRepository,
+            expandAllRepositoryGroups,
+            collapseAllRepositoryGroups,
+            enterHomePane,
+            queueCloseDirectory: (directoryId) => {
+              queueControlPlaneOp(async () => {
+                await closeDirectory(directoryId);
+              }, 'mouse-close-directory');
+            },
+            toggleShortcutsCollapsed: () => {
+              shortcutsCollapsed = !shortcutsCollapsed;
+              queuePersistMuxUiState();
+            },
+            markDirty,
+          })
+        ) {
           continue;
         }
         const clickNowMs = Date.now();
