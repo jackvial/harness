@@ -740,3 +740,88 @@ void test(
   },
   { timeout: 30000 },
 );
+
+void test(
+  'codex-live-mux renders split pane with repository rail and thread rows',
+  async () => {
+    const workspace = createWorkspace();
+    const projectPath = join(workspace, 'project-split');
+    mkdirSync(projectPath, { recursive: true });
+
+    const tenantId = 'tenant-split-pane';
+    const userId = 'user-split-pane';
+    const workspaceId = 'workspace-split-pane';
+    const worktreeId = 'worktree-split-pane';
+    const directoryId = 'directory-split-pane';
+    const conversationId = 'conversation-split-pane';
+
+    const server = await startControlPlaneStreamServer({
+      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      startSession: (input) => new StartupTestLiveSession(input),
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port,
+    });
+
+    const interactive = startInteractiveMuxSession(workspace, {
+      controlPlaneHost: address.address,
+      controlPlanePort: address.port,
+      cols: 120,
+      rows: 30,
+      extraEnv: {
+        HARNESS_TENANT_ID: tenantId,
+        HARNESS_USER_ID: userId,
+        HARNESS_WORKSPACE_ID: workspaceId,
+        HARNESS_WORKTREE_ID: worktreeId,
+        HARNESS_CONVERSATION_ID: conversationId,
+      },
+    });
+
+    try {
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId,
+        tenantId,
+        userId,
+        workspaceId,
+        path: projectPath,
+      });
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId,
+        directoryId,
+        title: 'split-pane-thread',
+        agentType: 'terminal',
+        adapterState: {},
+      });
+      await client.sendCommand({
+        type: 'pty.start',
+        sessionId: conversationId,
+        args: [],
+        initialCols: 80,
+        initialRows: 24,
+        tenantId,
+        userId,
+        workspaceId,
+        worktreeId,
+      });
+
+      await waitForSnapshotLineContaining(interactive.oracle, '│', 8000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'split-pane-thr', 8000);
+    } finally {
+      try {
+        interactive.session.write('\u0003');
+        const exit = await interactive.waitForExit;
+        assert.equal(exit.signal, null);
+        assert.equal(exit.code, 0);
+      } finally {
+        client.close();
+        await server.close();
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    }
+  },
+  { timeout: 30000 },
+);

@@ -1,4 +1,4 @@
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
@@ -35,7 +35,6 @@ import { loadHarnessConfig, updateHarnessMuxUiConfig } from '../src/config/confi
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   detectMuxGlobalShortcut,
-  firstShortcutText,
   normalizeMuxKeyboardInputForPty,
   resolveMuxShortcutBindings,
 } from '../src/mux/input-shortcuts.ts';
@@ -47,16 +46,16 @@ import {
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
 import { detectConversationDoubleClick, detectEntityDoubleClick } from '../src/mux/double-click.ts';
-import { renderWorkspaceRailAnsiRows } from '../src/mux/workspace-rail.ts';
 import {
   actionAtWorkspaceRailCell,
-  buildWorkspaceRailViewRows,
   conversationIdAtWorkspaceRailRow,
   projectWorkspaceRailConversation,
   projectIdAtWorkspaceRailRow,
   repositoryIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow,
 } from '../src/mux/workspace-rail-model.ts';
+import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
+import { buildRailRows } from '../src/mux/live-mux/rail-layout.ts';
 import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
 import {
   createNewThreadPromptState,
@@ -195,7 +194,6 @@ import {
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
 
-type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
@@ -575,198 +573,6 @@ function debugFooterForConversation(conversation: ConversationState): string {
       ? '(launch command unavailable)'
       : compactDebugText(conversation.launchCommand);
   return `[dbg] ${launchCommand}`;
-}
-
-function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
-  const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
-  const deleteConversation = firstShortcutText(bindings, 'mux.conversation.delete') || 'ctrl+x';
-  const takeoverConversation = firstShortcutText(bindings, 'mux.conversation.takeover') || 'ctrl+l';
-  const addProject = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
-  const closeProject = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
-  const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
-  const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
-  const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
-  const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ←/→ collapse/expand  ${interrupt} quit`;
-}
-
-type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
-const SHOW_TASK_PLANNING_UI = true;
-
-function buildRailModel(
-  repositories: ReadonlyMap<string, ControlPlaneRepositoryRecord>,
-  repositoryAssociationByDirectoryId: ReadonlyMap<string, string>,
-  directoryRepositorySnapshotByDirectoryId: ReadonlyMap<string, GitRepositorySnapshot>,
-  directories: ReadonlyMap<string, ControlPlaneDirectoryRecord>,
-  conversations: ReadonlyMap<string, ConversationState>,
-  orderedIds: readonly string[],
-  activeProjectId: string | null,
-  activeRepositoryId: string | null,
-  activeConversationId: string | null,
-  projectSelectionEnabled: boolean,
-  repositorySelectionEnabled: boolean,
-  homeSelectionEnabled: boolean,
-  repositoriesCollapsed: boolean,
-  collapsedRepositoryGroupIds: ReadonlySet<string>,
-  shortcutsCollapsed: boolean,
-  gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
-  processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
-  shortcutBindings: ResolvedMuxShortcutBindings,
-): WorkspaceRailModel {
-  const repositoryRows = [...repositories.values()].map((repository) => {
-    let associatedProjectCount = 0;
-    let commitCount: number | null = null;
-    let lastCommitAt: string | null = null;
-    let shortCommitHash: string | null = null;
-    for (const [directoryId, repositoryId] of repositoryAssociationByDirectoryId.entries()) {
-      if (repositoryId !== repository.repositoryId) {
-        continue;
-      }
-      associatedProjectCount += 1;
-      const snapshot = directoryRepositorySnapshotByDirectoryId.get(directoryId);
-      if (snapshot === undefined) {
-        continue;
-      }
-      if (
-        snapshot.commitCount !== null &&
-        (commitCount === null || snapshot.commitCount > commitCount)
-      ) {
-        commitCount = snapshot.commitCount;
-      }
-      const snapshotCommitAtMs =
-        snapshot.lastCommitAt === null ? Number.NaN : Date.parse(snapshot.lastCommitAt);
-      const currentCommitAtMs = lastCommitAt === null ? Number.NaN : Date.parse(lastCommitAt);
-      if (
-        snapshot.lastCommitAt !== null &&
-        (!Number.isFinite(currentCommitAtMs) || snapshotCommitAtMs >= currentCommitAtMs)
-      ) {
-        lastCommitAt = snapshot.lastCommitAt;
-        shortCommitHash = snapshot.shortCommitHash;
-      }
-    }
-    return {
-      repositoryId: repository.repositoryId,
-      name: repository.name,
-      remoteUrl: repository.remoteUrl,
-      associatedProjectCount,
-      commitCount,
-      lastCommitAt,
-      shortCommitHash,
-    };
-  });
-  const directoryRows = [...directories.values()].map((directory) => ({
-    key: directory.directoryId,
-    workspaceId: basename(directory.path) || directory.path,
-    worktreeId: directory.path,
-    repositoryId: repositoryAssociationByDirectoryId.get(directory.directoryId) ?? null,
-    git: gitSummaryByDirectoryId.get(directory.directoryId) ?? GIT_SUMMARY_LOADING,
-  }));
-  const knownDirectoryKeys = new Set(directoryRows.map((directory) => directory.key));
-  for (const sessionId of orderedIds) {
-    const conversation = conversations.get(sessionId);
-    const directoryKey = conversation?.directoryId;
-    if (
-      directoryKey === null ||
-      directoryKey === undefined ||
-      knownDirectoryKeys.has(directoryKey)
-    ) {
-      continue;
-    }
-    knownDirectoryKeys.add(directoryKey);
-    directoryRows.push({
-      key: directoryKey,
-      workspaceId: '(untracked)',
-      worktreeId: '(untracked)',
-      repositoryId: repositoryAssociationByDirectoryId.get(directoryKey) ?? null,
-      git: gitSummaryByDirectoryId.get(directoryKey) ?? GIT_SUMMARY_LOADING,
-    });
-  }
-
-  return {
-    repositories: repositoryRows,
-    directories: directoryRows,
-    conversations: orderedIds
-      .map((sessionId) => {
-        const conversation = conversations.get(sessionId);
-        if (conversation === undefined) {
-          return null;
-        }
-        const directoryKey = conversation.directoryId ?? 'directory-missing';
-        return {
-          ...conversationSummary(conversation),
-          directoryKey,
-          title: conversation.title,
-          agentLabel: conversation.agentType,
-          cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
-          memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null,
-          lastKnownWork: conversation.lastKnownWork,
-          lastKnownWorkAt: conversation.lastKnownWorkAt,
-          controller: conversation.controller,
-        };
-      })
-      .flatMap((conversation) => (conversation === null ? [] : [conversation])),
-    activeProjectId,
-    activeRepositoryId,
-    activeConversationId,
-    showTaskPlanningUi: SHOW_TASK_PLANNING_UI,
-    projectSelectionEnabled,
-    repositorySelectionEnabled,
-    homeSelectionEnabled,
-    repositoriesCollapsed,
-    collapsedRepositoryGroupIds: [...collapsedRepositoryGroupIds],
-    processes: [],
-    shortcutHint: shortcutHintText(shortcutBindings),
-    shortcutsCollapsed,
-    nowMs: Date.now(),
-  };
-}
-
-function buildRailRows(
-  layout: ReturnType<typeof computeDualPaneLayout>,
-  repositories: ReadonlyMap<string, ControlPlaneRepositoryRecord>,
-  repositoryAssociationByDirectoryId: ReadonlyMap<string, string>,
-  directoryRepositorySnapshotByDirectoryId: ReadonlyMap<string, GitRepositorySnapshot>,
-  directories: ReadonlyMap<string, ControlPlaneDirectoryRecord>,
-  conversations: ReadonlyMap<string, ConversationState>,
-  orderedIds: readonly string[],
-  activeProjectId: string | null,
-  activeRepositoryId: string | null,
-  activeConversationId: string | null,
-  projectSelectionEnabled: boolean,
-  repositorySelectionEnabled: boolean,
-  homeSelectionEnabled: boolean,
-  repositoriesCollapsed: boolean,
-  collapsedRepositoryGroupIds: ReadonlySet<string>,
-  shortcutsCollapsed: boolean,
-  gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
-  processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
-  shortcutBindings: ResolvedMuxShortcutBindings,
-): { ansiRows: readonly string[]; viewRows: ReturnType<typeof buildWorkspaceRailViewRows> } {
-  const railModel = buildRailModel(
-    repositories,
-    repositoryAssociationByDirectoryId,
-    directoryRepositorySnapshotByDirectoryId,
-    directories,
-    conversations,
-    orderedIds,
-    activeProjectId,
-    activeRepositoryId,
-    activeConversationId,
-    projectSelectionEnabled,
-    repositorySelectionEnabled,
-    homeSelectionEnabled,
-    repositoriesCollapsed,
-    collapsedRepositoryGroupIds,
-    shortcutsCollapsed,
-    gitSummaryByDirectoryId,
-    processUsageBySessionId,
-    shortcutBindings,
-  );
-  const viewRows = buildWorkspaceRailViewRows(railModel, layout.paneRows);
-  return {
-    ansiRows: renderWorkspaceRailAnsiRows(railModel, layout.leftCols, layout.paneRows),
-    viewRows,
-  };
 }
 
 const MUX_MODAL_THEME = {
@@ -4312,7 +4118,7 @@ async function main(): Promise<number> {
       rightFrame === null ? [] : selectionVisibleRows(rightFrame, renderSelection);
     const orderedIds = conversationOrder(conversations);
     refreshSelectorInstrumentation('render');
-    const rail = buildRailRows(
+    const rail = buildRailRows({
       layout,
       repositories,
       repositoryAssociationByDirectoryId,
@@ -4320,19 +4126,20 @@ async function main(): Promise<number> {
       directories,
       conversations,
       orderedIds,
-      activeDirectoryId,
-      activeRepositorySelectionId,
+      activeProjectId: activeDirectoryId,
+      activeRepositoryId: activeRepositorySelectionId,
       activeConversationId,
-      leftNavSelection.kind === 'project',
-      leftNavSelection.kind === 'repository',
-      leftNavSelection.kind === 'home',
+      projectSelectionEnabled: leftNavSelection.kind === 'project',
+      repositorySelectionEnabled: leftNavSelection.kind === 'repository',
+      homeSelectionEnabled: leftNavSelection.kind === 'home',
       repositoriesCollapsed,
       collapsedRepositoryGroupIds,
       shortcutsCollapsed,
       gitSummaryByDirectoryId,
       processUsageBySessionId,
       shortcutBindings,
-    );
+      loadingGitSummary: GIT_SUMMARY_LOADING,
+    });
     latestRailViewRows = rail.viewRows;
     let rightRows: readonly string[] = [];
     latestTaskPaneView = {
