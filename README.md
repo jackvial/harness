@@ -53,7 +53,7 @@ Harness is built for developers who want to:
 - Mux startup hydrates git/repository grouping from the gateway cache via `directory.git-status`, so early startup events cannot strand tracked projects under `untracked`.
 - Codex history enrichment is ingested incrementally from appended bytes (non-blocking) instead of full-file rereads each poll.
 - Codex notify-hook relay support on the same stream (`session-event notify`, including `agent-turn-complete` payloads).
-- Claude Code hook relay support on the same stream (`session-event notify` + derived `session-key-event` status updates from `UserPromptSubmit`/`Stop`/`Notification`).
+- Claude Code hook relay support on the same stream (`session-event notify` + derived `session-key-event` status updates from explicit `UserPromptSubmit`/`PreToolUse`/`Stop` hook events and structured `Notification.notification_type` values).
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
 - One shared launch-args abstraction is used by both mux interactive starts and gateway startup auto-resume, so Codex `resume` + launch-mode behavior stays consistent after daemon restarts.
@@ -166,7 +166,7 @@ Harness is built to expose operational truth, not hide it.
 
 - Canonical thread/session lifecycle events.
 - Typed telemetry events for status hints and recent work summaries.
-- Deliberately minimal work-status projection: Codex prompt/SSE progress and Claude `UserPromptSubmit` hooks mark `active`; Codex turn-e2e metrics and Claude `Stop` hooks mark `inactive`; controller ownership never overrides status text.
+- Deliberately minimal work-status projection: Codex prompt/SSE progress and Claude `UserPromptSubmit`/`PreToolUse` hooks mark `active`; Codex turn-e2e metrics and Claude `Stop` hooks mark `inactive`; Claude `Notification` status hints are derived only from explicit `notification_type` values (no summary-text heuristics); controller ownership never overrides status text.
 - Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, retaining lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events that carry explicit status hints; Claude hook lifecycle events flow through the same typed key-event path.
 - Mux projection instrumentation (`mux.session-projection.transition`) for icon/status-line timeline debugging.
 - Selector index snapshots (`mux.selector.snapshot` + `mux.selector.entry`) so threads can be referenced by visible rail index.

@@ -277,7 +277,18 @@ const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.turn.e2e_duration_ms',
   'codex.conversation_starts',
 ]);
-const CLAUDE_NEEDS_INPUT_NOTIFICATION_MARKERS = ['permission', 'approval', 'idle', 'input'];
+const CLAUDE_NEEDS_INPUT_NOTIFICATION_TYPES = new Set([
+  'permissionrequest',
+  'approvalrequest',
+  'approvalrequired',
+  'inputrequired',
+]);
+const CLAUDE_RUNNING_NOTIFICATION_TYPES = new Set([
+  'permissionapproved',
+  'permissiongranted',
+  'approvalapproved',
+  'approvalgranted',
+]);
 
 function readTrimmedString(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -289,6 +300,22 @@ function readTrimmedString(value: unknown): string | null {
 
 function normalizeEventToken(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function claudeStatusHintFromNotificationType(
+  notificationType: string,
+): 'running' | 'needs-input' | null {
+  const token = normalizeEventToken(notificationType);
+  if (token.length === 0) {
+    return null;
+  }
+  if (CLAUDE_NEEDS_INPUT_NOTIFICATION_TYPES.has(token)) {
+    return 'needs-input';
+  }
+  if (CLAUDE_RUNNING_NOTIFICATION_TYPES.has(token)) {
+    return 'running';
+  }
+  return null;
 }
 
 function shellEscape(value: string): string {
@@ -875,6 +902,7 @@ export class ControlPlaneStreamServer {
     const settings = {
       hooks: {
         UserPromptSubmit: [{ hooks: [hook] }],
+        PreToolUse: [{ hooks: [hook] }],
         Stop: [{ hooks: [hook] }],
         Notification: [{ hooks: [hook] }]
       }
@@ -3071,23 +3099,20 @@ export class ControlPlaneStreamServer {
     const eventName = `claude.${hookEventToken}`;
     const summary = readTrimmedString(payload['message']) ?? readTrimmedString(payload['reason']);
     const notificationType = readTrimmedString(payload['notification_type'])?.toLowerCase() ?? '';
-    const summaryLower = summary?.toLowerCase() ?? '';
 
     let statusHint: StreamSessionKeyEventRecord['statusHint'] = null;
     let normalizedSummary = summary;
     if (hookEventToken === 'userpromptsubmit') {
       statusHint = 'running';
       normalizedSummary ??= 'prompt submitted';
+    } else if (hookEventToken === 'pretooluse') {
+      statusHint = 'running';
+      normalizedSummary ??= 'tool started (hook)';
     } else if (hookEventToken === 'stop' || hookEventToken === 'subagentstop' || hookEventToken === 'sessionend') {
       statusHint = 'completed';
       normalizedSummary ??= 'turn complete (hook)';
     } else if (hookEventToken === 'notification') {
-      const needsInput = CLAUDE_NEEDS_INPUT_NOTIFICATION_MARKERS.some(
-        (marker) => notificationType.includes(marker) || summaryLower.includes(marker)
-      );
-      if (needsInput) {
-        statusHint = 'needs-input';
-      }
+      statusHint = claudeStatusHintFromNotificationType(notificationType);
       if (normalizedSummary === null) {
         normalizedSummary = notificationType.length > 0 ? notificationType : hookEventNameRaw;
       }

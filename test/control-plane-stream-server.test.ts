@@ -4368,6 +4368,7 @@ void test('stream server launches claude sessions with hook settings and no code
     const hooks = parsedSettings['hooks'] as Record<string, unknown>;
     assert.notEqual(hooks, null);
     assert.equal(Array.isArray(hooks['UserPromptSubmit']), true);
+    assert.equal(Array.isArray(hooks['PreToolUse']), true);
     assert.equal(Array.isArray(hooks['Stop']), true);
     assert.equal(Array.isArray(hooks['Notification']), true);
   } finally {
@@ -4533,6 +4534,24 @@ void test('stream server maps claude hook notify events into status/key events a
     created[0]!.emitEvent({
       type: 'notify',
       record: {
+        ts: '2026-02-16T00:00:00.500Z',
+        payload: {
+          hook_event_name: 'PreToolUse',
+          session_id: 'claude-session-123'
+        }
+      }
+    });
+    await delay(10);
+    const preToolStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-claude-status'
+    });
+    assert.equal(preToolStatus['status'], 'running');
+    assert.equal((preToolStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.pretooluse');
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
         ts: '2026-02-16T00:00:01.000Z',
         payload: {
           hook_event_name: 'Stop',
@@ -4569,6 +4588,27 @@ void test('stream server maps claude hook notify events into status/key events a
     assert.equal(needsInputStatus['attentionReason'], 'approval required');
     assert.equal((needsInputStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.notification');
 
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:03.000Z',
+        payload: {
+          hook_event_name: 'Notification',
+          notification_type: 'permission_approved',
+          message: 'approval granted',
+          session_id: 'claude-session-123'
+        }
+      }
+    });
+    await delay(10);
+    const resumedStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-claude-status'
+    });
+    assert.equal(resumedStatus['status'], 'running');
+    assert.equal(resumedStatus['attentionReason'], null);
+    assert.equal((resumedStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.notification');
+
     const listed = await client.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-claude-status',
@@ -4586,6 +4626,15 @@ void test('stream server maps claude hook notify events into status/key events a
           envelope.kind === 'stream.event' &&
           envelope.event.type === 'session-key-event' &&
           envelope.event.keyEvent.eventName === 'claude.userpromptsubmit'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.event.type === 'session-key-event' &&
+          envelope.event.keyEvent.eventName === 'claude.pretooluse'
       ),
       true
     );

@@ -313,7 +313,7 @@ High-signal classification rules:
 
 - Start-work signal: `codex.user_prompt`, `codex.sse_event` progress kinds (`response.created`, `response.in_progress`, `response.output_text.delta`, `response.output_item.added`, `response.function_call_arguments.delta`), and Claude hook `claude.userpromptsubmit`.
 - Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms` and Claude hook `claude.stop`.
-- Attention signal: explicit `needs-input`/approval-required tokens from structured payload fields or summary text (severity/error-like fallbacks are intentionally disabled).
+- Attention signal: explicit `needs-input`/approval-required values from structured payload fields only (severity/error-like and summary-text fallbacks are intentionally disabled).
 - Notify signal transport: provider hook records are surfaced as `session-event notify` on the same stream (for example Codex payload type `agent-turn-complete` and Claude hook payloads).
 - Status-neutral noise: tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
 
@@ -1201,7 +1201,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - Codex OTEL normalization now uses a minimal active/inactive contract: prompt + SSE progress marks active, turn-e2e marks inactive, explicit needs-input tokens raise attention, and severity/error keyword fallbacks are disabled to prevent false telemetry errors.
     - telemetry capture is lifecycle-first by default: `codex.telemetry.captureVerboseEvents=false` stores/publishes lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events with explicit status hints; verbose event families remain opt-in.
     - Codex notify hook relay support streams `session-event notify` records (for example `agent-turn-complete`) without introducing side-channel status heuristics.
-    - Claude Code sessions inject ephemeral hook settings at launch (`UserPromptSubmit`, `Stop`, `Notification`) and relay hook payloads through the same notify stream; control-plane derives scoped `session-key-event` status hints and persists Claude resume session IDs for subsequent `--resume` launches.
+    - Claude Code sessions inject ephemeral hook settings at launch (`UserPromptSubmit`, `PreToolUse`, `Stop`, `Notification`) and relay hook payloads through the same notify stream; control-plane derives scoped `session-key-event` status hints from explicit hook fields (including structured `notification_type`) and persists Claude resume session IDs for subsequent `--resume` launches.
     - mux status reduction now separates high-signal status transitions from noisy telemetry chatter: trace spans are status-neutral, non-turn metrics are status-neutral, stream deltas collapse into stable human-readable progress text, and the working glyph is static (non-blinking) to reduce visual noise while preserving live progress detail in the second line.
     - OTLP timestamp normalization now treats zero/invalid nano timestamps as fallback wall-clock observations (instead of epoch `1970`), keeping telemetry timelines orderable and reducing false recency artifacts.
     - takeover-aware interaction so humans can explicitly claim/take over sessions currently controlled by automation
