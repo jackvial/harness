@@ -154,6 +154,7 @@ function drawActionRow(
 ): void {
   fillUiRow(surface, rowIndex, NORMAL_STYLE);
   if (row.railAction === 'project.add') {
+    drawUiText(surface, 0, rowIndex, '│', MUTED_STYLE);
     const buttonStart = Math.max(0, Math.floor((surface.cols - row.text.length) / 2));
     drawUiText(surface, buttonStart, rowIndex, row.text, ACTION_STYLE);
     return;
