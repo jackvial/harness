@@ -52,7 +52,6 @@ import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
 import {
   createNewThreadPromptState,
   normalizeThreadAgentType,
-  reduceNewThreadPromptInput,
   resolveNewThreadPromptAgentByRow,
 } from '../src/mux/new-thread-prompt.ts';
 import {
@@ -211,9 +210,12 @@ import {
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
 import {
-  reduceLinePromptInput,
   reduceTaskEditorPromptInput as reduceTaskEditorModalInput,
 } from '../src/mux/live-mux/modal-input-reducers.ts';
+import {
+  handleConversationTitleEditInput as handleConversationTitleEditInputHelper,
+  handleNewThreadPromptInput as handleNewThreadPromptInputHelper,
+} from '../src/mux/live-mux/modal-conversation-handlers.ts';
 import {
   handleAddDirectoryPromptInput as handleAddDirectoryPromptInputHelper,
   handleRepositoryPromptInput as handleRepositoryPromptInputHelper,
@@ -4258,143 +4260,44 @@ async function main(): Promise<number> {
   };
 
   const handleConversationTitleEditInput = (input: Buffer): boolean => {
-    if (conversationTitleEdit === null) {
-      return false;
-    }
-    const edit = conversationTitleEdit;
-    if (input.length === 1 && input[0] === 0x03) {
-      return false;
-    }
-    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
-    if (dismissAction === 'mux.app.quit') {
-      stopConversationTitleEdit(true);
-      return true;
-    }
-    const modalAction = detectMuxGlobalShortcut(input, shortcutBindings);
-    if (modalAction === 'mux.conversation.archive' || modalAction === 'mux.conversation.delete') {
-      const targetConversationId = edit.conversationId;
-      stopConversationTitleEdit(true);
-      queueControlPlaneOp(async () => {
-        await archiveConversation(targetConversationId);
-      }, 'modal-archive-conversation');
-      markDirty();
-      return true;
-    }
-    if (
-      dismissModalOnOutsideClick(
-        input,
-        () => {
-          stopConversationTitleEdit(true);
-        },
-        (_col, row) => {
-          const overlay = buildConversationTitleModalOverlay(layout.rows);
-          if (overlay === null) {
-            return false;
-          }
-          const archiveButtonRow = overlay.top + 5;
-          if (row - 1 !== archiveButtonRow) {
-            return false;
-          }
-          const targetConversationId = edit.conversationId;
-          stopConversationTitleEdit(true);
-          queueControlPlaneOp(async () => {
-            await archiveConversation(targetConversationId);
-          }, 'modal-archive-conversation-click');
-          markDirty();
-          return true;
-        },
-      )
-    ) {
-      return true;
-    }
-
-    const reduced = reduceLinePromptInput(edit.value, input);
-    const nextValue = reduced.value;
-    const done = reduced.submit;
-
-    if (nextValue !== edit.value) {
-      edit.value = nextValue;
-      edit.error = null;
-      const conversation = conversations.get(edit.conversationId);
-      if (conversation !== undefined) {
-        conversation.title = nextValue;
-      }
-      scheduleConversationTitlePersist();
-      markDirty();
-    }
-
-    if (done) {
-      stopConversationTitleEdit(true);
-    }
-    return true;
+    return handleConversationTitleEditInputHelper({
+      input,
+      edit: conversationTitleEdit,
+      isQuitShortcut: (rawInput) =>
+        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
+      isArchiveShortcut: (rawInput) => {
+        const action = detectMuxGlobalShortcut(rawInput, shortcutBindings);
+        return action === 'mux.conversation.archive' || action === 'mux.conversation.delete';
+      },
+      dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
+        dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+      buildConversationTitleModalOverlay: () => buildConversationTitleModalOverlay(layout.rows),
+      stopConversationTitleEdit,
+      queueControlPlaneOp,
+      archiveConversation,
+      markDirty,
+      conversations,
+      scheduleConversationTitlePersist,
+    });
   };
 
   const handleNewThreadPromptInput = (input: Buffer): boolean => {
-    if (newThreadPrompt === null) {
-      return false;
-    }
-    if (input.length === 1 && input[0] === 0x03) {
-      return false;
-    }
-    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
-    if (dismissAction === 'mux.app.quit') {
-      newThreadPrompt = null;
-      markDirty();
-      return true;
-    }
-    const maybeMouseSequence = input.includes(0x3c);
-    if (
-      maybeMouseSequence &&
-      dismissModalOnOutsideClick(
-        input,
-        () => {
-          newThreadPrompt = null;
-          markDirty();
-        },
-        (_col, row) => {
-          const overlay = buildNewThreadModalOverlay(layout.rows);
-          if (overlay === null) {
-            return false;
-          }
-          const selectedAgentType = resolveNewThreadPromptAgentByRow(overlay.top, row);
-          if (selectedAgentType === null) {
-            return false;
-          }
-          const targetDirectoryId = newThreadPrompt?.directoryId;
-          newThreadPrompt = null;
-          if (targetDirectoryId !== undefined) {
-            queueControlPlaneOp(async () => {
-              await createAndActivateConversationInDirectory(targetDirectoryId, selectedAgentType);
-            }, `modal-new-thread-click:${selectedAgentType}`);
-          }
-          markDirty();
-          return true;
-        },
-      )
-    ) {
-      return true;
-    }
-
-    const reduction = reduceNewThreadPromptInput(newThreadPrompt, input);
-    const changed = reduction.nextState.selectedAgentType !== newThreadPrompt.selectedAgentType;
-
-    if (changed) {
-      newThreadPrompt = reduction.nextState;
-      markDirty();
-    }
-    if (reduction.submit) {
-      const targetDirectoryId = newThreadPrompt?.directoryId;
-      const selectedAgentType = reduction.nextState.selectedAgentType;
-      newThreadPrompt = null;
-      if (targetDirectoryId !== undefined) {
-        queueControlPlaneOp(async () => {
-          await createAndActivateConversationInDirectory(targetDirectoryId, selectedAgentType);
-        }, `modal-new-thread:${selectedAgentType}`);
-      }
-      markDirty();
-      return true;
-    }
-    return true;
+    return handleNewThreadPromptInputHelper({
+      input,
+      prompt: newThreadPrompt,
+      isQuitShortcut: (rawInput) =>
+        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
+      dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
+        dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+      buildNewThreadModalOverlay: () => buildNewThreadModalOverlay(layout.rows),
+      resolveNewThreadPromptAgentByRow,
+      queueControlPlaneOp,
+      createAndActivateConversationInDirectory,
+      markDirty,
+      setPrompt: (prompt) => {
+        newThreadPrompt = prompt;
+      },
+    });
   };
 
   const handleAddDirectoryPromptInput = (input: Buffer): boolean => {

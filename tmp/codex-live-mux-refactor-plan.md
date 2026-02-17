@@ -287,3 +287,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5471 -> 5388 LOC
+
+### Checkpoint 11 (2026-02-17): modal conversation handler extraction (new-thread/title-edit)
+
+- Added `src/mux/live-mux/modal-conversation-handlers.ts`:
+  - `new-thread` modal prompt input handler
+  - `conversation title edit` modal prompt input handler
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate both handlers via injected callbacks.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5388 -> 5296 LOC
