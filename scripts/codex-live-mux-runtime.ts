@@ -222,6 +222,11 @@ import {
   type GitSummary,
 } from '../src/mux/live-mux/git-state.ts';
 import { refreshProcessUsageSnapshots as refreshProcessUsageSnapshotsHelper } from '../src/mux/live-mux/process-usage.ts';
+import {
+  firstDirectoryId as firstDirectoryIdHelper,
+  resolveActiveDirectoryId as resolveActiveDirectoryIdHelper,
+  resolveDirectoryForAction as resolveDirectoryForActionHelper,
+} from '../src/mux/live-mux/directory-resolution.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -757,42 +762,19 @@ async function main(): Promise<number> {
     });
   };
 
-  const firstDirectoryId = (): string | null => {
-    const iterator = directories.keys().next();
-    if (iterator.done === true) {
-      return null;
-    }
-    return iterator.value;
-  };
-
   const resolveActiveDirectoryId = (): string | null => {
-    if (activeDirectoryId !== null && directories.has(activeDirectoryId)) {
-      return activeDirectoryId;
-    }
-    const fallback = firstDirectoryId();
-    activeDirectoryId = fallback;
-    return fallback;
+    activeDirectoryId = resolveActiveDirectoryIdHelper(activeDirectoryId, directories);
+    return activeDirectoryId;
   };
 
   const resolveDirectoryForAction = (): string | null => {
-    if (mainPaneMode === 'project') {
-      if (activeDirectoryId !== null && directories.has(activeDirectoryId)) {
-        return activeDirectoryId;
-      }
-      return null;
-    }
-    if (activeConversationId !== null) {
-      const conversation = conversations.get(activeConversationId);
-      if (conversation?.directoryId !== null && conversation?.directoryId !== undefined) {
-        if (directories.has(conversation.directoryId)) {
-          return conversation.directoryId;
-        }
-      }
-    }
-    if (activeDirectoryId !== null && directories.has(activeDirectoryId)) {
-      return activeDirectoryId;
-    }
-    return null;
+    return resolveDirectoryForActionHelper({
+      mainPaneMode,
+      activeDirectoryId,
+      activeConversationId,
+      conversations,
+      directoriesHas: (directoryId) => directories.has(directoryId),
+    });
   };
 
   const repositoryGroupIdForDirectory = (directoryId: string): string =>
@@ -3480,7 +3462,7 @@ async function main(): Promise<number> {
       activeDirectoryId === null ||
       !directories.has(activeDirectoryId)
     ) {
-      activeDirectoryId = firstDirectoryId();
+      activeDirectoryId = firstDirectoryIdHelper(directories);
     }
     if (activeDirectoryId !== null) {
       noteGitActivity(activeDirectoryId);
