@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
+  buildAgentSessionStartArgs,
   buildAgentStartArgs,
   claudeResumeSessionIdFromAdapterState,
   codexResumeSessionIdFromAdapterState,
@@ -345,5 +346,61 @@ void test('buildAgentStartArgs applies configurable codex yolo launch mode for i
       }
     ),
     ['mcp', 'list']
+  );
+});
+
+void test('buildAgentSessionStartArgs applies codex launch defaults and directory overrides via one abstraction', () => {
+  const directoryModes = {
+    '/tmp/standard-mode': 'standard' as const
+  };
+
+  assert.deepEqual(
+    buildAgentSessionStartArgs(
+      'codex',
+      ['--model', 'gpt-5.3-codex-high'],
+      {
+        codex: {
+          resumeSessionId: 'thread-123'
+        }
+      },
+      {
+        directoryPath: '/tmp/yolo-mode',
+        codexLaunchDefaultMode: 'yolo',
+        codexLaunchModeByDirectoryPath: directoryModes
+      }
+    ),
+    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high', '--yolo']
+  );
+
+  assert.deepEqual(
+    buildAgentSessionStartArgs(
+      'codex',
+      ['--model', 'gpt-5.3-codex-high'],
+      {
+        codex: {
+          resumeSessionId: 'thread-123'
+        }
+      },
+      {
+        directoryPath: '/tmp/standard-mode',
+        codexLaunchDefaultMode: 'yolo',
+        codexLaunchModeByDirectoryPath: directoryModes
+      }
+    ),
+    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high']
+  );
+
+  assert.deepEqual(
+    buildAgentSessionStartArgs(
+      'terminal',
+      ['-lc', 'ls'],
+      {},
+      {
+        directoryPath: '/tmp/yolo-mode',
+        codexLaunchDefaultMode: 'yolo',
+        codexLaunchModeByDirectoryPath: directoryModes
+      }
+    ),
+    ['-lc', 'ls']
   );
 });

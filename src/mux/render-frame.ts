@@ -36,7 +36,8 @@ export function buildRenderRows(
   layout: MuxPaneLayout,
   railRows: readonly string[],
   rightRows: readonly string[],
-  perf: MuxPerfStatusRow
+  perf: MuxPerfStatusRow,
+  statusRowText?: string,
 ): string[] {
   const rows: string[] = [];
   const separatorAnchor = `\u001b[${String(layout.separatorCol)}G`;
@@ -46,10 +47,8 @@ export function buildRenderRows(
     const right = rightRows[row] ?? ' '.repeat(layout.rightCols);
     rows.push(`${left}\u001b[0m${separatorAnchor}${MUTED_SEPARATOR}${rightAnchor}${right}`);
   }
-  const status = padOrTrimDisplay(
-    `[mux] fps=${perf.fps.toFixed(1)} kb/s=${perf.kbPerSecond.toFixed(1)} render=${perf.renderAvgMs.toFixed(2)}/${perf.renderMaxMs.toFixed(2)}ms output=${perf.outputHandleAvgMs.toFixed(2)}/${perf.outputHandleMaxMs.toFixed(2)}ms loop.p95=${perf.eventLoopP95Ms.toFixed(1)}ms`,
-    layout.cols
-  );
+  const defaultStatus = `[mux] fps=${perf.fps.toFixed(1)} kb/s=${perf.kbPerSecond.toFixed(1)} render=${perf.renderAvgMs.toFixed(2)}/${perf.renderMaxMs.toFixed(2)}ms output=${perf.outputHandleAvgMs.toFixed(2)}/${perf.outputHandleMaxMs.toFixed(2)}ms loop.p95=${perf.eventLoopP95Ms.toFixed(1)}ms`;
+  const status = padOrTrimDisplay(statusRowText ?? defaultStatus, layout.cols);
   rows.push(status);
   return rows;
 }

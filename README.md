@@ -55,8 +55,10 @@ Harness is built for developers who want to:
 - Claude Code hook relay support on the same stream (`session-event notify` + derived `session-key-event` status updates from `UserPromptSubmit`/`Stop`/`Notification`).
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
+- One shared launch-args abstraction is used by both mux interactive starts and gateway startup auto-resume, so Codex `resume` + launch-mode behavior stays consistent after daemon restarts.
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
 - Detached gateway runtime: client disconnects do not stop running threads; gateway startup eagerly restores non-archived thread runtimes, and `harness gateway stop` is the explicit shutdown boundary for child sessions.
+- When a thread/terminal process owns the main pane, the bottom status row switches to a single-line debug bar showing the spawned command.
 - `harness gateway stop` also performs workspace-scoped orphan `sqlite3` cleanup for the configured state DB path by default (`--no-cleanup-orphans` disables it).
 - Named gateway sessions (`harness --session <name> ...`) isolate record/log/state paths under `.harness/sessions/<name>/...` so perf/test sessions do not mutate the default gateway state.
 - Built-in CPU profiling workflow (`harness [--session <name>] profile`) captures Bun CPU profiles for both mux client and gateway at `.harness/profiles[/<session>]/{client,gateway}.cpuprofile`.

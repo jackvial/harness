@@ -7,7 +7,10 @@ import {
   subscribeControlPlaneKeyEvents,
   type ControlPlaneKeyEvent,
 } from '../src/control-plane/codex-session-stream.ts';
-import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
+import {
+  resolveTerminalCommandForEnvironment,
+  startControlPlaneStreamServer,
+} from '../src/control-plane/stream-server.ts';
 import type {
   StreamObservedEvent,
   StreamServerEnvelope,
@@ -122,7 +125,7 @@ import {
 import { createTerminalRecordingWriter } from '../src/recording/terminal-recording.ts';
 import { renderTerminalRecordingToGif } from './terminal-recording-gif-lib.ts';
 import {
-  buildAgentStartArgs,
+  buildAgentSessionStartArgs,
   mergeAdapterStateFromSessionEvent,
   normalizeAdapterState,
 } from '../src/adapters/agent-session-state.ts';
@@ -276,6 +279,7 @@ interface ConversationState {
   processId: number | null;
   live: boolean;
   attached: boolean;
+  launchCommand: string | null;
   lastOutputCursor: number;
   lastKnownWork: string | null;
   lastKnownWorkAt: string | null;
@@ -478,6 +482,7 @@ function createConversationState(
     processId: null,
     live: true,
     attached: false,
+    launchCommand: null,
     lastOutputCursor: 0,
     lastKnownWork: null,
     lastKnownWorkAt: null,
@@ -536,6 +541,40 @@ function compactDebugText(value: string | null): string {
     return normalized;
   }
   return `${normalized.slice(0, 159)}…`;
+}
+
+function shellQuoteToken(token: string): string {
+  if (token.length === 0) {
+    return "''";
+  }
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/u.test(token)) {
+    return token;
+  }
+  return `'${token.replaceAll("'", "'\"'\"'")}'`;
+}
+
+function formatCommandForDebugBar(command: string, args: readonly string[]): string {
+  const tokens = [command, ...args].map(shellQuoteToken);
+  return tokens.join(' ');
+}
+
+function launchCommandForAgent(agentType: string): string {
+  const normalized = normalizeThreadAgentType(agentType);
+  if (normalized === 'claude') {
+    return 'claude';
+  }
+  if (normalized === 'terminal') {
+    return resolveTerminalCommandForEnvironment(process.env, process.platform);
+  }
+  return 'codex';
+}
+
+function debugFooterForConversation(conversation: ConversationState): string {
+  const launchCommand =
+    conversation.launchCommand === null
+      ? '(launch command unavailable)'
+      : compactDebugText(conversation.launchCommand);
+  return `[dbg] ${launchCommand}`;
 }
 
 function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
@@ -824,24 +863,14 @@ async function main(): Promise<number> {
   const configuredMuxUi = loadedConfig.config.mux.ui;
   const configuredMuxGit = loadedConfig.config.mux.git;
   const configuredCodexLaunch = loadedConfig.config.codex.launch;
-  const codexLaunchModeByDirectoryPath = new Map<string, 'yolo' | 'standard'>();
+  const codexLaunchModeByDirectoryPath: Record<string, 'yolo' | 'standard'> = {};
   for (const [directoryPath, mode] of Object.entries(configuredCodexLaunch.directoryModes)) {
     const normalizedDirectoryPath = resolveWorkspacePathForMux(
       options.invocationDirectory,
       directoryPath,
     );
-    codexLaunchModeByDirectoryPath.set(normalizedDirectoryPath, mode);
+    codexLaunchModeByDirectoryPath[normalizedDirectoryPath] = mode;
   }
-  const resolveCodexLaunchModeForDirectory = (directoryPath: string): 'yolo' | 'standard' => {
-    const normalizedDirectoryPath = resolveWorkspacePathForMux(
-      options.invocationDirectory,
-      directoryPath,
-    );
-    return (
-      codexLaunchModeByDirectoryPath.get(normalizedDirectoryPath) ??
-      configuredCodexLaunch.defaultMode
-    );
-  };
   let leftPaneColsOverride: number | null =
     configuredMuxUi.paneWidthPercent === null
       ? null
@@ -1533,19 +1562,7 @@ async function main(): Promise<number> {
 
     const task = (async (): Promise<ConversationState> => {
       const existing = conversations.get(sessionId);
-      if (existing?.live === true) {
-        if (startupFirstPaintTargetSessionId === sessionId) {
-          endStartupActiveStartCommandSpan({
-            alreadyLive: true,
-          });
-        }
-        return existing;
-      }
-      const startSpan = startPerfSpan('mux.conversation.start', {
-        sessionId,
-      });
-      const targetConversation = ensureConversation(sessionId);
-      targetConversation.lastOutputCursor = 0;
+      const targetConversation = existing ?? ensureConversation(sessionId);
       const agentType = normalizeThreadAgentType(targetConversation.agentType);
       const baseArgsForAgent = agentType === 'codex' ? options.codexArgs : [];
       const configuredDirectoryPath =
@@ -1556,14 +1573,34 @@ async function main(): Promise<number> {
         options.invocationDirectory,
         configuredDirectoryPath ?? options.invocationDirectory,
       );
-      const codexLaunchMode =
-        agentType === 'codex' ? resolveCodexLaunchModeForDirectory(sessionCwd) : undefined;
-      const launchArgs =
-        codexLaunchMode === undefined
-          ? buildAgentStartArgs(agentType, baseArgsForAgent, targetConversation.adapterState)
-          : buildAgentStartArgs(agentType, baseArgsForAgent, targetConversation.adapterState, {
-              codexLaunchMode,
-            });
+      const launchArgs = buildAgentSessionStartArgs(
+        agentType,
+        baseArgsForAgent,
+        targetConversation.adapterState,
+        {
+          directoryPath: sessionCwd,
+          codexLaunchDefaultMode: configuredCodexLaunch.defaultMode,
+          codexLaunchModeByDirectoryPath: codexLaunchModeByDirectoryPath,
+        },
+      );
+      targetConversation.launchCommand = formatCommandForDebugBar(
+        launchCommandForAgent(agentType),
+        launchArgs,
+      );
+
+      if (existing?.live === true) {
+        if (startupFirstPaintTargetSessionId === sessionId) {
+          endStartupActiveStartCommandSpan({
+            alreadyLive: true,
+          });
+        }
+        return existing;
+      }
+
+      const startSpan = startPerfSpan('mux.conversation.start', {
+        sessionId,
+      });
+      targetConversation.lastOutputCursor = 0;
       const ptyStartCommand: Parameters<typeof streamClient.sendCommand>[0] = {
         type: 'pty.start',
         sessionId,
@@ -4337,7 +4374,11 @@ async function main(): Promise<number> {
     } else {
       rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
     }
-    const rows = buildRenderRows(layout, rail.ansiRows, rightRows, perfStatusRow);
+    const statusFooter =
+      !projectPaneActive && !homePaneActive && active !== null
+        ? debugFooterForConversation(active)
+        : undefined;
+    const rows = buildRenderRows(layout, rail.ansiRows, rightRows, perfStatusRow, statusFooter);
     const modalOverlay = buildCurrentModalOverlay();
     if (modalOverlay !== null) {
       applyModalOverlay(rows, modalOverlay);

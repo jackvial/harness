@@ -1050,6 +1050,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - conversation persistence now includes adapter-scoped state (`adapter_state_json`) so provider-native resume identifiers can survive daemon/client restarts.
     - per-session adapter state is updated from scoped provider events and reused on next launch, enabling conversation continuity (for Codex: `codex resume <session-id>`).
     - Codex launch mode defaults are config-first and directory-aware (`codex.launch.defaultMode` + `codex.launch.directoryModes`), with repo default set to `yolo`.
+    - session-start argument composition is centralized in one shared adapter abstraction and reused by mux starts + gateway auto-resume so resume/mode behavior cannot silently diverge.
     - repository/task planning primitives are persisted in the same SQLite store:
       - `repositories` (`repository_id`, remote URL, default branch, metadata, archive state)
     - `tasks` (task records with CRUD, explicit ordering, claim, complete, ready, and draft-reset transitions)
@@ -1140,6 +1141,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - background resume checkpointing now records explicit begin/skip events (`mux.startup.background-start.begin` / `mux.startup.background-start.skipped`) for startup tradeoff diagnosis
     - archive/delete controls wired through the same control-plane path used by human and automation clients
     - project/task pane and modal sizing UI internals are factored into `src/mux/harness-core-ui.ts` so UI-only changes land outside the launcher script and reduce merge-conflict hotspots
+    - when a live thread/terminal owns the main pane, the bottom row renders a single-line debug bar with the spawned command for fast launch-path verification.
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
   - `scripts/perf-mux-startup-report.ts` provides a deterministic visual startup timeline report over captured `perf-core` JSONL traces, including launch/daemon/mux/client/server negotiation checkpoints and startup terminal-query handled/unhandled cataloging.

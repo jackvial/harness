@@ -32,6 +32,12 @@ const CLAUDE_EXPLICIT_SUBCOMMANDS = new Set([
 
 type CodexLaunchMode = 'yolo' | 'standard';
 
+interface BuildAgentSessionStartArgsOptions {
+  readonly directoryPath?: string | null;
+  readonly codexLaunchDefaultMode?: CodexLaunchMode;
+  readonly codexLaunchModeByDirectoryPath?: Readonly<Record<string, CodexLaunchMode>>;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null;
@@ -200,4 +206,27 @@ export function buildAgentStartArgs(
     return [...baseArgs];
   }
   return ['--resume', resumeSessionId, ...baseArgs];
+}
+
+export function buildAgentSessionStartArgs(
+  agentType: string,
+  baseArgs: readonly string[],
+  adapterState: Record<string, unknown>,
+  options: BuildAgentSessionStartArgsOptions = {}
+): string[] {
+  if (agentType !== 'codex') {
+    return buildAgentStartArgs(agentType, baseArgs, adapterState);
+  }
+
+  const defaultMode = options.codexLaunchDefaultMode ?? 'standard';
+  const normalizedDirectoryPath = options.directoryPath?.trim() ?? '';
+  const directoryModes = options.codexLaunchModeByDirectoryPath ?? {};
+  const codexLaunchMode =
+    normalizedDirectoryPath.length > 0
+      ? (directoryModes[normalizedDirectoryPath] ?? defaultMode)
+      : defaultMode;
+
+  return buildAgentStartArgs(agentType, baseArgs, adapterState, {
+    codexLaunchMode,
+  });
 }

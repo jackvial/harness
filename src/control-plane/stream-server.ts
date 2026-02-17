@@ -37,7 +37,7 @@ import {
   type ControlPlaneTelemetrySummary,
 } from '../store/control-plane-store.ts';
 import {
-  buildAgentStartArgs,
+  buildAgentSessionStartArgs,
   codexResumeSessionIdFromAdapterState,
   mergeAdapterStateFromSessionEvent,
   normalizeAdapterState,
@@ -127,6 +127,11 @@ interface CodexHistoryIngestConfig {
   readonly pollMs: number;
 }
 
+interface CodexLaunchConfig {
+  readonly defaultMode: 'yolo' | 'standard';
+  readonly directoryModes: Readonly<Record<string, 'yolo' | 'standard'>>;
+}
+
 interface GitStatusMonitorConfig {
   readonly enabled: boolean;
   readonly pollMs: number;
@@ -149,6 +154,7 @@ interface StartControlPlaneStreamServerOptions {
   stateStore?: SqliteControlPlaneStore;
   codexTelemetry?: CodexTelemetryServerConfig;
   codexHistory?: CodexHistoryIngestConfig;
+  codexLaunch?: CodexLaunchConfig;
   gitStatus?: GitStatusMonitorConfig;
   readGitDirectorySnapshot?: GitDirectorySnapshotReader;
   lifecycleHooks?: HarnessLifecycleHooksConfig;
@@ -351,6 +357,13 @@ function normalizeCodexHistoryConfig(
   };
 }
 
+function normalizeCodexLaunchConfig(input: CodexLaunchConfig | undefined): CodexLaunchConfig {
+  return {
+    defaultMode: input?.defaultMode ?? 'standard',
+    directoryModes: input?.directoryModes ?? {},
+  };
+}
+
 function jitterDelayMs(baseMs: number): number {
   const clampedBaseMs = Math.max(25, Math.floor(baseMs));
   const jitterWindowMs = Math.max(1, Math.floor(clampedBaseMs * HISTORY_POLL_JITTER_RATIO));
@@ -545,6 +558,7 @@ export class ControlPlaneStreamServer {
   private readonly ownsStateStore: boolean;
   private readonly codexTelemetry: CodexTelemetryServerConfig;
   private readonly codexHistory: CodexHistoryIngestConfig;
+  private readonly codexLaunch: CodexLaunchConfig;
   private readonly gitStatusMonitor: GitStatusMonitorConfig;
   private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
   private readonly server: Server;
@@ -594,6 +608,7 @@ export class ControlPlaneStreamServer {
     }
     this.codexTelemetry = normalizeCodexTelemetryConfig(options.codexTelemetry);
     this.codexHistory = normalizeCodexHistoryConfig(options.codexHistory);
+    this.codexLaunch = normalizeCodexLaunchConfig(options.codexLaunch);
     this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
     this.readGitDirectorySnapshot =
       options.readGitDirectorySnapshot ??
@@ -899,8 +914,12 @@ export class ControlPlaneStreamServer {
     let failed = 0;
     for (const conversation of conversations) {
       const adapterState = normalizeAdapterState(conversation.adapterState);
-      const startArgs = buildAgentStartArgs(conversation.agentType, [], adapterState);
       const directory = this.stateStore.getDirectory(conversation.directoryId);
+      const startArgs = buildAgentSessionStartArgs(conversation.agentType, [], adapterState, {
+        directoryPath: directory?.path ?? null,
+        codexLaunchDefaultMode: this.codexLaunch.defaultMode,
+        codexLaunchModeByDirectoryPath: this.codexLaunch.directoryModes,
+      });
       try {
         const bootstrapInput: StartSessionRuntimeInput = {
           sessionId: conversation.conversationId,

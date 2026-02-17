@@ -57,6 +57,35 @@ void test('mux render frame applies modal overlays with clipping and sparse rows
   assert.equal(rows[2], 'row2\u001b[3GB');
 });
 
+void test('mux render frame supports overriding footer text for debug bars', () => {
+  const rows = buildRenderRows(
+    {
+      cols: 28,
+      paneRows: 1,
+      leftCols: 6,
+      rightCols: 10,
+      separatorCol: 7,
+      rightStartCol: 8
+    },
+    ['LEFT'],
+    ['RIGHT'],
+    {
+      fps: 0,
+      kbPerSecond: 0,
+      renderAvgMs: 0,
+      renderMaxMs: 0,
+      outputHandleAvgMs: 0,
+      outputHandleMaxMs: 0,
+      eventLoopP95Ms: 0
+    },
+    '[dbg] codex resume thread-123 --yolo'
+  );
+
+  assert.equal(rows.length, 2);
+  assert.equal((rows[1] ?? '').startsWith('[dbg] codex resume'), true);
+  assert.equal((rows[1] ?? '').length, 28);
+});
+
 void test('mux render frame handles defined right rows and sparse target rows', () => {
   const combined = buildRenderRows(
     {
