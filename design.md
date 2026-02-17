@@ -1159,7 +1159,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - `harness gateway ...` is the canonical daemon control plane: `start|stop|status|restart|run|call`.
     - `harness profile ...` (or `harness profile run ...`) runs a dedicated profiled client+gateway lifecycle, writes Bun CPU profiles to `.harness/profiles[/<session>]/{client,gateway}.cpuprofile`, and auto-stops the profiled gateway so both artifacts are flushed.
     - `harness profile start|stop` supports long-lived gateway-only profiling for incident windows: `start` boots a profiled gateway and records active profile state, `stop` terminates that gateway and verifies `gateway.cpuprofile` is flushed under `.harness/profiles[/<session>]/`.
-    - `harness gateway stop` performs best-effort workspace-scoped orphan `sqlite3` cleanup for the gateway state DB path by default; `--no-cleanup-orphans` disables this defensive cleanup.
+    - `harness gateway stop` performs best-effort workspace-scoped orphan cleanup by default (orphan gateway daemon processes, orphan PTY helpers, relay-linked orphan agent processes, and `sqlite3`), with force-stop signaling the gateway process group to drain child runtimes; `--no-cleanup-orphans` disables this defensive cleanup.
     - `harness animate` is a first-party high-FPS terminal benchmark scene (ASCII tunnel/starfield) for stressing render throughput independent of gateway lifecycle.
     - default gateway state is persisted as a gateway-of-record file (`.harness/gateway.json`) with host/port/auth/pid metadata; stale records are pruned on startup/stop flows.
     - client disconnect (including `Ctrl+C` in mux) does not kill the gateway; only explicit gateway stop/shutdown tears down child sessions.

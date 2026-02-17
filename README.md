@@ -60,7 +60,7 @@ Harness is built for developers who want to:
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
 - Detached gateway runtime: client disconnects do not stop running threads; gateway startup eagerly restores non-archived thread runtimes, and `harness gateway stop` is the explicit shutdown boundary for child sessions.
 - When a thread/terminal process owns the main pane, the bottom status row switches to a single-line debug bar showing the spawned command.
-- `harness gateway stop` also performs workspace-scoped orphan `sqlite3` cleanup for the configured state DB path by default (`--no-cleanup-orphans` disables it).
+- `harness gateway stop` also performs workspace-scoped orphan cleanup by default (orphan gateway daemons, orphan PTY helpers, relay-linked orphan agent processes, and `sqlite3`; `--no-cleanup-orphans` disables it).
 - Named gateway sessions (`harness --session <name> ...`) isolate record/log/state paths under `.harness/sessions/<name>/...` so perf/test sessions do not mutate the default gateway state.
 - Built-in CPU profiling supports both one-shot capture (`harness [--session <name>] profile`) and long-lived incident capture (`harness [--session <name>] profile start|stop`), writing artifacts under `.harness/profiles[/<session>]/`.
 
