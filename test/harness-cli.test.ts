@@ -558,7 +558,10 @@ void test('harness gateway run applies inspect runtime args from harness config'
     assert.equal(runResult.code, 0);
     assert.equal(existsSync(daemonExecArgvPath), true);
     const daemonExecArgv = JSON.parse(readFileSync(daemonExecArgvPath, 'utf8')) as string[];
-    assert.equal(daemonExecArgv.includes(`--inspect=${String(gatewayInspectPort)}`), true);
+    assert.equal(
+      daemonExecArgv.includes(`--inspect=localhost:${String(gatewayInspectPort)}/harness-gateway`),
+      true,
+    );
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
@@ -604,7 +607,7 @@ void test('harness default client applies inspect runtime args to mux process fr
     assert.equal(clientResult.code, 0);
     assert.equal(existsSync(muxExecArgvPath), true);
     const muxExecArgv = JSON.parse(readFileSync(muxExecArgvPath, 'utf8')) as string[];
-    assert.equal(muxExecArgv.includes(`--inspect=${String(clientInspectPort)}`), true);
+    assert.equal(muxExecArgv.includes(`--inspect=localhost:${String(clientInspectPort)}/harness-client`), true);
   } finally {
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
@@ -694,7 +697,35 @@ void test('harness profile start/stop writes gateway CPU profile to .harness/pro
   const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
   const profileStatePath = join(workspace, `.harness/sessions/${sessionName}/active-profile.json`);
   const gatewayProfilePath = join(workspace, `.harness/profiles/${sessionName}/gateway.cpuprofile`);
+  const [gatewayPort, gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(3);
+  writeFileSync(
+    join(workspace, 'harness.config.jsonc'),
+    JSON.stringify({
+      debug: {
+        inspect: {
+          enabled: true,
+          gatewayPort: gatewayInspectPort,
+          clientPort: clientInspectPort,
+        },
+      },
+    }),
+    'utf8',
+  );
   try {
+    const gatewayStart = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'gateway',
+      'start',
+      '--port',
+      String(gatewayPort),
+    ]);
+    assert.equal(gatewayStart.code, 0);
+    const recordBefore = parseGatewayRecordText(readFileSync(sessionRecordPath, 'utf8'));
+    if (recordBefore === null) {
+      throw new Error('expected gateway record before profile stop');
+    }
+
     const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
     assert.equal(startResult.code, 0);
     assert.equal(startResult.stdout.includes('profile started pid='), true);
@@ -712,9 +743,50 @@ void test('harness profile start/stop writes gateway CPU profile to .harness/pro
     assert.equal(existsSync(gatewayProfilePath), true);
     assert.equal(existsSync(profileStatePath), false);
 
-    const statusStopped = await runHarness(workspace, ['--session', sessionName, 'gateway', 'status']);
-    assert.equal(statusStopped.code, 0);
-    assert.equal(statusStopped.stdout.includes('gateway status: stopped'), true);
+    const statusRunningAfterStop = await runHarness(workspace, ['--session', sessionName, 'gateway', 'status']);
+    assert.equal(statusRunningAfterStop.code, 0);
+    assert.equal(statusRunningAfterStop.stdout.includes('gateway status: running'), true);
+
+    const recordAfter = parseGatewayRecordText(readFileSync(sessionRecordPath, 'utf8'));
+    if (recordAfter === null) {
+      throw new Error('expected gateway record after profile stop');
+    }
+    assert.equal(recordAfter.pid, recordBefore.pid);
+  } finally {
+    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness profile start fails when target session gateway is not running', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'profile-start-missing-gateway';
+  try {
+    const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
+    assert.equal(startResult.code, 1);
+    assert.equal(startResult.stderr.includes('profile start requires the target session gateway to be running'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness profile start fails when gateway inspector endpoint is unavailable', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'profile-start-no-inspect';
+  const gatewayPort = await reservePort();
+  try {
+    const gatewayStart = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'gateway',
+      'start',
+      '--port',
+      String(gatewayPort),
+    ]);
+    assert.equal(gatewayStart.code, 0);
+    const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
+    assert.equal(startResult.code, 1);
+    assert.equal(startResult.stderr.includes('gateway inspector endpoint unavailable'), true);
   } finally {
     void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
