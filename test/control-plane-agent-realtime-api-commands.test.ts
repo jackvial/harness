@@ -510,6 +510,7 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     lastExit: null,
     exitedAt: null,
     live: true,
+    launchCommand: null,
     controller: null,
     telemetry: null,
   });
@@ -1390,6 +1391,7 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
         lastExit: null,
         exitedAt: null,
         live: true,
+        launchCommand: null,
         controller: null,
         telemetry: null,
       },
@@ -1413,6 +1415,7 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
     lastExit: null,
     exitedAt: null,
     live: true,
+    launchCommand: null,
     controller: null,
     telemetry: null,
   });

@@ -866,6 +866,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
         lastExit: null,
         exitedAt: null,
         live: true,
+        launchCommand: null,
         controller: null,
         telemetry: null,
       },
@@ -892,6 +893,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     lastExit: null,
     exitedAt: null,
     live: true,
+    launchCommand: null,
     controller: null,
     telemetry: null,
   });
@@ -1097,4 +1099,3 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   );
   assert.equal(unsubscribeCommands.length, 1);
 });
-

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
@@ -228,6 +236,108 @@ async function spawnOrphanSqliteProcess(dbPath: string): Promise<number> {
   });
 }
 
+async function spawnOrphanGatewayDaemonProcess(
+  daemonScriptPath: string,
+  dbPath: string,
+): Promise<number> {
+  return await new Promise<number>((resolveSpawn, rejectSpawn) => {
+    const launcherScript = [
+      "const { spawn } = require('node:child_process');",
+      'const daemonScriptPath = process.argv[1];',
+      'const dbPath = process.argv[2];',
+      "const child = spawn(process.execPath, [daemonScriptPath, '--state-db-path', dbPath], { detached: true, stdio: 'ignore' });",
+      "if (typeof child.pid !== 'number') { process.exit(2); }",
+      'process.stdout.write(String(child.pid));',
+      'child.unref();',
+    ].join('\n');
+
+    const launcher = spawn(process.execPath, ['-e', launcherScript, daemonScriptPath, dbPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    launcher.stdout?.on('data', (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+    });
+    launcher.stderr?.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+    });
+    launcher.once('error', rejectSpawn);
+    launcher.once('exit', (code, signal) => {
+      if (signal !== null) {
+        rejectSpawn(new Error(`orphan gateway launcher exited via signal ${signal}`));
+        return;
+      }
+      if (code !== 0) {
+        rejectSpawn(
+          new Error(
+            `orphan gateway launcher failed (code=${String(code)}): ${Buffer.concat(stderrChunks).toString('utf8')}`,
+          ),
+        );
+        return;
+      }
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      const pid = Number.parseInt(stdout, 10);
+      if (!Number.isInteger(pid) || pid <= 0) {
+        rejectSpawn(new Error(`orphan gateway launcher produced invalid pid output: ${stdout}`));
+        return;
+      }
+      resolveSpawn(pid);
+    });
+  });
+}
+
+async function spawnOrphanDetachedProcess(
+  command: string,
+  args: readonly string[] = [],
+): Promise<number> {
+  return await new Promise<number>((resolveSpawn, rejectSpawn) => {
+    const launcherScript = [
+      "const { spawn } = require('node:child_process');",
+      'const command = process.argv[1];',
+      'const args = JSON.parse(process.argv[2]);',
+      "const child = spawn(command, args, { detached: true, stdio: 'ignore' });",
+      "if (typeof child.pid !== 'number') { process.exit(2); }",
+      'process.stdout.write(String(child.pid));',
+      'child.unref();',
+    ].join('\n');
+
+    const launcher = spawn(process.execPath, ['-e', launcherScript, command, JSON.stringify(args)], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    launcher.stdout?.on('data', (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+    });
+    launcher.stderr?.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+    });
+    launcher.once('error', rejectSpawn);
+    launcher.once('exit', (code, signal) => {
+      if (signal !== null) {
+        rejectSpawn(new Error(`orphan process launcher exited via signal ${signal}`));
+        return;
+      }
+      if (code !== 0) {
+        rejectSpawn(
+          new Error(
+            `orphan process launcher failed (code=${String(code)}): ${Buffer.concat(stderrChunks).toString('utf8')}`,
+          ),
+        );
+        return;
+      }
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      const pid = Number.parseInt(stdout, 10);
+      if (!Number.isInteger(pid) || pid <= 0) {
+        rejectSpawn(new Error(`orphan process launcher produced invalid pid output: ${stdout}`));
+        return;
+      }
+      resolveSpawn(pid);
+    });
+  });
+}
+
 void test('harness gateway status reports stopped when no record exists', async () => {
   const workspace = createWorkspace();
   try {
@@ -448,7 +558,10 @@ void test('harness gateway run applies inspect runtime args from harness config'
     assert.equal(runResult.code, 0);
     assert.equal(existsSync(daemonExecArgvPath), true);
     const daemonExecArgv = JSON.parse(readFileSync(daemonExecArgvPath, 'utf8')) as string[];
-    assert.equal(daemonExecArgv.includes(`--inspect=${String(gatewayInspectPort)}`), true);
+    assert.equal(
+      daemonExecArgv.includes(`--inspect=localhost:${String(gatewayInspectPort)}/harness-gateway`),
+      true,
+    );
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
@@ -494,7 +607,7 @@ void test('harness default client applies inspect runtime args to mux process fr
     assert.equal(clientResult.code, 0);
     assert.equal(existsSync(muxExecArgvPath), true);
     const muxExecArgv = JSON.parse(readFileSync(muxExecArgvPath, 'utf8')) as string[];
-    assert.equal(muxExecArgv.includes(`--inspect=${String(clientInspectPort)}`), true);
+    assert.equal(muxExecArgv.includes(`--inspect=localhost:${String(clientInspectPort)}/harness-client`), true);
   } finally {
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
@@ -584,7 +697,35 @@ void test('harness profile start/stop writes gateway CPU profile to .harness/pro
   const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
   const profileStatePath = join(workspace, `.harness/sessions/${sessionName}/active-profile.json`);
   const gatewayProfilePath = join(workspace, `.harness/profiles/${sessionName}/gateway.cpuprofile`);
+  const [gatewayPort, gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(3);
+  writeFileSync(
+    join(workspace, 'harness.config.jsonc'),
+    JSON.stringify({
+      debug: {
+        inspect: {
+          enabled: true,
+          gatewayPort: gatewayInspectPort,
+          clientPort: clientInspectPort,
+        },
+      },
+    }),
+    'utf8',
+  );
   try {
+    const gatewayStart = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'gateway',
+      'start',
+      '--port',
+      String(gatewayPort),
+    ]);
+    assert.equal(gatewayStart.code, 0);
+    const recordBefore = parseGatewayRecordText(readFileSync(sessionRecordPath, 'utf8'));
+    if (recordBefore === null) {
+      throw new Error('expected gateway record before profile stop');
+    }
+
     const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
     assert.equal(startResult.code, 0);
     assert.equal(startResult.stdout.includes('profile started pid='), true);
@@ -602,9 +743,50 @@ void test('harness profile start/stop writes gateway CPU profile to .harness/pro
     assert.equal(existsSync(gatewayProfilePath), true);
     assert.equal(existsSync(profileStatePath), false);
 
-    const statusStopped = await runHarness(workspace, ['--session', sessionName, 'gateway', 'status']);
-    assert.equal(statusStopped.code, 0);
-    assert.equal(statusStopped.stdout.includes('gateway status: stopped'), true);
+    const statusRunningAfterStop = await runHarness(workspace, ['--session', sessionName, 'gateway', 'status']);
+    assert.equal(statusRunningAfterStop.code, 0);
+    assert.equal(statusRunningAfterStop.stdout.includes('gateway status: running'), true);
+
+    const recordAfter = parseGatewayRecordText(readFileSync(sessionRecordPath, 'utf8'));
+    if (recordAfter === null) {
+      throw new Error('expected gateway record after profile stop');
+    }
+    assert.equal(recordAfter.pid, recordBefore.pid);
+  } finally {
+    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness profile start fails when target session gateway is not running', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'profile-start-missing-gateway';
+  try {
+    const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
+    assert.equal(startResult.code, 1);
+    assert.equal(startResult.stderr.includes('profile start requires the target session gateway to be running'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness profile start fails when gateway inspector endpoint is unavailable', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'profile-start-no-inspect';
+  const gatewayPort = await reservePort();
+  try {
+    const gatewayStart = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'gateway',
+      'start',
+      '--port',
+      String(gatewayPort),
+    ]);
+    assert.equal(gatewayStart.code, 0);
+    const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
+    assert.equal(startResult.code, 1);
+    assert.equal(startResult.stderr.includes('gateway inspector endpoint unavailable'), true);
   } finally {
     void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
@@ -802,6 +984,112 @@ void test('harness gateway stop cleans up orphan sqlite processes for the worksp
       process.kill(orphanPid, 'SIGKILL');
     }
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway stop --force cleans up orphan gateway daemon processes for the workspace db', async () => {
+  const workspace = createWorkspace();
+  const dbPath = join(workspace, '.harness/control-plane.sqlite');
+  const daemonScriptPath = join(workspace, 'control-plane-daemon.js');
+  writeFileSync(
+    daemonScriptPath,
+    ['process.on("SIGTERM", () => process.exit(0));', 'setInterval(() => {}, 1000);'].join('\n'),
+    'utf8',
+  );
+
+  let orphanPid: number | null = null;
+  try {
+    orphanPid = await spawnOrphanGatewayDaemonProcess(daemonScriptPath, dbPath);
+    assert.equal(await waitForParentPid(orphanPid, 1, 2000), true);
+    assert.equal(isPidRunning(orphanPid), true);
+
+    const stopResult = await runHarness(workspace, ['gateway', 'stop', '--force']);
+    assert.equal(stopResult.code, 1);
+    assert.equal(stopResult.stdout.includes('gateway not running (no record)'), true);
+    assert.equal(stopResult.stdout.includes('orphan gateway daemon cleanup:'), true);
+
+    assert.equal(await waitForPidExit(orphanPid, 4000), true);
+    assert.equal(isPidRunning(orphanPid), false);
+  } finally {
+    if (orphanPid !== null && isPidRunning(orphanPid)) {
+      process.kill(orphanPid, 'SIGKILL');
+    }
+    void runHarness(workspace, ['gateway', 'stop', '--force']).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test(
+  'harness gateway stop --force cleans up orphan gateway daemon processes by workspace script path',
+  async () => {
+    const workspace = createWorkspace();
+    const daemonScriptPath = join(workspace, 'control-plane-daemon.js');
+    const nonDefaultDbPath = join(workspace, '.harness/custom-gateway.sqlite');
+    writeFileSync(
+      daemonScriptPath,
+      ['process.on("SIGTERM", () => process.exit(0));', 'setInterval(() => {}, 1000);'].join('\n'),
+      'utf8',
+    );
+
+    let orphanPid: number | null = null;
+    try {
+      orphanPid = await spawnOrphanGatewayDaemonProcess(daemonScriptPath, nonDefaultDbPath);
+      assert.equal(await waitForParentPid(orphanPid, 1, 2000), true);
+      assert.equal(isPidRunning(orphanPid), true);
+
+      const stopResult = await runHarness(
+        workspace,
+        ['gateway', 'stop', '--force'],
+        {
+          HARNESS_DAEMON_SCRIPT_PATH: daemonScriptPath,
+        },
+      );
+      assert.equal(stopResult.code, 1);
+      assert.equal(stopResult.stdout.includes('gateway not running (no record)'), true);
+      assert.equal(stopResult.stdout.includes('orphan gateway daemon cleanup:'), true);
+
+      assert.equal(await waitForPidExit(orphanPid, 4000), true);
+      assert.equal(isPidRunning(orphanPid), false);
+    } finally {
+      if (orphanPid !== null && isPidRunning(orphanPid)) {
+        process.kill(orphanPid, 'SIGKILL');
+      }
+      void runHarness(workspace, ['gateway', 'stop', '--force']).catch(() => undefined);
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
+
+void test('harness gateway stop --force cleans up orphan workspace pty helper processes', async () => {
+  const workspace = createWorkspace();
+  const ptyPath = join(workspace, 'bin/ptyd');
+  mkdirSync(join(workspace, 'bin'), { recursive: true });
+  writeFileSync(
+    ptyPath,
+    ['#!/bin/sh', 'trap "exit 0" TERM INT', 'while true; do sleep 1; done'].join('\n'),
+    'utf8',
+  );
+  chmodSync(ptyPath, 0o755);
+
+  let orphanPid: number | null = null;
+  try {
+    orphanPid = await spawnOrphanDetachedProcess(ptyPath);
+    assert.equal(await waitForParentPid(orphanPid, 1, 2000), true);
+    assert.equal(isPidRunning(orphanPid), true);
+
+    const stopResult = await runHarness(workspace, ['gateway', 'stop', '--force']);
+    assert.equal(stopResult.code, 1);
+    assert.equal(stopResult.stdout.includes('gateway not running (no record)'), true);
+    assert.equal(stopResult.stdout.includes('orphan pty helper cleanup:'), true);
+
+    assert.equal(await waitForPidExit(orphanPid, 4000), true);
+    assert.equal(isPidRunning(orphanPid), false);
+  } finally {
+    if (orphanPid !== null && isPidRunning(orphanPid)) {
+      process.kill(orphanPid, 'SIGKILL');
+    }
+    void runHarness(workspace, ['gateway', 'stop', '--force']).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
   }
 });

@@ -587,6 +587,21 @@ function controllerDisplayName(controller: SessionControllerState): string {
   return `${controller.controllerType}:${controller.controllerId}`;
 }
 
+function shellQuoteToken(token: string): string {
+  if (token.length === 0) {
+    return "''";
+  }
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/u.test(token)) {
+    return token;
+  }
+  return `'${token.replaceAll("'", "'\"'\"'")}'`;
+}
+
+function formatLaunchCommand(command: string, args: readonly string[]): string {
+  const tokens = [command, ...args].map(shellQuoteToken);
+  return tokens.join(' ');
+}
+
 export function resolveTerminalCommandForEnvironment(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
@@ -635,6 +650,7 @@ export class ControlPlaneStreamServer {
   private readonly gitStatusDirectoriesById = new Map<string, ControlPlaneDirectoryRecord>();
   private readonly connections = new Map<string, ConnectionState>();
   private readonly sessions = new Map<string, SessionState>();
+  private readonly launchCommandBySessionId = new Map<string, string>();
   private readonly streamSubscriptions = new Map<string, StreamSubscriptionState>();
   private readonly streamJournal: StreamJournalEntry[] = [];
   private streamCursor = 0;
@@ -1015,6 +1031,10 @@ export class ControlPlaneStreamServer {
     const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
     const claudeHookLaunchConfig = this.claudeHookLaunchConfigForSession(command.sessionId, agentType);
     const launchProfile = this.launchProfileForAgent(agentType);
+    const launchCommand = formatLaunchCommand(
+      launchProfile.command ?? 'codex',
+      command.args,
+    );
     const startInput: StartControlPlaneSessionInput = {
       args: [...codexLaunchArgs, ...(claudeHookLaunchConfig?.args ?? []), ...command.args],
       initialCols: command.initialCols,
@@ -1047,6 +1067,7 @@ export class ControlPlaneStreamServer {
     }
 
     const session = this.startSession(startInput);
+    this.launchCommandBySessionId.set(command.sessionId, launchCommand);
 
     const unsubscribe = session.onEvent((event) => {
       this.handleSessionEvent(command.sessionId, event);
@@ -1905,6 +1926,7 @@ export class ControlPlaneStreamServer {
     }
 
     this.sessions.delete(sessionId);
+    this.launchCommandBySessionId.delete(sessionId);
     for (const [token, mappedSessionId] of this.telemetryTokenToSessionId.entries()) {
       if (mappedSessionId === sessionId) {
         this.telemetryTokenToSessionId.delete(token);
@@ -2063,6 +2085,7 @@ export class ControlPlaneStreamServer {
       lastExit: state.lastExit,
       exitedAt: state.exitedAt,
       live: state.session !== null,
+      launchCommand: this.launchCommandBySessionId.get(state.id) ?? null,
       telemetry: state.latestTelemetry,
       controller: toPublicSessionController(state.controller),
       diagnostics: this.sessionDiagnosticsRecord(state),

@@ -45,8 +45,8 @@ Harness is built for developers who want to:
 - Repository/task control-plane stream commands (`repository.*`, `task.*`) for automation and UI clients.
 - Repository/task stream subscriptions, including scoped filters for `repositoryId` and `taskId`.
 - Home planning pane is now repo-scoped: choose a repository from an inline dropdown, then work only on that repository's task queue.
-- Home pane task input is Codex-style and keyboard-first: growing multiline composer, `enter` to create draft tasks, `shift+enter` newline, `↑` boundary to jump into task edit, `↓` boundary to save and return to draft composer.
-- Draft/ready/complete controls are pinned on each task row and support both keyboard actions and mouse clicks.
+- Home pane task input is Codex-style and keyboard-first: growing multiline composer, `enter` submits and marks `ready`, `tab` queues in `draft`, `shift+enter` newline, `↑` boundary to jump into task edit, `↓` boundary to save and return to draft composer.
+- Queued/ready/complete controls are pinned on each task row and support both keyboard actions and mouse clicks.
 - Home-pane task/repo/composer keybindings are config-driven under `mux.keybindings` action IDs (`mux.home.*`), so defaults can be fully remapped in `harness.config.jsonc`.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Control-plane-owned git monitoring publishes `directory-git-updated` events; git polling/execution is no longer done in the client mux loop.
@@ -60,9 +60,9 @@ Harness is built for developers who want to:
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
 - Detached gateway runtime: client disconnects do not stop running threads; gateway startup eagerly restores non-archived thread runtimes, and `harness gateway stop` is the explicit shutdown boundary for child sessions.
 - When a thread/terminal process owns the main pane, the bottom status row switches to a single-line debug bar showing the spawned command.
-- `harness gateway stop` also performs workspace-scoped orphan `sqlite3` cleanup for the configured state DB path by default (`--no-cleanup-orphans` disables it).
+- `harness gateway stop` also performs workspace-scoped orphan cleanup by default (orphan gateway daemons, orphan PTY helpers, relay-linked orphan agent processes, and `sqlite3`; `--no-cleanup-orphans` disables it).
 - Named gateway sessions (`harness --session <name> ...`) isolate record/log/state paths under `.harness/sessions/<name>/...` so perf/test sessions do not mutate the default gateway state.
-- Built-in CPU profiling supports both one-shot capture (`harness [--session <name>] profile`) and long-lived incident capture (`harness [--session <name>] profile start|stop`), writing artifacts under `.harness/profiles[/<session>]/`.
+- Built-in CPU profiling supports both one-shot capture (`harness [--session <name>] profile`) and long-lived incident capture (`harness [--session <name>] profile start|stop`), writing artifacts under `.harness/profiles[/<session>]/`; `profile start|stop` now live-attaches to a running inspect-enabled gateway and does not restart it.
 
 ## Programmable Interface
 
@@ -271,19 +271,22 @@ Capture a programmatic Bun CPU profile for both gateway and client in one run (g
 harness --session perf-a profile
 ```
 
-Start/stop gateway-only profiling for live incident windows (writes `gateway.cpuprofile` under `.harness/profiles/<session>/` on stop):
+Start/stop gateway-only profiling for live incident windows (writes `gateway.cpuprofile` under `.harness/profiles/<session>/` on stop, without restarting the gateway):
 
 ```bash
+harness --session perf-a gateway start
 harness --session perf-a profile start
 # reproduce the issue
 harness --session perf-a profile stop
 ```
 
+`profile start` requires the target session gateway to already be running with `debug.inspect.enabled: true`; `profile stop` leaves that gateway running.
+
 Configuration is file-first via `harness.config.jsonc`.
 Codex launch mode is controlled under `codex.launch` with `defaultMode` and per-directory `directoryModes` overrides.
 Codex telemetry ingest defaults to `codex.telemetry.ingestMode: "lifecycle-fast"`; switch to `"full"` when troubleshooting raw OTLP payload detail.
 Process-bootstrap secrets can be stored in `.harness/secrets.env` (for example `ANTHROPIC_API_KEY=...`); existing exported environment values take precedence.
-To expose Bun debugger protocol endpoints for live profiler control, configure `debug.inspect`:
+To expose Bun debugger protocol endpoints for live profile attach control, configure `debug.inspect` and restart the gateway once:
 
 ```jsonc
 {

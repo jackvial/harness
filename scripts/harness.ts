@@ -34,6 +34,16 @@ import {
 } from '../src/cli/gateway-record.ts';
 import { loadHarnessConfig } from '../src/config/config-core.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
+import {
+  buildInspectorProfileStartExpression,
+  buildInspectorProfileStopExpression,
+  connectGatewayInspector,
+  DEFAULT_PROFILE_INSPECT_TIMEOUT_MS,
+  evaluateInspectorExpression,
+  InspectorWebSocketClient,
+  type InspectorProfileState,
+  readInspectorProfileState,
+} from './harness-inspector.ts';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DAEMON_SCRIPT_PATH = resolve(SCRIPT_DIR, 'control-plane-daemon.ts');
@@ -47,7 +57,8 @@ const DEFAULT_SESSION_ROOT_PATH = '.harness/sessions';
 const PROFILE_STATE_FILE_NAME = 'active-profile.json';
 const PROFILE_CLIENT_FILE_NAME = 'client.cpuprofile';
 const PROFILE_GATEWAY_FILE_NAME = 'gateway.cpuprofile';
-const PROFILE_STATE_VERSION = 1;
+const PROFILE_STATE_VERSION = 2;
+const PROFILE_LIVE_INSPECT_MODE = 'live-inspector';
 const SESSION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 
 interface GatewayStartOptions {
@@ -79,12 +90,15 @@ interface ParsedProfileRunCommand {
 interface ParsedProfileStartCommand {
   type: 'start';
   profileDir: string | null;
-  startOptions: GatewayStartOptions;
+}
+
+interface ProfileStopOptions {
+  timeoutMs: number;
 }
 
 interface ParsedProfileStopCommand {
   type: 'stop';
-  stopOptions: GatewayStopOptions;
+  stopOptions: ProfileStopOptions;
 }
 
 type ParsedProfileCommand = ParsedProfileRunCommand | ParsedProfileStartCommand | ParsedProfileStopCommand;
@@ -137,7 +151,7 @@ interface ProcessTableEntry {
   command: string;
 }
 
-interface OrphanSqliteCleanupResult {
+interface OrphanProcessCleanupResult {
   matchedPids: readonly number[];
   terminatedPids: readonly number[];
   failedPids: readonly number[];
@@ -146,12 +160,14 @@ interface OrphanSqliteCleanupResult {
 
 interface ActiveProfileState {
   version: number;
+  mode: typeof PROFILE_LIVE_INSPECT_MODE;
   pid: number;
   host: string;
   port: number;
   stateDbPath: string;
   profileDir: string;
   gatewayProfilePath: string;
+  inspectWebSocketUrl: string;
   startedAt: string;
 }
 
@@ -266,7 +282,6 @@ function parseProfileRunCommand(argv: readonly string[]): ParsedProfileRunComman
 
 function parseProfileStartCommand(argv: readonly string[]): ParsedProfileStartCommand {
   let profileDir: string | null = null;
-  const gatewayArgs: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!;
     if (arg === '--profile-dir') {
@@ -274,19 +289,34 @@ function parseProfileStartCommand(argv: readonly string[]): ParsedProfileStartCo
       index += 1;
       continue;
     }
-    gatewayArgs.push(arg);
+    throw new Error(`unknown profile option: ${arg}`);
   }
   return {
     type: 'start',
     profileDir,
-    startOptions: parseGatewayStartOptions(gatewayArgs)
   };
+}
+
+function parseProfileStopOptions(argv: readonly string[]): ProfileStopOptions {
+  const options: ProfileStopOptions = {
+    timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === '--timeout-ms') {
+      options.timeoutMs = parsePositiveIntFlag(readCliValue(argv, index, '--timeout-ms'), '--timeout-ms');
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown profile option: ${arg}`);
+  }
+  return options;
 }
 
 function parseProfileStopCommand(argv: readonly string[]): ParsedProfileStopCommand {
   return {
     type: 'stop',
-    stopOptions: parseGatewayStopOptions(argv)
+    stopOptions: parseProfileStopOptions(argv),
   };
 }
 
@@ -331,8 +361,8 @@ function resolveInspectRuntimeOptions(invocationDirectory: string): RuntimeInspe
     };
   }
   return {
-    gatewayRuntimeArgs: [`--inspect=${String(debugConfig.inspect.gatewayPort)}`],
-    clientRuntimeArgs: [`--inspect=${String(debugConfig.inspect.clientPort)}`],
+    gatewayRuntimeArgs: [`--inspect=localhost:${String(debugConfig.inspect.gatewayPort)}/harness-gateway`],
+    clientRuntimeArgs: [`--inspect=localhost:${String(debugConfig.inspect.clientPort)}/harness-client`],
   };
 }
 
@@ -516,8 +546,8 @@ function printUsage(): void {
       '  harness [--session <name>] gateway status',
       '  harness [--session <name>] gateway restart [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
       '  harness [--session <name>] gateway call --json \'{"type":"session.list"}\'',
-      '  harness [--session <name>] profile start [--profile-dir <path>] [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
-      '  harness [--session <name>] profile stop [--force] [--timeout-ms <ms>] [--cleanup-orphans|--no-cleanup-orphans]',
+      '  harness [--session <name>] profile start [--profile-dir <path>]',
+      '  harness [--session <name>] profile stop [--timeout-ms <ms>]',
       '  harness [--session <name>] profile run [--profile-dir <path>] [mux-args...]',
       '  harness [--session <name>] profile [--profile-dir <path>] [mux-args...]',
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
@@ -579,12 +609,16 @@ function parseActiveProfileState(raw: unknown): ActiveProfileState | null {
   if (candidate['version'] !== PROFILE_STATE_VERSION) {
     return null;
   }
+  if (candidate['mode'] !== PROFILE_LIVE_INSPECT_MODE) {
+    return null;
+  }
   const pid = candidate['pid'];
   const host = candidate['host'];
   const port = candidate['port'];
   const stateDbPath = candidate['stateDbPath'];
   const profileDir = candidate['profileDir'];
   const gatewayProfilePath = candidate['gatewayProfilePath'];
+  const inspectWebSocketUrl = candidate['inspectWebSocketUrl'];
   const startedAt = candidate['startedAt'];
   if (!Number.isInteger(pid) || (pid as number) <= 0) {
     return null;
@@ -604,18 +638,23 @@ function parseActiveProfileState(raw: unknown): ActiveProfileState | null {
   if (typeof gatewayProfilePath !== 'string' || gatewayProfilePath.length === 0) {
     return null;
   }
+  if (typeof inspectWebSocketUrl !== 'string' || inspectWebSocketUrl.length === 0) {
+    return null;
+  }
   if (typeof startedAt !== 'string' || startedAt.length === 0) {
     return null;
   }
   return {
     version: PROFILE_STATE_VERSION,
+    mode: PROFILE_LIVE_INSPECT_MODE,
     pid: pid as number,
     host,
     port: port as number,
     stateDbPath,
     profileDir,
     gatewayProfilePath,
-    startedAt
+    inspectWebSocketUrl,
+    startedAt,
   };
 }
 
@@ -678,6 +717,37 @@ async function waitForFileExists(filePath: string, timeoutMs: number): Promise<b
   return existsSync(filePath);
 }
 
+function signalPidWithOptionalProcessGroup(
+  pid: number,
+  signal: NodeJS.Signals,
+  includeProcessGroup: boolean,
+): boolean {
+  let sent = false;
+  if (includeProcessGroup && pid > 1) {
+    try {
+      process.kill(-pid, signal);
+      sent = true;
+    } catch (error: unknown) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ESRCH') {
+        throw error;
+      }
+    }
+  }
+
+  try {
+    process.kill(pid, signal);
+    sent = true;
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ESRCH') {
+      throw error;
+    }
+  }
+
+  return sent;
+}
+
 function readProcessTable(): readonly ProcessTableEntry[] {
   const output = execFileSync('ps', ['-axww', '-o', 'pid=,ppid=,command='], {
     encoding: 'utf8',
@@ -718,40 +788,85 @@ function findOrphanSqlitePidsForDbPath(stateDbPath: string): readonly number[] {
     .map((entry) => entry.pid);
 }
 
-function formatOrphanSqliteCleanupResult(result: OrphanSqliteCleanupResult): string {
+function dedupePids(pids: readonly number[]): readonly number[] {
+  return [...new Set(pids)];
+}
+
+function resolvePtyHelperPathCandidates(invocationDirectory: string): readonly string[] {
+  return [
+    resolve(invocationDirectory, 'native/ptyd/target/release/ptyd'),
+    resolve(invocationDirectory, 'bin/ptyd'),
+  ];
+}
+
+function findOrphanGatewayDaemonPids(
+  stateDbPath: string,
+  daemonScriptPath: string,
+): readonly number[] {
+  const normalizedDbPath = resolve(stateDbPath);
+  const normalizedDaemonScriptPath = resolve(daemonScriptPath);
+  return dedupePids(
+    readProcessTable()
+      .filter((entry) => entry.ppid === 1)
+      .filter((entry) => entry.pid !== process.pid)
+      .filter((entry) => entry.command.includes('--state-db-path'))
+      .filter((entry) => {
+        if (entry.command.includes(normalizedDaemonScriptPath)) {
+          return true;
+        }
+        return (
+          /\bcontrol-plane-daemon\.(?:ts|js)\b/u.test(entry.command) &&
+          entry.command.includes(normalizedDbPath)
+        );
+      })
+      .map((entry) => entry.pid),
+  );
+}
+
+function findOrphanPtyHelperPidsForWorkspace(invocationDirectory: string): readonly number[] {
+  const helperPathCandidates = resolvePtyHelperPathCandidates(invocationDirectory);
+  return readProcessTable()
+    .filter((entry) => entry.ppid === 1)
+    .filter((entry) => entry.pid !== process.pid)
+    .filter((entry) => helperPathCandidates.some((candidate) => entry.command.includes(candidate)))
+    .map((entry) => entry.pid);
+}
+
+function findOrphanRelayLinkedAgentPidsForWorkspace(invocationDirectory: string): readonly number[] {
+  const relayScriptPath = resolve(invocationDirectory, 'scripts/codex-notify-relay.ts');
+  return readProcessTable()
+    .filter((entry) => entry.ppid === 1)
+    .filter((entry) => entry.pid !== process.pid)
+    .filter((entry) => entry.command.includes(relayScriptPath))
+    .map((entry) => entry.pid);
+}
+
+function formatOrphanProcessCleanupResult(
+  label: string,
+  result: OrphanProcessCleanupResult,
+): string {
   if (result.errorMessage !== null) {
-    return `orphan sqlite cleanup error: ${result.errorMessage}`;
+    return `${label} cleanup error: ${result.errorMessage}`;
   }
   if (result.matchedPids.length === 0) {
-    return 'orphan sqlite cleanup: none found';
+    return `${label} cleanup: none found`;
   }
   if (result.failedPids.length === 0) {
-    return `orphan sqlite cleanup: terminated ${String(result.terminatedPids.length)} process(es)`;
+    return `${label} cleanup: terminated ${String(result.terminatedPids.length)} process(es)`;
   }
   return [
-    'orphan sqlite cleanup:',
+    `${label} cleanup:`,
     `matched=${String(result.matchedPids.length)}`,
     `terminated=${String(result.terminatedPids.length)}`,
     `failed=${String(result.failedPids.length)}`,
   ].join(' ');
 }
 
-async function cleanupOrphanSqliteProcessesForDbPath(
-  stateDbPath: string,
+async function cleanupOrphanPids(
+  matchedPids: readonly number[],
   options: GatewayStopOptions,
-): Promise<OrphanSqliteCleanupResult> {
-  let matchedPids: readonly number[] = [];
-  try {
-    matchedPids = findOrphanSqlitePidsForDbPath(stateDbPath);
-  } catch (error: unknown) {
-    return {
-      matchedPids: [],
-      terminatedPids: [],
-      failedPids: [],
-      errorMessage: error instanceof Error ? error.message : String(error),
-    };
-  }
-
+  killProcessGroup = false,
+): Promise<OrphanProcessCleanupResult> {
   const terminatedPids: number[] = [];
   const failedPids: number[] = [];
 
@@ -759,13 +874,9 @@ async function cleanupOrphanSqliteProcessesForDbPath(
     if (!isPidRunning(pid)) {
       continue;
     }
-    try {
-      process.kill(pid, 'SIGTERM');
-    } catch (error: unknown) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ESRCH') {
-        failedPids.push(pid);
-      }
+    const signaledTerm = signalPidWithOptionalProcessGroup(pid, 'SIGTERM', killProcessGroup);
+    if (!signaledTerm) {
+      terminatedPids.push(pid);
       continue;
     }
 
@@ -780,15 +891,9 @@ async function cleanupOrphanSqliteProcessesForDbPath(
       continue;
     }
 
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch (error: unknown) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ESRCH') {
-        failedPids.push(pid);
-      } else {
-        terminatedPids.push(pid);
-      }
+    const signaledKill = signalPidWithOptionalProcessGroup(pid, 'SIGKILL', killProcessGroup);
+    if (!signaledKill) {
+      terminatedPids.push(pid);
       continue;
     }
 
@@ -805,6 +910,79 @@ async function cleanupOrphanSqliteProcessesForDbPath(
     failedPids,
     errorMessage: null,
   };
+}
+
+async function cleanupOrphanSqliteProcessesForDbPath(
+  stateDbPath: string,
+  options: GatewayStopOptions,
+): Promise<OrphanProcessCleanupResult> {
+  let matchedPids: readonly number[] = [];
+  try {
+    matchedPids = findOrphanSqlitePidsForDbPath(stateDbPath);
+  } catch (error: unknown) {
+    return {
+      matchedPids: [],
+      terminatedPids: [],
+      failedPids: [],
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
+  return await cleanupOrphanPids(matchedPids, options, false);
+}
+
+async function cleanupOrphanGatewayDaemons(
+  stateDbPath: string,
+  daemonScriptPath: string,
+  options: GatewayStopOptions,
+): Promise<OrphanProcessCleanupResult> {
+  let matchedPids: readonly number[] = [];
+  try {
+    matchedPids = findOrphanGatewayDaemonPids(stateDbPath, daemonScriptPath);
+  } catch (error: unknown) {
+    return {
+      matchedPids: [],
+      terminatedPids: [],
+      failedPids: [],
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
+  return await cleanupOrphanPids(matchedPids, options, true);
+}
+
+async function cleanupOrphanPtyHelpersForWorkspace(
+  invocationDirectory: string,
+  options: GatewayStopOptions,
+): Promise<OrphanProcessCleanupResult> {
+  let matchedPids: readonly number[] = [];
+  try {
+    matchedPids = findOrphanPtyHelperPidsForWorkspace(invocationDirectory);
+  } catch (error: unknown) {
+    return {
+      matchedPids: [],
+      terminatedPids: [],
+      failedPids: [],
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
+  return await cleanupOrphanPids(matchedPids, options, false);
+}
+
+async function cleanupOrphanRelayLinkedAgentsForWorkspace(
+  invocationDirectory: string,
+  options: GatewayStopOptions,
+): Promise<OrphanProcessCleanupResult> {
+  let matchedPids: readonly number[] = [];
+  try {
+    matchedPids = findOrphanRelayLinkedAgentPidsForWorkspace(invocationDirectory);
+  } catch (error: unknown) {
+    return {
+      matchedPids: [],
+      terminatedPids: [],
+      failedPids: [],
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
+  return await cleanupOrphanPids(matchedPids, options, false);
 }
 
 function resolveGatewaySettings(
@@ -1035,27 +1213,49 @@ async function ensureGatewayRunning(
 }
 
 async function stopGateway(
+  invocationDirectory: string,
+  daemonScriptPath: string,
   recordPath: string,
+  defaultStateDbPath: string,
   options: GatewayStopOptions,
 ): Promise<{ stopped: boolean; message: string }> {
+  const appendCleanupSummary = async (
+    baseMessage: string,
+    stateDbPath: string,
+  ): Promise<string> => {
+    if (!options.cleanupOrphans) {
+      return baseMessage;
+    }
+    const [
+      gatewayCleanupResult,
+      ptyCleanupResult,
+      relayCleanupResult,
+      sqliteCleanupResult,
+    ] = await Promise.all([
+      cleanupOrphanGatewayDaemons(stateDbPath, daemonScriptPath, options),
+      cleanupOrphanPtyHelpersForWorkspace(invocationDirectory, options),
+      cleanupOrphanRelayLinkedAgentsForWorkspace(invocationDirectory, options),
+      cleanupOrphanSqliteProcessesForDbPath(stateDbPath, options),
+    ]);
+    return [
+      baseMessage,
+      formatOrphanProcessCleanupResult('orphan gateway daemon', gatewayCleanupResult),
+      formatOrphanProcessCleanupResult('orphan pty helper', ptyCleanupResult),
+      formatOrphanProcessCleanupResult('orphan relay-linked agent', relayCleanupResult),
+      formatOrphanProcessCleanupResult('orphan sqlite', sqliteCleanupResult),
+    ].join('; ');
+  };
+
   const record = readGatewayRecord(recordPath);
   if (record === null) {
     return {
       stopped: false,
-      message: 'gateway not running (no record)',
+      message: await appendCleanupSummary('gateway not running (no record)', defaultStateDbPath),
     };
   }
 
   const probe = await probeGateway(record);
   const pidRunning = isPidRunning(record.pid);
-
-  const appendCleanupSummary = async (baseMessage: string): Promise<string> => {
-    if (!options.cleanupOrphans) {
-      return baseMessage;
-    }
-    const cleanupResult = await cleanupOrphanSqliteProcessesForDbPath(record.stateDbPath, options);
-    return `${baseMessage}; ${formatOrphanSqliteCleanupResult(cleanupResult)}`;
-  };
 
   if (!probe.connected && pidRunning && !options.force) {
     return {
@@ -1068,34 +1268,22 @@ async function stopGateway(
     removeGatewayRecord(recordPath);
     return {
       stopped: true,
-      message: await appendCleanupSummary('removed stale gateway record'),
+      message: await appendCleanupSummary('removed stale gateway record', record.stateDbPath),
     };
   }
 
-  try {
-    process.kill(record.pid, 'SIGTERM');
-  } catch (error: unknown) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ESRCH') {
-      removeGatewayRecord(recordPath);
-      return {
-        stopped: true,
-        message: 'gateway already exited',
-      };
-    }
-    throw error;
+  const signaledTerm = signalPidWithOptionalProcessGroup(record.pid, 'SIGTERM', true);
+  if (!signaledTerm) {
+    removeGatewayRecord(recordPath);
+    return {
+      stopped: true,
+      message: await appendCleanupSummary('gateway already exited', record.stateDbPath),
+    };
   }
 
   const exitedAfterTerm = await waitForPidExit(record.pid, options.timeoutMs);
   if (!exitedAfterTerm && options.force) {
-    try {
-      process.kill(record.pid, 'SIGKILL');
-    } catch (error: unknown) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ESRCH') {
-        throw error;
-      }
-    }
+    signalPidWithOptionalProcessGroup(record.pid, 'SIGKILL', true);
     const exitedAfterKill = await waitForPidExit(record.pid, options.timeoutMs);
     if (!exitedAfterKill) {
       return {
@@ -1113,7 +1301,10 @@ async function stopGateway(
   removeGatewayRecord(recordPath);
   return {
     stopped: true,
-    message: await appendCleanupSummary(`gateway stopped (pid=${String(record.pid)})`),
+    message: await appendCleanupSummary(
+      `gateway stopped (pid=${String(record.pid)})`,
+      record.stateDbPath,
+    ),
   };
 }
 
@@ -1297,7 +1488,13 @@ async function runGatewayCommandEntry(
       timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
       cleanupOrphans: true,
     };
-    const stopped = await stopGateway(recordPath, stopOptions);
+    const stopped = await stopGateway(
+      invocationDirectory,
+      daemonScriptPath,
+      recordPath,
+      defaultStateDbPath,
+      stopOptions,
+    );
     process.stdout.write(`${stopped.message}\n`);
     return stopped.stopped ? 0 : 1;
   }
@@ -1327,11 +1524,17 @@ async function runGatewayCommandEntry(
   }
 
   if (command.type === 'restart') {
-    const stopResult = await stopGateway(recordPath, {
-      force: true,
-      timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
-      cleanupOrphans: true,
-    });
+    const stopResult = await stopGateway(
+      invocationDirectory,
+      daemonScriptPath,
+      recordPath,
+      defaultStateDbPath,
+      {
+        force: true,
+        timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
+        cleanupOrphans: true,
+      },
+    );
     process.stdout.write(`${stopResult.message}\n`);
     const ensured = await ensureGatewayRunning(
       invocationDirectory,
@@ -1498,11 +1701,17 @@ async function runProfileRun(
     clientError = error instanceof Error ? error : new Error(String(error));
   }
 
-  const stopped = await stopGateway(sessionPaths.recordPath, {
-    force: true,
-    timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
-    cleanupOrphans: true,
-  });
+  const stopped = await stopGateway(
+    invocationDirectory,
+    daemonScriptPath,
+    sessionPaths.recordPath,
+    sessionPaths.defaultStateDbPath,
+    {
+      force: true,
+      timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
+      cleanupOrphans: true,
+    },
+  );
   process.stdout.write(`${stopped.message}\n`);
   if (!stopped.stopped) {
     throw new Error(`failed to stop profile gateway: ${stopped.message}`);
@@ -1523,10 +1732,8 @@ async function runProfileRun(
 
 async function runProfileStart(
   invocationDirectory: string,
-  daemonScriptPath: string,
   sessionPaths: SessionPaths,
   command: ParsedProfileStartCommand,
-  runtimeOptions: RuntimeInspectOptions,
 ): Promise<number> {
   const profileDir =
     command.profileDir === null ? sessionPaths.profileDir : resolve(invocationDirectory, command.profileDir);
@@ -1543,58 +1750,70 @@ async function runProfileStart(
   }
 
   const existingRecord = readGatewayRecord(sessionPaths.recordPath);
-  if (existingRecord !== null) {
-    const existingProbe = await probeGateway(existingRecord);
-    if (existingProbe.connected || isPidRunning(existingRecord.pid)) {
-      throw new Error('profile start requires the target session gateway to be stopped first');
-    }
-    removeGatewayRecord(sessionPaths.recordPath);
+  if (existingRecord === null) {
+    throw new Error('profile start requires the target session gateway to be running');
   }
-
-  const provisionalHost = normalizeGatewayHost(command.startOptions.host ?? process.env.HARNESS_CONTROL_PLANE_HOST);
-  const startOptions: GatewayStartOptions = {
-    ...command.startOptions,
-    stateDbPath: command.startOptions.stateDbPath ?? sessionPaths.defaultStateDbPath
-  };
-  if (startOptions.port === undefined) {
-    startOptions.port = await reservePort(provisionalHost);
+  const existingProbe = await probeGateway(existingRecord);
+  if (!existingProbe.connected || !isPidRunning(existingRecord.pid)) {
+    throw new Error('profile start requires the target session gateway to be running');
   }
-  const settings = resolveGatewaySettings(
+  const inspector = await connectGatewayInspector(
     invocationDirectory,
-    null,
-    startOptions,
-    process.env,
-    sessionPaths.defaultStateDbPath
-  );
-
-  const gateway = await startDetachedGateway(
-    invocationDirectory,
-    sessionPaths.recordPath,
     sessionPaths.logPath,
-    settings,
-    daemonScriptPath,
-    [
-      ...runtimeOptions.gatewayRuntimeArgs,
-      ...buildCpuProfileRuntimeArgs({
-        cpuProfileDir: profileDir,
-        cpuProfileName: PROFILE_GATEWAY_FILE_NAME,
-      }),
-    ],
+    DEFAULT_PROFILE_INSPECT_TIMEOUT_MS,
   );
+  try {
+    const startCommandRaw = await evaluateInspectorExpression(
+      inspector.client,
+      buildInspectorProfileStartExpression(),
+      DEFAULT_PROFILE_INSPECT_TIMEOUT_MS,
+    );
+    if (typeof startCommandRaw !== 'string') {
+      throw new Error('failed to start gateway profiler (invalid inspector response)');
+    }
+    const startCommandResult = JSON.parse(startCommandRaw) as Record<string, unknown>;
+    if (startCommandResult['ok'] !== true) {
+      const reason = startCommandResult['reason'];
+      throw new Error(
+        `failed to start gateway profiler (${typeof reason === 'string' ? reason : 'unknown reason'})`,
+      );
+    }
+
+    const startDeadline = Date.now() + DEFAULT_PROFILE_INSPECT_TIMEOUT_MS;
+    let runningState: InspectorProfileState | null = null;
+    while (Date.now() < startDeadline) {
+      const state = await readInspectorProfileState(inspector.client, DEFAULT_PROFILE_INSPECT_TIMEOUT_MS);
+      if (state !== null && state.status === 'running') {
+        runningState = state;
+        break;
+      }
+      if (state !== null && state.status === 'failed') {
+        throw new Error(`failed to start gateway profiler (${state.error ?? 'unknown error'})`);
+      }
+      await delay(DEFAULT_GATEWAY_STOP_POLL_MS);
+    }
+    if (runningState === null) {
+      throw new Error('failed to start gateway profiler (inspector runtime timeout)');
+    }
+  } finally {
+    inspector.client.close();
+  }
 
   writeActiveProfileState(sessionPaths.profileStatePath, {
     version: PROFILE_STATE_VERSION,
-    pid: gateway.pid,
-    host: gateway.host,
-    port: gateway.port,
-    stateDbPath: gateway.stateDbPath,
+    mode: PROFILE_LIVE_INSPECT_MODE,
+    pid: existingRecord.pid,
+    host: existingRecord.host,
+    port: existingRecord.port,
+    stateDbPath: existingRecord.stateDbPath,
     profileDir,
     gatewayProfilePath,
-    startedAt: new Date().toISOString()
+    inspectWebSocketUrl: inspector.endpoint,
+    startedAt: new Date().toISOString(),
   });
 
   process.stdout.write(
-    `profile started pid=${String(gateway.pid)} host=${gateway.host} port=${String(gateway.port)}\n`
+    `profile started pid=${String(existingRecord.pid)} host=${existingRecord.host} port=${String(existingRecord.port)}\n`,
   );
   process.stdout.write(`record: ${sessionPaths.recordPath}\n`);
   process.stdout.write(`log: ${sessionPaths.logPath}\n`);
@@ -1604,16 +1823,52 @@ async function runProfileStart(
   return 0;
 }
 
-async function runProfileStop(sessionPaths: SessionPaths, command: ParsedProfileStopCommand): Promise<number> {
+async function runProfileStop(
+  sessionPaths: SessionPaths,
+  command: ParsedProfileStopCommand,
+): Promise<number> {
   const profileState = readActiveProfileState(sessionPaths.profileStatePath);
   if (profileState === null) {
     throw new Error('no active profile run for this session; start one with `harness profile start`');
   }
+  if (profileState.mode !== PROFILE_LIVE_INSPECT_MODE) {
+    throw new Error('active profile run is incompatible with this harness version');
+  }
+  const inspector = await InspectorWebSocketClient.connect(
+    profileState.inspectWebSocketUrl,
+    command.stopOptions.timeoutMs,
+  );
+  try {
+    await inspector.sendCommand('Runtime.enable', {}, command.stopOptions.timeoutMs);
+    const stopCommandRaw = await evaluateInspectorExpression(
+      inspector,
+      buildInspectorProfileStopExpression(profileState.gatewayProfilePath, profileState.profileDir),
+      command.stopOptions.timeoutMs,
+    );
+    if (typeof stopCommandRaw !== 'string') {
+      throw new Error('failed to stop gateway profiler (invalid inspector response)');
+    }
+    const stopCommandResult = JSON.parse(stopCommandRaw) as Record<string, unknown>;
+    if (stopCommandResult['ok'] !== true) {
+      const reason = stopCommandResult['reason'];
+      throw new Error(
+        `failed to stop gateway profiler (${typeof reason === 'string' ? reason : 'unknown reason'})`,
+      );
+    }
 
-  const stopped = await stopGateway(sessionPaths.recordPath, command.stopOptions);
-  process.stdout.write(`${stopped.message}\n`);
-  if (!stopped.stopped) {
-    throw new Error(`failed to stop profile gateway: ${stopped.message}`);
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < command.stopOptions.timeoutMs) {
+      const state = await readInspectorProfileState(inspector, command.stopOptions.timeoutMs);
+      if (state !== null && state.status === 'failed') {
+        throw new Error(`failed to stop gateway profiler (${state.error ?? 'unknown error'})`);
+      }
+      if (state !== null && state.status === 'stopped' && state.written) {
+        break;
+      }
+      await delay(DEFAULT_GATEWAY_STOP_POLL_MS);
+    }
+  } finally {
+    inspector.close();
   }
 
   const profileFlushed = await waitForFileExists(profileState.gatewayProfilePath, command.stopOptions.timeoutMs);
@@ -1640,13 +1895,7 @@ async function runProfileCommandEntry(
   }
   const command = parseProfileCommand(args);
   if (command.type === 'start') {
-    return await runProfileStart(
-      invocationDirectory,
-      daemonScriptPath,
-      sessionPaths,
-      command,
-      runtimeOptions,
-    );
+    return await runProfileStart(invocationDirectory, sessionPaths, command);
   }
   if (command.type === 'stop') {
     return await runProfileStop(sessionPaths, command);
