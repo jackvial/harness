@@ -597,3 +597,19 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4746 -> 4695 LOC
+
+### Checkpoint 31 (2026-02-17): repository action domain extraction
+
+- Added `src/mux/live-mux/actions-repository.ts`:
+  - repository prompt open handlers (`create`/`edit`)
+  - repository home-priority ordering queue helper
+  - repository drag-drop reorder helper
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate repository prompt and repository reorder/priority branches through the repository action helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4695 -> 4683 LOC

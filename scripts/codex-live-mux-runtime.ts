@@ -240,6 +240,12 @@ import {
 import { handleHomePaneDragRelease as handleHomePaneDragReleaseHelper } from '../src/mux/live-mux/home-pane-drop.ts';
 import { handleHomePanePointerClick as handleHomePanePointerClickHelper } from '../src/mux/live-mux/home-pane-pointer.ts';
 import { runTaskPaneAction as runTaskPaneActionHelper } from '../src/mux/live-mux/actions-task.ts';
+import {
+  openRepositoryPromptForCreate as openRepositoryPromptForCreateHelper,
+  openRepositoryPromptForEdit as openRepositoryPromptForEditHelper,
+  queueRepositoryPriorityOrder as queueRepositoryPriorityOrderHelper,
+  reorderRepositoryByDrop as reorderRepositoryByDropHelper,
+} from '../src/mux/live-mux/actions-repository.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -2934,61 +2940,33 @@ async function main(): Promise<number> {
     return changed;
   };
 
-  const repositoryHomePriority = (repository: ControlPlaneRepositoryRecord): number | null => {
-    const raw = repository.metadata['homePriority'];
-    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
-      return null;
-    }
-    if (!Number.isInteger(raw) || raw < 0) {
-      return null;
-    }
-    return raw;
-  };
-
   const queueRepositoryPriorityOrder = (
     orderedRepositoryIds: readonly string[],
     label: string,
   ): void => {
-    const updates: Array<{
-      repositoryId: string;
-      metadata: Record<string, unknown>;
-    }> = [];
-    for (let index = 0; index < orderedRepositoryIds.length; index += 1) {
-      const repositoryId = orderedRepositoryIds[index]!;
-      const repository = repositories.get(repositoryId);
-      if (repository === undefined) {
-        continue;
-      }
-      if (repositoryHomePriority(repository) === index) {
-        continue;
-      }
-      updates.push({
-        repositoryId,
-        metadata: {
-          ...repository.metadata,
-          homePriority: index,
-        },
-      });
-    }
-    if (updates.length === 0) {
-      return;
-    }
-    queueControlPlaneOp(async () => {
-      for (const update of updates) {
+    queueRepositoryPriorityOrderHelper({
+      orderedRepositoryIds,
+      repositories,
+      queueControlPlaneOp,
+      updateRepositoryMetadata: async (repositoryId, metadata) => {
         const result = await streamClient.sendCommand({
           type: 'repository.update',
-          repositoryId: update.repositoryId,
-          metadata: update.metadata,
+          repositoryId,
+          metadata,
         });
         const parsed = parseRepositoryRecord(result['repository']);
         if (parsed === null) {
           throw new Error('control-plane repository.update returned malformed repository record');
         }
-        repositories.set(parsed.repositoryId, parsed);
-      }
-      syncTaskPaneRepositorySelection();
-      markDirty();
-    }, label);
+        return parsed;
+      },
+      upsertRepository: (repository) => {
+        repositories.set(repository.repositoryId, repository);
+      },
+      syncTaskPaneRepositorySelection,
+      markDirty,
+      label,
+    });
   };
 
   const reorderTaskByDrop = (draggedTaskId: string, targetTaskId: string): void => {
@@ -3015,18 +2993,15 @@ async function main(): Promise<number> {
     draggedRepositoryId: string,
     targetRepositoryId: string,
   ): void => {
-    const orderedRepositoryIds = orderedActiveRepositoryRecords().map(
-      (repository) => repository.repositoryId,
-    );
-    const reordered = reorderIdsByMove(
-      orderedRepositoryIds,
+    reorderRepositoryByDropHelper({
       draggedRepositoryId,
       targetRepositoryId,
-    );
-    if (reordered === null) {
-      return;
-    }
-    queueRepositoryPriorityOrder(reordered, 'repositories-reorder-drag');
+      orderedRepositoryIds: orderedActiveRepositoryRecords().map(
+        (repository) => repository.repositoryId,
+      ),
+      reorderIdsByMove,
+      queueRepositoryPriorityOrder,
+    });
   };
 
   const runTaskPaneAction = (action: TaskPaneAction): void => {
@@ -3117,40 +3092,52 @@ async function main(): Promise<number> {
   };
 
   const openRepositoryPromptForCreate = (): void => {
-    newThreadPrompt = null;
-    addDirectoryPrompt = null;
-    if (conversationTitleEdit !== null) {
-      stopConversationTitleEdit(true);
-    }
-    conversationTitleEditClickState = null;
-    repositoryPrompt = {
-      mode: 'add',
-      repositoryId: null,
-      value: '',
-      error: null,
-    };
-    markDirty();
+    openRepositoryPromptForCreateHelper({
+      clearNewThreadPrompt: () => {
+        newThreadPrompt = null;
+      },
+      clearAddDirectoryPrompt: () => {
+        addDirectoryPrompt = null;
+      },
+      hasConversationTitleEdit: conversationTitleEdit !== null,
+      stopConversationTitleEdit: () => {
+        stopConversationTitleEdit(true);
+      },
+      clearConversationTitleEditClickState: () => {
+        conversationTitleEditClickState = null;
+      },
+      setRepositoryPrompt: (prompt) => {
+        repositoryPrompt = prompt;
+      },
+      markDirty,
+    });
   };
 
   const openRepositoryPromptForEdit = (repositoryId: string): void => {
-    const repository = repositories.get(repositoryId);
-    if (repository === undefined) {
-      return;
-    }
-    newThreadPrompt = null;
-    addDirectoryPrompt = null;
-    if (conversationTitleEdit !== null) {
-      stopConversationTitleEdit(true);
-    }
-    conversationTitleEditClickState = null;
-    repositoryPrompt = {
-      mode: 'edit',
+    openRepositoryPromptForEditHelper({
       repositoryId,
-      value: repository.remoteUrl,
-      error: null,
-    };
-    taskPaneSelectionFocus = 'repository';
-    markDirty();
+      repositories,
+      clearNewThreadPrompt: () => {
+        newThreadPrompt = null;
+      },
+      clearAddDirectoryPrompt: () => {
+        addDirectoryPrompt = null;
+      },
+      hasConversationTitleEdit: conversationTitleEdit !== null,
+      stopConversationTitleEdit: () => {
+        stopConversationTitleEdit(true);
+      },
+      clearConversationTitleEditClickState: () => {
+        conversationTitleEditClickState = null;
+      },
+      setRepositoryPrompt: (prompt) => {
+        repositoryPrompt = prompt;
+      },
+      setTaskPaneSelectionFocusRepository: () => {
+        taskPaneSelectionFocus = 'repository';
+      },
+      markDirty,
+    });
   };
 
   const upsertRepositoryByRemoteUrl = async (
