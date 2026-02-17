@@ -27,8 +27,13 @@ const parserCommandTypes = sortedUnique(Object.keys(DEFAULT_STREAM_COMMAND_PARSE
 const parserCommandTypeSet = new Set(parserCommandTypes);
 
 function readServerCommandTypes(): string[] {
-  const source = readSource('src/control-plane/stream-server.ts');
-  return sortedUnique(matchAllGroups(source, /command\.type === '([a-z]+\.[a-z-]+)'/g));
+  const sources = [
+    readSource('src/control-plane/stream-server.ts'),
+    readSource('src/control-plane/stream-server-command.ts'),
+  ];
+  return sortedUnique(
+    sources.flatMap((source) => matchAllGroups(source, /command\.type === '([a-z]+\.[a-z-]+)'/g)),
+  );
 }
 
 function readTuiCommandTypes(): string[] {

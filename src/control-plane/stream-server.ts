@@ -6,17 +6,14 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { open } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type CodexLiveEvent, type LiveSessionNotifyMode } from '../codex/live-session.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 import {
-  consumeJsonLines,
   encodeStreamEnvelope,
-  parseClientEnvelope,
   type StreamObservedEvent,
   type StreamSessionKeyEventRecord,
   type StreamSessionController,
@@ -25,7 +22,6 @@ import {
   type StreamClientEnvelope,
   type StreamCommand,
   type StreamServerEnvelope,
-  type StreamSessionEvent,
   type StreamSignal,
 } from './stream-protocol.ts';
 import {
@@ -39,13 +35,11 @@ import {
 import {
   buildAgentSessionStartArgs,
   codexResumeSessionIdFromAdapterState,
-  mergeAdapterStateFromSessionEvent,
   normalizeAdapterState,
 } from '../adapters/agent-session-state.ts';
-import { recordPerfEvent, startPerfSpan } from '../perf/perf-core.ts';
+import { recordPerfEvent } from '../perf/perf-core.ts';
 import {
   buildCodexTelemetryConfigArgs,
-  parseCodexHistoryLine,
   parseOtlpLifecycleLogEvents,
   parseOtlpLifecycleMetricEvents,
   parseOtlpLifecycleTraceEvents,
@@ -55,6 +49,35 @@ import {
   telemetryFingerprint,
   type ParsedCodexTelemetryEvent,
 } from './codex-telemetry.ts';
+import { executeStreamServerCommand } from './stream-server-command.ts';
+import {
+  handleAuth as handleConnectionAuth,
+  handleClientEnvelope as handleConnectionClientEnvelope,
+  handleCommand as handleConnectionCommand,
+  handleConnection as handleServerConnection,
+  handleSocketData as handleConnectionSocketData,
+} from './stream-server-connection.ts';
+import {
+  pollGitStatus as pollStreamServerGitStatus,
+  pollHistoryFile as pollStreamServerHistoryFile,
+  pollHistoryFileUnsafe as pollStreamServerHistoryFileUnsafe,
+  refreshGitStatusForDirectory as refreshStreamServerGitStatusForDirectory,
+} from './stream-server-background.ts';
+import {
+  handleInput as handleRuntimeInput,
+  handleResize as handleRuntimeResize,
+  handleSessionEvent as handleRuntimeSessionEvent,
+  handleSignal as handleRuntimeSignal,
+  persistConversationRuntime as persistRuntimeConversationState,
+  publishStatusObservedEvent as publishRuntimeStatusObservedEvent,
+  setSessionStatus as setRuntimeSessionStatus,
+} from './stream-server-session-runtime.ts';
+import { closeOwnedStateStore as closeOwnedStreamServerStateStore } from './stream-server-state-store.ts';
+import {
+  eventIncludesRepositoryId as filterEventIncludesRepositoryId,
+  eventIncludesTaskId as filterEventIncludesTaskId,
+  matchesObservedFilter as matchesStreamObservedFilter,
+} from './stream-server-observed-filter.ts';
 import type { HarnessLifecycleHooksConfig } from '../config/config-core.ts';
 import { LifecycleHooksRuntime } from './lifecycle-hooks.ts';
 import { readGitDirectorySnapshot } from '../mux/live-mux/git-snapshot.ts';
@@ -288,7 +311,6 @@ const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
 const HISTORY_POLL_JITTER_RATIO = 0.35;
-const HISTORY_POLL_MAX_DELAY_MS = 60_000;
 const SESSION_DIAGNOSTICS_BUCKET_MS = 10_000;
 const SESSION_DIAGNOSTICS_BUCKET_COUNT = 6;
 const DEFAULT_BOOTSTRAP_SESSION_COLS = 80;
@@ -297,7 +319,6 @@ const DEFAULT_TENANT_ID = 'tenant-local';
 const DEFAULT_USER_ID = 'user-local';
 const DEFAULT_WORKSPACE_ID = 'workspace-local';
 const DEFAULT_WORKTREE_ID = 'worktree-local';
-const LINE_FEED_BYTE = '\n'.charCodeAt(0);
 const DEFAULT_CLAUDE_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/codex-notify-relay.ts', import.meta.url)
 );
@@ -306,46 +327,6 @@ const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.turn.e2e_duration_ms',
   'codex.conversation_starts',
 ]);
-const CLAUDE_NEEDS_INPUT_NOTIFICATION_TYPES = new Set([
-  'permissionrequest',
-  'approvalrequest',
-  'approvalrequired',
-  'inputrequired',
-]);
-const CLAUDE_RUNNING_NOTIFICATION_TYPES = new Set([
-  'permissionapproved',
-  'permissiongranted',
-  'approvalapproved',
-  'approvalgranted',
-]);
-
-function readTrimmedString(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeEventToken(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-
-function claudeStatusHintFromNotificationType(
-  notificationType: string,
-): 'running' | 'needs-input' | null {
-  const token = normalizeEventToken(notificationType);
-  if (token.length === 0) {
-    return null;
-  }
-  if (CLAUDE_NEEDS_INPUT_NOTIFICATION_TYPES.has(token)) {
-    return 'needs-input';
-  }
-  if (CLAUDE_RUNNING_NOTIFICATION_TYPES.has(token)) {
-    return 'running';
-  }
-  return null;
-}
 
 function shellEscape(value: string): string {
   if (value.length === 0) {
@@ -549,37 +530,6 @@ function parseOtlpEndpoint(urlPath: string): OtlpEndpointTarget | null {
     kind: match[1] as 'logs' | 'metrics' | 'traces',
     token: decodedToken,
   };
-}
-
-function expandTildePath(pathValue: string): string {
-  if (pathValue === '~') {
-    return homedir();
-  }
-  if (pathValue.startsWith('~/')) {
-    return resolve(homedir(), pathValue.slice(2));
-  }
-  return pathValue;
-}
-
-function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
-  if (event.type === 'notify') {
-    return {
-      type: 'notify',
-      record: {
-        ts: event.record.ts,
-        payload: event.record.payload,
-      },
-    };
-  }
-
-  if (event.type === 'session-exit') {
-    return {
-      type: 'session-exit',
-      exit: event.exit,
-    };
-  }
-
-  return null;
 }
 
 function gitSummaryEqual(
@@ -830,11 +780,9 @@ export class ControlPlaneStreamServer {
   }
 
   private closeOwnedStateStore(): void {
-    if (!this.ownsStateStore || this.stateStoreClosed) {
-      return;
-    }
-    this.stateStore.close();
-    this.stateStoreClosed = true;
+    closeOwnedStreamServerStateStore(
+      this as unknown as Parameters<typeof closeOwnedStreamServerStateStore>[0],
+    );
   }
 
   private async startTelemetryServer(): Promise<void> {
@@ -1432,160 +1380,21 @@ export class ControlPlaneStreamServer {
   }
 
   private async pollHistoryFile(): Promise<void> {
-    const nowMs = Date.now();
-    if (nowMs < this.historyNextAllowedPollAtMs) {
-      return;
-    }
-    if (this.historyPollInFlight) {
-      return;
-    }
-    this.historyPollInFlight = true;
-    try {
-      const consumedNewBytes = await this.pollHistoryFileUnsafe();
-      if (consumedNewBytes) {
-        this.historyIdleStreak = 0;
-        this.historyNextAllowedPollAtMs = Date.now() + jitterDelayMs(this.codexHistory.pollMs);
-      } else {
-        this.historyIdleStreak = Math.min(this.historyIdleStreak + 1, 4);
-        const backoffMs = Math.min(HISTORY_POLL_MAX_DELAY_MS, this.codexHistory.pollMs * (1 << this.historyIdleStreak));
-        this.historyNextAllowedPollAtMs = Date.now() + jitterDelayMs(backoffMs);
-      }
-    } catch {
-      // History ingestion is best-effort and should never crash the control-plane runtime.
-      this.historyIdleStreak = Math.min(this.historyIdleStreak + 1, 4);
-      const backoffMs = Math.min(HISTORY_POLL_MAX_DELAY_MS, this.codexHistory.pollMs * (1 << this.historyIdleStreak));
-      this.historyNextAllowedPollAtMs = Date.now() + jitterDelayMs(backoffMs);
-    } finally {
-      this.historyPollInFlight = false;
-    }
+    await pollStreamServerHistoryFile(
+      this as unknown as Parameters<typeof pollStreamServerHistoryFile>[0],
+    );
   }
 
   private async pollHistoryFileUnsafe(): Promise<boolean> {
-    if (!this.codexHistory.enabled) {
-      return false;
-    }
-    const resolvedHistoryPath = expandTildePath(this.codexHistory.filePath);
-    let handle: Awaited<ReturnType<typeof open>>;
-    try {
-      handle = await open(resolvedHistoryPath, 'r');
-    } catch (error) {
-      const errorWithCode = error as { code?: unknown };
-      if (errorWithCode.code === 'ENOENT') {
-        return false;
-      }
-      throw error;
-    }
-    let delta = '';
-    let fileTruncated = false;
-    try {
-      const stats = await handle.stat();
-      const fileSize = Number(stats.size);
-      if (!Number.isFinite(fileSize)) {
-        return false;
-      }
-      if (fileSize < this.historyOffset) {
-        fileTruncated = true;
-        this.historyOffset = 0;
-        this.historyRemainder = '';
-      }
-      if (
-        !fileTruncated &&
-        this.historyOffset > 0 &&
-        this.historyRemainder.length === 0 &&
-        fileSize >= this.historyOffset
-      ) {
-        // Detect in-place rewrites where truncation and rewrite both happen between polls.
-        const probe = Buffer.allocUnsafe(1);
-        const { bytesRead: probeBytesRead } = await handle.read(probe, 0, 1, this.historyOffset - 1);
-        const historyBoundaryMatches = probeBytesRead === 1 && probe[0] === LINE_FEED_BYTE;
-        if (!historyBoundaryMatches) {
-          fileTruncated = true;
-          this.historyOffset = 0;
-          this.historyRemainder = '';
-        }
-      }
-      const remainingBytes = fileSize - this.historyOffset;
-      if (remainingBytes <= 0) {
-        return fileTruncated;
-      }
-      const buffer = Buffer.allocUnsafe(remainingBytes);
-      let bytesReadTotal = 0;
-      while (bytesReadTotal < remainingBytes) {
-        const { bytesRead } = await handle.read(
-          buffer,
-          bytesReadTotal,
-          remainingBytes - bytesReadTotal,
-          this.historyOffset + bytesReadTotal,
-        );
-        if (bytesRead <= 0) {
-          break;
-        }
-        bytesReadTotal += bytesRead;
-      }
-      if (bytesReadTotal <= 0) {
-        return fileTruncated;
-      }
-      this.historyOffset += bytesReadTotal;
-      delta = buffer.toString('utf8', 0, bytesReadTotal);
-    } finally {
-      await handle.close();
-    }
-
-    if (delta.length === 0) {
-      return fileTruncated;
-    }
-
-    const buffered = `${this.historyRemainder}${delta}`;
-    const lines = buffered.split('\n');
-    this.historyRemainder = lines.pop() as string;
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.length === 0) {
-        continue;
-      }
-      const parsed = parseCodexHistoryLine(trimmed, new Date().toISOString());
-      if (parsed === null) {
-        continue;
-      }
-      const sessionId =
-        parsed.providerThreadId === null
-          ? null
-          : this.resolveSessionIdByThreadId(parsed.providerThreadId);
-      this.ingestParsedTelemetryEvent(sessionId, parsed);
-    }
-    return true;
+    return await pollStreamServerHistoryFileUnsafe(
+      this as unknown as Parameters<typeof pollStreamServerHistoryFileUnsafe>[0],
+    );
   }
 
   private async pollGitStatus(): Promise<void> {
-    if (this.gitStatusPollInFlight) {
-      return;
-    }
-    this.gitStatusPollInFlight = true;
-    try {
-      const directories = [...this.gitStatusDirectoriesById.values()];
-      if (directories.length === 0) {
-        return;
-      }
-      const nowMs = Date.now();
-      const dueDirectories = directories.filter((directory) => {
-        const previous = this.gitStatusByDirectoryId.get(directory.directoryId);
-        if (previous === undefined) {
-          return true;
-        }
-        const minRefreshWindowMs = Math.max(
-          this.gitStatusMonitor.minDirectoryRefreshMs,
-          Math.min(10 * 60 * 1000, Math.max(1000, previous.lastRefreshDurationMs * 4))
-        );
-        return nowMs - previous.lastRefreshedAtMs >= minRefreshWindowMs;
-      });
-      await runWithConcurrencyLimit(
-        dueDirectories,
-        this.gitStatusMonitor.maxConcurrency,
-        async (directory) => await this.refreshGitStatusForDirectory(directory),
-      );
-    } finally {
-      this.gitStatusPollInFlight = false;
-    }
+    await pollStreamServerGitStatus(
+      this as unknown as Parameters<typeof pollStreamServerGitStatus>[0],
+    );
   }
 
   private async refreshGitStatusForDirectory(
@@ -1594,260 +1403,42 @@ export class ControlPlaneStreamServer {
       readonly forcePublish?: boolean;
     } = {}
   ): Promise<void> {
-    if (this.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId)) {
-      return;
-    }
-    this.gitStatusRefreshInFlightDirectoryIds.add(directory.directoryId);
-    const gitSpan = startPerfSpan('control-plane.background.git-status', {
-      directoryId: directory.directoryId,
-    });
-    const startedAtMs = Date.now();
-    const previous = this.gitStatusByDirectoryId.get(directory.directoryId) ?? null;
-    try {
-      const snapshot = await this.readGitDirectorySnapshot(directory.path);
-      let repositorySnapshot: GitDirectorySnapshot['repository'] = snapshot.repository;
-      if (
-        repositorySnapshot.commitCount === null &&
-        previous !== null &&
-        previous.repositorySnapshot.normalizedRemoteUrl === repositorySnapshot.normalizedRemoteUrl &&
-        previous.repositorySnapshot.shortCommitHash === repositorySnapshot.shortCommitHash
-      ) {
-        repositorySnapshot = {
-          ...repositorySnapshot,
-          commitCount: previous.repositorySnapshot.commitCount
-        };
-      }
-      let repositoryId: string | null = null;
-      let repositoryRecord: Record<string, unknown> | null = null;
-      if (repositorySnapshot.normalizedRemoteUrl !== null) {
-        if (
-          previous !== null &&
-          previous.repositoryId !== null &&
-          previous.repositorySnapshot.normalizedRemoteUrl === repositorySnapshot.normalizedRemoteUrl
-        ) {
-          repositoryId = previous.repositoryId;
-        } else {
-          const upserted = this.stateStore.upsertRepository({
-            repositoryId: `repository-${randomUUID()}`,
-            tenantId: directory.tenantId,
-            userId: directory.userId,
-            workspaceId: directory.workspaceId,
-            name: repositorySnapshot.inferredName ?? 'repository',
-            remoteUrl: repositorySnapshot.normalizedRemoteUrl,
-            defaultBranch: repositorySnapshot.defaultBranch ?? 'main',
-            metadata: {
-              source: 'control-plane-git-status',
-            },
-          });
-          repositoryId = upserted.repositoryId;
-          repositoryRecord = this.repositoryRecord(upserted);
-        }
-      }
-      const next: DirectoryGitStatusCacheEntry = {
-        summary: snapshot.summary,
-        repositorySnapshot,
-        repositoryId,
-        lastRefreshedAtMs: Date.now(),
-        lastRefreshDurationMs: Math.max(1, Date.now() - startedAtMs),
-      };
-      this.gitStatusByDirectoryId.set(directory.directoryId, next);
-      const changed =
-        previous === null ||
-        !gitSummaryEqual(previous.summary, next.summary) ||
-        !gitRepositorySnapshotEqual(previous.repositorySnapshot, next.repositorySnapshot) ||
-        previous.repositoryId !== next.repositoryId;
-      const shouldPublish = changed || options.forcePublish === true;
-      if (shouldPublish) {
-        if (repositoryRecord === null && repositoryId !== null) {
-          const existingRepository = this.stateStore.getRepository(repositoryId);
-          if (existingRepository !== null) {
-            repositoryRecord = this.repositoryRecord(existingRepository);
-          }
-        }
-        this.publishObservedEvent(
-          {
-            tenantId: directory.tenantId,
-            userId: directory.userId,
-            workspaceId: directory.workspaceId,
-            directoryId: directory.directoryId,
-            conversationId: null,
-          },
-          {
-            type: 'directory-git-updated',
-            directoryId: directory.directoryId,
-            summary: {
-              branch: snapshot.summary.branch,
-              changedFiles: snapshot.summary.changedFiles,
-              additions: snapshot.summary.additions,
-              deletions: snapshot.summary.deletions,
-            },
-            repositorySnapshot: {
-              normalizedRemoteUrl: repositorySnapshot.normalizedRemoteUrl,
-              commitCount: repositorySnapshot.commitCount,
-              lastCommitAt: repositorySnapshot.lastCommitAt,
-              shortCommitHash: repositorySnapshot.shortCommitHash,
-              inferredName: repositorySnapshot.inferredName,
-              defaultBranch: repositorySnapshot.defaultBranch,
-            },
-            repositoryId,
-            repository: repositoryRecord,
-            observedAt: new Date().toISOString(),
-          },
-        );
-      }
-      gitSpan.end({
-        directoryId: directory.directoryId,
-        changed,
-        published: shouldPublish ? 1 : 0,
-        forcePublished: options.forcePublish ? 1 : 0,
-        repositoryLinked: repositoryId === null ? 0 : 1,
-      });
-    } catch {
-      // Git status polling is best-effort and should not interrupt control-plane operations.
-      if (previous !== null) {
-        this.gitStatusByDirectoryId.set(directory.directoryId, {
-          ...previous,
-          lastRefreshedAtMs: Date.now(),
-          lastRefreshDurationMs: Math.max(1, Date.now() - startedAtMs)
-        });
-      }
-      gitSpan.end({
-        directoryId: directory.directoryId,
-        changed: false,
-        failed: true,
-      });
-    } finally {
-      this.gitStatusRefreshInFlightDirectoryIds.delete(directory.directoryId);
-    }
+    await refreshStreamServerGitStatusForDirectory(
+      this as unknown as Parameters<typeof refreshStreamServerGitStatusForDirectory>[0],
+      directory,
+      options,
+    );
   }
 
   private handleConnection(socket: Socket): void {
-    const connectionId = `connection-${randomUUID()}`;
-    const state: ConnectionState = {
-      id: connectionId,
+    handleServerConnection(
+      this as unknown as Parameters<typeof handleServerConnection>[0],
       socket,
-      remainder: '',
-      authenticated: this.authToken === null,
-      attachedSessionIds: new Set<string>(),
-      eventSessionIds: new Set<string>(),
-      streamSubscriptionIds: new Set<string>(),
-      queuedPayloads: [],
-      queuedPayloadBytes: 0,
-      writeBlocked: false,
-    };
-
-    this.connections.set(connectionId, state);
-    recordPerfEvent('control-plane.server.connection.open', {
-      role: 'server',
-      connectionId,
-      authRequired: this.authToken !== null,
-    });
-
-    socket.on('data', (chunk: Buffer) => {
-      this.handleSocketData(state, chunk);
-    });
-
-    socket.on('drain', () => {
-      state.writeBlocked = false;
-      this.flushConnectionWrites(connectionId);
-    });
-
-    socket.on('error', () => {
-      this.cleanupConnection(connectionId);
-    });
-
-    socket.on('close', () => {
-      this.cleanupConnection(connectionId);
-    });
+    );
   }
 
   private handleSocketData(connection: ConnectionState, chunk: Buffer): void {
-    const combined = `${connection.remainder}${chunk.toString('utf8')}`;
-    const consumed = consumeJsonLines(combined);
-    connection.remainder = consumed.remainder;
-
-    for (const message of consumed.messages) {
-      const parsed = parseClientEnvelope(message);
-      if (parsed === null) {
-        continue;
-      }
-      this.handleClientEnvelope(connection, parsed);
-    }
+    handleConnectionSocketData(
+      this as unknown as Parameters<typeof handleConnectionSocketData>[0],
+      connection,
+      chunk,
+    );
   }
 
   private handleClientEnvelope(connection: ConnectionState, envelope: StreamClientEnvelope): void {
-    if (envelope.kind === 'auth') {
-      this.handleAuth(connection, envelope.token);
-      return;
-    }
-
-    if (!connection.authenticated) {
-      this.sendToConnection(connection.id, {
-        kind: 'auth.error',
-        error: 'authentication required',
-      });
-      recordPerfEvent('control-plane.server.auth.required', {
-        role: 'server',
-        connectionId: connection.id,
-      });
-      connection.socket.destroy();
-      return;
-    }
-
-    if (envelope.kind === 'command') {
-      this.handleCommand(connection, envelope.commandId, envelope.command);
-      return;
-    }
-
-    if (envelope.kind === 'pty.input') {
-      this.handleInput(connection.id, envelope.sessionId, envelope.dataBase64);
-      return;
-    }
-
-    if (envelope.kind === 'pty.resize') {
-      this.handleResize(connection.id, envelope.sessionId, envelope.cols, envelope.rows);
-      return;
-    }
-
-    this.handleSignal(connection.id, envelope.sessionId, envelope.signal);
+    handleConnectionClientEnvelope(
+      this as unknown as Parameters<typeof handleConnectionClientEnvelope>[0],
+      connection,
+      envelope,
+    );
   }
 
   private handleAuth(connection: ConnectionState, token: string): void {
-    if (this.authToken === null) {
-      connection.authenticated = true;
-      this.sendToConnection(connection.id, {
-        kind: 'auth.ok',
-      });
-      recordPerfEvent('control-plane.server.auth.ok', {
-        role: 'server',
-        connectionId: connection.id,
-        authRequired: false,
-      });
-      return;
-    }
-
-    if (token !== this.authToken) {
-      this.sendToConnection(connection.id, {
-        kind: 'auth.error',
-        error: 'invalid auth token',
-      });
-      recordPerfEvent('control-plane.server.auth.failed', {
-        role: 'server',
-        connectionId: connection.id,
-      });
-      connection.socket.destroy();
-      return;
-    }
-
-    connection.authenticated = true;
-    this.sendToConnection(connection.id, {
-      kind: 'auth.ok',
-    });
-    recordPerfEvent('control-plane.server.auth.ok', {
-      role: 'server',
-      connectionId: connection.id,
-      authRequired: true,
-    });
+    handleConnectionAuth(
+      this as unknown as Parameters<typeof handleConnectionAuth>[0],
+      connection,
+      token,
+    );
   }
 
   private handleCommand(
@@ -1855,1382 +1446,59 @@ export class ControlPlaneStreamServer {
     commandId: string,
     command: StreamCommand,
   ): void {
-    this.sendToConnection(connection.id, {
-      kind: 'command.accepted',
+    handleConnectionCommand(
+      this as unknown as Parameters<typeof handleConnectionCommand>[0],
+      connection,
       commandId,
-    });
-
-    const commandSpan = startPerfSpan('control-plane.server.command', {
-      role: 'server',
-      type: command.type,
-    });
-    try {
-      const result = this.executeCommand(connection, command);
-      commandSpan.end({
-        type: command.type,
-        status: 'completed',
-      });
-      this.sendToConnection(connection.id, {
-        kind: 'command.completed',
-        commandId,
-        result,
-      });
-    } catch (error) {
-      commandSpan.end({
-        type: command.type,
-        status: 'failed',
-        message: String(error),
-      });
-      this.sendToConnection(connection.id, {
-        kind: 'command.failed',
-        commandId,
-        error: String(error),
-      });
-    }
+      command,
+    );
   }
 
   private executeCommand(
     connection: ConnectionState,
     command: StreamCommand,
   ): Record<string, unknown> {
-    if (command.type === 'directory.upsert') {
-      const directory = this.stateStore.upsertDirectory({
-        directoryId: command.directoryId ?? `directory-${randomUUID()}`,
-        tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
-        userId: command.userId ?? DEFAULT_USER_ID,
-        workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
-        path: command.path,
-      });
-      const record = this.directoryRecord(directory);
-      this.gitStatusDirectoriesById.set(directory.directoryId, directory);
-      this.publishObservedEvent(
-        {
-          tenantId: directory.tenantId,
-          userId: directory.userId,
-          workspaceId: directory.workspaceId,
-          directoryId: directory.directoryId,
-          conversationId: null,
-        },
-        {
-          type: 'directory-upserted',
-          directory: record,
-        },
-      );
-      if (this.gitStatusMonitor.enabled) {
-        void this.refreshGitStatusForDirectory(directory, {
-          forcePublish: true
-        });
-      }
-      return {
-        directory: record,
-      };
-    }
-
-    if (command.type === 'directory.list') {
-      const query: {
-        tenantId?: string;
-        userId?: string;
-        workspaceId?: string;
-        includeArchived?: boolean;
-        limit?: number;
-      } = {};
-      if (command.tenantId !== undefined) {
-        query.tenantId = command.tenantId;
-      }
-      if (command.userId !== undefined) {
-        query.userId = command.userId;
-      }
-      if (command.workspaceId !== undefined) {
-        query.workspaceId = command.workspaceId;
-      }
-      if (command.includeArchived !== undefined) {
-        query.includeArchived = command.includeArchived;
-      }
-      if (command.limit !== undefined) {
-        query.limit = command.limit;
-      }
-      const directories = this.stateStore
-        .listDirectories(query)
-        .map((directory) => this.directoryRecord(directory));
-      return {
-        directories,
-      };
-    }
-
-    if (command.type === 'directory.archive') {
-      const archived = this.stateStore.archiveDirectory(command.directoryId);
-      const record = this.directoryRecord(archived);
-      this.publishObservedEvent(
-        {
-          tenantId: archived.tenantId,
-          userId: archived.userId,
-          workspaceId: archived.workspaceId,
-          directoryId: archived.directoryId,
-          conversationId: null,
-        },
-        {
-          type: 'directory-archived',
-          directoryId: archived.directoryId,
-          ts: archived.archivedAt as string,
-        },
-      );
-      this.gitStatusByDirectoryId.delete(archived.directoryId);
-      this.gitStatusDirectoriesById.delete(archived.directoryId);
-      return {
-        directory: record,
-      };
-    }
-
-    if (command.type === 'directory.git-status') {
-      const query: {
-        tenantId?: string;
-        userId?: string;
-        workspaceId?: string;
-        includeArchived: boolean;
-        limit: number;
-      } = {
-        includeArchived: false,
-        limit: 1000,
-      };
-      if (command.tenantId !== undefined) {
-        query.tenantId = command.tenantId;
-      }
-      if (command.userId !== undefined) {
-        query.userId = command.userId;
-      }
-      if (command.workspaceId !== undefined) {
-        query.workspaceId = command.workspaceId;
-      }
-      const listedDirectories = this.stateStore
-        .listDirectories(query)
-        .filter((directory) =>
-          command.directoryId === undefined ? true : directory.directoryId === command.directoryId,
-        );
-      for (const directory of listedDirectories) {
-        this.gitStatusDirectoriesById.set(directory.directoryId, directory);
-      }
-      const gitStatuses = listedDirectories.flatMap((directory) => {
-        const cached = this.gitStatusByDirectoryId.get(directory.directoryId);
-        if (cached === undefined) {
-          return [];
-        }
-        const repositoryRecord =
-          cached.repositoryId === null
-            ? null
-            : (() => {
-                const repository = this.stateStore.getRepository(cached.repositoryId);
-                if (repository === null || repository.archivedAt !== null) {
-                  return null;
-                }
-                return this.repositoryRecord(repository);
-              })();
-        return [
-          {
-            directoryId: directory.directoryId,
-            summary: {
-              branch: cached.summary.branch,
-              changedFiles: cached.summary.changedFiles,
-              additions: cached.summary.additions,
-              deletions: cached.summary.deletions,
-            },
-            repositorySnapshot: {
-              normalizedRemoteUrl: cached.repositorySnapshot.normalizedRemoteUrl,
-              commitCount: cached.repositorySnapshot.commitCount,
-              lastCommitAt: cached.repositorySnapshot.lastCommitAt,
-              shortCommitHash: cached.repositorySnapshot.shortCommitHash,
-              inferredName: cached.repositorySnapshot.inferredName,
-              defaultBranch: cached.repositorySnapshot.defaultBranch,
-            },
-            repositoryId: cached.repositoryId,
-            repository: repositoryRecord,
-            observedAt: new Date(cached.lastRefreshedAtMs).toISOString(),
-          },
-        ];
-      });
-      return {
-        gitStatuses,
-      };
-    }
-
-    if (command.type === 'conversation.create') {
-      const conversation = this.stateStore.createConversation({
-        conversationId: command.conversationId ?? `conversation-${randomUUID()}`,
-        directoryId: command.directoryId,
-        title: command.title,
-        agentType: command.agentType,
-        adapterState: normalizeAdapterState(command.adapterState),
-      });
-      const record = this.conversationRecord(conversation);
-      this.publishObservedEvent(
-        {
-          tenantId: conversation.tenantId,
-          userId: conversation.userId,
-          workspaceId: conversation.workspaceId,
-          directoryId: conversation.directoryId,
-          conversationId: conversation.conversationId,
-        },
-        {
-          type: 'conversation-created',
-          conversation: record,
-        },
-      );
-      return {
-        conversation: record,
-      };
-    }
-
-    if (command.type === 'conversation.list') {
-      const query: {
-        directoryId?: string;
-        tenantId?: string;
-        userId?: string;
-        workspaceId?: string;
-        includeArchived?: boolean;
-        limit?: number;
-      } = {};
-      if (command.directoryId !== undefined) {
-        query.directoryId = command.directoryId;
-      }
-      if (command.tenantId !== undefined) {
-        query.tenantId = command.tenantId;
-      }
-      if (command.userId !== undefined) {
-        query.userId = command.userId;
-      }
-      if (command.workspaceId !== undefined) {
-        query.workspaceId = command.workspaceId;
-      }
-      if (command.includeArchived !== undefined) {
-        query.includeArchived = command.includeArchived;
-      }
-      if (command.limit !== undefined) {
-        query.limit = command.limit;
-      }
-      const conversations = this.stateStore
-        .listConversations(query)
-        .map((conversation) => this.conversationRecord(conversation));
-      return {
-        conversations,
-      };
-    }
-
-    if (command.type === 'conversation.archive') {
-      const archived = this.stateStore.archiveConversation(command.conversationId);
-      this.publishObservedEvent(
-        {
-          tenantId: archived.tenantId,
-          userId: archived.userId,
-          workspaceId: archived.workspaceId,
-          directoryId: archived.directoryId,
-          conversationId: archived.conversationId,
-        },
-        {
-          type: 'conversation-archived',
-          conversationId: archived.conversationId,
-          ts: archived.archivedAt as string,
-        },
-      );
-      return {
-        conversation: this.conversationRecord(archived),
-      };
-    }
-
-    if (command.type === 'conversation.update') {
-      const updated = this.stateStore.updateConversationTitle(
-        command.conversationId,
-        command.title,
-      );
-      if (updated === null) {
-        throw new Error(`conversation not found: ${command.conversationId}`);
-      }
-      const record = this.conversationRecord(updated);
-      this.publishObservedEvent(
-        {
-          tenantId: updated.tenantId,
-          userId: updated.userId,
-          workspaceId: updated.workspaceId,
-          directoryId: updated.directoryId,
-          conversationId: updated.conversationId,
-        },
-        {
-          type: 'conversation-updated',
-          conversation: record,
-        },
-      );
-      return {
-        conversation: record,
-      };
-    }
-
-    if (command.type === 'conversation.delete') {
-      const existing = this.stateStore.getConversation(command.conversationId);
-      if (existing === null) {
-        throw new Error(`conversation not found: ${command.conversationId}`);
-      }
-      this.destroySession(command.conversationId, true);
-      this.stateStore.deleteConversation(command.conversationId);
-      this.publishObservedEvent(
-        {
-          tenantId: existing.tenantId,
-          userId: existing.userId,
-          workspaceId: existing.workspaceId,
-          directoryId: existing.directoryId,
-          conversationId: existing.conversationId,
-        },
-        {
-          type: 'conversation-deleted',
-          conversationId: existing.conversationId,
-          ts: new Date().toISOString(),
-        },
-      );
-      return {
-        deleted: true,
-      };
-    }
-
-    if (command.type === 'repository.upsert') {
-      const input: {
-        repositoryId: string;
-        tenantId: string;
-        userId: string;
-        workspaceId: string;
-        name: string;
-        remoteUrl: string;
-        defaultBranch?: string;
-        metadata?: Record<string, unknown>;
-      } = {
-        repositoryId: command.repositoryId ?? `repository-${randomUUID()}`,
-        tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
-        userId: command.userId ?? DEFAULT_USER_ID,
-        workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
-        name: command.name,
-        remoteUrl: command.remoteUrl,
-      };
-      if (command.defaultBranch !== undefined) {
-        input.defaultBranch = command.defaultBranch;
-      }
-      if (command.metadata !== undefined) {
-        input.metadata = command.metadata;
-      }
-      const repository = this.stateStore.upsertRepository(input);
-      this.publishObservedEvent(
-        {
-          tenantId: repository.tenantId,
-          userId: repository.userId,
-          workspaceId: repository.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'repository-upserted',
-          repository: this.repositoryRecord(repository),
-        },
-      );
-      return {
-        repository: this.repositoryRecord(repository),
-      };
-    }
-
-    if (command.type === 'repository.get') {
-      const repository = this.stateStore.getRepository(command.repositoryId);
-      if (repository === null) {
-        throw new Error(`repository not found: ${command.repositoryId}`);
-      }
-      return {
-        repository: this.repositoryRecord(repository),
-      };
-    }
-
-    if (command.type === 'repository.list') {
-      const query: {
-        tenantId?: string;
-        userId?: string;
-        workspaceId?: string;
-        includeArchived?: boolean;
-        limit?: number;
-      } = {};
-      if (command.tenantId !== undefined) {
-        query.tenantId = command.tenantId;
-      }
-      if (command.userId !== undefined) {
-        query.userId = command.userId;
-      }
-      if (command.workspaceId !== undefined) {
-        query.workspaceId = command.workspaceId;
-      }
-      if (command.includeArchived !== undefined) {
-        query.includeArchived = command.includeArchived;
-      }
-      if (command.limit !== undefined) {
-        query.limit = command.limit;
-      }
-      const repositories = this.stateStore
-        .listRepositories(query)
-        .map((repository) => this.repositoryRecord(repository));
-      return {
-        repositories,
-      };
-    }
-
-    if (command.type === 'repository.update') {
-      const update: {
-        name?: string;
-        remoteUrl?: string;
-        defaultBranch?: string;
-        metadata?: Record<string, unknown>;
-      } = {};
-      if (command.name !== undefined) {
-        update.name = command.name;
-      }
-      if (command.remoteUrl !== undefined) {
-        update.remoteUrl = command.remoteUrl;
-      }
-      if (command.defaultBranch !== undefined) {
-        update.defaultBranch = command.defaultBranch;
-      }
-      if (command.metadata !== undefined) {
-        update.metadata = command.metadata;
-      }
-      const updated = this.stateStore.updateRepository(command.repositoryId, update);
-      if (updated === null) {
-        throw new Error(`repository not found: ${command.repositoryId}`);
-      }
-      this.publishObservedEvent(
-        {
-          tenantId: updated.tenantId,
-          userId: updated.userId,
-          workspaceId: updated.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'repository-updated',
-          repository: this.repositoryRecord(updated),
-        },
-      );
-      return {
-        repository: this.repositoryRecord(updated),
-      };
-    }
-
-    if (command.type === 'repository.archive') {
-      const archived = this.stateStore.archiveRepository(command.repositoryId);
-      this.publishObservedEvent(
-        {
-          tenantId: archived.tenantId,
-          userId: archived.userId,
-          workspaceId: archived.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'repository-archived',
-          repositoryId: archived.repositoryId,
-          ts: archived.archivedAt as string,
-        },
-      );
-      return {
-        repository: this.repositoryRecord(archived),
-      };
-    }
-
-    if (command.type === 'task.create') {
-      const input: {
-        taskId: string;
-        tenantId: string;
-        userId: string;
-        workspaceId: string;
-        repositoryId?: string;
-        title: string;
-        description?: string;
-        linear?: {
-          issueId?: string | null;
-          identifier?: string | null;
-          url?: string | null;
-          teamId?: string | null;
-          projectId?: string | null;
-          projectMilestoneId?: string | null;
-          cycleId?: string | null;
-          stateId?: string | null;
-          assigneeId?: string | null;
-          priority?: number | null;
-          estimate?: number | null;
-          dueDate?: string | null;
-          labelIds?: readonly string[] | null;
-        };
-      } = {
-        taskId: command.taskId ?? `task-${randomUUID()}`,
-        tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
-        userId: command.userId ?? DEFAULT_USER_ID,
-        workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
-        title: command.title,
-      };
-      if (command.repositoryId !== undefined) {
-        input.repositoryId = command.repositoryId;
-      }
-      if (command.description !== undefined) {
-        input.description = command.description;
-      }
-      if (command.linear !== undefined) {
-        input.linear = command.linear;
-      }
-      const task = this.stateStore.createTask(input);
-      this.publishObservedEvent(
-        {
-          tenantId: task.tenantId,
-          userId: task.userId,
-          workspaceId: task.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-created',
-          task: this.taskRecord(task),
-        },
-      );
-      return {
-        task: this.taskRecord(task),
-      };
-    }
-
-    if (command.type === 'task.get') {
-      const task = this.stateStore.getTask(command.taskId);
-      if (task === null) {
-        throw new Error(`task not found: ${command.taskId}`);
-      }
-      return {
-        task: this.taskRecord(task),
-      };
-    }
-
-    if (command.type === 'task.list') {
-      const query: {
-        tenantId?: string;
-        userId?: string;
-        workspaceId?: string;
-        repositoryId?: string;
-        status?: 'draft' | 'ready' | 'in-progress' | 'completed';
-        limit?: number;
-      } = {};
-      if (command.tenantId !== undefined) {
-        query.tenantId = command.tenantId;
-      }
-      if (command.userId !== undefined) {
-        query.userId = command.userId;
-      }
-      if (command.workspaceId !== undefined) {
-        query.workspaceId = command.workspaceId;
-      }
-      if (command.repositoryId !== undefined) {
-        query.repositoryId = command.repositoryId;
-      }
-      if (command.status !== undefined) {
-        query.status = command.status;
-      }
-      if (command.limit !== undefined) {
-        query.limit = command.limit;
-      }
-      const tasks = this.stateStore.listTasks(query).map((task) => this.taskRecord(task));
-      return {
-        tasks,
-      };
-    }
-
-    if (command.type === 'task.update') {
-      const update: {
-        title?: string;
-        description?: string;
-        repositoryId?: string | null;
-        linear?: {
-          issueId?: string | null;
-          identifier?: string | null;
-          url?: string | null;
-          teamId?: string | null;
-          projectId?: string | null;
-          projectMilestoneId?: string | null;
-          cycleId?: string | null;
-          stateId?: string | null;
-          assigneeId?: string | null;
-          priority?: number | null;
-          estimate?: number | null;
-          dueDate?: string | null;
-          labelIds?: readonly string[] | null;
-        } | null;
-      } = {};
-      if (command.title !== undefined) {
-        update.title = command.title;
-      }
-      if (command.description !== undefined) {
-        update.description = command.description;
-      }
-      if (command.repositoryId !== undefined) {
-        update.repositoryId = command.repositoryId;
-      }
-      if (command.linear !== undefined) {
-        update.linear = command.linear;
-      }
-      const updated = this.stateStore.updateTask(command.taskId, update);
-      if (updated === null) {
-        throw new Error(`task not found: ${command.taskId}`);
-      }
-      this.publishObservedEvent(
-        {
-          tenantId: updated.tenantId,
-          userId: updated.userId,
-          workspaceId: updated.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-updated',
-          task: this.taskRecord(updated),
-        },
-      );
-      return {
-        task: this.taskRecord(updated),
-      };
-    }
-
-    if (command.type === 'task.delete') {
-      const existing = this.stateStore.getTask(command.taskId);
-      if (existing === null) {
-        throw new Error(`task not found: ${command.taskId}`);
-      }
-      this.stateStore.deleteTask(command.taskId);
-      this.publishObservedEvent(
-        {
-          tenantId: existing.tenantId,
-          userId: existing.userId,
-          workspaceId: existing.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-deleted',
-          taskId: existing.taskId,
-          ts: new Date().toISOString(),
-        },
-      );
-      return {
-        deleted: true,
-      };
-    }
-
-    if (command.type === 'task.claim') {
-      const input: {
-        taskId: string;
-        controllerId: string;
-        directoryId?: string;
-        branchName?: string;
-        baseBranch?: string;
-      } = {
-        taskId: command.taskId,
-        controllerId: command.controllerId,
-      };
-      if (command.directoryId !== undefined) {
-        input.directoryId = command.directoryId;
-      }
-      if (command.branchName !== undefined) {
-        input.branchName = command.branchName;
-      }
-      if (command.baseBranch !== undefined) {
-        input.baseBranch = command.baseBranch;
-      }
-      const task = this.stateStore.claimTask(input);
-      this.publishObservedEvent(
-        {
-          tenantId: task.tenantId,
-          userId: task.userId,
-          workspaceId: task.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-updated',
-          task: this.taskRecord(task),
-        },
-      );
-      return {
-        task: this.taskRecord(task),
-      };
-    }
-
-    if (command.type === 'task.complete') {
-      const task = this.stateStore.completeTask(command.taskId);
-      this.publishObservedEvent(
-        {
-          tenantId: task.tenantId,
-          userId: task.userId,
-          workspaceId: task.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-updated',
-          task: this.taskRecord(task),
-        },
-      );
-      return {
-        task: this.taskRecord(task),
-      };
-    }
-
-    if (command.type === 'task.queue') {
-      const task = this.stateStore.readyTask(command.taskId);
-      this.publishObservedEvent(
-        {
-          tenantId: task.tenantId,
-          userId: task.userId,
-          workspaceId: task.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-updated',
-          task: this.taskRecord(task),
-        },
-      );
-      return {
-        task: this.taskRecord(task),
-      };
-    }
-
-    if (command.type === 'task.ready') {
-      const task = this.stateStore.readyTask(command.taskId);
-      this.publishObservedEvent(
-        {
-          tenantId: task.tenantId,
-          userId: task.userId,
-          workspaceId: task.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-updated',
-          task: this.taskRecord(task),
-        },
-      );
-      return {
-        task: this.taskRecord(task),
-      };
-    }
-
-    if (command.type === 'task.draft') {
-      const task = this.stateStore.draftTask(command.taskId);
-      this.publishObservedEvent(
-        {
-          tenantId: task.tenantId,
-          userId: task.userId,
-          workspaceId: task.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-updated',
-          task: this.taskRecord(task),
-        },
-      );
-      return {
-        task: this.taskRecord(task),
-      };
-    }
-
-    if (command.type === 'task.reorder') {
-      const tasks = this.stateStore
-        .reorderTasks({
-          tenantId: command.tenantId,
-          userId: command.userId,
-          workspaceId: command.workspaceId,
-          orderedTaskIds: command.orderedTaskIds,
-        })
-        .map((task) => this.taskRecord(task));
-      this.publishObservedEvent(
-        {
-          tenantId: command.tenantId,
-          userId: command.userId,
-          workspaceId: command.workspaceId,
-          directoryId: null,
-          conversationId: null,
-        },
-        {
-          type: 'task-reordered',
-          tasks,
-          ts: new Date().toISOString(),
-        },
-      );
-      return {
-        tasks,
-      };
-    }
-
-    if (command.type === 'stream.subscribe') {
-      const subscriptionId = `subscription-${randomUUID()}`;
-      const filter: StreamSubscriptionFilter = {
-        includeOutput: command.includeOutput ?? false,
-      };
-      if (command.tenantId !== undefined) {
-        filter.tenantId = command.tenantId;
-      }
-      if (command.userId !== undefined) {
-        filter.userId = command.userId;
-      }
-      if (command.workspaceId !== undefined) {
-        filter.workspaceId = command.workspaceId;
-      }
-      if (command.repositoryId !== undefined) {
-        filter.repositoryId = command.repositoryId;
-      }
-      if (command.taskId !== undefined) {
-        filter.taskId = command.taskId;
-      }
-      if (command.directoryId !== undefined) {
-        filter.directoryId = command.directoryId;
-      }
-      if (command.conversationId !== undefined) {
-        filter.conversationId = command.conversationId;
-      }
-
-      this.streamSubscriptions.set(subscriptionId, {
-        id: subscriptionId,
-        connectionId: connection.id,
-        filter,
-      });
-      connection.streamSubscriptionIds.add(subscriptionId);
-
-      const afterCursor = command.afterCursor ?? 0;
-      for (const entry of this.streamJournal) {
-        if (entry.cursor <= afterCursor) {
-          continue;
-        }
-        if (!this.matchesObservedFilter(entry.scope, entry.event, filter)) {
-          continue;
-        }
-        const diagnosticSessionId = this.diagnosticSessionIdForObservedEvent(
-          entry.scope,
-          entry.event,
-        );
-        this.sendToConnection(connection.id, {
-          kind: 'stream.event',
-          subscriptionId,
-          cursor: entry.cursor,
-          event: entry.event,
-        }, diagnosticSessionId);
-      }
-
-      return {
-        subscriptionId,
-        cursor: this.streamCursor,
-      };
-    }
-
-    if (command.type === 'stream.unsubscribe') {
-      const subscription = this.streamSubscriptions.get(command.subscriptionId);
-      if (subscription !== undefined) {
-        const subscriptionConnection = this.connections.get(subscription.connectionId);
-        subscriptionConnection?.streamSubscriptionIds.delete(command.subscriptionId);
-        this.streamSubscriptions.delete(command.subscriptionId);
-      }
-      return {
-        unsubscribed: true,
-      };
-    }
-
-    if (command.type === 'session.list') {
-      const sort = command.sort ?? 'attention-first';
-      const filtered = [...this.sessions.values()].filter((state) => {
-        if (command.tenantId !== undefined && state.tenantId !== command.tenantId) {
-          return false;
-        }
-        if (command.userId !== undefined && state.userId !== command.userId) {
-          return false;
-        }
-        if (command.workspaceId !== undefined && state.workspaceId !== command.workspaceId) {
-          return false;
-        }
-        if (command.worktreeId !== undefined && state.worktreeId !== command.worktreeId) {
-          return false;
-        }
-        if (command.status !== undefined && state.status !== command.status) {
-          return false;
-        }
-        if (command.live !== undefined && (state.session !== null) !== command.live) {
-          return false;
-        }
-        return true;
-      });
-      const sessions = this.sortSessionSummaries(filtered, sort);
-      const limited = command.limit === undefined ? sessions : sessions.slice(0, command.limit);
-      return {
-        sessions: limited,
-      };
-    }
-
-    if (command.type === 'attention.list') {
-      return {
-        sessions: this.sortSessionSummaries(
-          [...this.sessions.values()].filter((state) => state.status === 'needs-input'),
-          'attention-first',
-        ),
-      };
-    }
-
-    if (command.type === 'session.status') {
-      const state = this.requireSession(command.sessionId);
-      return this.sessionSummaryRecord(state);
-    }
-
-    if (command.type === 'session.snapshot') {
-      const state = this.requireSession(command.sessionId);
-      if (state.session === null) {
-        if (state.lastSnapshot === null) {
-          throw new Error(`session snapshot unavailable: ${command.sessionId}`);
-        }
-        return {
-          sessionId: command.sessionId,
-          snapshot: state.lastSnapshot,
-          stale: true,
-        };
-      }
-      const snapshot = this.snapshotRecordFromFrame(state.session.snapshot());
-      state.lastSnapshot = snapshot;
-      return {
-        sessionId: command.sessionId,
-        snapshot,
-        stale: false,
-      };
-    }
-
-    if (command.type === 'session.claim') {
-      const state = this.requireSession(command.sessionId);
-      const claimedAt = new Date().toISOString();
-      const previousController = state.controller;
-      const nextController: SessionControllerState = {
-        controllerId: command.controllerId,
-        controllerType: command.controllerType,
-        controllerLabel: command.controllerLabel ?? null,
-        claimedAt,
-        connectionId: connection.id,
-      };
-      if (previousController === null) {
-        state.controller = nextController;
-        this.publishSessionControlObservedEvent(
-          state,
-          'claimed',
-          toPublicSessionController(nextController),
-          null,
-          command.reason ?? null,
-        );
-        this.publishStatusObservedEvent(state);
-        return {
-          sessionId: command.sessionId,
-          action: 'claimed',
-          controller: toPublicSessionController(nextController),
-        };
-      }
-      if (previousController.connectionId !== connection.id && command.takeover !== true) {
-        throw new Error(
-          `session is already claimed by ${controllerDisplayName(previousController)}`,
-        );
-      }
-      state.controller = nextController;
-      const action = previousController.connectionId === connection.id ? 'claimed' : 'taken-over';
-      this.publishSessionControlObservedEvent(
-        state,
-        action,
-        toPublicSessionController(nextController),
-        toPublicSessionController(previousController),
-        command.reason ?? null,
-      );
-      this.publishStatusObservedEvent(state);
-      return {
-        sessionId: command.sessionId,
-        action,
-        controller: toPublicSessionController(nextController),
-      };
-    }
-
-    if (command.type === 'session.release') {
-      const state = this.requireSession(command.sessionId);
-      if (state.controller === null) {
-        return {
-          sessionId: command.sessionId,
-          released: false,
-          controller: null,
-        };
-      }
-      if (state.controller.connectionId !== connection.id) {
-        throw new Error(`session is claimed by ${controllerDisplayName(state.controller)}`);
-      }
-      const previousController = state.controller;
-      state.controller = null;
-      this.publishSessionControlObservedEvent(
-        state,
-        'released',
-        null,
-        toPublicSessionController(previousController),
-        command.reason ?? null,
-      );
-      this.publishStatusObservedEvent(state);
-      return {
-        sessionId: command.sessionId,
-        released: true,
-        controller: null,
-      };
-    }
-
-    if (command.type === 'session.respond') {
-      const state = this.requireLiveSession(command.sessionId);
-      this.assertConnectionCanMutateSession(connection.id, state);
-      state.session.write(command.text);
-      this.setSessionStatus(state, 'running', null, new Date().toISOString());
-      return {
-        responded: true,
-        sentBytes: Buffer.byteLength(command.text),
-      };
-    }
-
-    if (command.type === 'session.interrupt') {
-      const state = this.requireLiveSession(command.sessionId);
-      this.assertConnectionCanMutateSession(connection.id, state);
-      state.session.write('\u0003');
-      this.setSessionStatus(state, 'running', null, new Date().toISOString());
-      return {
-        interrupted: true,
-      };
-    }
-
-    if (command.type === 'session.remove') {
-      const state = this.requireSession(command.sessionId);
-      this.assertConnectionCanMutateSession(connection.id, state);
-      this.destroySession(command.sessionId, true);
-      return {
-        removed: true,
-      };
-    }
-
-    if (command.type === 'pty.start') {
-      const startInput: StartSessionRuntimeInput = {
-        sessionId: command.sessionId,
-        args: command.args,
-        initialCols: command.initialCols,
-        initialRows: command.initialRows,
-        ...(command.env !== undefined ? { env: command.env } : {}),
-        ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-        ...(command.tenantId !== undefined ? { tenantId: command.tenantId } : {}),
-        ...(command.userId !== undefined ? { userId: command.userId } : {}),
-        ...(command.workspaceId !== undefined ? { workspaceId: command.workspaceId } : {}),
-        ...(command.worktreeId !== undefined ? { worktreeId: command.worktreeId } : {}),
-        ...(command.terminalForegroundHex !== undefined
-          ? { terminalForegroundHex: command.terminalForegroundHex }
-          : {}),
-        ...(command.terminalBackgroundHex !== undefined
-          ? { terminalBackgroundHex: command.terminalBackgroundHex }
-          : {}),
-      };
-      this.startSessionRuntime(startInput);
-
-      return {
-        sessionId: command.sessionId,
-      };
-    }
-
-    if (command.type === 'pty.attach') {
-      const state = this.requireLiveSession(command.sessionId);
-      const previous = state.attachmentByConnectionId.get(connection.id);
-      if (previous !== undefined) {
-        state.session.detach(previous);
-      }
-
-      const attachmentId = state.session.attach(
-        {
-          onData: (event) => {
-            this.sendToConnection(connection.id, {
-              kind: 'pty.output',
-              sessionId: command.sessionId,
-              cursor: event.cursor,
-              chunkBase64: Buffer.from(event.chunk).toString('base64'),
-            }, command.sessionId);
-            const sessionState = this.sessions.get(command.sessionId);
-            if (sessionState !== undefined) {
-              if (event.cursor <= sessionState.lastObservedOutputCursor) {
-                return;
-              }
-              sessionState.lastObservedOutputCursor = event.cursor;
-              this.publishObservedEvent(this.sessionScope(sessionState), {
-                type: 'session-output',
-                sessionId: command.sessionId,
-                outputCursor: event.cursor,
-                chunkBase64: Buffer.from(event.chunk).toString('base64'),
-                ts: new Date().toISOString(),
-                directoryId: sessionState.directoryId,
-                conversationId: sessionState.id,
-              });
-            }
-          },
-          onExit: (exit) => {
-            this.sendToConnection(connection.id, {
-              kind: 'pty.exit',
-              sessionId: command.sessionId,
-              exit,
-            }, command.sessionId);
-          },
-        },
-        command.sinceCursor ?? 0,
-      );
-
-      state.attachmentByConnectionId.set(connection.id, attachmentId);
-      connection.attachedSessionIds.add(command.sessionId);
-
-      return {
-        latestCursor: state.session.latestCursorValue(),
-      };
-    }
-
-    if (command.type === 'pty.detach') {
-      this.detachConnectionFromSession(connection.id, command.sessionId);
-      connection.attachedSessionIds.delete(command.sessionId);
-      return {
-        detached: true,
-      };
-    }
-
-    if (command.type === 'pty.subscribe-events') {
-      const state = this.requireSession(command.sessionId);
-      state.eventSubscriberConnectionIds.add(connection.id);
-      connection.eventSessionIds.add(command.sessionId);
-      return {
-        subscribed: true,
-      };
-    }
-
-    if (command.type === 'pty.unsubscribe-events') {
-      const state = this.requireSession(command.sessionId);
-      state.eventSubscriberConnectionIds.delete(connection.id);
-      connection.eventSessionIds.delete(command.sessionId);
-      return {
-        subscribed: false,
-      };
-    }
-
-    if (command.type === 'pty.close') {
-      const state = this.requireLiveSession(command.sessionId);
-      this.assertConnectionCanMutateSession(connection.id, state);
-      this.destroySession(command.sessionId, true);
-      return {
-        closed: true,
-      };
-    }
-
-    throw new Error(`unsupported command type: ${(command as { type: string }).type}`);
+    return executeStreamServerCommand(
+      this as unknown as Parameters<typeof executeStreamServerCommand>[0],
+      connection,
+      command,
+    );
   }
 
   private handleInput(connectionId: string, sessionId: string, dataBase64: string): void {
-    const state = this.sessions.get(sessionId);
-    if (state === undefined) {
-      return;
-    }
-    if (!this.connectionCanMutateSession(connectionId, state)) {
-      return;
-    }
-    if (state.status === 'exited' || state.session === null) {
-      return;
-    }
-
-    const data = Buffer.from(dataBase64, 'base64');
-    if (data.length === 0 && dataBase64.length > 0) {
-      return;
-    }
-    state.session.write(data);
+    handleRuntimeInput(
+      this as unknown as Parameters<typeof handleRuntimeInput>[0],
+      connectionId,
+      sessionId,
+      dataBase64,
+    );
   }
 
   private handleResize(connectionId: string, sessionId: string, cols: number, rows: number): void {
-    const state = this.sessions.get(sessionId);
-    if (state === undefined) {
-      return;
-    }
-    if (!this.connectionCanMutateSession(connectionId, state)) {
-      return;
-    }
-    if (state.status === 'exited' || state.session === null) {
-      return;
-    }
-    state.session.resize(cols, rows);
+    handleRuntimeResize(
+      this as unknown as Parameters<typeof handleRuntimeResize>[0],
+      connectionId,
+      sessionId,
+      cols,
+      rows,
+    );
   }
 
   private handleSignal(connectionId: string, sessionId: string, signal: StreamSignal): void {
-    const state = this.sessions.get(sessionId);
-    if (state === undefined) {
-      return;
-    }
-    if (!this.connectionCanMutateSession(connectionId, state)) {
-      return;
-    }
-    if (state.status === 'exited' || state.session === null) {
-      return;
-    }
-
-    if (signal === 'interrupt') {
-      state.session.write('\u0003');
-      return;
-    }
-
-    if (signal === 'eof') {
-      state.session.write('\u0004');
-      return;
-    }
-
-    this.destroySession(sessionId, true);
+    handleRuntimeSignal(
+      this as unknown as Parameters<typeof handleRuntimeSignal>[0],
+      connectionId,
+      sessionId,
+      signal,
+    );
   }
 
   private handleSessionEvent(sessionId: string, event: CodexLiveEvent): void {
-    const sessionState = this.sessions.get(sessionId);
-    if (sessionState === undefined) {
-      return;
-    }
-
-    const mapped = mapSessionEvent(event);
-    if (mapped !== null && event.type !== 'terminal-output') {
-      const observedAt =
-        mapped.type === 'session-exit' ? new Date().toISOString() : mapped.record.ts;
-      for (const connectionId of sessionState.eventSubscriberConnectionIds) {
-        this.sendToConnection(connectionId, {
-          kind: 'pty.event',
-          sessionId,
-          event: mapped,
-        }, sessionId);
-      }
-      this.publishObservedEvent(
-        this.sessionScope(sessionState),
-        {
-          type: 'session-event',
-          sessionId,
-          event: mapped,
-          ts: new Date().toISOString(),
-          directoryId: sessionState.directoryId,
-          conversationId: sessionState.id
-        }
-      );
-      const mergedAdapterState = mergeAdapterStateFromSessionEvent(
-        sessionState.agentType,
-        sessionState.adapterState,
-        mapped,
-        observedAt
-      );
-      if (mergedAdapterState !== null) {
-        sessionState.adapterState = mergedAdapterState;
-        this.stateStore.updateConversationAdapterState(sessionState.id, mergedAdapterState);
-      }
-      if (mapped.type === 'notify') {
-        const keyEvent = this.notifyKeyEventFromPayload(
-          sessionState.agentType,
-          mapped.record.payload,
-          observedAt
-        );
-        if (keyEvent !== null) {
-          sessionState.latestTelemetry = {
-            source: keyEvent.source,
-            eventName: keyEvent.eventName,
-            severity: keyEvent.severity,
-            summary: keyEvent.summary,
-            observedAt: keyEvent.observedAt
-          };
-          this.publishSessionKeyObservedEvent(sessionState, keyEvent);
-          if (keyEvent.statusHint === 'needs-input') {
-            const nextAttentionReason = keyEvent.summary ?? sessionState.attentionReason ?? 'input required';
-            this.setSessionStatus(sessionState, 'needs-input', nextAttentionReason, observedAt);
-          } else if (keyEvent.statusHint !== null) {
-            this.setSessionStatus(sessionState, keyEvent.statusHint, null, observedAt);
-          } else {
-            this.setSessionStatus(
-              sessionState,
-              sessionState.status,
-              sessionState.attentionReason,
-              observedAt
-            );
-          }
-        } else {
-          this.setSessionStatus(
-            sessionState,
-            sessionState.status,
-            sessionState.attentionReason,
-            observedAt,
-          );
-        }
-      }
-    }
-
-    if (event.type === 'session-exit') {
-      sessionState.lastExit = event.exit;
-      const exitedAt = new Date().toISOString();
-      sessionState.exitedAt = exitedAt;
-      this.setSessionStatus(sessionState, 'exited', null, exitedAt);
-      this.deactivateSession(sessionState.id, true);
-    }
-  }
-
-  private notifyKeyEventFromPayload(
-    agentType: string,
-    payload: Record<string, unknown>,
-    observedAt: string
-  ): StreamSessionKeyEventRecord | null {
-    if (agentType === 'codex') {
-      const notifyPayloadType = readTrimmedString(payload['type']);
-      if (notifyPayloadType !== 'agent-turn-complete') {
-        return null;
-      }
-      return {
-        source: 'otlp-metric',
-        eventName: 'codex.turn.e2e_duration_ms',
-        severity: null,
-        summary: 'turn complete (notify)',
-        observedAt,
-        statusHint: 'completed'
-      };
-    }
-    if (agentType !== 'claude') {
-      return null;
-    }
-
-    const hookEventNameRaw = readTrimmedString(payload['hook_event_name']) ?? readTrimmedString(payload['hookEventName']);
-    if (hookEventNameRaw === null) {
-      return null;
-    }
-    const hookEventToken = normalizeEventToken(hookEventNameRaw);
-    if (hookEventToken.length === 0) {
-      return null;
-    }
-    const eventName = `claude.${hookEventToken}`;
-    const summary = readTrimmedString(payload['message']) ?? readTrimmedString(payload['reason']);
-    const notificationType = readTrimmedString(payload['notification_type'])?.toLowerCase() ?? '';
-
-    let statusHint: StreamSessionKeyEventRecord['statusHint'] = null;
-    let normalizedSummary = summary;
-    if (hookEventToken === 'userpromptsubmit') {
-      statusHint = 'running';
-      normalizedSummary ??= 'prompt submitted';
-    } else if (hookEventToken === 'pretooluse') {
-      statusHint = 'running';
-      normalizedSummary ??= 'tool started (hook)';
-    } else if (hookEventToken === 'stop' || hookEventToken === 'subagentstop' || hookEventToken === 'sessionend') {
-      statusHint = 'completed';
-      normalizedSummary ??= 'turn complete (hook)';
-    } else if (hookEventToken === 'notification') {
-      statusHint = claudeStatusHintFromNotificationType(notificationType);
-      if (normalizedSummary === null) {
-        normalizedSummary = notificationType.length > 0 ? notificationType : hookEventNameRaw;
-      }
-    } else if (normalizedSummary === null) {
-      normalizedSummary = hookEventNameRaw;
-    }
-
-    return {
-      source: 'otlp-log',
-      eventName,
-      severity: null,
-      summary: normalizedSummary,
-      observedAt,
-      statusHint
-    };
+    handleRuntimeSessionEvent(
+      this as unknown as Parameters<typeof handleRuntimeSessionEvent>[0],
+      sessionId,
+      event,
+    );
   }
 
   private publishSessionKeyObservedEvent(state: SessionState, keyEvent: StreamSessionKeyEventRecord): void {
@@ -3260,39 +1528,27 @@ export class ControlPlaneStreamServer {
     attentionReason: string | null,
     lastEventAt: string | null,
   ): void {
-    state.status = status;
-    state.attentionReason = attentionReason;
-    if (lastEventAt !== null) {
-      state.lastEventAt = lastEventAt;
-    }
-    this.persistConversationRuntime(state);
-    this.publishStatusObservedEvent(state);
+    setRuntimeSessionStatus(
+      this as unknown as Parameters<typeof setRuntimeSessionStatus>[0],
+      state,
+      status,
+      attentionReason,
+      lastEventAt,
+    );
   }
 
   private persistConversationRuntime(state: SessionState): void {
-    this.stateStore.updateConversationRuntime(state.id, {
-      status: state.status,
-      live: state.session !== null,
-      attentionReason: state.attentionReason,
-      processId: state.session?.processId() ?? null,
-      lastEventAt: state.lastEventAt,
-      lastExit: state.lastExit,
-    });
+    persistRuntimeConversationState(
+      this as unknown as Parameters<typeof persistRuntimeConversationState>[0],
+      state,
+    );
   }
 
   private publishStatusObservedEvent(state: SessionState): void {
-    this.publishObservedEvent(this.sessionScope(state), {
-      type: 'session-status',
-      sessionId: state.id,
-      status: state.status,
-      attentionReason: state.attentionReason,
-      live: state.session !== null,
-      ts: new Date().toISOString(),
-      directoryId: state.directoryId,
-      conversationId: state.id,
-      telemetry: state.latestTelemetry,
-      controller: toPublicSessionController(state.controller),
-    });
+    publishRuntimeStatusObservedEvent(
+      this as unknown as Parameters<typeof publishRuntimeStatusObservedEvent>[0],
+      state,
+    );
   }
 
   private publishSessionControlObservedEvent(
@@ -3326,45 +1582,11 @@ export class ControlPlaneStreamServer {
   }
 
   private eventIncludesRepositoryId(event: StreamObservedEvent, repositoryId: string): boolean {
-    if (event.type === 'directory-git-updated') {
-      return event.repositoryId === repositoryId;
-    }
-    if (event.type === 'repository-upserted' || event.type === 'repository-updated') {
-      return event.repository['repositoryId'] === repositoryId;
-    }
-    if (event.type === 'repository-archived') {
-      return event.repositoryId === repositoryId;
-    }
-    if (event.type === 'task-created' || event.type === 'task-updated') {
-      return event.task['repositoryId'] === repositoryId;
-    }
-    if (event.type === 'task-reordered') {
-      for (const task of event.tasks) {
-        if (task['repositoryId'] === repositoryId) {
-          return true;
-        }
-      }
-      return false;
-    }
-    return false;
+    return filterEventIncludesRepositoryId(event, repositoryId);
   }
 
   private eventIncludesTaskId(event: StreamObservedEvent, taskId: string): boolean {
-    if (event.type === 'task-created' || event.type === 'task-updated') {
-      return event.task['taskId'] === taskId;
-    }
-    if (event.type === 'task-deleted') {
-      return event.taskId === taskId;
-    }
-    if (event.type === 'task-reordered') {
-      for (const task of event.tasks) {
-        if (task['taskId'] === taskId) {
-          return true;
-        }
-      }
-      return false;
-    }
-    return false;
+    return filterEventIncludesTaskId(event, taskId);
   }
 
   private matchesObservedFilter(
@@ -3372,34 +1594,12 @@ export class ControlPlaneStreamServer {
     event: StreamObservedEvent,
     filter: StreamSubscriptionFilter,
   ): boolean {
-    if (!filter.includeOutput && event.type === 'session-output') {
-      return false;
-    }
-    if (filter.tenantId !== undefined && scope.tenantId !== filter.tenantId) {
-      return false;
-    }
-    if (filter.userId !== undefined && scope.userId !== filter.userId) {
-      return false;
-    }
-    if (filter.workspaceId !== undefined && scope.workspaceId !== filter.workspaceId) {
-      return false;
-    }
-    if (
-      filter.repositoryId !== undefined &&
-      !this.eventIncludesRepositoryId(event, filter.repositoryId)
-    ) {
-      return false;
-    }
-    if (filter.taskId !== undefined && !this.eventIncludesTaskId(event, filter.taskId)) {
-      return false;
-    }
-    if (filter.directoryId !== undefined && scope.directoryId !== filter.directoryId) {
-      return false;
-    }
-    if (filter.conversationId !== undefined && scope.conversationId !== filter.conversationId) {
-      return false;
-    }
-    return true;
+    return matchesStreamObservedFilter(
+      this as unknown as Parameters<typeof matchesStreamObservedFilter>[0],
+      scope,
+      event,
+      filter,
+    );
   }
 
   private publishObservedEvent(scope: StreamObservedScope, event: StreamObservedEvent): void {
@@ -3514,6 +1714,16 @@ export class ControlPlaneStreamServer {
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
     };
+  }
+
+  private toPublicSessionController(
+    controller: SessionControllerState | null | undefined,
+  ): StreamSessionController | null {
+    return toPublicSessionController(controller);
+  }
+
+  private controllerDisplayName(controller: SessionControllerState): string {
+    return controllerDisplayName(controller);
   }
 
   private requireSession(sessionId: string): SessionState {
