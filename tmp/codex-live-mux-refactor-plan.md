@@ -457,3 +457,17 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4936 -> 4891 LOC
+
+### Checkpoint 22 (2026-02-17): routed token forwarding helper extraction
+
+- Added `src/mux/live-mux/input-forwarding.ts`:
+  - routed token forwarding reducer for passthrough input and conversation-pane wheel scroll accumulation
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate routed token forwarding/scroll computation through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4891 -> 4875 LOC

@@ -229,6 +229,7 @@ import {
   resolveDirectoryForAction as resolveDirectoryForActionHelper,
 } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopHelper } from '../src/mux/live-mux/runtime-shutdown.ts';
+import { routeInputTokensForConversation as routeInputTokensForConversationHelper } from '../src/mux/live-mux/input-forwarding.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4908,30 +4909,13 @@ async function main(): Promise<number> {
       routedTokens.push(token);
     }
 
-    let mainPaneScrollRows = 0;
-    const forwardToSession: Buffer[] = [];
-    for (const token of routedTokens) {
-      if (token.kind === 'passthrough') {
-        if (mainPaneMode === 'conversation' && token.text.length > 0) {
-          forwardToSession.push(normalizeMuxKeyboardInputForPty(Buffer.from(token.text, 'utf8')));
-        }
-        continue;
-      }
-      if (classifyPaneAt(layout, token.event.col, token.event.row) !== 'right') {
-        continue;
-      }
-      if (mainPaneMode !== 'conversation') {
-        continue;
-      }
-      const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
-      if (wheelDelta !== null) {
-        mainPaneScrollRows += wheelDelta;
-        continue;
-      }
-      // The mux owns mouse interactions. Forwarding raw SGR mouse sequences to shell-style
-      // threads produces visible control garbage (for example on initial click-to-focus).
-      continue;
-    }
+    const { mainPaneScrollRows, forwardToSession } = routeInputTokensForConversationHelper({
+      tokens: routedTokens,
+      mainPaneMode,
+      normalizeMuxKeyboardInputForPty,
+      classifyPaneAt: (col, row) => classifyPaneAt(layout, col, row),
+      wheelDeltaRowsFromCode,
+    });
 
     if (mainPaneScrollRows !== 0 && inputConversation !== null) {
       inputConversation.oracle.scrollViewport(mainPaneScrollRows);
