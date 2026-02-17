@@ -139,6 +139,11 @@ import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
 import { dismissModalOnOutsideClick as dismissModalOnOutsideClickHelper } from '../src/mux/live-mux/modal-pointer.ts';
 import {
+  leftNavTargetKey,
+  visibleLeftNavTargets,
+  type LeftNavSelection,
+} from '../src/mux/live-mux/left-nav.ts';
+import {
   readObservedStreamCursorBaseline,
   subscribeObservedStream,
   unsubscribeObservedStream,
@@ -325,23 +330,6 @@ interface HomePaneDragState {
   readonly latestRowIndex: number;
   readonly hasDragged: boolean;
 }
-
-type LeftNavSelection =
-  | {
-      readonly kind: 'home';
-    }
-  | {
-      readonly kind: 'repository';
-      readonly repositoryId: string;
-    }
-  | {
-      readonly kind: 'project';
-      readonly directoryId: string;
-    }
-  | {
-      readonly kind: 'conversation';
-      readonly sessionId: string;
-    };
 const MUX_MODAL_THEME = {
   frameStyle: {
     fg: { kind: 'indexed', index: 252 },
@@ -4750,70 +4738,8 @@ async function main(): Promise<number> {
     return true;
   };
 
-  const leftNavTargetKey = (target: LeftNavSelection): string => {
-    if (target.kind === 'home') {
-      return 'home';
-    }
-    if (target.kind === 'repository') {
-      return `repository:${target.repositoryId}`;
-    }
-    if (target.kind === 'project') {
-      return `directory:${target.directoryId}`;
-    }
-    return `conversation:${target.sessionId}`;
-  };
-
-  const leftNavTargetFromRow = (
-    rows: ReturnType<typeof buildWorkspaceRailViewRows>,
-    rowIndex: number,
-  ): LeftNavSelection | null => {
-    const row = rows[rowIndex];
-    if (row === undefined) {
-      return null;
-    }
-    if (row.railAction === 'home.open') {
-      return {
-        kind: 'home',
-      };
-    }
-    if (row.kind === 'repository-header' && row.repositoryId !== null) {
-      return {
-        kind: 'repository',
-        repositoryId: row.repositoryId,
-      };
-    }
-    if (row.kind === 'dir-header' && row.directoryKey !== null) {
-      return {
-        kind: 'project',
-        directoryId: row.directoryKey,
-      };
-    }
-    if (row.kind === 'conversation-title' && row.conversationSessionId !== null) {
-      return {
-        kind: 'conversation',
-        sessionId: row.conversationSessionId,
-      };
-    }
-    return null;
-  };
-
-  const visibleLeftNavTargets = (): readonly LeftNavSelection[] => {
-    const entries: LeftNavSelection[] = [];
-    const seen = new Set<string>();
-    for (let rowIndex = 0; rowIndex < latestRailViewRows.length; rowIndex += 1) {
-      const target = leftNavTargetFromRow(latestRailViewRows, rowIndex);
-      if (target === null) {
-        continue;
-      }
-      const key = leftNavTargetKey(target);
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      entries.push(target);
-    }
-    return entries;
-  };
+  const visibleLeftNavTargetsForState = (): readonly LeftNavSelection[] =>
+    visibleLeftNavTargets(latestRailViewRows);
 
   const selectedRepositoryGroupId = (): string | null => {
     if (leftNavSelection.kind === 'repository') {
@@ -4856,7 +4782,7 @@ async function main(): Promise<number> {
         markDirty();
         return;
       }
-      const visibleTargets = visibleLeftNavTargets();
+      const visibleTargets = visibleLeftNavTargetsForState();
       const fallbackConversation = visibleTargets.find(
         (entry): entry is Extract<LeftNavSelection, { kind: 'conversation' }> =>
           entry.kind === 'conversation' &&
@@ -4878,7 +4804,7 @@ async function main(): Promise<number> {
   };
 
   const cycleLeftNavSelection = (direction: 'next' | 'previous'): boolean => {
-    const targets = visibleLeftNavTargets();
+    const targets = visibleLeftNavTargetsForState();
     if (targets.length === 0) {
       return false;
     }

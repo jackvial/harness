@@ -239,3 +239,20 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5572 -> 5558 LOC
+
+### Checkpoint 8 (2026-02-17): left-nav helper extraction
+
+- Added `src/mux/live-mux/left-nav.ts`:
+  - left-nav selection type
+  - row-to-target mapping
+  - target key generation
+  - visible target list derivation
+- Updated `scripts/codex-live-mux-runtime.ts` to use extracted left-nav helpers.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5558 -> 5487 LOC
