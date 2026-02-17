@@ -214,6 +214,10 @@ import {
   reduceLinePromptInput,
   reduceTaskEditorPromptInput as reduceTaskEditorModalInput,
 } from '../src/mux/live-mux/modal-input-reducers.ts';
+import {
+  handleAddDirectoryPromptInput as handleAddDirectoryPromptInputHelper,
+  handleRepositoryPromptInput as handleRepositoryPromptInputHelper,
+} from '../src/mux/live-mux/modal-prompt-handlers.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4394,131 +4398,37 @@ async function main(): Promise<number> {
   };
 
   const handleAddDirectoryPromptInput = (input: Buffer): boolean => {
-    if (addDirectoryPrompt === null) {
-      return false;
-    }
-    if (input.length === 1 && input[0] === 0x03) {
-      return false;
-    }
-    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
-    if (dismissAction === 'mux.app.quit') {
-      addDirectoryPrompt = null;
-      markDirty();
-      return true;
-    }
-    if (
-      dismissModalOnOutsideClick(input, () => {
-        addDirectoryPrompt = null;
-        markDirty();
-      })
-    ) {
-      return true;
-    }
-
-    const reduced = reduceLinePromptInput(addDirectoryPrompt.value, input);
-    const value = reduced.value;
-    const submit = reduced.submit;
-
-    if (!submit) {
-      addDirectoryPrompt = {
-        value,
-        error: null,
-      };
-      markDirty();
-      return true;
-    }
-
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-      addDirectoryPrompt = {
-        value,
-        error: 'path required',
-      };
-      markDirty();
-      return true;
-    }
-    addDirectoryPrompt = null;
-    queueControlPlaneOp(async () => {
-      await addDirectoryByPath(trimmed);
-    }, 'prompt-add-directory');
-    markDirty();
-    return true;
+    return handleAddDirectoryPromptInputHelper({
+      input,
+      prompt: addDirectoryPrompt,
+      isQuitShortcut: (rawInput) =>
+        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
+      dismissOnOutsideClick: (rawInput, dismiss) => dismissModalOnOutsideClick(rawInput, dismiss),
+      setPrompt: (next) => {
+        addDirectoryPrompt = next;
+      },
+      markDirty,
+      queueControlPlaneOp,
+      addDirectoryByPath,
+    });
   };
 
   const handleRepositoryPromptInput = (input: Buffer): boolean => {
-    if (repositoryPrompt === null) {
-      return false;
-    }
-    if (input.length === 1 && input[0] === 0x03) {
-      return false;
-    }
-    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
-    if (dismissAction === 'mux.app.quit') {
-      repositoryPrompt = null;
-      markDirty();
-      return true;
-    }
-    if (
-      dismissModalOnOutsideClick(input, () => {
-        repositoryPrompt = null;
-        markDirty();
-      })
-    ) {
-      return true;
-    }
-
-    const reduced = reduceLinePromptInput(repositoryPrompt.value, input);
-    const value = reduced.value;
-    const submit = reduced.submit;
-
-    if (!submit) {
-      repositoryPrompt = {
-        ...repositoryPrompt,
-        value,
-        error: null,
-      };
-      markDirty();
-      return true;
-    }
-
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-      repositoryPrompt = {
-        ...repositoryPrompt,
-        value,
-        error: 'github url required',
-      };
-      markDirty();
-      return true;
-    }
-    if (normalizeGitHubRemoteUrl(trimmed) === null) {
-      repositoryPrompt = {
-        ...repositoryPrompt,
-        value,
-        error: 'github url required',
-      };
-      markDirty();
-      return true;
-    }
-
-    const mode = repositoryPrompt.mode;
-    const repositoryId = repositoryPrompt.repositoryId;
-    repositoryPrompt = null;
-    if (mode === 'edit' && (repositoryId === null || !repositories.has(repositoryId))) {
-      markDirty();
-      return true;
-    }
-    queueControlPlaneOp(
-      async () => {
-        await upsertRepositoryByRemoteUrl(
-          trimmed,
-          mode === 'edit' ? (repositoryId ?? undefined) : undefined,
-        );
+    return handleRepositoryPromptInputHelper({
+      input,
+      prompt: repositoryPrompt,
+      isQuitShortcut: (rawInput) =>
+        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
+      dismissOnOutsideClick: (rawInput, dismiss) => dismissModalOnOutsideClick(rawInput, dismiss),
+      setPrompt: (next) => {
+        repositoryPrompt = next;
       },
-      mode === 'edit' ? 'prompt-edit-repository' : 'prompt-add-repository',
-    );
-    markDirty();
-    return true;
+      markDirty,
+      repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+      normalizeGitHubRemoteUrl,
+      queueControlPlaneOp,
+      upsertRepositoryByRemoteUrl,
+    });
   };
 
   const homeEditorBuffer = (): TaskComposerBuffer => {
