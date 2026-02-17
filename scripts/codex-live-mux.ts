@@ -974,6 +974,7 @@ async function main(): Promise<number> {
   });
   controlPlaneOpenSpan.end();
   const streamClient = controlPlaneClient.client;
+  const startupObservedCursor = await readStreamCursorBaseline();
   const directoryUpsertSpan = startPerfSpan('mux.startup.directory-upsert');
   const directoryResult = await streamClient.sendCommand({
     type: 'directory.upsert',
@@ -2124,8 +2125,6 @@ async function main(): Promise<number> {
     dirty = true;
     scheduleRender();
   };
-
-  const startupObservedCursor = await readStreamCursorBaseline();
 
   keyEventSubscription = await subscribeControlPlaneKeyEvents(streamClient, {
     tenantId: options.scope.tenantId,

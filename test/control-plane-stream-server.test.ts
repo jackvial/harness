@@ -364,6 +364,92 @@ void test('stream server publishes directory git updates from control-plane moni
   }
 });
 
+void test('stream server publishes directory git snapshots on repeated directory upserts even when unchanged', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-git-upsert-refresh-'));
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    gitStatus: {
+      enabled: true,
+      pollMs: 1000,
+      maxConcurrency: 1,
+      minDirectoryRefreshMs: 1000
+    },
+    readGitDirectorySnapshot: () =>
+      Promise.resolve({
+        summary: {
+          branch: 'main',
+          changedFiles: 0,
+          additions: 0,
+          deletions: 0
+        },
+        repository: {
+          normalizedRemoteUrl: 'https://github.com/example/harness',
+          commitCount: 10,
+          lastCommitAt: '2026-02-16T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+          inferredName: 'harness',
+          defaultBranch: 'main'
+        }
+      })
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-git-upsert-refresh',
+      userId: 'user-git-upsert-refresh',
+      workspaceId: 'workspace-git-upsert-refresh'
+    });
+
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-git-upsert-refresh',
+      tenantId: 'tenant-git-upsert-refresh',
+      userId: 'user-git-upsert-refresh',
+      workspaceId: 'workspace-git-upsert-refresh',
+      path: workspace
+    });
+    await delay(80);
+
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-git-upsert-refresh',
+      tenantId: 'tenant-git-upsert-refresh',
+      userId: 'user-git-upsert-refresh',
+      workspaceId: 'workspace-git-upsert-refresh',
+      path: workspace
+    });
+    await delay(80);
+
+    const gitEvents = observed.flatMap((envelope) => {
+      if (envelope.kind !== 'stream.event') {
+        return [];
+      }
+      if (envelope.event.type !== 'directory-git-updated') {
+        return [];
+      }
+      if (envelope.event.directoryId !== 'directory-git-upsert-refresh') {
+        return [];
+      }
+      return [envelope.event];
+    });
+    assert.equal(gitEvents.length, 2);
+    assert.equal(gitEvents[0]?.repositoryId === null, false);
+    assert.equal(gitEvents[1]?.repositoryId === null, false);
+    assert.equal(gitEvents[0]?.repositoryId, gitEvents[1]?.repositoryId);
+  } finally {
+    client.close();
+    await server.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('stream server deduplicates unchanged git snapshots when using default reader', async () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-git-default-'));
   const server = await startControlPlaneStreamServer({

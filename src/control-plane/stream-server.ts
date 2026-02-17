@@ -1444,6 +1444,9 @@ export class ControlPlaneStreamServer {
 
   private async refreshGitStatusForDirectory(
     directory: ControlPlaneDirectoryRecord,
+    options: {
+      readonly forcePublish?: boolean;
+    } = {}
   ): Promise<void> {
     if (this.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId)) {
       return;
@@ -1507,7 +1510,8 @@ export class ControlPlaneStreamServer {
         !gitSummaryEqual(previous.summary, next.summary) ||
         !gitRepositorySnapshotEqual(previous.repositorySnapshot, next.repositorySnapshot) ||
         previous.repositoryId !== next.repositoryId;
-      if (changed) {
+      const shouldPublish = changed || options.forcePublish === true;
+      if (shouldPublish) {
         if (repositoryRecord === null && repositoryId !== null) {
           const existingRepository = this.stateStore.getRepository(repositoryId);
           if (existingRepository !== null) {
@@ -1548,6 +1552,8 @@ export class ControlPlaneStreamServer {
       gitSpan.end({
         directoryId: directory.directoryId,
         changed,
+        published: shouldPublish ? 1 : 0,
+        forcePublished: options.forcePublish ? 1 : 0,
         repositoryLinked: repositoryId === null ? 0 : 1,
       });
     } catch {
@@ -1765,7 +1771,9 @@ export class ControlPlaneStreamServer {
         },
       );
       if (this.gitStatusMonitor.enabled) {
-        void this.refreshGitStatusForDirectory(directory);
+        void this.refreshGitStatusForDirectory(directory, {
+          forcePublish: true
+        });
       }
       return {
         directory: record,

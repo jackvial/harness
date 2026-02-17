@@ -106,6 +106,32 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+async function waitForRepositoryRows(
+  client: Awaited<ReturnType<typeof connectControlPlaneStreamClient>>,
+  scope: {
+    readonly tenantId: string;
+    readonly userId: string;
+    readonly workspaceId: string;
+  },
+  timeoutMs: number
+): Promise<void> {
+  const startedAtMs = Date.now();
+  while (Date.now() - startedAtMs < timeoutMs) {
+    const listed = await client.sendCommand({
+      type: 'repository.list',
+      tenantId: scope.tenantId,
+      userId: scope.userId,
+      workspaceId: scope.workspaceId
+    });
+    const rows = Array.isArray(listed['repositories']) ? listed['repositories'] : [];
+    if (rows.length > 0) {
+      return;
+    }
+    await delay(40);
+  }
+  throw new Error('timed out waiting for repository rows');
+}
+
 function isPtyExit(value: unknown): value is PtyExit {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -516,6 +542,90 @@ void test(
     }
   },
   { timeout: 20000 },
+);
+
+void test(
+  'codex-live-mux startup keeps clean repository projects out of the untracked group',
+  async () => {
+    const workspace = createWorkspace();
+    const tenantId = 'tenant-clean-repo';
+    const userId = 'user-clean-repo';
+    const workspaceId = 'workspace-clean-repo';
+    const worktreeId = 'worktree-clean-repo';
+    const directoryId = `directory-${workspaceId}`;
+
+    const server = await startControlPlaneStreamServer({
+      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      gitStatus: {
+        enabled: true,
+        pollMs: 100,
+        maxConcurrency: 1,
+        minDirectoryRefreshMs: 100
+      },
+      readGitDirectorySnapshot: () =>
+        Promise.resolve({
+          summary: {
+            branch: 'main',
+            changedFiles: 0,
+            additions: 0,
+            deletions: 0
+          },
+          repository: {
+            normalizedRemoteUrl: 'https://github.com/example/tracked-repo',
+            commitCount: 42,
+            lastCommitAt: '2026-02-16T00:00:00.000Z',
+            shortCommitHash: 'abc1234',
+            inferredName: 'tracked-repo',
+            defaultBranch: 'main'
+          }
+        }),
+      startSession: (input) => new StartupTestLiveSession(input)
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port
+    });
+
+    try {
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId,
+        tenantId,
+        userId,
+        workspaceId,
+        path: workspace
+      });
+      await waitForRepositoryRows(
+        client,
+        {
+          tenantId,
+          userId,
+          workspaceId
+        },
+        4000
+      );
+
+      const result = await captureMuxBootOutput(workspace, 1800, {
+        controlPlaneHost: address.address,
+        controlPlanePort: address.port,
+        extraEnv: {
+          HARNESS_TENANT_ID: tenantId,
+          HARNESS_USER_ID: userId,
+          HARNESS_WORKSPACE_ID: workspaceId,
+          HARNESS_WORKTREE_ID: worktreeId
+        }
+      });
+      assertExpectedBootTeardownExit(result.exit);
+      assert.equal(result.output.includes('tracked-repo (1 projects, 0 ac'), true);
+      assert.equal(result.output.includes('untracked (1 projects, 0 ac'), false);
+    } finally {
+      client.close();
+      await server.close();
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+  { timeout: 20000 }
 );
 
 void test(
