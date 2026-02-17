@@ -106,3 +106,110 @@ export function reduceRepositoryFoldChordInput(
     action: null,
   };
 }
+
+export function repositoryGroupIdForDirectory(
+  repositoryAssociationByDirectoryId: ReadonlyMap<string, string>,
+  directoryId: string,
+  untrackedRepositoryGroupId: string,
+): string {
+  return repositoryAssociationByDirectoryId.get(directoryId) ?? untrackedRepositoryGroupId;
+}
+
+export function isRepositoryGroupCollapsed(
+  repositoryGroupId: string,
+  repositoriesCollapsed: boolean,
+  expandedRepositoryGroupIds: ReadonlySet<string>,
+  collapsedRepositoryGroupIds: ReadonlySet<string>,
+): boolean {
+  if (repositoriesCollapsed) {
+    return !expandedRepositoryGroupIds.has(repositoryGroupId);
+  }
+  return collapsedRepositoryGroupIds.has(repositoryGroupId);
+}
+
+export function collapseRepositoryGroup(
+  repositoryGroupId: string,
+  repositoriesCollapsed: boolean,
+  expandedRepositoryGroupIds: Set<string>,
+  collapsedRepositoryGroupIds: Set<string>,
+): void {
+  if (repositoriesCollapsed) {
+    expandedRepositoryGroupIds.delete(repositoryGroupId);
+    return;
+  }
+  collapsedRepositoryGroupIds.add(repositoryGroupId);
+}
+
+export function expandRepositoryGroup(
+  repositoryGroupId: string,
+  repositoriesCollapsed: boolean,
+  expandedRepositoryGroupIds: Set<string>,
+  collapsedRepositoryGroupIds: Set<string>,
+): void {
+  if (repositoriesCollapsed) {
+    expandedRepositoryGroupIds.add(repositoryGroupId);
+    return;
+  }
+  collapsedRepositoryGroupIds.delete(repositoryGroupId);
+}
+
+export function toggleRepositoryGroup(
+  repositoryGroupId: string,
+  repositoriesCollapsed: boolean,
+  expandedRepositoryGroupIds: Set<string>,
+  collapsedRepositoryGroupIds: Set<string>,
+): void {
+  if (
+    isRepositoryGroupCollapsed(
+      repositoryGroupId,
+      repositoriesCollapsed,
+      expandedRepositoryGroupIds,
+      collapsedRepositoryGroupIds,
+    )
+  ) {
+    expandRepositoryGroup(
+      repositoryGroupId,
+      repositoriesCollapsed,
+      expandedRepositoryGroupIds,
+      collapsedRepositoryGroupIds,
+    );
+    return;
+  }
+  collapseRepositoryGroup(
+    repositoryGroupId,
+    repositoriesCollapsed,
+    expandedRepositoryGroupIds,
+    collapsedRepositoryGroupIds,
+  );
+}
+
+export function collapseAllRepositoryGroups(
+  collapsedRepositoryGroupIds: Set<string>,
+  expandedRepositoryGroupIds: Set<string>,
+): true {
+  collapsedRepositoryGroupIds.clear();
+  expandedRepositoryGroupIds.clear();
+  return true;
+}
+
+export function expandAllRepositoryGroups(
+  collapsedRepositoryGroupIds: Set<string>,
+  expandedRepositoryGroupIds: Set<string>,
+): false {
+  collapsedRepositoryGroupIds.clear();
+  expandedRepositoryGroupIds.clear();
+  return false;
+}
+
+export function firstDirectoryForRepositoryGroup<TDirectory extends { directoryId: string }>(
+  directories: ReadonlyMap<string, TDirectory>,
+  directoryRepositoryGroupId: (directoryId: string) => string,
+  repositoryGroupId: string,
+): string | null {
+  for (const directory of directories.values()) {
+    if (directoryRepositoryGroupId(directory.directoryId) === repositoryGroupId) {
+      return directory.directoryId;
+    }
+  }
+  return null;
+}

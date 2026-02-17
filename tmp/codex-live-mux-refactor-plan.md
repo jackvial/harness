@@ -394,3 +394,20 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4992 -> 4977 LOC
+
+### Checkpoint 18 (2026-02-17): repository group state helper extraction
+
+- Updated `src/mux/live-mux/repository-folding.ts`:
+  - repository group id lookup helper
+  - repository group collapsed/expanded/toggle reducers
+  - collapse-all/expand-all reducers
+  - first-directory-for-repository-group lookup helper
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate repository group state transitions and lookups through extracted helpers.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4977 -> 4960 LOC

@@ -129,9 +129,16 @@ import {
   cycleLeftNavSelection as cycleLeftNavSelectionHelper,
 } from '../src/mux/live-mux/left-nav-activation.ts';
 import {
+  collapseAllRepositoryGroups as collapseAllRepositoryGroupsHelper,
+  collapseRepositoryGroup as collapseRepositoryGroupHelper,
+  expandAllRepositoryGroups as expandAllRepositoryGroupsHelper,
+  expandRepositoryGroup as expandRepositoryGroupHelper,
+  firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupHelper,
+  repositoryGroupIdForDirectory as repositoryGroupIdForDirectoryHelper,
   reduceRepositoryFoldChordInput,
   repositoryTreeArrowAction,
   selectedRepositoryGroupIdForLeftNav,
+  toggleRepositoryGroup as toggleRepositoryGroupHelper,
 } from '../src/mux/live-mux/repository-folding.ts';
 import {
   readObservedStreamCursorBaseline,
@@ -789,61 +796,36 @@ async function main(): Promise<number> {
   };
 
   const repositoryGroupIdForDirectory = (directoryId: string): string =>
-    repositoryAssociationByDirectoryId.get(directoryId) ?? UNTRACKED_REPOSITORY_GROUP_ID;
-
-  const isRepositoryGroupCollapsed = (repositoryGroupId: string): boolean => {
-    if (repositoriesCollapsed) {
-      return !expandedRepositoryGroupIds.has(repositoryGroupId);
-    }
-    return collapsedRepositoryGroupIds.has(repositoryGroupId);
-  };
+    repositoryGroupIdForDirectoryHelper(
+      repositoryAssociationByDirectoryId,
+      directoryId,
+      UNTRACKED_REPOSITORY_GROUP_ID,
+    );
 
   const collapseRepositoryGroup = (repositoryGroupId: string): void => {
-    if (repositoriesCollapsed) {
-      expandedRepositoryGroupIds.delete(repositoryGroupId);
-      return;
-    }
-    collapsedRepositoryGroupIds.add(repositoryGroupId);
+    collapseRepositoryGroupHelper(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
   };
 
   const expandRepositoryGroup = (repositoryGroupId: string): void => {
-    if (repositoriesCollapsed) {
-      expandedRepositoryGroupIds.add(repositoryGroupId);
-      return;
-    }
-    collapsedRepositoryGroupIds.delete(repositoryGroupId);
+    expandRepositoryGroupHelper(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
   };
 
   const toggleRepositoryGroup = (repositoryGroupId: string): void => {
-    if (isRepositoryGroupCollapsed(repositoryGroupId)) {
-      expandRepositoryGroup(repositoryGroupId);
-      return;
-    }
-    collapseRepositoryGroup(repositoryGroupId);
+    toggleRepositoryGroupHelper(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
   };
 
   const collapseAllRepositoryGroups = (): void => {
-    repositoriesCollapsed = true;
-    collapsedRepositoryGroupIds.clear();
-    expandedRepositoryGroupIds.clear();
+    repositoriesCollapsed = collapseAllRepositoryGroupsHelper(collapsedRepositoryGroupIds, expandedRepositoryGroupIds);
     queuePersistMuxUiState();
   };
 
   const expandAllRepositoryGroups = (): void => {
-    repositoriesCollapsed = false;
-    collapsedRepositoryGroupIds.clear();
-    expandedRepositoryGroupIds.clear();
+    repositoriesCollapsed = expandAllRepositoryGroupsHelper(collapsedRepositoryGroupIds, expandedRepositoryGroupIds);
     queuePersistMuxUiState();
   };
 
   const firstDirectoryForRepositoryGroup = (repositoryGroupId: string): string | null => {
-    for (const directory of directories.values()) {
-      const candidateRepositoryGroupId = repositoryGroupIdForDirectory(directory.directoryId);
-      if (candidateRepositoryGroupId === repositoryGroupId) {
-        return directory.directoryId;
-      }
-    }
-    return null;
+    return firstDirectoryForRepositoryGroupHelper(directories, repositoryGroupIdForDirectory, repositoryGroupId);
   };
 
   const selectLeftNavHome = (): void => {
