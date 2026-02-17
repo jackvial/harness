@@ -570,6 +570,75 @@ void test('parseHarnessConfigText falls back for invalid codex settings', () => 
   assert.deepEqual(parsedWithBadLaunchShapes.codex.launch, DEFAULT_HARNESS_CONFIG.codex.launch);
 });
 
+void test('parseHarnessConfigText parses claude launch settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "claude": {
+        "launch": {
+          "defaultMode": "standard",
+          "directoryModes": {
+            ".": "yolo",
+            "./sandbox": "standard"
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.claude, {
+    launch: {
+      defaultMode: 'standard',
+      directoryModes: {
+        '.': 'yolo',
+        './sandbox': 'standard'
+      }
+    }
+  });
+});
+
+void test('parseHarnessConfigText falls back for invalid claude settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "claude": {
+        "launch": {
+          "defaultMode": "unsafe",
+          "directoryModes": {
+            ".": "unsafe",
+            "": "yolo",
+            "./safe": "standard"
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.claude, {
+    launch: {
+      defaultMode: DEFAULT_HARNESS_CONFIG.claude.launch.defaultMode,
+      directoryModes: {
+        './safe': 'standard'
+      }
+    }
+  });
+
+  const parsedWithBadShapes = parseHarnessConfigText(`
+    {
+      "claude": []
+    }
+  `);
+  assert.deepEqual(parsedWithBadShapes.claude, DEFAULT_HARNESS_CONFIG.claude);
+
+  const parsedWithBadLaunchShapes = parseHarnessConfigText(`
+    {
+      "claude": {
+        "launch": {
+          "defaultMode": 7,
+          "directoryModes": null
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsedWithBadLaunchShapes.claude.launch, DEFAULT_HARNESS_CONFIG.claude.launch);
+});
+
 void test('parseHarnessConfigText parses lifecycle hook connectors and event filters', () => {
   const parsed = parseHarnessConfigText(`
     {

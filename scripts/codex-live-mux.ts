@@ -871,6 +871,15 @@ async function main(): Promise<number> {
     );
     codexLaunchModeByDirectoryPath[normalizedDirectoryPath] = mode;
   }
+  const configuredClaudeLaunch = loadedConfig.config.claude.launch;
+  const claudeLaunchModeByDirectoryPath: Record<string, 'yolo' | 'standard'> = {};
+  for (const [directoryPath, mode] of Object.entries(configuredClaudeLaunch.directoryModes)) {
+    const normalizedDirectoryPath = resolveWorkspacePathForMux(
+      options.invocationDirectory,
+      directoryPath,
+    );
+    claudeLaunchModeByDirectoryPath[normalizedDirectoryPath] = mode;
+  }
   let leftPaneColsOverride: number | null =
     configuredMuxUi.paneWidthPercent === null
       ? null
@@ -1581,6 +1590,8 @@ async function main(): Promise<number> {
           directoryPath: sessionCwd,
           codexLaunchDefaultMode: configuredCodexLaunch.defaultMode,
           codexLaunchModeByDirectoryPath: codexLaunchModeByDirectoryPath,
+          claudeLaunchDefaultMode: configuredClaudeLaunch.defaultMode,
+          claudeLaunchModeByDirectoryPath: claudeLaunchModeByDirectoryPath,
         },
       );
       targetConversation.launchCommand = formatCommandForDebugBar(

@@ -404,3 +404,51 @@ void test('buildAgentSessionStartArgs applies codex launch defaults and director
     ['-lc', 'ls']
   );
 });
+
+void test('buildAgentStartArgs applies configurable claude yolo launch mode', () => {
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'claude',
+      ['--model', 'opus'],
+      {},
+      {
+        claudeLaunchMode: 'yolo'
+      }
+    ),
+    ['--model', 'opus', '--dangerously-skip-permissions']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'claude',
+      ['--model', 'opus'],
+      {},
+      {
+        claudeLaunchMode: 'standard'
+      }
+    ),
+    ['--model', 'opus']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'claude',
+      ['--dangerously-skip-permissions', '--model', 'opus'],
+      {},
+      {
+        claudeLaunchMode: 'yolo'
+      }
+    ),
+    ['--dangerously-skip-permissions', '--model', 'opus']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'claude',
+      ['--print'],
+      {},
+      {}
+    ),
+    ['--print']
+  );
+});

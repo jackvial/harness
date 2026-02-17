@@ -31,11 +31,14 @@ const CLAUDE_EXPLICIT_SUBCOMMANDS = new Set([
 ]);
 
 type CodexLaunchMode = 'yolo' | 'standard';
+type ClaudeLaunchMode = 'yolo' | 'standard';
 
 interface BuildAgentSessionStartArgsOptions {
   readonly directoryPath?: string | null;
   readonly codexLaunchDefaultMode?: CodexLaunchMode;
   readonly codexLaunchModeByDirectoryPath?: Readonly<Record<string, CodexLaunchMode>>;
+  readonly claudeLaunchDefaultMode?: ClaudeLaunchMode;
+  readonly claudeLaunchModeByDirectoryPath?: Readonly<Record<string, ClaudeLaunchMode>>;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -170,6 +173,7 @@ export function buildAgentStartArgs(
   adapterState: Record<string, unknown>,
   options?: {
     codexLaunchMode?: CodexLaunchMode;
+    claudeLaunchMode?: ClaudeLaunchMode;
   }
 ): string[] {
   if (agentType === 'codex') {
@@ -190,22 +194,29 @@ export function buildAgentStartArgs(
     return ['resume', resumeSessionId, ...argsWithLaunchMode];
   }
 
-  if (agentType !== 'claude') {
-    return [...baseArgs];
+  if (agentType === 'claude') {
+    const firstArg = firstNonOptionArg(baseArgs);
+    if (firstArg !== null && CLAUDE_EXPLICIT_SUBCOMMANDS.has(firstArg)) {
+      return [...baseArgs];
+    }
+
+    const claudeLaunchMode = options?.claudeLaunchMode ?? 'standard';
+    const argsWithLaunchMode =
+      claudeLaunchMode === 'yolo' && !baseArgs.includes('--dangerously-skip-permissions')
+        ? [...baseArgs, '--dangerously-skip-permissions']
+        : [...baseArgs];
+
+    if (hasClaudeResumeArg(baseArgs)) {
+      return argsWithLaunchMode;
+    }
+    const resumeSessionId = claudeResumeSessionIdFromAdapterState(adapterState);
+    if (resumeSessionId === null) {
+      return argsWithLaunchMode;
+    }
+    return ['--resume', resumeSessionId, ...argsWithLaunchMode];
   }
 
-  const firstArg = firstNonOptionArg(baseArgs);
-  if (firstArg !== null && CLAUDE_EXPLICIT_SUBCOMMANDS.has(firstArg)) {
-    return [...baseArgs];
-  }
-  if (hasClaudeResumeArg(baseArgs)) {
-    return [...baseArgs];
-  }
-  const resumeSessionId = claudeResumeSessionIdFromAdapterState(adapterState);
-  if (resumeSessionId === null) {
-    return [...baseArgs];
-  }
-  return ['--resume', resumeSessionId, ...baseArgs];
+  return [...baseArgs];
 }
 
 export function buildAgentSessionStartArgs(
@@ -214,19 +225,33 @@ export function buildAgentSessionStartArgs(
   adapterState: Record<string, unknown>,
   options: BuildAgentSessionStartArgsOptions = {}
 ): string[] {
-  if (agentType !== 'codex') {
-    return buildAgentStartArgs(agentType, baseArgs, adapterState);
+  const normalizedDirectoryPath = options.directoryPath?.trim() ?? '';
+
+  if (agentType === 'codex') {
+    const defaultMode = options.codexLaunchDefaultMode ?? 'standard';
+    const directoryModes = options.codexLaunchModeByDirectoryPath ?? {};
+    const codexLaunchMode =
+      normalizedDirectoryPath.length > 0
+        ? (directoryModes[normalizedDirectoryPath] ?? defaultMode)
+        : defaultMode;
+
+    return buildAgentStartArgs(agentType, baseArgs, adapterState, {
+      codexLaunchMode,
+    });
   }
 
-  const defaultMode = options.codexLaunchDefaultMode ?? 'standard';
-  const normalizedDirectoryPath = options.directoryPath?.trim() ?? '';
-  const directoryModes = options.codexLaunchModeByDirectoryPath ?? {};
-  const codexLaunchMode =
-    normalizedDirectoryPath.length > 0
-      ? (directoryModes[normalizedDirectoryPath] ?? defaultMode)
-      : defaultMode;
+  if (agentType === 'claude') {
+    const defaultMode = options.claudeLaunchDefaultMode ?? 'standard';
+    const directoryModes = options.claudeLaunchModeByDirectoryPath ?? {};
+    const claudeLaunchMode =
+      normalizedDirectoryPath.length > 0
+        ? (directoryModes[normalizedDirectoryPath] ?? defaultMode)
+        : defaultMode;
 
-  return buildAgentStartArgs(agentType, baseArgs, adapterState, {
-    codexLaunchMode,
-  });
+    return buildAgentStartArgs(agentType, baseArgs, adapterState, {
+      claudeLaunchMode,
+    });
+  }
+
+  return buildAgentStartArgs(agentType, baseArgs, adapterState);
 }

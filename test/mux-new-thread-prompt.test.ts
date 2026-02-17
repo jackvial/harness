@@ -16,6 +16,7 @@ void test('new thread prompt defaults and normalization are stable', () => {
   assert.equal(normalizeThreadAgentType('claude'), 'claude');
   assert.equal(normalizeThreadAgentType('terminal'), 'terminal');
   assert.equal(normalizeThreadAgentType('codex'), 'codex');
+  assert.equal(normalizeThreadAgentType('claude'), 'claude');
   assert.equal(normalizeThreadAgentType('other'), 'codex');
   assert.equal(nextThreadAgentType('codex'), 'claude');
   assert.equal(nextThreadAgentType('claude'), 'terminal');
@@ -132,15 +133,25 @@ void test('new thread prompt row mapping and body lines remain deterministic', (
   assert.equal(body[3], '○ [ claude ]');
   assert.equal(body[4], '○ [ terminal ]');
 
-  const withTerminal = reduceNewThreadPromptInput(state, Uint8Array.from([0x20])).nextState;
+  const withClaude = reduceNewThreadPromptInput(state, Uint8Array.from([0x20])).nextState;
+  const bodyClaude = newThreadPromptBodyLines(withClaude, {
+    codexButtonLabel: '[ codex ]',
+    claudeButtonLabel: '[ claude ]',
+    terminalButtonLabel: '[ terminal ]'
+  });
+  assert.equal(bodyClaude[2], '○ [ codex ]');
+  assert.equal(bodyClaude[3], '● [ claude ]');
+  assert.equal(bodyClaude[4], '○ [ terminal ]');
+
+  const withTerminal = reduceNewThreadPromptInput(withClaude, Uint8Array.from([0x20])).nextState;
   const bodyTerminal = newThreadPromptBodyLines(withTerminal, {
     codexButtonLabel: '[ codex ]',
     claudeButtonLabel: '[ claude ]',
     terminalButtonLabel: '[ terminal ]'
   });
   assert.equal(bodyTerminal[2], '○ [ codex ]');
-  assert.equal(bodyTerminal[3], '● [ claude ]');
-  assert.equal(bodyTerminal[4], '○ [ terminal ]');
+  assert.equal(bodyTerminal[3], '○ [ claude ]');
+  assert.equal(bodyTerminal[4], '● [ terminal ]');
 
   assert.equal(resolveNewThreadPromptAgentByRow(10, 15), 'codex');
   assert.equal(resolveNewThreadPromptAgentByRow(10, 16), 'claude');

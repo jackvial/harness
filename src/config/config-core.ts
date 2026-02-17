@@ -109,6 +109,17 @@ interface HarnessCodexConfig {
   readonly launch: HarnessCodexLaunchConfig;
 }
 
+type HarnessClaudeLaunchMode = 'yolo' | 'standard';
+
+interface HarnessClaudeLaunchConfig {
+  readonly defaultMode: HarnessClaudeLaunchMode;
+  readonly directoryModes: Readonly<Record<string, HarnessClaudeLaunchMode>>;
+}
+
+interface HarnessClaudeConfig {
+  readonly launch: HarnessClaudeLaunchConfig;
+}
+
 interface HarnessLifecycleProviderConfig {
   readonly codex: boolean;
   readonly claude: boolean;
@@ -147,6 +158,7 @@ interface HarnessConfig {
   readonly mux: HarnessMuxConfig;
   readonly debug: HarnessDebugConfig;
   readonly codex: HarnessCodexConfig;
+  readonly claude: HarnessClaudeConfig;
   readonly hooks: HarnessHooksConfig;
 }
 
@@ -216,6 +228,12 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       defaultMode: 'yolo',
       directoryModes: {},
     },
+  },
+  claude: {
+    launch: {
+      defaultMode: 'yolo',
+      directoryModes: {}
+    }
   },
   hooks: {
     lifecycle: {
@@ -743,6 +761,62 @@ function normalizeCodexConfig(input: unknown): HarnessCodexConfig {
   };
 }
 
+function readClaudeLaunchMode(value: unknown): HarnessClaudeLaunchMode | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'yolo' || normalized === 'standard') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeClaudeDirectoryModesConfig(
+  input: unknown
+): Readonly<Record<string, HarnessClaudeLaunchMode>> {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.claude.launch.directoryModes;
+  }
+  const out: Record<string, HarnessClaudeLaunchMode> = {};
+  for (const [rawPath, rawMode] of Object.entries(record)) {
+    const path = rawPath.trim();
+    if (path.length === 0) {
+      continue;
+    }
+    const mode = readClaudeLaunchMode(rawMode);
+    if (mode === null) {
+      continue;
+    }
+    out[path] = mode;
+  }
+  return out;
+}
+
+function normalizeClaudeLaunchConfig(input: unknown): HarnessClaudeLaunchConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.claude.launch;
+  }
+  const defaultMode =
+    readClaudeLaunchMode(record['defaultMode']) ?? DEFAULT_HARNESS_CONFIG.claude.launch.defaultMode;
+  return {
+    defaultMode,
+    directoryModes: normalizeClaudeDirectoryModesConfig(record['directoryModes'])
+  };
+}
+
+function normalizeClaudeConfig(input: unknown): HarnessClaudeConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.claude;
+  }
+  return {
+    launch: normalizeClaudeLaunchConfig(record['launch'])
+  };
+}
+
 function isHarnessLifecycleEventType(value: string): value is HarnessLifecycleEventType {
   return (HARNESS_LIFECYCLE_EVENT_TYPES as readonly string[]).includes(value);
 }
@@ -920,6 +994,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   const legacyPerf = normalizePerfConfig(root['perf']);
   const debug = normalizeDebugConfig(root['debug'], legacyPerf);
   const codex = normalizeCodexConfig(root['codex']);
+  const claude = normalizeClaudeConfig(root['claude']);
   const hooks = normalizeLifecycleHooksConfig(asRecord(root['hooks'])?.['lifecycle']);
 
   return {
@@ -930,6 +1005,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
     },
     debug,
     codex,
+    claude,
     hooks: {
       lifecycle: hooks,
     },
