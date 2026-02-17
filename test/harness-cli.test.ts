@@ -49,16 +49,27 @@ async function reservePort(): Promise<number> {
   });
 }
 
+async function reserveDistinctPorts(count: number): Promise<number[]> {
+  const ports: number[] = [];
+  while (ports.length < count) {
+    const candidate = await reservePort();
+    if (!ports.includes(candidate)) {
+      ports.push(candidate);
+    }
+  }
+  return ports;
+}
+
 async function runHarness(
   cwd: string,
   args: readonly string[],
-  extraEnv: Record<string, string | undefined> = {}
+  extraEnv: Record<string, string | undefined> = {},
 ): Promise<RunHarnessResult> {
   return await new Promise<RunHarnessResult>((resolveRun, rejectRun) => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       HARNESS_INVOKE_CWD: cwd,
-      ...extraEnv
+      ...extraEnv,
     };
     for (const [key, value] of Object.entries(extraEnv)) {
       if (value === undefined) {
@@ -68,7 +79,7 @@ async function runHarness(
     const child = spawn(process.execPath, tsRuntimeArgs(HARNESS_SCRIPT_PATH, args), {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env
+      env,
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -87,7 +98,7 @@ async function runHarness(
       resolveRun({
         code: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf8')
+        stderr: Buffer.concat(stderrChunks).toString('utf8'),
       });
     });
   });
@@ -96,7 +107,7 @@ async function runHarness(
 async function waitForCondition(
   check: () => boolean,
   timeoutMs: number,
-  failureMessage: string
+  failureMessage: string,
 ): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -126,7 +137,7 @@ function isPidRunning(pid: number): boolean {
 function readParentPid(pid: number): number | null {
   try {
     const output = execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
-      encoding: 'utf8'
+      encoding: 'utf8',
     }).trim();
     if (output.length === 0) {
       return null;
@@ -138,7 +149,11 @@ function readParentPid(pid: number): number | null {
   }
 }
 
-async function waitForParentPid(pid: number, targetParentPid: number, timeoutMs: number): Promise<boolean> {
+async function waitForParentPid(
+  pid: number,
+  targetParentPid: number,
+  timeoutMs: number,
+): Promise<boolean> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     if (!isPidRunning(pid)) {
@@ -174,11 +189,11 @@ async function spawnOrphanSqliteProcess(dbPath: string): Promise<number> {
       "const child = spawn('sqlite3', [dbPath, sql], { detached: true, stdio: 'ignore' });",
       "if (typeof child.pid !== 'number') { process.exit(2); }",
       'process.stdout.write(String(child.pid));',
-      'child.unref();'
+      'child.unref();',
     ].join('\n');
 
     const launcher = spawn(process.execPath, ['-e', launcherScript, dbPath, longRunningSql], {
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -197,8 +212,8 @@ async function spawnOrphanSqliteProcess(dbPath: string): Promise<number> {
       if (code !== 0) {
         rejectSpawn(
           new Error(
-            `orphan sqlite launcher failed (code=${String(code)}): ${Buffer.concat(stderrChunks).toString('utf8')}`
-          )
+            `orphan sqlite launcher failed (code=${String(code)}): ${Buffer.concat(stderrChunks).toString('utf8')}`,
+          ),
         );
         return;
       }
@@ -251,7 +266,12 @@ void test('harness animate requires explicit bounds in non-tty mode', async () =
   try {
     const result = await runHarness(workspace, ['animate']);
     assert.equal(result.code, 1);
-    assert.equal(result.stderr.includes('harness animate requires a TTY or explicit --frames/--duration-ms bounds'), true);
+    assert.equal(
+      result.stderr.includes(
+        'harness animate requires a TTY or explicit --frames/--duration-ms bounds',
+      ),
+      true,
+    );
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
@@ -261,7 +281,14 @@ void test('harness animate renders bounded frames without starting gateway', asy
   const workspace = createWorkspace();
   const recordPath = join(workspace, '.harness/gateway.json');
   try {
-    const result = await runHarness(workspace, ['animate', '--frames', '1', '--seed', '7', '--no-color']);
+    const result = await runHarness(workspace, [
+      'animate',
+      '--frames',
+      '1',
+      '--seed',
+      '7',
+      '--no-color',
+    ]);
     assert.equal(result.code, 0);
     assert.equal(result.stdout.includes('HARNESS'), true);
     assert.equal(existsSync(recordPath), false);
@@ -287,12 +314,20 @@ void test('harness gateway start/status/call/stop manages daemon lifecycle', asy
   const port = await reservePort();
   const recordPath = join(workspace, '.harness/gateway.json');
   const env = {
-    HARNESS_CONTROL_PLANE_PORT: String(port)
+    HARNESS_CONTROL_PLANE_PORT: String(port),
   };
   try {
-    const startResult = await runHarness(workspace, ['gateway', 'start', '--port', String(port)], env);
+    const startResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port)],
+      env,
+    );
     assert.equal(startResult.code, 0);
-    assert.equal(startResult.stdout.includes('gateway started') || startResult.stdout.includes('gateway already running'), true);
+    assert.equal(
+      startResult.stdout.includes('gateway started') ||
+        startResult.stdout.includes('gateway already running'),
+      true,
+    );
 
     const recordRaw = readFileSync(recordPath, 'utf8');
     const record = parseGatewayRecordText(recordRaw);
@@ -308,7 +343,7 @@ void test('harness gateway start/status/call/stop manages daemon lifecycle', asy
     const callResult = await runHarness(
       workspace,
       ['gateway', 'call', '--json', '{"type":"session.list","limit":1}'],
-      env
+      env,
     );
     assert.equal(callResult.code, 0);
     assert.equal(callResult.stdout.includes('"sessions"'), true);
@@ -340,14 +375,14 @@ void test('harness default client auto-starts detached gateway and leaves it run
       'const target = process.env.HARNESS_TEST_MUX_ARGS_PATH;',
       "if (typeof target === 'string' && target.length > 0) {",
       "  writeFileSync(target, JSON.stringify(process.argv.slice(2)), 'utf8');",
-      '}'
+      '}',
     ].join('\n'),
-    'utf8'
+    'utf8',
   );
   const env = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
     HARNESS_MUX_SCRIPT_PATH: muxStubPath,
-    HARNESS_TEST_MUX_ARGS_PATH: muxArgsPath
+    HARNESS_TEST_MUX_ARGS_PATH: muxArgsPath,
   };
   try {
     const clientResult = await runHarness(workspace, [], env);
@@ -372,6 +407,100 @@ void test('harness default client auto-starts detached gateway and leaves it run
   }
 });
 
+void test('harness gateway run applies inspect runtime args from harness config', async () => {
+  const workspace = createWorkspace();
+  const daemonStubPath = join(workspace, 'daemon-inspect-stub.js');
+  const daemonExecArgvPath = join(workspace, '.harness/daemon-exec-argv.json');
+  const [gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(2);
+  writeFileSync(
+    join(workspace, 'harness.config.jsonc'),
+    JSON.stringify({
+      debug: {
+        inspect: {
+          enabled: true,
+          gatewayPort: gatewayInspectPort,
+          clientPort: clientInspectPort,
+        },
+      },
+    }),
+    'utf8',
+  );
+  writeFileSync(
+    daemonStubPath,
+    [
+      "import { mkdirSync, writeFileSync } from 'node:fs';",
+      "import { dirname } from 'node:path';",
+      'const target = process.env.HARNESS_TEST_DAEMON_EXEC_ARGV_PATH;',
+      "if (typeof target === 'string' && target.length > 0) {",
+      '  mkdirSync(dirname(target), { recursive: true });',
+      "  writeFileSync(target, JSON.stringify(process.execArgv), 'utf8');",
+      '}',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const env = {
+    HARNESS_DAEMON_SCRIPT_PATH: daemonStubPath,
+    HARNESS_TEST_DAEMON_EXEC_ARGV_PATH: daemonExecArgvPath,
+  };
+  try {
+    const runResult = await runHarness(workspace, ['gateway', 'run'], env);
+    assert.equal(runResult.code, 0);
+    assert.equal(existsSync(daemonExecArgvPath), true);
+    const daemonExecArgv = JSON.parse(readFileSync(daemonExecArgvPath, 'utf8')) as string[];
+    assert.equal(daemonExecArgv.includes(`--inspect=${String(gatewayInspectPort)}`), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness default client applies inspect runtime args to mux process from harness config', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const muxStubPath = join(workspace, 'mux-inspect-stub.js');
+  const muxExecArgvPath = join(workspace, '.harness/mux-exec-argv.json');
+  const [gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(2);
+  writeFileSync(
+    join(workspace, 'harness.config.jsonc'),
+    JSON.stringify({
+      debug: {
+        inspect: {
+          enabled: true,
+          gatewayPort: gatewayInspectPort,
+          clientPort: clientInspectPort,
+        },
+      },
+    }),
+    'utf8',
+  );
+  writeFileSync(
+    muxStubPath,
+    [
+      "import { writeFileSync } from 'node:fs';",
+      'const target = process.env.HARNESS_TEST_MUX_EXEC_ARGV_PATH;',
+      "if (typeof target === 'string' && target.length > 0) {",
+      "  writeFileSync(target, JSON.stringify(process.execArgv), 'utf8');",
+      '}',
+    ].join('\n'),
+    'utf8',
+  );
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port),
+    HARNESS_MUX_SCRIPT_PATH: muxStubPath,
+    HARNESS_TEST_MUX_EXEC_ARGV_PATH: muxExecArgvPath,
+  };
+  try {
+    const clientResult = await runHarness(workspace, [], env);
+    assert.equal(clientResult.code, 0);
+    assert.equal(existsSync(muxExecArgvPath), true);
+    const muxExecArgv = JSON.parse(readFileSync(muxExecArgvPath, 'utf8')) as string[];
+    assert.equal(muxExecArgv.includes(`--inspect=${String(clientInspectPort)}`), true);
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness default client loads .harness/secrets.env and forwards ANTHROPIC_API_KEY to mux process', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
@@ -381,7 +510,7 @@ void test('harness default client loads .harness/secrets.env and forwards ANTHRO
   writeFileSync(
     join(workspace, '.harness/secrets.env'),
     'ANTHROPIC_API_KEY=from-secrets-file',
-    'utf8'
+    'utf8',
   );
   writeFileSync(
     muxStubPath,
@@ -390,15 +519,15 @@ void test('harness default client loads .harness/secrets.env and forwards ANTHRO
       'const target = process.env.HARNESS_TEST_ANTHROPIC_KEY_PATH;',
       "if (typeof target === 'string' && target.length > 0) {",
       "  writeFileSync(target, process.env.ANTHROPIC_API_KEY ?? '', 'utf8');",
-      '}'
+      '}',
     ].join('\n'),
-    'utf8'
+    'utf8',
   );
   const env = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
     HARNESS_MUX_SCRIPT_PATH: muxStubPath,
     HARNESS_TEST_ANTHROPIC_KEY_PATH: observedKeyPath,
-    ANTHROPIC_API_KEY: undefined
+    ANTHROPIC_API_KEY: undefined,
   };
   try {
     const clientResult = await runHarness(workspace, [], env);
@@ -420,16 +549,9 @@ void test('harness profile writes client and gateway CPU profiles in isolated se
   const profileDir = join(workspace, `.harness/profiles/${sessionName}`);
   const clientProfilePath = join(profileDir, 'client.cpuprofile');
   const gatewayProfilePath = join(profileDir, 'gateway.cpuprofile');
-  writeFileSync(
-    muxStubPath,
-    [
-      "const noop = '';",
-      'void noop;'
-    ].join('\n'),
-    'utf8'
-  );
+  writeFileSync(muxStubPath, ["const noop = '';", 'void noop;'].join('\n'), 'utf8');
   const env = {
-    HARNESS_MUX_SCRIPT_PATH: muxStubPath
+    HARNESS_MUX_SCRIPT_PATH: muxStubPath,
   };
 
   try {
@@ -441,11 +563,17 @@ void test('harness profile writes client and gateway CPU profiles in isolated se
     assert.equal(existsSync(sessionRecordPath), false);
     assert.equal(existsSync(defaultRecordPath), false);
 
-    const statusResult = await runHarness(workspace, ['--session', sessionName, 'gateway', 'status'], env);
+    const statusResult = await runHarness(
+      workspace,
+      ['--session', sessionName, 'gateway', 'status'],
+      env,
+    );
     assert.equal(statusResult.code, 0);
     assert.equal(statusResult.stdout.includes('gateway status: stopped'), true);
   } finally {
-    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force'], env).catch(() => undefined);
+    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force'], env).catch(
+      () => undefined,
+    );
     rmSync(workspace, { recursive: true, force: true });
   }
 });
@@ -457,7 +585,7 @@ void test(
     const sessionName = 'perf-throughput-a';
     const port = await reservePort();
     const env = {
-      HARNESS_CONTROL_PLANE_PORT: String(port)
+      HARNESS_CONTROL_PLANE_PORT: String(port),
     };
     const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
     const defaultRecordPath = join(workspace, '.harness/gateway.json');
@@ -467,7 +595,7 @@ void test(
       const startResult = await runHarness(
         workspace,
         ['--session', sessionName, 'gateway', 'start', '--port', String(port)],
-        env
+        env,
       );
       assert.equal(startResult.code, 0);
       assert.equal(existsSync(sessionRecordPath), true);
@@ -483,8 +611,8 @@ void test(
         ...(record?.authToken === null || record?.authToken === undefined
           ? {}
           : {
-              authToken: record.authToken
-            })
+              authToken: record.authToken,
+            }),
       });
 
       const sessionIds = ['terminal-throughput-a', 'terminal-throughput-b'] as const;
@@ -497,14 +625,14 @@ void test(
         const chunk = Buffer.from(envelope.chunkBase64, 'base64');
         outputBytesBySession.set(
           envelope.sessionId,
-          (outputBytesBySession.get(envelope.sessionId) ?? 0) + chunk.length
+          (outputBytesBySession.get(envelope.sessionId) ?? 0) + chunk.length,
         );
       });
 
       await client.sendCommand({
         type: 'directory.upsert',
         directoryId: 'directory-throughput',
-        path: workspace
+        path: workspace,
       });
 
       for (const sessionId of sessionIds) {
@@ -513,7 +641,7 @@ void test(
           conversationId: sessionId,
           directoryId: 'directory-throughput',
           title: sessionId,
-          agentType: 'terminal'
+          agentType: 'terminal',
         });
         await client.sendCommand({
           type: 'pty.start',
@@ -521,11 +649,11 @@ void test(
           args: [],
           initialCols: 120,
           initialRows: 40,
-          cwd: workspace
+          cwd: workspace,
         });
         await client.sendCommand({
           type: 'pty.attach',
-          sessionId
+          sessionId,
         });
       }
 
@@ -533,13 +661,13 @@ void test(
         await client.sendCommand({
           type: 'session.respond',
           sessionId,
-          text: `printf "ready-${sessionId}\\n"\n`
+          text: `printf "ready-${sessionId}\\n"\n`,
         });
       }
       await waitForCondition(
         () => sessionIds.every((sessionId) => (outputBytesBySession.get(sessionId) ?? 0) >= 20),
         5_000,
-        'timed out waiting for baseline terminal output on both sessions'
+        'timed out waiting for baseline terminal output on both sessions',
       );
       const baselineBytes = new Map<string, number>();
       for (const sessionId of sessionIds) {
@@ -550,7 +678,7 @@ void test(
         await client.sendCommand({
           type: 'session.respond',
           sessionId,
-          text: 'bun run harness animate --duration-ms 1200 --fps 120 --no-color\n'
+          text: 'bun run harness animate --duration-ms 1200 --fps 120 --no-color\n',
         });
       }
 
@@ -558,14 +686,15 @@ void test(
         () =>
           sessionIds.every(
             (sessionId) =>
-              (outputBytesBySession.get(sessionId) ?? 0) - (baselineBytes.get(sessionId) ?? 0) >= 400
+              (outputBytesBySession.get(sessionId) ?? 0) - (baselineBytes.get(sessionId) ?? 0) >=
+              400,
           ),
         12_000,
-        'timed out waiting for animate throughput output on both terminal sessions'
+        'timed out waiting for animate throughput output on both terminal sessions',
       );
 
       const listResult = await client.sendCommand({
-        type: 'session.list'
+        type: 'session.list',
       });
       const sessions = listResult['sessions'];
       assert.equal(Array.isArray(sessions), true);
@@ -585,13 +714,15 @@ void test(
       assert.equal(activeIds.has('terminal-throughput-b'), true);
     } finally {
       client?.close();
-      void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force'], env).catch(
-        () => undefined
-      );
+      void runHarness(
+        workspace,
+        ['--session', sessionName, 'gateway', 'stop', '--force'],
+        env,
+      ).catch(() => undefined);
       rmSync(workspace, { recursive: true, force: true });
     }
   },
-  { timeout: 30_000 }
+  { timeout: 30_000 },
 );
 
 void test('harness gateway stop cleans up orphan sqlite processes for the workspace db', async () => {
@@ -599,11 +730,15 @@ void test('harness gateway stop cleans up orphan sqlite processes for the worksp
   const port = await reservePort();
   const dbPath = join(workspace, '.harness/control-plane.sqlite');
   const env = {
-    HARNESS_CONTROL_PLANE_PORT: String(port)
+    HARNESS_CONTROL_PLANE_PORT: String(port),
   };
   let orphanPid: number | null = null;
   try {
-    const startResult = await runHarness(workspace, ['gateway', 'start', '--port', String(port)], env);
+    const startResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port)],
+      env,
+    );
     assert.equal(startResult.code, 0);
 
     orphanPid = await spawnOrphanSqliteProcess(dbPath);

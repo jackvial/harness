@@ -15,6 +15,7 @@ Use your preferred agent ergonomics, keep each task in fresh context on its own 
 If you are running one agent at a time, you are serializing work that can run concurrently.
 
 Harness is built for developers who want to:
+
 - run 5-6 branches in parallel on one machine,
 - queue up independent tasks that can be claimed by available agents,
 - switch between threads instantly,
@@ -77,8 +78,8 @@ const client = await connectHarnessAgentRealtimeClient({
   host: '127.0.0.1',
   port: 7777,
   subscription: {
-    includeOutput: false
-  }
+    includeOutput: false,
+  },
 });
 
 client.on('session.status', ({ observed }) => {
@@ -93,18 +94,18 @@ const repository = await client.repositories.upsert({
   repositoryId: 'repository-1',
   name: 'harness',
   remoteUrl: 'https://github.com/acme/harness.git',
-  defaultBranch: 'main'
+  defaultBranch: 'main',
 });
 
 const project = await client.projects.create({
   projectId: 'directory-1',
-  path: '/Users/me/dev/harness'
+  path: '/Users/me/dev/harness',
 });
 
 const thread = await client.threads.create({
   projectId: project.projectId,
   title: 'Fix flaky tests',
-  agentType: 'codex'
+  agentType: 'codex',
 });
 
 const task = await client.tasks.create({
@@ -115,8 +116,8 @@ const task = await client.tasks.create({
     priority: 2,
     estimate: 3,
     dueDate: '2026-03-01',
-    labelIds: ['infra']
-  }
+    labelIds: ['infra'],
+  },
 });
 
 await client.tasks.draft(task.taskId);
@@ -128,11 +129,11 @@ await client.sessions.unsubscribeEvents(thread.threadId);
 await client.tasks.claim({
   taskId: task.taskId,
   controllerId: 'agent-orchestrator',
-  projectId: project.projectId
+  projectId: project.projectId,
 });
 
 const taskSubscription = await client.subscriptions.create({
-  repositoryId: repository.repositoryId
+  repositoryId: repository.repositoryId,
 });
 
 client.on('task.updated', ({ observed }) => {
@@ -201,6 +202,7 @@ bun run migrate:bun
 ```
 
 What it does:
+
 - removes legacy root lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `npm-shrinkwrap.json`) if present
 - reinstalls dependencies from `bun.lock` (`bun install --frozen-lockfile`)
 - rebuilds native PTY helper (`bun run build:ptyd`)
@@ -270,6 +272,19 @@ harness --session perf-a profile
 Configuration is file-first via `harness.config.jsonc`.
 Codex launch mode is controlled under `codex.launch` with `defaultMode` and per-directory `directoryModes` overrides.
 Process-bootstrap secrets can be stored in `.harness/secrets.env` (for example `ANTHROPIC_API_KEY=...`); existing exported environment values take precedence.
+To expose Bun debugger protocol endpoints for live profiler control, configure `debug.inspect`:
+
+```jsonc
+{
+  "debug": {
+    "inspect": {
+      "enabled": true,
+      "gatewayPort": 6499,
+      "clientPort": 6500,
+    },
+  },
+}
+```
 
 Inspect the latest selector index snapshot from perf artifacts:
 

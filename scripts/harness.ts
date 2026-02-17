@@ -1,5 +1,13 @@
 import { once } from 'node:events';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
@@ -22,8 +30,9 @@ import {
   resolveGatewayRecordPath,
   resolveInvocationDirectory,
   serializeGatewayRecord,
-  type GatewayRecord
+  type GatewayRecord,
 } from '../src/cli/gateway-record.ts';
+import { loadHarnessConfig } from '../src/config/config-core.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +76,11 @@ interface ParsedProfileCommand {
 interface RuntimeCpuProfileOptions {
   cpuProfileDir: string;
   cpuProfileName: string;
+}
+
+interface RuntimeInspectOptions {
+  readonly gatewayRuntimeArgs: readonly string[];
+  readonly clientRuntimeArgs: readonly string[];
 }
 
 interface SessionPaths {
@@ -129,7 +143,7 @@ function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
 function tsRuntimeArgs(
   scriptPath: string,
   args: readonly string[] = [],
-  runtimeArgs: readonly string[] = []
+  runtimeArgs: readonly string[] = [],
 ): string[] {
   return [...runtimeArgs, scriptPath, ...args];
 }
@@ -170,23 +184,26 @@ function parseGlobalCliOptions(argv: readonly string[]): ParsedGlobalCliOptions 
   if (argv[0] !== '--session') {
     return {
       sessionName: null,
-      argv
+      argv,
     };
   }
   const sessionName = parseSessionName(readCliValue(argv, 0, '--session'));
   return {
     sessionName,
-    argv: argv.slice(2)
+    argv: argv.slice(2),
   };
 }
 
-function resolveSessionPaths(invocationDirectory: string, sessionName: string | null): SessionPaths {
+function resolveSessionPaths(
+  invocationDirectory: string,
+  sessionName: string | null,
+): SessionPaths {
   if (sessionName === null) {
     return {
       recordPath: resolveGatewayRecordPath(invocationDirectory),
       logPath: resolveGatewayLogPath(invocationDirectory),
       defaultStateDbPath: resolve(invocationDirectory, DEFAULT_GATEWAY_DB_PATH),
-      profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH)
+      profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH),
     };
   }
   const sessionRoot = resolve(invocationDirectory, DEFAULT_SESSION_ROOT_PATH, sessionName);
@@ -194,7 +211,7 @@ function resolveSessionPaths(invocationDirectory: string, sessionName: string | 
     recordPath: resolve(sessionRoot, 'gateway.json'),
     logPath: resolve(sessionRoot, 'gateway.log'),
     defaultStateDbPath: resolve(sessionRoot, 'control-plane.sqlite'),
-    profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH, sessionName)
+    profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH, sessionName),
   };
 }
 
@@ -212,7 +229,7 @@ function parseProfileCommand(argv: readonly string[]): ParsedProfileCommand {
   }
   return {
     profileDir,
-    muxArgs
+    muxArgs,
   };
 }
 
@@ -222,8 +239,23 @@ function buildCpuProfileRuntimeArgs(options: RuntimeCpuProfileOptions): readonly
     '--cpu-prof-dir',
     options.cpuProfileDir,
     '--cpu-prof-name',
-    options.cpuProfileName
+    options.cpuProfileName,
   ];
+}
+
+function resolveInspectRuntimeOptions(invocationDirectory: string): RuntimeInspectOptions {
+  const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
+  const debugConfig = loadedConfig.config.debug;
+  if (!debugConfig.enabled || !debugConfig.inspect.enabled) {
+    return {
+      gatewayRuntimeArgs: [],
+      clientRuntimeArgs: [],
+    };
+  }
+  return {
+    gatewayRuntimeArgs: [`--inspect=${String(debugConfig.inspect.gatewayPort)}`],
+    clientRuntimeArgs: [`--inspect=${String(debugConfig.inspect.clientPort)}`],
+  };
 }
 
 function removeFileIfExists(filePath: string): void {
@@ -295,7 +327,7 @@ function parseGatewayStopOptions(argv: readonly string[]): GatewayStopOptions {
   const options: GatewayStopOptions = {
     force: false,
     timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
-    cleanupOrphans: true
+    cleanupOrphans: true,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!;
@@ -312,7 +344,10 @@ function parseGatewayStopOptions(argv: readonly string[]): GatewayStopOptions {
       continue;
     }
     if (arg === '--timeout-ms') {
-      options.timeoutMs = parsePositiveIntFlag(readCliValue(argv, index, '--timeout-ms'), '--timeout-ms');
+      options.timeoutMs = parsePositiveIntFlag(
+        readCliValue(argv, index, '--timeout-ms'),
+        '--timeout-ms',
+      );
       index += 1;
       continue;
     }
@@ -337,7 +372,9 @@ function parseGatewayCallOptions(argv: readonly string[]): { json: string } {
     throw new Error(`unknown gateway option: ${arg}`);
   }
   if (json === null) {
-    throw new Error('missing command json; use `harness gateway call --json \'{"type":"session.list"}\'`');
+    throw new Error(
+      'missing command json; use `harness gateway call --json \'{"type":"session.list"}\'`',
+    );
   }
   return { json };
 }
@@ -351,25 +388,25 @@ function parseGatewayCommand(argv: readonly string[]): ParsedGatewayCommand {
   if (subcommand === 'start') {
     return {
       type: 'start',
-      startOptions: parseGatewayStartOptions(rest)
+      startOptions: parseGatewayStartOptions(rest),
     };
   }
   if (subcommand === 'run') {
     return {
       type: 'run',
-      startOptions: parseGatewayStartOptions(rest)
+      startOptions: parseGatewayStartOptions(rest),
     };
   }
   if (subcommand === 'restart') {
     return {
       type: 'restart',
-      startOptions: parseGatewayStartOptions(rest)
+      startOptions: parseGatewayStartOptions(rest),
     };
   }
   if (subcommand === 'stop') {
     return {
       type: 'stop',
-      stopOptions: parseGatewayStopOptions(rest)
+      stopOptions: parseGatewayStopOptions(rest),
     };
   }
   if (subcommand === 'status') {
@@ -377,14 +414,14 @@ function parseGatewayCommand(argv: readonly string[]): ParsedGatewayCommand {
       throw new Error(`unknown gateway option: ${rest[0]}`);
     }
     return {
-      type: 'status'
+      type: 'status',
     };
   }
   if (subcommand === 'call') {
     const parsed = parseGatewayCallOptions(rest);
     return {
       type: 'call',
-      callJson: parsed.json
+      callJson: parsed.json,
     };
   }
   throw new Error(`unknown gateway subcommand: ${subcommand}`);
@@ -405,12 +442,16 @@ function printUsage(): void {
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
       '',
       'session naming:',
-      '  --session accepts [A-Za-z0-9][A-Za-z0-9._-]{0,63} and isolates gateway record/log/db paths.'
-    ].join('\n') + '\n'
+      '  --session accepts [A-Za-z0-9][A-Za-z0-9._-]{0,63} and isolates gateway record/log/db paths.',
+    ].join('\n') + '\n',
   );
 }
 
-function resolveScriptPath(envValue: string | undefined, fallback: string, invocationDirectory: string): string {
+function resolveScriptPath(
+  envValue: string | undefined,
+  fallback: string,
+  invocationDirectory: string,
+): string {
   if (typeof envValue !== 'string' || envValue.trim().length === 0) {
     return fallback;
   }
@@ -478,7 +519,7 @@ async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> 
 
 function readProcessTable(): readonly ProcessTableEntry[] {
   const output = execFileSync('ps', ['-axww', '-o', 'pid=,ppid=,command='], {
-    encoding: 'utf8'
+    encoding: 'utf8',
   });
   const lines = output.split('\n');
   const entries: ProcessTableEntry[] = [];
@@ -500,7 +541,7 @@ function readProcessTable(): readonly ProcessTableEntry[] {
     entries.push({
       pid,
       ppid,
-      command
+      command,
     });
   }
   return entries;
@@ -530,13 +571,13 @@ function formatOrphanSqliteCleanupResult(result: OrphanSqliteCleanupResult): str
     'orphan sqlite cleanup:',
     `matched=${String(result.matchedPids.length)}`,
     `terminated=${String(result.terminatedPids.length)}`,
-    `failed=${String(result.failedPids.length)}`
+    `failed=${String(result.failedPids.length)}`,
   ].join(' ');
 }
 
 async function cleanupOrphanSqliteProcessesForDbPath(
   stateDbPath: string,
-  options: GatewayStopOptions
+  options: GatewayStopOptions,
 ): Promise<OrphanSqliteCleanupResult> {
   let matchedPids: readonly number[] = [];
   try {
@@ -546,7 +587,7 @@ async function cleanupOrphanSqliteProcessesForDbPath(
       matchedPids: [],
       terminatedPids: [],
       failedPids: [],
-      errorMessage: error instanceof Error ? error.message : String(error)
+      errorMessage: error instanceof Error ? error.message : String(error),
     };
   }
 
@@ -601,7 +642,7 @@ async function cleanupOrphanSqliteProcessesForDbPath(
     matchedPids,
     terminatedPids,
     failedPids,
-    errorMessage: null
+    errorMessage: null,
   };
 }
 
@@ -610,13 +651,17 @@ function resolveGatewaySettings(
   record: GatewayRecord | null,
   overrides: GatewayStartOptions,
   env: NodeJS.ProcessEnv,
-  defaultStateDbPath: string
+  defaultStateDbPath: string,
 ): ResolvedGatewaySettings {
-  const host = normalizeGatewayHost(overrides.host ?? record?.host ?? env.HARNESS_CONTROL_PLANE_HOST);
-  const port = normalizeGatewayPort(overrides.port ?? record?.port ?? env.HARNESS_CONTROL_PLANE_PORT);
+  const host = normalizeGatewayHost(
+    overrides.host ?? record?.host ?? env.HARNESS_CONTROL_PLANE_HOST,
+  );
+  const port = normalizeGatewayPort(
+    overrides.port ?? record?.port ?? env.HARNESS_CONTROL_PLANE_PORT,
+  );
   const stateDbPathRaw = normalizeGatewayStateDbPath(
     overrides.stateDbPath ?? record?.stateDbPath ?? env.HARNESS_CONTROL_PLANE_DB_PATH,
-    defaultStateDbPath
+    defaultStateDbPath,
   );
   const stateDbPath = resolve(invocationDirectory, stateDbPathRaw);
 
@@ -636,7 +681,7 @@ function resolveGatewaySettings(
     host,
     port,
     authToken,
-    stateDbPath
+    stateDbPath,
   };
 }
 
@@ -647,13 +692,13 @@ async function probeGateway(record: GatewayRecord): Promise<GatewayProbeResult> 
       port: record.port,
       ...(record.authToken !== null
         ? {
-            authToken: record.authToken
+            authToken: record.authToken,
           }
-        : {})
+        : {}),
     });
     try {
       const result = await client.sendCommand({
-        type: 'session.list'
+        type: 'session.list',
       });
       const sessionsRaw = result['sessions'];
       if (!Array.isArray(sessionsRaw)) {
@@ -661,7 +706,7 @@ async function probeGateway(record: GatewayRecord): Promise<GatewayProbeResult> 
           connected: true,
           sessionCount: 0,
           liveSessionCount: 0,
-          error: null
+          error: null,
         };
       }
       let liveCount = 0;
@@ -678,7 +723,7 @@ async function probeGateway(record: GatewayRecord): Promise<GatewayProbeResult> 
         connected: true,
         sessionCount: sessionsRaw.length,
         liveSessionCount: liveCount,
-        error: null
+        error: null,
       };
     } finally {
       client.close();
@@ -688,7 +733,7 @@ async function probeGateway(record: GatewayRecord): Promise<GatewayProbeResult> 
       connected: false,
       sessionCount: 0,
       liveSessionCount: 0,
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }
@@ -699,16 +744,16 @@ async function waitForGatewayReady(record: GatewayRecord): Promise<void> {
     port: record.port,
     ...(record.authToken !== null
       ? {
-          authToken: record.authToken
+          authToken: record.authToken,
         }
       : {}),
     connectRetryWindowMs: DEFAULT_GATEWAY_START_RETRY_WINDOW_MS,
-    connectRetryDelayMs: DEFAULT_GATEWAY_START_RETRY_DELAY_MS
+    connectRetryDelayMs: DEFAULT_GATEWAY_START_RETRY_DELAY_MS,
   });
   try {
     await client.sendCommand({
       type: 'session.list',
-      limit: 1
+      limit: 1,
     });
   } finally {
     client.close();
@@ -721,7 +766,7 @@ async function startDetachedGateway(
   logPath: string,
   settings: ResolvedGatewaySettings,
   daemonScriptPath: string,
-  runtimeArgs: readonly string[] = []
+  runtimeArgs: readonly string[] = [],
 ): Promise<GatewayRecord> {
   mkdirSync(dirname(logPath), { recursive: true });
   const logFd = openSync(logPath, 'a');
@@ -733,9 +778,9 @@ async function startDetachedGateway(
       '--port',
       String(settings.port),
       '--state-db-path',
-      settings.stateDbPath
+      settings.stateDbPath,
     ],
-    runtimeArgs
+    runtimeArgs,
   );
   if (settings.authToken !== null) {
     daemonArgs.push('--auth-token', settings.authToken);
@@ -745,8 +790,8 @@ async function startDetachedGateway(
     stdio: ['ignore', logFd, logFd],
     env: {
       ...process.env,
-      HARNESS_INVOKE_CWD: invocationDirectory
-    }
+      HARNESS_INVOKE_CWD: invocationDirectory,
+    },
   });
   closeSync(logFd);
 
@@ -762,7 +807,7 @@ async function startDetachedGateway(
     authToken: settings.authToken,
     stateDbPath: settings.stateDbPath,
     startedAt: new Date().toISOString(),
-    workspaceRoot: invocationDirectory
+    workspaceRoot: invocationDirectory,
   };
 
   try {
@@ -788,7 +833,7 @@ async function ensureGatewayRunning(
   daemonScriptPath: string,
   defaultStateDbPath: string,
   overrides: GatewayStartOptions = {},
-  daemonRuntimeArgs: readonly string[] = []
+  daemonRuntimeArgs: readonly string[] = [],
 ): Promise<EnsureGatewayResult> {
   const existingRecord = readGatewayRecord(recordPath);
   if (existingRecord !== null) {
@@ -796,12 +841,12 @@ async function ensureGatewayRunning(
     if (probe.connected) {
       return {
         record: existingRecord,
-        started: false
+        started: false,
       };
     }
     if (isPidRunning(existingRecord.pid)) {
       throw new Error(
-        `gateway record is present but unreachable (pid=${String(existingRecord.pid)} still running): ${probe.error ?? 'unknown error'}`
+        `gateway record is present but unreachable (pid=${String(existingRecord.pid)} still running): ${probe.error ?? 'unknown error'}`,
       );
     }
     removeGatewayRecord(recordPath);
@@ -812,7 +857,7 @@ async function ensureGatewayRunning(
     existingRecord,
     overrides,
     process.env,
-    defaultStateDbPath
+    defaultStateDbPath,
   );
   const record = await startDetachedGateway(
     invocationDirectory,
@@ -820,23 +865,23 @@ async function ensureGatewayRunning(
     logPath,
     settings,
     daemonScriptPath,
-    daemonRuntimeArgs
+    daemonRuntimeArgs,
   );
   return {
     record,
-    started: true
+    started: true,
   };
 }
 
 async function stopGateway(
   recordPath: string,
-  options: GatewayStopOptions
+  options: GatewayStopOptions,
 ): Promise<{ stopped: boolean; message: string }> {
   const record = readGatewayRecord(recordPath);
   if (record === null) {
     return {
       stopped: false,
-      message: 'gateway not running (no record)'
+      message: 'gateway not running (no record)',
     };
   }
 
@@ -854,7 +899,7 @@ async function stopGateway(
   if (!probe.connected && pidRunning && !options.force) {
     return {
       stopped: false,
-      message: `gateway record points to a running but unreachable process (pid=${String(record.pid)}); re-run with --force`
+      message: `gateway record points to a running but unreachable process (pid=${String(record.pid)}); re-run with --force`,
     };
   }
 
@@ -862,7 +907,7 @@ async function stopGateway(
     removeGatewayRecord(recordPath);
     return {
       stopped: true,
-      message: await appendCleanupSummary('removed stale gateway record')
+      message: await appendCleanupSummary('removed stale gateway record'),
     };
   }
 
@@ -874,7 +919,7 @@ async function stopGateway(
       removeGatewayRecord(recordPath);
       return {
         stopped: true,
-        message: 'gateway already exited'
+        message: 'gateway already exited',
       };
     }
     throw error;
@@ -894,20 +939,20 @@ async function stopGateway(
     if (!exitedAfterKill) {
       return {
         stopped: false,
-        message: `gateway did not exit after SIGKILL (pid=${String(record.pid)})`
+        message: `gateway did not exit after SIGKILL (pid=${String(record.pid)})`,
       };
     }
   } else if (!exitedAfterTerm) {
     return {
       stopped: false,
-      message: `gateway did not exit after ${String(options.timeoutMs)}ms; retry with --force`
+      message: `gateway did not exit after ${String(options.timeoutMs)}ms; retry with --force`,
     };
   }
 
   removeGatewayRecord(recordPath);
   return {
     stopped: true,
-    message: await appendCleanupSummary(`gateway stopped (pid=${String(record.pid)})`)
+    message: await appendCleanupSummary(`gateway stopped (pid=${String(record.pid)})`),
   };
 }
 
@@ -916,7 +961,7 @@ async function runMuxClient(
   invocationDirectory: string,
   gateway: GatewayRecord,
   passthroughArgs: readonly string[],
-  runtimeArgs: readonly string[] = []
+  runtimeArgs: readonly string[] = [],
 ): Promise<number> {
   const args = tsRuntimeArgs(
     muxScriptPath,
@@ -926,17 +971,17 @@ async function runMuxClient(
       '--harness-server-port',
       String(gateway.port),
       ...(gateway.authToken === null ? [] : ['--harness-server-token', gateway.authToken]),
-      ...passthroughArgs
+      ...passthroughArgs,
     ],
-    runtimeArgs
+    runtimeArgs,
   );
 
   const child = spawn(process.execPath, args, {
     stdio: 'inherit',
     env: {
       ...process.env,
-      HARNESS_INVOKE_CWD: invocationDirectory
-    }
+      HARNESS_INVOKE_CWD: invocationDirectory,
+    },
   });
   const exit = await once(child, 'exit');
   const code = (exit[0] as number | null) ?? null;
@@ -951,7 +996,8 @@ async function runGatewayForeground(
   daemonScriptPath: string,
   invocationDirectory: string,
   recordPath: string,
-  settings: ResolvedGatewaySettings
+  settings: ResolvedGatewaySettings,
+  runtimeArgs: readonly string[] = [],
 ): Promise<number> {
   const existingRecord = readGatewayRecord(recordPath);
   if (existingRecord !== null) {
@@ -962,14 +1008,18 @@ async function runGatewayForeground(
     removeGatewayRecord(recordPath);
   }
 
-  const daemonArgs = tsRuntimeArgs(daemonScriptPath, [
-    '--host',
-    settings.host,
-    '--port',
-    String(settings.port),
-    '--state-db-path',
-    settings.stateDbPath
-  ]);
+  const daemonArgs = tsRuntimeArgs(
+    daemonScriptPath,
+    [
+      '--host',
+      settings.host,
+      '--port',
+      String(settings.port),
+      '--state-db-path',
+      settings.stateDbPath,
+    ],
+    runtimeArgs,
+  );
   if (settings.authToken !== null) {
     daemonArgs.push('--auth-token', settings.authToken);
   }
@@ -978,8 +1028,8 @@ async function runGatewayForeground(
     stdio: 'inherit',
     env: {
       ...process.env,
-      HARNESS_INVOKE_CWD: invocationDirectory
-    }
+      HARNESS_INVOKE_CWD: invocationDirectory,
+    },
   });
   if (child.pid !== undefined) {
     writeGatewayRecord(recordPath, {
@@ -990,7 +1040,7 @@ async function runGatewayForeground(
       authToken: settings.authToken,
       stateDbPath: settings.stateDbPath,
       startedAt: new Date().toISOString(),
-      workspaceRoot: invocationDirectory
+      workspaceRoot: invocationDirectory,
     });
   }
 
@@ -1012,7 +1062,9 @@ function parseCallCommand(raw: string): StreamCommand {
   try {
     parsed = JSON.parse(raw);
   } catch (error: unknown) {
-    throw new Error(`invalid JSON command: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `invalid JSON command: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   const command = parseStreamCommand(parsed);
   if (command === null) {
@@ -1029,8 +1081,8 @@ async function executeGatewayCall(record: GatewayRecord, rawCommand: string): Pr
     ...(record.authToken === null
       ? {}
       : {
-          authToken: record.authToken
-        })
+          authToken: record.authToken,
+        }),
   });
   try {
     const result = await client.sendCommand(command);
@@ -1047,7 +1099,8 @@ async function runGatewayCommandEntry(
   daemonScriptPath: string,
   recordPath: string,
   logPath: string,
-  defaultStateDbPath: string
+  defaultStateDbPath: string,
+  runtimeOptions: RuntimeInspectOptions,
 ): Promise<number> {
   if (command.type === 'status') {
     const record = readGatewayRecord(recordPath);
@@ -1059,13 +1112,17 @@ async function runGatewayCommandEntry(
     const probe = await probeGateway(record);
     process.stdout.write(`gateway status: ${probe.connected ? 'running' : 'unreachable'}\n`);
     process.stdout.write(`record: ${recordPath}\n`);
-    process.stdout.write(`pid: ${String(record.pid)} (${pidRunning ? 'running' : 'not-running'})\n`);
+    process.stdout.write(
+      `pid: ${String(record.pid)} (${pidRunning ? 'running' : 'not-running'})\n`,
+    );
     process.stdout.write(`host: ${record.host}\n`);
     process.stdout.write(`port: ${String(record.port)}\n`);
     process.stdout.write(`auth: ${record.authToken === null ? 'off' : 'on'}\n`);
     process.stdout.write(`db: ${record.stateDbPath}\n`);
     process.stdout.write(`startedAt: ${record.startedAt}\n`);
-    process.stdout.write(`sessions: total=${String(probe.sessionCount)} live=${String(probe.liveSessionCount)}\n`);
+    process.stdout.write(
+      `sessions: total=${String(probe.sessionCount)} live=${String(probe.liveSessionCount)}\n`,
+    );
     if (!probe.connected) {
       process.stdout.write(`lastError: ${probe.error ?? 'unknown'}\n`);
       return 1;
@@ -1077,7 +1134,7 @@ async function runGatewayCommandEntry(
     const stopOptions = command.stopOptions ?? {
       force: false,
       timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
-      cleanupOrphans: true
+      cleanupOrphans: true,
     };
     const stopped = await stopGateway(recordPath, stopOptions);
     process.stdout.write(`${stopped.message}\n`);
@@ -1091,15 +1148,16 @@ async function runGatewayCommandEntry(
       logPath,
       daemonScriptPath,
       defaultStateDbPath,
-      command.startOptions ?? {}
+      command.startOptions ?? {},
+      runtimeOptions.gatewayRuntimeArgs,
     );
     if (ensured.started) {
       process.stdout.write(
-        `gateway started pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`
+        `gateway started pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`,
       );
     } else {
       process.stdout.write(
-        `gateway already running pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`
+        `gateway already running pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`,
       );
     }
     process.stdout.write(`record: ${recordPath}\n`);
@@ -1111,7 +1169,7 @@ async function runGatewayCommandEntry(
     const stopResult = await stopGateway(recordPath, {
       force: true,
       timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
-      cleanupOrphans: true
+      cleanupOrphans: true,
     });
     process.stdout.write(`${stopResult.message}\n`);
     const ensured = await ensureGatewayRunning(
@@ -1120,10 +1178,11 @@ async function runGatewayCommandEntry(
       logPath,
       daemonScriptPath,
       defaultStateDbPath,
-      command.startOptions ?? {}
+      command.startOptions ?? {},
+      runtimeOptions.gatewayRuntimeArgs,
     );
     process.stdout.write(
-      `gateway restarted pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`
+      `gateway restarted pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`,
     );
     process.stdout.write(`record: ${recordPath}\n`);
     process.stdout.write(`log: ${logPath}\n`);
@@ -1137,12 +1196,18 @@ async function runGatewayCommandEntry(
       existingRecord,
       command.startOptions ?? {},
       process.env,
-      defaultStateDbPath
+      defaultStateDbPath,
     );
     process.stdout.write(
-      `gateway foreground run host=${settings.host} port=${String(settings.port)} db=${settings.stateDbPath}\n`
+      `gateway foreground run host=${settings.host} port=${String(settings.port)} db=${settings.stateDbPath}\n`,
     );
-    return await runGatewayForeground(daemonScriptPath, invocationDirectory, recordPath, settings);
+    return await runGatewayForeground(
+      daemonScriptPath,
+      invocationDirectory,
+      recordPath,
+      settings,
+      runtimeOptions.gatewayRuntimeArgs,
+    );
   }
 
   const record = readGatewayRecord(recordPath);
@@ -1162,21 +1227,30 @@ async function runDefaultClient(
   recordPath: string,
   logPath: string,
   defaultStateDbPath: string,
-  args: readonly string[]
+  args: readonly string[],
+  runtimeOptions: RuntimeInspectOptions,
 ): Promise<number> {
   const ensured = await ensureGatewayRunning(
     invocationDirectory,
     recordPath,
     logPath,
     daemonScriptPath,
-    defaultStateDbPath
+    defaultStateDbPath,
+    {},
+    runtimeOptions.gatewayRuntimeArgs,
   );
   if (ensured.started) {
     process.stdout.write(
-      `gateway started pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`
+      `gateway started pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`,
     );
   }
-  return await runMuxClient(muxScriptPath, invocationDirectory, ensured.record, args);
+  return await runMuxClient(
+    muxScriptPath,
+    invocationDirectory,
+    ensured.record,
+    args,
+    runtimeOptions.clientRuntimeArgs,
+  );
 }
 
 async function runProfileClient(
@@ -1184,7 +1258,8 @@ async function runProfileClient(
   daemonScriptPath: string,
   muxScriptPath: string,
   sessionPaths: SessionPaths,
-  args: readonly string[]
+  args: readonly string[],
+  runtimeOptions: RuntimeInspectOptions,
 ): Promise<number> {
   if (args.length > 0 && (args[0] === '--help' || args[0] === '-h')) {
     printUsage();
@@ -1192,7 +1267,9 @@ async function runProfileClient(
   }
   const parsed = parseProfileCommand(args);
   const profileDir =
-    parsed.profileDir === null ? sessionPaths.profileDir : resolve(invocationDirectory, parsed.profileDir);
+    parsed.profileDir === null
+      ? sessionPaths.profileDir
+      : resolve(invocationDirectory, parsed.profileDir);
   mkdirSync(profileDir, { recursive: true });
 
   const clientProfilePath = resolve(profileDir, PROFILE_CLIENT_FILE_NAME);
@@ -1216,10 +1293,10 @@ async function runProfileClient(
     null,
     {
       port: reservedPort,
-      stateDbPath: sessionPaths.defaultStateDbPath
+      stateDbPath: sessionPaths.defaultStateDbPath,
     },
     process.env,
-    sessionPaths.defaultStateDbPath
+    sessionPaths.defaultStateDbPath,
   );
 
   const gateway = await startDetachedGateway(
@@ -1228,10 +1305,13 @@ async function runProfileClient(
     sessionPaths.logPath,
     settings,
     daemonScriptPath,
-    buildCpuProfileRuntimeArgs({
-      cpuProfileDir: profileDir,
-      cpuProfileName: PROFILE_GATEWAY_FILE_NAME
-    })
+    [
+      ...runtimeOptions.gatewayRuntimeArgs,
+      ...buildCpuProfileRuntimeArgs({
+        cpuProfileDir: profileDir,
+        cpuProfileName: PROFILE_GATEWAY_FILE_NAME,
+      }),
+    ],
   );
 
   let clientExitCode = 1;
@@ -1242,10 +1322,13 @@ async function runProfileClient(
       invocationDirectory,
       gateway,
       parsed.muxArgs,
-      buildCpuProfileRuntimeArgs({
-        cpuProfileDir: profileDir,
-        cpuProfileName: PROFILE_CLIENT_FILE_NAME
-      })
+      [
+        ...runtimeOptions.clientRuntimeArgs,
+        ...buildCpuProfileRuntimeArgs({
+          cpuProfileDir: profileDir,
+          cpuProfileName: PROFILE_CLIENT_FILE_NAME,
+        }),
+      ],
     );
   } catch (error: unknown) {
     clientError = error instanceof Error ? error : new Error(String(error));
@@ -1254,7 +1337,7 @@ async function runProfileClient(
   const stopped = await stopGateway(sessionPaths.recordPath, {
     force: true,
     timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
-    cleanupOrphans: true
+    cleanupOrphans: true,
   });
   process.stdout.write(`${stopped.message}\n`);
   if (!stopped.stopped) {
@@ -1277,15 +1360,16 @@ async function runProfileClient(
 async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory(process.env, process.cwd());
   loadHarnessSecrets({ cwd: invocationDirectory });
+  const runtimeOptions = resolveInspectRuntimeOptions(invocationDirectory);
   const daemonScriptPath = resolveScriptPath(
     process.env.HARNESS_DAEMON_SCRIPT_PATH,
     DEFAULT_DAEMON_SCRIPT_PATH,
-    invocationDirectory
+    invocationDirectory,
   );
   const muxScriptPath = resolveScriptPath(
     process.env.HARNESS_MUX_SCRIPT_PATH,
     DEFAULT_MUX_SCRIPT_PATH,
-    invocationDirectory
+    invocationDirectory,
   );
 
   const parsedGlobals = parseGlobalCliOptions(process.argv.slice(2));
@@ -1308,7 +1392,8 @@ async function main(): Promise<number> {
       daemonScriptPath,
       sessionPaths.recordPath,
       sessionPaths.logPath,
-      sessionPaths.defaultStateDbPath
+      sessionPaths.defaultStateDbPath,
+      runtimeOptions,
     );
   }
 
@@ -1318,7 +1403,8 @@ async function main(): Promise<number> {
       daemonScriptPath,
       muxScriptPath,
       sessionPaths,
-      argv.slice(1)
+      argv.slice(1),
+      runtimeOptions,
     );
   }
 
@@ -1334,13 +1420,16 @@ async function main(): Promise<number> {
     sessionPaths.recordPath,
     sessionPaths.logPath,
     sessionPaths.defaultStateDbPath,
-    passthroughArgs
+    passthroughArgs,
+    runtimeOptions,
   );
 }
 
 try {
   process.exitCode = await main();
 } catch (error: unknown) {
-  process.stderr.write(`harness fatal error: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(
+    `harness fatal error: ${error instanceof Error ? error.message : String(error)}\n`,
+  );
   process.exitCode = 1;
 }

@@ -1,6 +1,7 @@
 # Agent Harness Design
 
 ## Purpose
+
 Build a high-performance, terminal-first harness that manages many concurrent AI coding agent conversations across multiple directories/worktrees, with:
 
 - Full terminal passthrough compatibility.
@@ -10,6 +11,7 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
 - High-fidelity event instrumentation with provider-like granularity and separate orchestration/meta events.
 
 ## Product Goals
+
 - Support 5-6+ simultaneous active branches/conversations with low UI overhead.
 - Model conversations per directory/worktree and make switching constant-time.
 - Expose three primary actions per conversation:
@@ -25,11 +27,13 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
 - Enforce one shared configuration file and abstraction across all subsystems.
 
 ## Non-Goals (v1)
+
 - Rebuilding a full IDE.
 - Deep inline code editing UI in the harness.
 - Agent-specific bespoke UX beyond adapter capabilities.
 
 ## Landscape and Prior Art
+
 - `agent-of-empires`: tmux-based multi-agent orchestration and dashboarding pattern.
 - `coder/mux`: performant workspace/session abstraction and server/client split.
 - `vibetunnel`: remote terminal proxy and notification-style activity routing.
@@ -82,7 +86,7 @@ Tenant
 
 ```ts
 export interface AgentAdapter {
-  id: "codex" | "claude" | "generic";
+  id: 'codex' | 'claude' | 'generic';
   capabilities: {
     structuredEvents: boolean;
     diffStreaming: boolean;
@@ -102,11 +106,13 @@ export interface AgentAdapter {
 ## Human/API Parity and Strict Separation
 
 Design rule:
+
 - No client (including TUI) can call adapters or persistence directly.
 - All reads and mutations flow through the same Control Plane Stream API.
 - The TUI is an API client, not a privileged path.
 
 Consequence:
+
 - Programmatic clients can monitor progress, inspect changes over time, interrupt, queue, steer, fork, resume, and archive conversations exactly as a human can.
 - Every action is represented as an auditable command with a corresponding event trail.
 - Parity is continuously enforced by automated tests:
@@ -114,6 +120,7 @@ Consequence:
   - `test/control-plane-api-parity.test.ts` also asserts every mux-issued command is represented by high-level agent API helpers.
 
 Control-plane boundaries:
+
 - Clients issue commands.
 - Daemon validates and executes commands.
 - Daemon emits normalized events and state snapshots.
@@ -130,6 +137,7 @@ This separation prevents UI-only behavior and enables reliable automation withou
 ## Control Plane Stream Surface
 
 Required command categories:
+
 - Workspace/worktree: create, list, select, archive.
 - Conversation lifecycle: create, fork, resume, interrupt, archive, delete, rename.
 - Turn control: send user turn, steer active turn, cancel/interrupt active turn.
@@ -140,6 +148,7 @@ Required command categories:
 - Configuration: read effective config, validate proposed config, reload config.
 
 Pass-through control primitives (required, first-class):
+
 - `pty.start`: start a session by executable + args + cwd + env + profile.
 - `pty.attach`: attach a client stream to an existing PTY session.
 - `pty.input`: send raw input bytes/chunks to PTY (`stdin`) with ordering guarantees.
@@ -150,6 +159,7 @@ Pass-through control primitives (required, first-class):
 - `pty.subscribe-events`: subscribe to normalized/provider/meta events for the same session.
 
 Required read/stream categories:
+
 - Conversation and turn status snapshots.
 - Attention queue and pending approvals.
 - Streaming normalized event feed for all subscribed conversations/workspaces.
@@ -160,6 +170,7 @@ Required read/stream categories:
 - Query access to performance traces/latency measurements by component and time range.
 
 Pass-through stream invariants:
+
 - PTY byte stream is authoritative session reality and is never rewritten by adapters.
 - Provider/meta events are side-channel observability, never in-band PTY output.
 - Human and agent clients use the exact same PTY and event commands; no privileged human path.
@@ -205,13 +216,15 @@ Pass-through stream invariants:
 Adapters publish two coordinated event classes:
 
 1. Provider-fidelity events:
-  - Preserve native semantics, ordering, and payload shape at fine granularity.
-  - Track details similar to model-provider streams (deltas, tool lifecycle, reasoning, approvals, compaction, turn lifecycle).
-  - Designed for instrumentation and debugging accuracy, not forced semantic flattening.
+
+- Preserve native semantics, ordering, and payload shape at fine granularity.
+- Track details similar to model-provider streams (deltas, tool lifecycle, reasoning, approvals, compaction, turn lifecycle).
+- Designed for instrumentation and debugging accuracy, not forced semantic flattening.
 
 2. Canonical/meta events:
-  - Canonical lifecycle events for common harness behavior.
-  - Additional orchestration events for multi-conversation scheduling, attention, and control-plane state.
+
+- Canonical lifecycle events for common harness behavior.
+- Additional orchestration events for multi-conversation scheduling, attention, and control-plane state.
 
 Canonical lifecycle events:
 
@@ -230,6 +243,7 @@ Canonical lifecycle events:
 - `tool.failed`
 
 Provider-fidelity event families (examples):
+
 - `provider.text.delta`
 - `provider.reasoning.delta`
 - `provider.tool.call.started`
@@ -240,6 +254,7 @@ Provider-fidelity event families (examples):
 - `provider.turn.completed`
 
 Meta/orchestration event families (examples):
+
 - `meta.queue.updated`
 - `meta.attention.raised`
 - `meta.attention.cleared`
@@ -270,12 +285,14 @@ The daemon computes derived status from both classes without dropping provider-l
 ## Status Model and Attention Routing
 
 Control-plane runtime statuses:
+
 - `running`
 - `needs-input`
 - `exited`
 - `completed` (legacy/persisted compatibility only; telemetry ingestion no longer promotes live sessions to `completed`)
 
 Workspace rail display statuses:
+
 - `starting`
 - `working` (`active`)
 - `idle` (`inactive`)
@@ -293,6 +310,7 @@ session exit -> exited
 ```
 
 High-signal classification rules:
+
 - Start-work signal: `codex.user_prompt`, `codex.sse_event` progress kinds (`response.created`, `response.in_progress`, `response.output_text.delta`, `response.output_item.added`, `response.function_call_arguments.delta`), and Claude hook `claude.userpromptsubmit`.
 - Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms` and Claude hook `claude.stop`.
 - Attention signal: explicit `needs-input`/approval-required tokens from structured payload fields or summary text (severity/error-like fallbacks are intentionally disabled).
@@ -300,16 +318,19 @@ High-signal classification rules:
 - Status-neutral noise: tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
 
 Invariant:
+
 - No foreground/background or controller-specific status heuristics are used for telemetry classification.
 - Fallback completion formats are intentionally disabled; only explicit provider lifecycle signals (Codex turn-e2e telemetry or Claude stop hook) complete a turn.
 - Session ownership is orthogonal to status mapping; controller metadata never overrides rail status text.
 
 Notification policy:
+
 - Trigger sound/desktop notifications on transitions to `needs-input`, `idle` after `working:*`, or `exited`.
 - Optionally focus/switch to target tab/session.
 - De-duplicate repeated alerts for same turn.
 
 Status routing invariants:
+
 - Status is scoped to `(tenant_id, user_id, workspace_id, worktree_id, conversation_id)` and must never be inferred from shared process-level artifacts.
 - Adapter enrichment channels (telemetry, history, hooks) must retain per-thread and per-session correlation to prevent cross-conversation status contamination.
 - UI status badges must be driven from conversation-scoped events/state only; no global fallback that can mark sibling conversations as `completed`.
@@ -319,12 +340,14 @@ Status routing invariants:
 Use a PTY-hosted interactive `codex` session as the primary integration path. Human live steering is the first principle.
 
 Layer optional enrichment channels on top of the same live session:
+
 - Codex OpenTelemetry logs/metrics/traces.
 - Codex `history.jsonl` ingestion for thread continuity and event backfill.
 
 This ordering ensures terminal reality is authoritative while still allowing high-fidelity instrumentation.
 
 Primary live-session capabilities:
+
 - launch/attach/detach/re-attach a running `codex` terminal session with no privileged bypass
 - human steering in-session (`prompt`, interrupt, continue, context edits) with PTY parity
 - event stream derived from live session + Codex telemetry/history enrichment
@@ -342,6 +365,7 @@ Integration tiers:
 This keeps live steering universal across agents while still taking advantage of structured provider signals when available.
 
 Provider policy (Codex/Claude direct usage):
+
 - Prefer launching provider CLIs directly inside PTY (`codex`, `claude`) with no protocol translation in the hot path.
 - Adapter responsibilities are limited to launch config, optional telemetry/history/hook ingestion, and event normalization.
 - If a provider offers richer APIs, they are optional enrichment channels and must not replace PTY-first steering for parity-critical flows.
@@ -358,6 +382,7 @@ Provider policy (Codex/Claude direct usage):
 ## VTE Correctness Program (Codex + Vim)
 
 Correctness target:
+
 - Harness terminal behavior must be indistinguishable from a direct terminal for Codex and Vim workflows.
 - Correctness is defined as byte-accurate control handling plus equivalent visible terminal state and key semantics.
 
@@ -376,10 +401,12 @@ Hot-path architecture (first-party):
 ```
 
 Out-of-band paths:
+
 - Event stream, logs, and instrumentation do not write into PTY session output.
 - Parsed terminal actions can be mirrored to telemetry/events without mutating PTY bytes.
 
 Protocol scope required for Codex and Vim parity:
+
 - C0/C1 controls, ESC, CSI, OSC, DCS, ST/BEL terminators.
 - DEC private modes used by terminal TUIs:
   - alternate screen and cursor save/restore (`?1047`, `?1048`, `?1049`)
@@ -396,16 +423,19 @@ Protocol scope required for Codex and Vim parity:
 - UTF-8 correctness with grapheme-aware cell accounting and configurable width policy.
 
 Terminal reply engine requirements:
+
 - Support query/response sequences required by Codex and Vim startup/runtime probes.
 - Minimum required replies include device/keyboard/color query paths observed in live sessions.
 - Unknown queries are logged as typed events (`terminal-query-unknown`) and safely ignored or passthrough-configured by policy.
 
 Capability profile model:
+
 - Each session advertises a deterministic terminal capability profile (`terminalProfile`), e.g. `xterm-256color-harness-v1`.
 - Profile governs enabled input protocols, reply behavior, and feature toggles.
 - Profile changes are versioned and replayable for deterministic bug reproduction.
 
 Required artifacts (code + tests, not separate authority docs):
+
 - `vte-action-schema`: typed action/event model emitted by parser.
 - `vte-state-model`: canonical in-memory screen/cursor/mode model with alt-screen and scrollback semantics.
 - `vte-reply-engine`: deterministic query handler for DA/DSR/OSC/keyboard negotiation paths.
@@ -421,6 +451,7 @@ Required artifacts (code + tests, not separate authority docs):
   - explicit owner test for every `implemented` entry.
 
 Control Plane terminal API requirements:
+
 - `terminal.attach`: stream raw rendered frames + cursor/mode metadata.
 - `terminal.input`: send exact input bytes.
 - `terminal.resize`: apply rows/cols resize.
@@ -430,6 +461,7 @@ Control Plane terminal API requirements:
 - `terminal.stream.events`: optional structured stream of parsed terminal actions (out-of-band from PTY display).
 
 Pseudo-screenshot contract:
+
 - Frame payload includes at minimum:
   - `rows`, `cols`
   - `cursor` position/style/visibility
@@ -439,6 +471,7 @@ Pseudo-screenshot contract:
 - Snapshot API is mandatory for integration/e2e and replaces manual screenshot-only debugging.
 
 Verification ladder:
+
 1. Parser/action unit gates:
    - full transition coverage across parser states and byte classes
    - fixtures for CSI/OSC/DCS edge cases, malformed and interrupted sequences
@@ -457,12 +490,14 @@ Verification ladder:
    - verify no additional PTY output bytes are introduced by event/log plumbing
 
 Failure policy:
+
 - Any mismatch in snapshot hash, unsupported required sequence, or reply drift blocks milestone completion.
 - Unknown sequence growth is tracked and triaged; it cannot be silently dropped.
 
 ## Git and Editor Integration
 
 Per conversation:
+
 - Track associated workspace/worktree/branch metadata.
 - Use Git as the authoritative source of diff truth.
 - Surface live diff summary from:
@@ -470,6 +505,7 @@ Per conversation:
   - adapter-native diff events (for preview/latency hints) when available
 
 Open actions:
+
 - Open repository root in editor.
 - Open specific changed file.
 - Open workspace/worktree in terminal attach mode.
@@ -479,6 +515,7 @@ Open actions:
 Use one tenanted SQLite database for local durability and fast indexing.
 
 Core tables:
+
 - `tenants`
 - `users`
 - `tenant_memberships`
@@ -493,6 +530,7 @@ Core tables:
 - `notifications_sent`
 
 Design constraints:
+
 - No separate external event journal or projection service.
 - The `events` table and query-oriented state tables live in the same SQLite store.
 - Each command writes append-only events and state-table updates in one transaction.
@@ -568,6 +606,7 @@ Design constraints:
 ## Client Surfaces
 
 ### TUI (v1)
+
 - Current verified implementation:
   - left rail: Home -> repository-group tree -> projects -> conversations, with per-repository collapse and untracked grouping
   - right pane: active live steerable PTY session
@@ -610,6 +649,7 @@ Target layout sketch:
 ```
 
 Left-rail rendering/style principles:
+
 - Visual hierarchy from typography and spacing first; color is secondary reinforcement.
 - Stable row order by default; selection changes highlight only.
 - Selected-row background styling is content-scoped (label text only), not applied to tree connector glyphs.
@@ -618,11 +658,13 @@ Left-rail rendering/style principles:
 - Git and process stats remain visible at all times to reduce context switches.
 
 ### Optional Remote/Web Client
+
 - Connect to daemon over authenticated stream transport (WebSocket profile by default).
 - Subscribe to normalized events and status snapshots.
 - Reuse same server-side adapter and state model.
 
 ### Automation Agent Client
+
 - Connect over the same authenticated stream protocol as TUI and web clients.
 - Use command envelopes for all actions a human can perform.
 - Subscribe to event streams for monitoring, intervention, and orchestration logic.
@@ -630,27 +672,32 @@ Left-rail rendering/style principles:
 ## Language and Runtime Choice
 
 ### Recommendation: TypeScript first
+
 - Fastest development path.
 - Strong familiarity.
 - Native fit with Node built-in process, stream, and net primitives.
 - Works with generated Codex TS bindings and supports strict hot-path boundary enforcement.
 
 ### Optimization path
+
 - Keep adapter/event boundaries stable.
 - Move PTY-heavy or scheduling-critical components to Rust/Go sidecar only if profiling requires it.
 
 ## Dependency Policy (Latency-Critical Control)
 
 Policy:
+
 - Third-party dependencies are allowed only outside latency-critical paths.
 - The input hot path (`stdin -> parser -> scheduler -> PTY write`) and output hot path (`PTY read -> diff/render prep -> screen flush`) must be implemented in-repo.
 - External libraries are acceptable for non-interactive concerns (storage, tests, networking helpers, tooling), provided they do not sit on hot-path execution.
 
 Scope note:
+
 - This is an initial performance-governed policy.
 - Any dependency used in or near hot paths requires explicit latency measurement and approval.
 
 Architecture impact:
+
 - Draw explicit boundaries around hot-path modules and enforce them with import rules.
 - Keep PTY, multiplexer, scheduler, and terminal renderer as first-party modules.
 - Keep non-hot-path capabilities modular so best-in-class libraries can be used without affecting interaction latency.
@@ -710,6 +757,7 @@ Subsystems where mature dependencies are acceptable because they are outside dir
 ## Verifiable Outputs
 
 Output 0: Dependency Boundary Baseline
+
 - Dependency policy is enforced: hot paths are first-party; non-hot-path libraries are allowed.
 - Demonstration:
   - define and publish module boundary map for hot-path vs non-hot-path code
@@ -718,6 +766,7 @@ Output 0: Dependency Boundary Baseline
   - latency benchmark confirms hot-path budgets remain intact with non-hot-path dependencies present
 
 Output 1: Single-Session Terminal Pass-Through Parity
+
 - One harness-managed terminal session behaves like direct terminal usage with no perceptible added latency.
 - Demonstration:
   - enforce PTY stream isolation (no event/log byte interleaving in terminal output)
@@ -733,6 +782,7 @@ Output 1: Single-Session Terminal Pass-Through Parity
   - run blind A/B typing test where operator cannot reliably distinguish harness session from direct terminal
 
 Output 2: Daemon Core
+
 - Includes session registry, adapter manager, normalized event bus, and SQLite persistence.
 - Demonstration:
   - start daemon
@@ -741,6 +791,7 @@ Output 2: Daemon Core
   - rebuild in-memory status from SQLite `events` table after restart
 
 Output 3: Codex Live-Steering Session + Event Stream
+
 - Uses a PTY-hosted interactive `codex` session as the control source of truth.
 - Demonstration:
   - launch and attach to one live `codex` session from the harness
@@ -749,6 +800,7 @@ Output 3: Codex Live-Steering Session + Event Stream
   - verify event persistence and replay for the steered session
 
 Output 4: Codex Telemetry + History Ingestion
+
 - Adds provider-native structured telemetry and transcript ingestion on top of the same live session.
 - Demonstration:
   - receive OTLP logs/metrics/traces from live Codex sessions
@@ -758,6 +810,7 @@ Output 4: Codex Telemetry + History Ingestion
   - verify malformed telemetry/history payloads are ignored without process instability
 
 Output 5: Programmatic Steering on Live Session
+
 - Uses the same control-plane commands as human steering against the same live session.
 - Demonstration:
   - issue steering commands over stream API (`send-input`, interrupt, queue-next)
@@ -765,6 +818,7 @@ Output 5: Programmatic Steering on Live Session
   - verify agent can monitor progress and steer without computer-use emulation
 
 Output 6: Multi-Conversation Control in TUI
+
 - Lists workspaces, worktrees, and active conversations with live status badges.
 - Demonstration:
   - run 6 concurrent Codex conversations
@@ -774,6 +828,7 @@ Output 6: Multi-Conversation Control in TUI
   - interrupt and resume selected conversation
 
 Output 7: Attention and Notification Loop
+
 - Notification service emits deterministic alerts from state transitions.
 - Demonstration:
   - trigger `needs_input`, `completed`, and `failed` states
@@ -781,6 +836,7 @@ Output 7: Attention and Notification Loop
   - verify attention queue ordering and clear-on-action behavior
 
 Output 8: Diff + Open Actions
+
 - Every conversation exposes file/project open actions and a diff summary.
 - Demonstration:
   - verify Git-derived diff is canonical
@@ -788,6 +844,7 @@ Output 8: Diff + Open Actions
   - open selected file and repo root from harness action handlers
 
 Output 9: Model-Agnostic Fallback Path
+
 - Generic PTY adapter supports arbitrary terminal agents.
 - Demonstration:
   - launch non-Codex terminal app via PTY adapter
@@ -795,6 +852,7 @@ Output 9: Model-Agnostic Fallback Path
   - keep conversation indexed under workspace/worktree model
 
 Output 10: Optional Remote Client Contract
+
 - Authenticated event subscription and status snapshot API from daemon.
 - Demonstration:
   - connect second client process
@@ -804,6 +862,7 @@ Output 10: Optional Remote Client Contract
   - render same conversation status as TUI for a shared session
 
 Output 11: Human/API Parity Contract
+
 - No operation is available exclusively through TUI internals.
 - Demonstration:
   - execute a parity test matrix where each human action is invoked via API:
@@ -816,6 +875,7 @@ Output 11: Human/API Parity Contract
   - verify resulting state/events match equivalent TUI-triggered actions
 
 Output 12: Event Fidelity + Meta-Orchestration Contract
+
 - Harness exposes provider-fidelity events and separate orchestration/meta events without collapsing either stream.
 - Demonstration:
   - subscribe to provider-fidelity stream and verify ordered delta/tool/compaction events for a tool-heavy turn
@@ -824,6 +884,7 @@ Output 12: Event Fidelity + Meta-Orchestration Contract
   - verify no event loss across compaction boundaries
 
 Output 13: Replay-Grade Logging Contract
+
 - Structured and pretty logs are emitted from one shared logger abstraction and support reproducible replay.
 - Demonstration:
   - verify all modules log through `log-core` only
@@ -832,6 +893,7 @@ Output 13: Replay-Grade Logging Contract
   - verify correlation ids link commands, events, queue transitions, approvals, and terminal interactions
 
 Output 14: Global Instrumentation Contract
+
 - One shared instrumentation abstraction (`perf-core`) is used everywhere and writes trace-grade events to the canonical structured file.
 - Demonstration:
   - verify all modules emit performance events only through `perf-core`
@@ -840,6 +902,7 @@ Output 14: Global Instrumentation Contract
   - verify disabling instrumentation via single boolean yields near-no-op behavior with no code removal
 
 Output 15: Single Config Contract
+
 - One config file (`harness.config.jsonc`) and one shared abstraction (`config-core`) govern runtime behavior.
 - Demonstration:
   - verify no subsystem reads config outside `config-core`
@@ -850,6 +913,7 @@ Output 15: Single Config Contract
 ## Milestones
 
 Milestone 1: Transparent PTY Self-Hosting (Vim-grade)
+
 - Goal: self-host a single terminal session with behavior parity to direct terminal use, including complex TUI apps such as `vim`.
 - Exit criteria:
   - alternate screen, cursor modes, resize, mouse, paste, and color behavior match direct terminal behavior
@@ -857,6 +921,7 @@ Milestone 1: Transparent PTY Self-Hosting (Vim-grade)
   - blind A/B usage test does not reliably distinguish harness terminal from direct terminal
 
 Milestone 1 execution plan:
+
 - Step 1: PTY substrate (`pty-host`) with raw attach/detach.
   - Deliverable: spawn shell in managed PTY, pass stdin/stdout/stderr transparently, handle resize.
   - Verification: deterministic PTY integration tests for echo, resize propagation, and session lifecycle.
@@ -888,6 +953,7 @@ Milestone 1 execution plan:
 ### Milestone 1 Active Backlog (Detailed)
 
 Terminal correctness backlog (Codex/Vim parity critical):
+
 - Pending-wrap semantics at right margin (`DECAWM` behavior):
   - status: in progress
   - expected output: line-ending behavior matches direct terminal when glyph lands in last column and next glyph arrives.
@@ -902,12 +968,14 @@ Terminal correctness backlog (Codex/Vim parity critical):
   - verification: snapshot tests and parity scene coverage for insert/delete char edits.
 
 Mux/runtime backlog (post-correctness, latency-focused):
+
 - Full-screen redraw elimination in mux:
   - status: in progress
   - expected output: dirty-row/region repaint path replaces 33ms full-frame loop.
   - verification: perf traces demonstrate reduced render work and lower keystroke-to-paint variance under heavy output.
 
 Pane interaction backlog (human/operator UX):
+
 - Pane-aware mouse routing:
   - status: in progress
   - expected output: mouse wheel/click is routed to pane under pointer.
@@ -922,12 +990,14 @@ Pane interaction backlog (human/operator UX):
   - verification: deterministic selection model tests + e2e clipboard command assertions on macOS.
 
 Vim expansion backlog (after above foundations):
+
 - Extended Vim protocol support set:
   - status: planned
   - expected output: higher-fidelity behavior for split windows, mouse interactions, and inline edits.
   - verification: expanded vttest/Vim scripted corpus with parity matrix checkpoints.
 
 Milestone 2: Codex Live-Steering Session (Human-First)
+
 - Goal: self-host an interactive `codex` session inside the harness where human steering is first-class and event streaming is continuous.
 - Exit criteria:
   - one live Codex session can be launched, attached, detached, and reattached with state continuity
@@ -936,6 +1006,7 @@ Milestone 2: Codex Live-Steering Session (Human-First)
   - Codex telemetry/history signals are ingested when enabled and mapped into attention/lifecycle events
 
 Milestone 3: Programmatic Steering Parity on the Same Live Session
+
 - Goal: expose the same live steering operations to agents/API clients without creating a separate control path.
 - Exit criteria:
   - stream API can invoke the same steering operations used by the human client
@@ -943,6 +1014,7 @@ Milestone 3: Programmatic Steering Parity on the Same Live Session
   - no divergence between human-driven and API-driven outcomes for the same conversation
 
 Milestone 4: Multi-Conversation Model (Directories > Conversations)
+
 - Goal: support multiple directories with multiple conversations per directory, with deterministic switching and control.
 - Exit criteria:
   - stable mapping among tenant/user/workspace/worktree/conversation/turn
@@ -950,6 +1022,7 @@ Milestone 4: Multi-Conversation Model (Directories > Conversations)
   - concurrent activity preserves correct status, diff, and attention routing
 
 Milestone 5: Remote Local-Gateway Access
+
 - Goal: connect to the harness daemon remotely through an authenticated local gateway.
 - Exit criteria:
   - authenticated login/session establishment is required and enforced
@@ -958,6 +1031,7 @@ Milestone 5: Remote Local-Gateway Access
   - gateway path does not violate hot-path latency guarantees for local interaction
 
 Milestone 6: Agent Operator Parity (Wake, Query, Interact)
+
 - Goal: allow an automation agent to control live sessions with the same operational capabilities as a human client.
 - Exit criteria:
   - agent can wake, query, and interact with conversations through the Control Plane Stream API
@@ -1149,6 +1223,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/perf-mux-launch-startup-loop.ts` provides repeatable direct-vs-launch startup comparison and waits through `mux.startup.active-settled`, using only `perf-core` milestones from launch/daemon/mux.
   - startup-loop tooling supports optional readiness-pattern timing for provider-specific UI readiness (for example Codex tip banner visibility).
   - runtime debug/perf behavior is config-governed in `harness.config.jsonc` under `debug.*`, with overwrite-on-start artifact control for deterministic runs.
+  - Bun runtime debugger endpoints for long-running gateway/client processes are config-governed via `debug.inspect` (`enabled`, `gatewayPort`, `clientPort`) and wired into harness-managed Bun exec paths as `--inspect=<port>`.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.
   - `src/mux/runtime-wiring.ts` is the extracted session-status/session-telemetry reducer for mux Layer-4 wiring (stream key events -> in-memory conversation state), so runtime composition is covered under the `src/**` 100% coverage gate.
@@ -1174,6 +1249,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - [ ] Add deterministic fixture/e2e tests that assert real-time state transitions and status text updates from telemetry key events when a thread is not selected.
 
 ## Sources
+
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/
 - https://developers.openai.com/codex/config#advanced
 - https://docs.anthropic.com/en/docs/claude-code/hooks

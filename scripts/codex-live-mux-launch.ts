@@ -11,7 +11,7 @@ import {
   configurePerfCore,
   recordPerfEvent,
   shutdownPerfCore,
-  startPerfSpan
+  startPerfSpan,
 } from '../src/perf/perf-core.ts';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -23,8 +23,17 @@ const STOP_TIMEOUT_MS = 1500;
 const DEFAULT_CONNECT_RETRY_WINDOW_MS = 6000;
 const DEFAULT_CONNECT_RETRY_DELAY_MS = 40;
 
-function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
-  return [scriptPath, ...args];
+interface RuntimeInspectSettings {
+  readonly gatewayRuntimeArgs: readonly string[];
+  readonly clientRuntimeArgs: readonly string[];
+}
+
+function tsRuntimeArgs(
+  scriptPath: string,
+  args: readonly string[] = [],
+  runtimeArgs: readonly string[] = [],
+): string[] {
+  return [...runtimeArgs, scriptPath, ...args];
 }
 
 function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
@@ -98,7 +107,7 @@ function configureProcessPerf(invocationDirectory: string): { enabled: boolean; 
       : configuredPath;
   const shouldTruncate = parseBooleanEnv(
     process.env.HARNESS_PERF_TRUNCATE_ON_START,
-    loadedConfig.config.debug.overwriteArtifactsOnStart
+    loadedConfig.config.debug.overwriteArtifactsOnStart,
   );
 
   if (perfEnabled) {
@@ -107,19 +116,34 @@ function configureProcessPerf(invocationDirectory: string): { enabled: boolean; 
 
   configurePerfCore({
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
   });
 
   recordPerfEvent('launch.perf.configured', {
     process: 'launch',
     enabled: perfEnabled,
     filePath: perfFilePath,
-    truncateOnStart: shouldTruncate
+    truncateOnStart: shouldTruncate,
   });
 
   return {
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
+  };
+}
+
+function resolveRuntimeInspectSettings(invocationDirectory: string): RuntimeInspectSettings {
+  const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
+  const debugConfig = loadedConfig.config.debug;
+  if (!debugConfig.enabled || !debugConfig.inspect.enabled) {
+    return {
+      gatewayRuntimeArgs: [],
+      clientRuntimeArgs: [],
+    };
+  }
+  return {
+    gatewayRuntimeArgs: [`--inspect=${String(debugConfig.inspect.gatewayPort)}`],
+    clientRuntimeArgs: [`--inspect=${String(debugConfig.inspect.clientPort)}`],
   };
 }
 
@@ -158,11 +182,12 @@ function spawnDaemon(
   port: number,
   authToken: string,
   invocationDirectory: string,
-  perfSettings: { enabled: boolean; filePath: string }
+  perfSettings: { enabled: boolean; filePath: string },
+  runtimeArgs: readonly string[],
 ): ChildProcess {
   return spawn(
     process.execPath,
-    tsRuntimeArgs(DAEMON_SCRIPT, ['--host', host, '--port', String(port)]),
+    tsRuntimeArgs(DAEMON_SCRIPT, ['--host', host, '--port', String(port)], runtimeArgs),
     {
       stdio: ['ignore', 'pipe', 'inherit'],
       env: {
@@ -171,9 +196,9 @@ function spawnDaemon(
         HARNESS_INVOKE_CWD: invocationDirectory,
         HARNESS_PERF_ENABLED: perfSettings.enabled ? '1' : '0',
         HARNESS_PERF_FILE_PATH: perfSettings.filePath,
-        HARNESS_PERF_TRUNCATE_ON_START: '0'
-      }
-    }
+        HARNESS_PERF_TRUNCATE_ON_START: '0',
+      },
+    },
   );
 }
 
@@ -185,7 +210,7 @@ async function waitForDaemonReady(daemon: ChildProcess): Promise<void> {
 
   const readySpan = startPerfSpan('launch.startup.daemon-ready-wait', {
     process: 'launch',
-    daemonPid: daemon.pid ?? -1
+    daemonPid: daemon.pid ?? -1,
   });
 
   await new Promise<void>((resolveReady, rejectReady) => {
@@ -226,8 +251,8 @@ async function waitForDaemonReady(daemon: ChildProcess): Promise<void> {
     const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
       failReady(
         new Error(
-          `control-plane daemon exited before ready (code=${code === null ? 'null' : String(code)}, signal=${signal === null ? 'null' : signal})`
-        )
+          `control-plane daemon exited before ready (code=${code === null ? 'null' : String(code)}, signal=${signal === null ? 'null' : signal})`,
+        ),
       );
     };
 
@@ -248,17 +273,16 @@ function spawnMuxClient(
   connectRetryWindowMs: number,
   connectRetryDelayMs: number,
   invocationDirectory: string,
-  perfSettings: { enabled: boolean; filePath: string }
+  perfSettings: { enabled: boolean; filePath: string },
+  runtimeArgs: readonly string[],
 ): ChildProcess {
   return spawn(
     process.execPath,
-    tsRuntimeArgs(MUX_SCRIPT, [
-      '--harness-server-host',
-      host,
-      '--harness-server-port',
-      String(port),
-      ...codexArgs
-    ]),
+    tsRuntimeArgs(
+      MUX_SCRIPT,
+      ['--harness-server-host', host, '--harness-server-port', String(port), ...codexArgs],
+      runtimeArgs,
+    ),
     {
       stdio: 'inherit',
       env: {
@@ -270,9 +294,9 @@ function spawnMuxClient(
         HARNESS_INVOKE_CWD: invocationDirectory,
         HARNESS_PERF_ENABLED: perfSettings.enabled ? '1' : '0',
         HARNESS_PERF_FILE_PATH: perfSettings.filePath,
-        HARNESS_PERF_TRUNCATE_ON_START: '0'
-      }
-    }
+        HARNESS_PERF_TRUNCATE_ON_START: '0',
+      },
+    },
   );
 }
 
@@ -287,7 +311,7 @@ async function terminateChild(child: ChildProcess, signal: NodeJS.Signals): Prom
       setTimeout(() => {
         resolve(false);
       }, STOP_TIMEOUT_MS);
-    })
+    }),
   ]);
   if (exited) {
     return;
@@ -311,42 +335,50 @@ async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory();
   loadHarnessSecrets({ cwd: invocationDirectory });
   const perfSettings = configureProcessPerf(invocationDirectory);
+  const inspectSettings = resolveRuntimeInspectSettings(invocationDirectory);
   const bootstrapSpan = startPerfSpan('launch.startup.bootstrap', {
-    process: 'launch'
+    process: 'launch',
   });
   recordPerfEvent('launch.startup.begin', {
-    process: 'launch'
+    process: 'launch',
   });
 
   const codexArgs = process.argv.slice(2);
   const host = DEFAULT_HOST;
   const connectRetryWindowMs = parsePositiveInt(
     process.env.HARNESS_CONTROL_PLANE_CONNECT_RETRY_WINDOW_MS,
-    DEFAULT_CONNECT_RETRY_WINDOW_MS
+    DEFAULT_CONNECT_RETRY_WINDOW_MS,
   );
   const connectRetryDelayMs = Math.max(
     1,
     parsePositiveInt(
       process.env.HARNESS_CONTROL_PLANE_CONNECT_RETRY_DELAY_MS,
-      DEFAULT_CONNECT_RETRY_DELAY_MS
-    )
+      DEFAULT_CONNECT_RETRY_DELAY_MS,
+    ),
   );
   const port = await reservePort(host);
   recordPerfEvent('launch.startup.port-reserved', {
     process: 'launch',
-    port
+    port,
   });
   const authToken = `token-${randomUUID()}`;
 
-  const daemon = spawnDaemon(host, port, authToken, invocationDirectory, perfSettings);
+  const daemon = spawnDaemon(
+    host,
+    port,
+    authToken,
+    invocationDirectory,
+    perfSettings,
+    inspectSettings.gatewayRuntimeArgs,
+  );
   recordPerfEvent('launch.startup.daemon-spawned', {
     process: 'launch',
-    daemonPid: daemon.pid ?? -1
+    daemonPid: daemon.pid ?? -1,
   });
   const daemonReady = waitForDaemonReady(daemon).then(() => {
     recordPerfEvent('launch.startup.daemon-ready', {
       process: 'launch',
-      daemonPid: daemon.pid ?? -1
+      daemonPid: daemon.pid ?? -1,
     });
   });
 
@@ -358,13 +390,14 @@ async function main(): Promise<number> {
     connectRetryWindowMs,
     connectRetryDelayMs,
     invocationDirectory,
-    perfSettings
+    perfSettings,
+    inspectSettings.clientRuntimeArgs,
   );
   recordPerfEvent('launch.startup.mux-spawned', {
     process: 'launch',
     muxPid: muxClient.pid ?? -1,
     connectRetryWindowMs,
-    connectRetryDelayMs
+    connectRetryDelayMs,
   });
   let shuttingDown = false;
 
@@ -385,7 +418,7 @@ async function main(): Promise<number> {
   });
 
   const muxExitPromise = once(muxClient, 'exit').then(
-    (value) => value as [number | null, NodeJS.Signals | null]
+    (value) => value as [number | null, NodeJS.Signals | null],
   );
   let earlyMuxExit: [number | null, NodeJS.Signals | null] | null = null;
   try {
@@ -394,13 +427,13 @@ async function main(): Promise<number> {
       muxExitPromise.then((exit) => {
         earlyMuxExit = exit;
         return 'mux-exited' as const;
-      })
+      }),
     ]);
     if (startupState === 'mux-exited' && earlyMuxExit !== null) {
       recordPerfEvent('launch.startup.mux-exited-before-daemon-ready', {
         process: 'launch',
         code: earlyMuxExit[0] ?? -1,
-        signal: earlyMuxExit[1] ?? 'null'
+        signal: earlyMuxExit[1] ?? 'null',
       });
       bootstrapSpan.end({ ready: false, muxExitedEarly: true });
       await terminateChild(daemon, 'SIGTERM').catch(() => undefined);
@@ -410,7 +443,7 @@ async function main(): Promise<number> {
   } catch (error: unknown) {
     recordPerfEvent('launch.startup.daemon-ready-failed', {
       process: 'launch',
-      message: error instanceof Error ? error.message : String(error)
+      message: error instanceof Error ? error.message : String(error),
     });
     bootstrapSpan.end({ ready: false, daemonReadyError: true });
     await terminateChild(muxClient, 'SIGTERM').catch(() => undefined);
@@ -422,7 +455,7 @@ async function main(): Promise<number> {
   recordPerfEvent('launch.runtime.mux-exited', {
     process: 'launch',
     code: muxExit[0] ?? -1,
-    signal: muxExit[1] ?? 'null'
+    signal: muxExit[1] ?? 'null',
   });
   await terminateChild(daemon, 'SIGTERM').catch(() => undefined);
 
@@ -433,7 +466,7 @@ try {
   process.exitCode = await main();
 } catch (error: unknown) {
   process.stderr.write(
-    `codex-live-mux-launch fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+    `codex-live-mux-launch fatal error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );
   process.exitCode = 1;
 } finally {

@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  mkdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'bun:test';
@@ -10,13 +17,13 @@ import {
   parseHarnessConfigText,
   resolveHarnessConfigPath,
   updateHarnessConfig,
-  updateHarnessMuxUiConfig
+  updateHarnessMuxUiConfig,
 } from '../src/config/config-core.ts';
 
 const DEFAULT_UI = {
   paneWidthPercent: null,
   repositoriesCollapsed: false,
-  shortcutsCollapsed: false
+  shortcutsCollapsed: false,
 } as const;
 const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
 
@@ -37,7 +44,7 @@ void test('parseHarnessConfigText supports jsonc comments and trailing commas', 
   assert.deepEqual(parsed.mux.keybindings, {
     'mux.conversation.next': ['ctrl+j'],
     'mux.conversation.previous': ['ctrl+k', 'ctrl+p'],
-    'bad.value': ['alt+n']
+    'bad.value': ['alt+n'],
   });
   assert.deepEqual(parsed.mux.ui, DEFAULT_UI);
   assert.equal(parsed.debug.enabled, true);
@@ -70,7 +77,7 @@ void test('parseHarnessConfigText preserves escaped strings and ignores comment 
     'mux.app.quit': ['cmd+q // literal'],
     'mux.conversation.next': ['shift+tab', 'ctrl+j'],
     'mux.app.interrupt-all': ['ctrl+"c"'],
-    'mux.literal': ['text /* not a comment */ tail']
+    'mux.literal': ['text /* not a comment */ tail'],
   });
   assert.deepEqual(parsed.mux.ui, DEFAULT_UI);
 });
@@ -90,7 +97,7 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
   assert.deepEqual(parsed.mux.ui, {
     paneWidthPercent: 37.375,
     repositoriesCollapsed: true,
-    shortcutsCollapsed: true
+    shortcutsCollapsed: true,
   });
 
   const invalid = parseHarnessConfigText(`
@@ -125,8 +132,8 @@ void test('parseHarnessConfigText falls back for invalid root shapes', () => {
     mux: {
       keybindings: {},
       ui: DEFAULT_UI,
-      git: DEFAULT_GIT
-    }
+      git: DEFAULT_GIT,
+    },
   });
 });
 
@@ -137,7 +144,7 @@ void test('resolveHarnessConfigPath uses canonical file name', () => {
 void test('loadHarnessConfig returns default when file is missing', () => {
   const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-missing-'));
   const loaded = loadHarnessConfig({
-    cwd: baseDir
+    cwd: baseDir,
   });
   assert.equal(loaded.filePath, join(baseDir, HARNESS_CONFIG_FILE_NAME));
   assert.deepEqual(loaded.config, DEFAULT_HARNESS_CONFIG);
@@ -153,31 +160,31 @@ void test('loadHarnessConfig reads valid config file', () => {
     JSON.stringify({
       mux: {
         keybindings: {
-          'mux.app.quit': ['ctrl+q']
+          'mux.app.quit': ['ctrl+q'],
         },
         ui: {
           paneWidthPercent: 41,
           repositoriesCollapsed: false,
-          shortcutsCollapsed: true
-        }
-      }
+          shortcutsCollapsed: true,
+        },
+      },
     }),
-    'utf8'
+    'utf8',
   );
 
   const loaded = loadHarnessConfig({
-    cwd: baseDir
+    cwd: baseDir,
   });
   assert.deepEqual(loaded.config.mux, {
     keybindings: {
-      'mux.app.quit': ['ctrl+q']
+      'mux.app.quit': ['ctrl+q'],
     },
     ui: {
       paneWidthPercent: 41,
       repositoriesCollapsed: false,
-      shortcutsCollapsed: true
+      shortcutsCollapsed: true,
     },
-    git: DEFAULT_GIT
+    git: DEFAULT_GIT,
   });
   assert.equal(loaded.fromLastKnownGood, false);
   assert.equal(loaded.error, null);
@@ -194,38 +201,38 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
       ...DEFAULT_HARNESS_CONFIG,
       mux: {
         keybindings: {
-          'mux.conversation.new': ['ctrl+t']
+          'mux.conversation.new': ['ctrl+t'],
         },
         ui: {
           paneWidthPercent: 30,
           repositoriesCollapsed: false,
-          shortcutsCollapsed: true
+          shortcutsCollapsed: true,
         },
-        git: DEFAULT_GIT
+        git: DEFAULT_GIT,
       },
       debug: {
         ...DEFAULT_HARNESS_CONFIG.debug,
-        enabled: false
-      }
-    }
+        enabled: false,
+      },
+    },
   });
   assert.deepEqual(loaded.config, {
     ...DEFAULT_HARNESS_CONFIG,
     mux: {
       keybindings: {
-        'mux.conversation.new': ['ctrl+t']
+        'mux.conversation.new': ['ctrl+t'],
       },
       ui: {
         paneWidthPercent: 30,
         repositoriesCollapsed: false,
-        shortcutsCollapsed: true
+        shortcutsCollapsed: true,
       },
-      git: DEFAULT_GIT
+      git: DEFAULT_GIT,
     },
     debug: {
       ...DEFAULT_HARNESS_CONFIG.debug,
-      enabled: false
-    }
+      enabled: false,
+    },
   });
   assert.equal(loaded.fromLastKnownGood, true);
   assert.equal(typeof loaded.error, 'string');
@@ -239,14 +246,14 @@ void test('loadHarnessConfig supports explicit file path override', () => {
   const loaded = loadHarnessConfig({
     cwd: '/tmp/ignored',
     filePath,
-    lastKnownGood: DEFAULT_HARNESS_CONFIG
+    lastKnownGood: DEFAULT_HARNESS_CONFIG,
   });
   assert.deepEqual(loaded.config.mux, {
     keybindings: {
-      'mux.app.quit': ['ctrl+q']
+      'mux.app.quit': ['ctrl+q'],
     },
     ui: DEFAULT_UI,
-    git: DEFAULT_GIT
+    git: DEFAULT_GIT,
   });
   assert.equal(loaded.fromLastKnownGood, false);
   assert.equal(loaded.error, null);
@@ -264,10 +271,10 @@ void test('loadHarnessConfig resolves defaults from process cwd when options are
     assert.equal(loaded.filePath.endsWith(`/${HARNESS_CONFIG_FILE_NAME}`), true);
     assert.deepEqual(loaded.config.mux, {
       keybindings: {
-        'mux.conversation.next': ['ctrl+j']
+        'mux.conversation.next': ['ctrl+j'],
       },
       ui: DEFAULT_UI,
-      git: DEFAULT_GIT
+      git: DEFAULT_GIT,
     });
   } finally {
     process.chdir(previousCwd);
@@ -297,7 +304,7 @@ void test('parseHarnessConfigText normalizes mux git refresh settings', () => {
     burstPollMs: 150,
     burstWindowMs: 3200,
     triggerDebounceMs: 90,
-    maxConcurrency: 3
+    maxConcurrency: 3,
   });
 
   const invalid = parseHarnessConfigText(`
@@ -317,7 +324,7 @@ void test('parseHarnessConfigText normalizes mux git refresh settings', () => {
   `);
   assert.deepEqual(invalid.mux.git, {
     ...DEFAULT_GIT,
-    maxConcurrency: 1
+    maxConcurrency: 1,
   });
 });
 
@@ -338,6 +345,11 @@ void test('parseHarnessConfigText parses debug perf and mux toggles', () => {
           "ptyResizeSettleMs": 34,
           "startupSettleQuietMs": 56,
           "serverSnapshotModelEnabled": false
+        },
+        "inspect": {
+          "enabled": true,
+          "gatewayPort": 9330,
+          "clientPort": 9331
         }
       }
     }
@@ -347,7 +359,7 @@ void test('parseHarnessConfigText parses debug perf and mux toggles', () => {
     overwriteArtifactsOnStart: false,
     perf: {
       enabled: false,
-      filePath: '.harness/custom-perf.jsonl'
+      filePath: '.harness/custom-perf.jsonl',
     },
     mux: {
       debugPath: '.harness/custom-mux.jsonl',
@@ -355,8 +367,62 @@ void test('parseHarnessConfigText parses debug perf and mux toggles', () => {
       resizeMinIntervalMs: 12,
       ptyResizeSettleMs: 34,
       startupSettleQuietMs: 56,
-      serverSnapshotModelEnabled: false
+      serverSnapshotModelEnabled: false,
+    },
+    inspect: {
+      enabled: true,
+      gatewayPort: 9330,
+      clientPort: 9331,
+    },
+  });
+});
+
+void test('parseHarnessConfigText normalizes inspect ports and falls back for invalid values', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "debug": {
+        "inspect": {
+          "enabled": true,
+          "gatewayPort": 6499.9,
+          "clientPort": 6500.1
+        }
+      }
     }
+  `);
+  assert.deepEqual(parsed.debug.inspect, {
+    enabled: true,
+    gatewayPort: 6499,
+    clientPort: 6500,
+  });
+
+  const invalid = parseHarnessConfigText(`
+    {
+      "debug": {
+        "inspect": {
+          "enabled": "yes",
+          "gatewayPort": 0,
+          "clientPort": 65536
+        }
+      }
+    }
+  `);
+  assert.deepEqual(invalid.debug.inspect, DEFAULT_HARNESS_CONFIG.debug.inspect);
+
+  const nonNumeric = parseHarnessConfigText(`
+    {
+      "debug": {
+        "inspect": {
+          "enabled": true,
+          "gatewayPort": "6499",
+          "clientPort": null
+        }
+      }
+    }
+  `);
+  assert.deepEqual(nonNumeric.debug.inspect, {
+    enabled: true,
+    gatewayPort: DEFAULT_HARNESS_CONFIG.debug.inspect.gatewayPort,
+    clientPort: DEFAULT_HARNESS_CONFIG.debug.inspect.clientPort,
   });
 });
 
@@ -398,20 +464,20 @@ void test('parseHarnessConfigText parses codex telemetry and history settings', 
       captureLogs: true,
       captureMetrics: false,
       captureTraces: false,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     history: {
       enabled: true,
       filePath: '~/.codex/custom-history.jsonl',
-      pollMs: 275
+      pollMs: 275,
     },
     launch: {
       defaultMode: 'standard',
       directoryModes: {
         '.': 'yolo',
-        './sandbox': 'standard'
-      }
-    }
+        './sandbox': 'standard',
+      },
+    },
   });
 });
 
@@ -450,9 +516,9 @@ void test('parseHarnessConfigText falls back for invalid codex settings', () => 
     launch: {
       defaultMode: DEFAULT_HARNESS_CONFIG.codex.launch.defaultMode,
       directoryModes: {
-        './safe': 'standard'
-      }
-    }
+        './safe': 'standard',
+      },
+    },
   });
 
   const parsedWithBadShapes = parseHarnessConfigText(`
@@ -482,8 +548,14 @@ void test('parseHarnessConfigText falls back for invalid codex settings', () => 
       }
     }
   `);
-  assert.equal(parsedWithBadHostAndPort.codex.telemetry.host, DEFAULT_HARNESS_CONFIG.codex.telemetry.host);
-  assert.equal(parsedWithBadHostAndPort.codex.telemetry.port, DEFAULT_HARNESS_CONFIG.codex.telemetry.port);
+  assert.equal(
+    parsedWithBadHostAndPort.codex.telemetry.host,
+    DEFAULT_HARNESS_CONFIG.codex.telemetry.host,
+  );
+  assert.equal(
+    parsedWithBadHostAndPort.codex.telemetry.port,
+    DEFAULT_HARNESS_CONFIG.codex.telemetry.port,
+  );
 
   const parsedWithBadLaunchShapes = parseHarnessConfigText(`
     {
@@ -541,7 +613,7 @@ void test('parseHarnessConfigText parses lifecycle hook connectors and event fil
   assert.deepEqual(parsed.hooks.lifecycle.providers, {
     codex: true,
     claude: false,
-    controlPlane: true
+    controlPlane: true,
   });
   assert.deepEqual(parsed.hooks.lifecycle.peonPing, {
     enabled: true,
@@ -549,8 +621,8 @@ void test('parseHarnessConfigText parses lifecycle hook connectors and event fil
     timeoutMs: 900,
     eventCategoryMap: {
       'turn.started': 'task.acknowledge',
-      'turn.completed': 'task.complete'
-    }
+      'turn.completed': 'task.complete',
+    },
   });
   assert.equal(parsed.hooks.lifecycle.webhooks.length, 1);
   assert.deepEqual(parsed.hooks.lifecycle.webhooks[0], {
@@ -560,9 +632,9 @@ void test('parseHarnessConfigText parses lifecycle hook connectors and event fil
     method: 'POST',
     timeoutMs: 1500,
     headers: {
-      authorization: 'Bearer test-token'
+      authorization: 'Bearer test-token',
     },
-    eventTypes: ['turn.started', 'turn.completed']
+    eventTypes: ['turn.started', 'turn.completed'],
   });
 });
 
@@ -601,10 +673,13 @@ void test('parseHarnessConfigText falls back for invalid lifecycle hook shapes',
     }
   `);
   assert.equal(parsed.hooks.lifecycle.enabled, DEFAULT_HARNESS_CONFIG.hooks.lifecycle.enabled);
-  assert.deepEqual(parsed.hooks.lifecycle.providers, DEFAULT_HARNESS_CONFIG.hooks.lifecycle.providers);
+  assert.deepEqual(
+    parsed.hooks.lifecycle.providers,
+    DEFAULT_HARNESS_CONFIG.hooks.lifecycle.providers,
+  );
   assert.deepEqual(parsed.hooks.lifecycle.peonPing, {
     ...DEFAULT_HARNESS_CONFIG.hooks.lifecycle.peonPing,
-    eventCategoryMap: {}
+    eventCategoryMap: {},
   });
   assert.deepEqual(parsed.hooks.lifecycle.webhooks, [
     {
@@ -614,8 +689,8 @@ void test('parseHarnessConfigText falls back for invalid lifecycle hook shapes',
       method: 'POST',
       timeoutMs: 1200,
       headers: {},
-      eventTypes: []
-    }
+      eventTypes: [],
+    },
   ]);
 });
 
@@ -634,7 +709,7 @@ void test('parseHarnessConfigText falls back to default peon categories when cat
   `);
   assert.deepEqual(
     parsed.hooks.lifecycle.peonPing.eventCategoryMap,
-    DEFAULT_HARNESS_CONFIG.hooks.lifecycle.peonPing.eventCategoryMap
+    DEFAULT_HARNESS_CONFIG.hooks.lifecycle.peonPing.eventCategoryMap,
   );
 });
 
@@ -663,8 +738,14 @@ void test('parseHarnessConfigText handles null lifecycle sub-sections and malfor
     }
   `);
 
-  assert.deepEqual(parsed.hooks.lifecycle.providers, DEFAULT_HARNESS_CONFIG.hooks.lifecycle.providers);
-  assert.deepEqual(parsed.hooks.lifecycle.peonPing, DEFAULT_HARNESS_CONFIG.hooks.lifecycle.peonPing);
+  assert.deepEqual(
+    parsed.hooks.lifecycle.providers,
+    DEFAULT_HARNESS_CONFIG.hooks.lifecycle.providers,
+  );
+  assert.deepEqual(
+    parsed.hooks.lifecycle.peonPing,
+    DEFAULT_HARNESS_CONFIG.hooks.lifecycle.peonPing,
+  );
   assert.deepEqual(parsed.hooks.lifecycle.webhooks, [
     {
       name: 'webhook-2',
@@ -673,10 +754,10 @@ void test('parseHarnessConfigText handles null lifecycle sub-sections and malfor
       method: 'POST',
       timeoutMs: 1200,
       headers: {
-        'x-ok': 'value'
+        'x-ok': 'value',
       },
-      eventTypes: []
-    }
+      eventTypes: [],
+    },
   ]);
 });
 
@@ -691,7 +772,7 @@ void test('parseHarnessConfigText supports legacy top-level perf and debug fallb
   `);
   assert.deepEqual(parsedLegacyPerf.debug.perf, {
     enabled: false,
-    filePath: '.harness/legacy-perf.jsonl'
+    filePath: '.harness/legacy-perf.jsonl',
   });
 
   const parsedFromArray = parseHarnessConfigText(`
@@ -756,7 +837,7 @@ void test('parseHarnessConfigText normalizes non-finite and decimal debug values
     resizeMinIntervalMs: 1,
     ptyResizeSettleMs: 75,
     startupSettleQuietMs: 300,
-    serverSnapshotModelEnabled: true
+    serverSnapshotModelEnabled: true,
   });
 });
 
@@ -768,37 +849,37 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
     JSON.stringify({
       mux: {
         keybindings: {
-          'mux.conversation.new': ['ctrl+t']
-        }
-      }
+          'mux.conversation.new': ['ctrl+t'],
+        },
+      },
     }),
-    'utf8'
+    'utf8',
   );
 
   const updated = updateHarnessMuxUiConfig(
     {
       paneWidthPercent: 33.3333,
       repositoriesCollapsed: false,
-      shortcutsCollapsed: true
+      shortcutsCollapsed: true,
     },
     {
-      filePath
-    }
+      filePath,
+    },
   );
   assert.deepEqual(updated.mux.ui, {
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
-    shortcutsCollapsed: true
+    shortcutsCollapsed: true,
   });
   assert.deepEqual(updated.mux.keybindings, {
-    'mux.conversation.new': ['ctrl+t']
+    'mux.conversation.new': ['ctrl+t'],
   });
 
   const reloaded = loadHarnessConfig({ filePath, cwd: baseDir });
   assert.deepEqual(reloaded.config.mux.ui, {
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
-    shortcutsCollapsed: true
+    shortcutsCollapsed: true,
   });
 });
 
@@ -812,20 +893,20 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
         ui: {
           paneWidthPercent: 44,
           repositoriesCollapsed: false,
-          shortcutsCollapsed: false
-        }
-      }
+          shortcutsCollapsed: false,
+        },
+      },
     }),
-    'utf8'
+    'utf8',
   );
 
   const updatedInvalid = updateHarnessMuxUiConfig(
     {
-      paneWidthPercent: 200
+      paneWidthPercent: 200,
     },
     {
-      filePath
-    }
+      filePath,
+    },
   );
   assert.equal(updatedInvalid.mux.ui.paneWidthPercent, null);
   assert.equal(updatedInvalid.mux.ui.repositoriesCollapsed, false);
@@ -833,11 +914,11 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
 
   const updatedPartial = updateHarnessMuxUiConfig(
     {
-      shortcutsCollapsed: true
+      shortcutsCollapsed: true,
     },
     {
-      filePath
-    }
+      filePath,
+    },
   );
   assert.equal(updatedPartial.mux.ui.paneWidthPercent, null);
   assert.equal(updatedPartial.mux.ui.repositoriesCollapsed, false);
@@ -854,26 +935,26 @@ void test('updateHarnessConfig writes new config file when absent', () => {
       mux: {
         ...current.mux,
         keybindings: {
-          'mux.app.quit': ['ctrl+q']
+          'mux.app.quit': ['ctrl+q'],
         },
         ui: {
           paneWidthPercent: 25,
           repositoriesCollapsed: false,
-          shortcutsCollapsed: true
-        }
-      }
-    })
+          shortcutsCollapsed: true,
+        },
+      },
+    }),
   });
   assert.deepEqual(updated.mux, {
     keybindings: {
-      'mux.app.quit': ['ctrl+q']
+      'mux.app.quit': ['ctrl+q'],
     },
     ui: {
       paneWidthPercent: 25,
       repositoriesCollapsed: false,
-      shortcutsCollapsed: true
+      shortcutsCollapsed: true,
     },
-    git: DEFAULT_GIT
+    git: DEFAULT_GIT,
   });
   const loaded = loadHarnessConfig({ filePath, cwd: baseDir });
   assert.deepEqual(loaded.config.mux, updated.mux);
@@ -887,9 +968,9 @@ void test('updateHarnessConfig cleans temporary file when rename fails', () => {
     () =>
       updateHarnessConfig({
         filePath: directoryAsFilePath,
-        update: (current) => current
+        update: (current) => current,
       }),
-    /EISDIR|illegal operation on a directory/i
+    /EISDIR|illegal operation on a directory/i,
   );
   const leftovers = readdirSync(baseDir).filter((entry) => entry.includes('.tmp-'));
   assert.deepEqual(leftovers, []);
@@ -905,9 +986,9 @@ void test('updateHarnessConfig handles write failures and swallows temp cleanup 
       () =>
         updateHarnessConfig({
           filePath,
-          update: (current) => current
+          update: (current) => current,
         }),
-      /EACCES|EPERM|permission denied/i
+      /EACCES|EPERM|permission denied/i,
     );
   } finally {
     chmodSync(readOnlyDir, 0o700);
@@ -922,9 +1003,9 @@ void test('updateHarnessConfig throws when existing config cannot be parsed', ()
     () =>
       updateHarnessConfig({
         filePath,
-        update: (current) => current
+        update: (current) => current,
       }),
-    /Unexpected end of JSON input|Unexpected EOF|JSON Parse error/i
+    /Unexpected end of JSON input|Unexpected EOF|JSON Parse error/i,
   );
   assert.equal(readFileSync(filePath, 'utf8'), '{ "mux": ');
 });
@@ -938,23 +1019,23 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
         ui: {
           paneWidthPercent: 35,
           repositoriesCollapsed: false,
-          shortcutsCollapsed: false
-        }
-      }
+          shortcutsCollapsed: false,
+        },
+      },
     }),
-    'utf8'
+    'utf8',
   );
   const updated = updateHarnessMuxUiConfig(
     {
-      shortcutsCollapsed: true
+      shortcutsCollapsed: true,
     },
     {
-      cwd: baseDir
-    }
+      cwd: baseDir,
+    },
   );
   assert.deepEqual(updated.mux.ui, {
     paneWidthPercent: 35,
     repositoriesCollapsed: false,
-    shortcutsCollapsed: true
+    shortcutsCollapsed: true,
   });
 });

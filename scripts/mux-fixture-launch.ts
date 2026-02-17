@@ -11,7 +11,7 @@ import {
   configurePerfCore,
   recordPerfEvent,
   shutdownPerfCore,
-  startPerfSpan
+  startPerfSpan,
 } from '../src/perf/perf-core.ts';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -21,8 +21,17 @@ const DEFAULT_HOST = '127.0.0.1';
 const START_TIMEOUT_MS = 5000;
 const STOP_TIMEOUT_MS = 1500;
 
-function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
-  return [scriptPath, ...args];
+interface RuntimeInspectSettings {
+  readonly gatewayRuntimeArgs: readonly string[];
+  readonly clientRuntimeArgs: readonly string[];
+}
+
+function tsRuntimeArgs(
+  scriptPath: string,
+  args: readonly string[] = [],
+  runtimeArgs: readonly string[] = [],
+): string[] {
+  return [...runtimeArgs, scriptPath, ...args];
 }
 
 function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
@@ -85,7 +94,7 @@ function configureProcessPerf(invocationDirectory: string): { enabled: boolean; 
       : configuredPath;
   const shouldTruncate = parseBooleanEnv(
     process.env.HARNESS_PERF_TRUNCATE_ON_START,
-    loadedConfig.config.debug.overwriteArtifactsOnStart
+    loadedConfig.config.debug.overwriteArtifactsOnStart,
   );
 
   if (perfEnabled) {
@@ -94,19 +103,34 @@ function configureProcessPerf(invocationDirectory: string): { enabled: boolean; 
 
   configurePerfCore({
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
   });
 
   recordPerfEvent('launch-fixture.perf.configured', {
     process: 'launch-fixture',
     enabled: perfEnabled,
     filePath: perfFilePath,
-    truncateOnStart: shouldTruncate
+    truncateOnStart: shouldTruncate,
   });
 
   return {
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
+  };
+}
+
+function resolveRuntimeInspectSettings(invocationDirectory: string): RuntimeInspectSettings {
+  const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
+  const debugConfig = loadedConfig.config.debug;
+  if (!debugConfig.enabled || !debugConfig.inspect.enabled) {
+    return {
+      gatewayRuntimeArgs: [],
+      clientRuntimeArgs: [],
+    };
+  }
+  return {
+    gatewayRuntimeArgs: [`--inspect=${String(debugConfig.inspect.gatewayPort)}`],
+    clientRuntimeArgs: [`--inspect=${String(debugConfig.inspect.clientPort)}`],
   };
 }
 
@@ -142,10 +166,7 @@ async function reservePort(host: string): Promise<number> {
 
 function defaultFixtureArgs(invocationDirectory: string): string[] {
   const fixturePath = resolve(invocationDirectory, 'assets/codex-startup-fixture.txt');
-  return [
-    '-lc',
-    `cat ${JSON.stringify(fixturePath)}; printf '\n'; sleep 600`
-  ];
+  return ['-lc', `cat ${JSON.stringify(fixturePath)}; printf '\n'; sleep 600`];
 }
 
 function spawnDaemon(
@@ -154,11 +175,12 @@ function spawnDaemon(
   authToken: string,
   invocationDirectory: string,
   perfSettings: { enabled: boolean; filePath: string },
-  runId: string
+  runId: string,
+  runtimeArgs: readonly string[],
 ): ChildProcess {
   return spawn(
     process.execPath,
-    tsRuntimeArgs(DAEMON_SCRIPT, ['--host', host, '--port', String(port)]),
+    tsRuntimeArgs(DAEMON_SCRIPT, ['--host', host, '--port', String(port)], runtimeArgs),
     {
       stdio: ['ignore', 'pipe', 'inherit'],
       env: {
@@ -168,9 +190,12 @@ function spawnDaemon(
         HARNESS_PERF_ENABLED: perfSettings.enabled ? '1' : '0',
         HARNESS_PERF_FILE_PATH: perfSettings.filePath,
         HARNESS_PERF_TRUNCATE_ON_START: '0',
-        HARNESS_CONTROL_PLANE_DB_PATH: resolve(invocationDirectory, `.harness/control-plane-fixture-${runId}.sqlite`)
-      }
-    }
+        HARNESS_CONTROL_PLANE_DB_PATH: resolve(
+          invocationDirectory,
+          `.harness/control-plane-fixture-${runId}.sqlite`,
+        ),
+      },
+    },
   );
 }
 
@@ -182,7 +207,7 @@ async function waitForDaemonReady(daemon: ChildProcess): Promise<void> {
 
   const readySpan = startPerfSpan('launch-fixture.startup.daemon-ready-wait', {
     process: 'launch-fixture',
-    daemonPid: daemon.pid ?? -1
+    daemonPid: daemon.pid ?? -1,
   });
 
   await new Promise<void>((resolveReady, rejectReady) => {
@@ -223,8 +248,8 @@ async function waitForDaemonReady(daemon: ChildProcess): Promise<void> {
     const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
       failReady(
         new Error(
-          `control-plane fixture daemon exited before ready (code=${code === null ? 'null' : String(code)}, signal=${signal === null ? 'null' : signal})`
-        )
+          `control-plane fixture daemon exited before ready (code=${code === null ? 'null' : String(code)}, signal=${signal === null ? 'null' : signal})`,
+        ),
       );
     };
 
@@ -244,17 +269,16 @@ function spawnMuxClient(
   fixtureArgs: readonly string[],
   invocationDirectory: string,
   perfSettings: { enabled: boolean; filePath: string },
-  runId: string
+  runId: string,
+  runtimeArgs: readonly string[],
 ): ChildProcess {
   return spawn(
     process.execPath,
-    tsRuntimeArgs(MUX_SCRIPT, [
-      '--harness-server-host',
-      host,
-      '--harness-server-port',
-      String(port),
-      ...fixtureArgs
-    ]),
+    tsRuntimeArgs(
+      MUX_SCRIPT,
+      ['--harness-server-host', host, '--harness-server-port', String(port), ...fixtureArgs],
+      runtimeArgs,
+    ),
     {
       stdio: 'inherit',
       env: {
@@ -265,11 +289,17 @@ function spawnMuxClient(
         HARNESS_PERF_ENABLED: perfSettings.enabled ? '1' : '0',
         HARNESS_PERF_FILE_PATH: perfSettings.filePath,
         HARNESS_PERF_TRUNCATE_ON_START: '0',
-        HARNESS_CONTROL_PLANE_DB_PATH: resolve(invocationDirectory, `.harness/control-plane-fixture-${runId}.sqlite`),
-        HARNESS_EVENTS_DB_PATH: resolve(invocationDirectory, `.harness/events-fixture-${runId}.sqlite`),
-        HARNESS_CONVERSATION_ID: `conversation-fixture-${runId}`
-      }
-    }
+        HARNESS_CONTROL_PLANE_DB_PATH: resolve(
+          invocationDirectory,
+          `.harness/control-plane-fixture-${runId}.sqlite`,
+        ),
+        HARNESS_EVENTS_DB_PATH: resolve(
+          invocationDirectory,
+          `.harness/events-fixture-${runId}.sqlite`,
+        ),
+        HARNESS_CONVERSATION_ID: `conversation-fixture-${runId}`,
+      },
+    },
   );
 }
 
@@ -284,7 +314,7 @@ async function terminateChild(child: ChildProcess, signal: NodeJS.Signals): Prom
       setTimeout(() => {
         resolve(false);
       }, STOP_TIMEOUT_MS);
-    })
+    }),
   ]);
   if (exited) {
     return;
@@ -308,35 +338,54 @@ async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory();
   loadHarnessSecrets({ cwd: invocationDirectory });
   const perfSettings = configureProcessPerf(invocationDirectory);
+  const inspectSettings = resolveRuntimeInspectSettings(invocationDirectory);
   const startupSpan = startPerfSpan('launch-fixture.startup.bootstrap', {
-    process: 'launch-fixture'
+    process: 'launch-fixture',
   });
   recordPerfEvent('launch-fixture.startup.begin', {
-    process: 'launch-fixture'
+    process: 'launch-fixture',
   });
 
   const host = DEFAULT_HOST;
   const runId = randomUUID();
-  const fixtureArgs = process.argv.length > 2 ? process.argv.slice(2) : defaultFixtureArgs(invocationDirectory);
+  const fixtureArgs =
+    process.argv.length > 2 ? process.argv.slice(2) : defaultFixtureArgs(invocationDirectory);
   const port = await reservePort(host);
   recordPerfEvent('launch-fixture.startup.port-reserved', {
     process: 'launch-fixture',
-    port
+    port,
   });
   const authToken = `token-${randomUUID()}`;
 
-  const daemon = spawnDaemon(host, port, authToken, invocationDirectory, perfSettings, runId);
+  const daemon = spawnDaemon(
+    host,
+    port,
+    authToken,
+    invocationDirectory,
+    perfSettings,
+    runId,
+    inspectSettings.gatewayRuntimeArgs,
+  );
   const daemonReady = waitForDaemonReady(daemon).then(() => {
     recordPerfEvent('launch-fixture.startup.daemon-ready', {
       process: 'launch-fixture',
-      daemonPid: daemon.pid ?? -1
+      daemonPid: daemon.pid ?? -1,
     });
   });
 
-  const muxClient = spawnMuxClient(host, port, authToken, fixtureArgs, invocationDirectory, perfSettings, runId);
+  const muxClient = spawnMuxClient(
+    host,
+    port,
+    authToken,
+    fixtureArgs,
+    invocationDirectory,
+    perfSettings,
+    runId,
+    inspectSettings.clientRuntimeArgs,
+  );
   recordPerfEvent('launch-fixture.startup.mux-spawned', {
     process: 'launch-fixture',
-    muxPid: muxClient.pid ?? -1
+    muxPid: muxClient.pid ?? -1,
   });
 
   let shuttingDown = false;
@@ -363,7 +412,7 @@ async function main(): Promise<number> {
   recordPerfEvent('launch-fixture.runtime.mux-exited', {
     process: 'launch-fixture',
     code: muxExit[0] ?? -1,
-    signal: muxExit[1] ?? 'null'
+    signal: muxExit[1] ?? 'null',
   });
   await terminateChild(daemon, 'SIGTERM').catch(() => undefined);
   return normalizeChildExitCode(muxExit);
@@ -373,7 +422,7 @@ try {
   process.exitCode = await main();
 } catch (error: unknown) {
   process.stderr.write(
-    `mux fixture launch fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+    `mux fixture launch fatal error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );
   process.exitCode = 1;
 } finally {

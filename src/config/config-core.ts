@@ -5,7 +5,7 @@ import {
   readFileSync,
   renameSync,
   unlinkSync,
-  writeFileSync
+  writeFileSync,
 } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
@@ -24,7 +24,7 @@ const HARNESS_LIFECYCLE_EVENT_TYPES = [
   'input.required',
   'tool.started',
   'tool.completed',
-  'tool.failed'
+  'tool.failed',
 ] as const;
 
 export type HarnessLifecycleEventType = (typeof HARNESS_LIFECYCLE_EVENT_TYPES)[number];
@@ -65,11 +65,18 @@ interface HarnessDebugMuxConfig {
   readonly serverSnapshotModelEnabled: boolean;
 }
 
+interface HarnessDebugInspectConfig {
+  readonly enabled: boolean;
+  readonly gatewayPort: number;
+  readonly clientPort: number;
+}
+
 interface HarnessDebugConfig {
   readonly enabled: boolean;
   readonly overwriteArtifactsOnStart: boolean;
   readonly perf: HarnessPerfConfig;
   readonly mux: HarnessDebugMuxConfig;
+  readonly inspect: HarnessDebugInspectConfig;
 }
 
 interface HarnessCodexTelemetryConfig {
@@ -156,7 +163,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
     ui: {
       paneWidthPercent: null,
       repositoriesCollapsed: false,
-      shortcutsCollapsed: false
+      shortcutsCollapsed: false,
     },
     git: {
       enabled: true,
@@ -165,15 +172,15 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       burstPollMs: 400,
       burstWindowMs: 2500,
       triggerDebounceMs: 180,
-      maxConcurrency: 1
-    }
+      maxConcurrency: 1,
+    },
   },
   debug: {
     enabled: true,
     overwriteArtifactsOnStart: true,
     perf: {
       enabled: true,
-      filePath: '.harness/perf-startup.jsonl'
+      filePath: '.harness/perf-startup.jsonl',
     },
     mux: {
       debugPath: '.harness/mux-debug.jsonl',
@@ -181,8 +188,13 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       resizeMinIntervalMs: 33,
       ptyResizeSettleMs: 75,
       startupSettleQuietMs: 300,
-      serverSnapshotModelEnabled: true
-    }
+      serverSnapshotModelEnabled: true,
+    },
+    inspect: {
+      enabled: false,
+      gatewayPort: 6499,
+      clientPort: 6500,
+    },
   },
   codex: {
     telemetry: {
@@ -193,17 +205,17 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: false
+      captureVerboseEvents: false,
     },
     history: {
       enabled: true,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 5000
+      pollMs: 5000,
     },
     launch: {
       defaultMode: 'yolo',
-      directoryModes: {}
-    }
+      directoryModes: {},
+    },
   },
   hooks: {
     lifecycle: {
@@ -211,7 +223,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       providers: {
         codex: true,
         claude: true,
-        controlPlane: true
+        controlPlane: true,
       },
       peonPing: {
         enabled: false,
@@ -222,12 +234,12 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
           'turn.started': 'task.acknowledge',
           'turn.completed': 'task.complete',
           'turn.failed': 'task.error',
-          'input.required': 'input.required'
-        }
+          'input.required': 'input.required',
+        },
       },
-      webhooks: []
-    }
-  }
+      webhooks: [],
+    },
+  },
 };
 
 function stripJsoncComments(text: string): string {
@@ -407,7 +419,7 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
   }
   const paneWidthPercent = normalizePaneWidthPercent(
     record['paneWidthPercent'],
-    DEFAULT_HARNESS_CONFIG.mux.ui.paneWidthPercent
+    DEFAULT_HARNESS_CONFIG.mux.ui.paneWidthPercent,
   );
   const shortcutsCollapsed =
     typeof record['shortcutsCollapsed'] === 'boolean'
@@ -420,7 +432,7 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
   return {
     paneWidthPercent,
     repositoriesCollapsed,
-    shortcutsCollapsed
+    shortcutsCollapsed,
   };
 }
 
@@ -436,28 +448,31 @@ function normalizeMuxGitConfig(input: unknown): HarnessMuxGitConfig {
         : DEFAULT_HARNESS_CONFIG.mux.git.enabled,
     activePollMs: normalizeNonNegativeInt(
       record['activePollMs'],
-      DEFAULT_HARNESS_CONFIG.mux.git.activePollMs
+      DEFAULT_HARNESS_CONFIG.mux.git.activePollMs,
     ),
     idlePollMs: normalizeNonNegativeInt(
       record['idlePollMs'],
-      DEFAULT_HARNESS_CONFIG.mux.git.idlePollMs
+      DEFAULT_HARNESS_CONFIG.mux.git.idlePollMs,
     ),
     burstPollMs: normalizeNonNegativeInt(
       record['burstPollMs'],
-      DEFAULT_HARNESS_CONFIG.mux.git.burstPollMs
+      DEFAULT_HARNESS_CONFIG.mux.git.burstPollMs,
     ),
     burstWindowMs: normalizeNonNegativeInt(
       record['burstWindowMs'],
-      DEFAULT_HARNESS_CONFIG.mux.git.burstWindowMs
+      DEFAULT_HARNESS_CONFIG.mux.git.burstWindowMs,
     ),
     triggerDebounceMs: normalizeNonNegativeInt(
       record['triggerDebounceMs'],
-      DEFAULT_HARNESS_CONFIG.mux.git.triggerDebounceMs
+      DEFAULT_HARNESS_CONFIG.mux.git.triggerDebounceMs,
     ),
     maxConcurrency: Math.max(
       1,
-      normalizeNonNegativeInt(record['maxConcurrency'], DEFAULT_HARNESS_CONFIG.mux.git.maxConcurrency)
-    )
+      normalizeNonNegativeInt(
+        record['maxConcurrency'],
+        DEFAULT_HARNESS_CONFIG.mux.git.maxConcurrency,
+      ),
+    ),
   };
 }
 
@@ -476,7 +491,7 @@ function normalizePerfConfig(input: unknown): HarnessPerfConfig {
       : DEFAULT_HARNESS_CONFIG.debug.perf.filePath;
   return {
     enabled,
-    filePath
+    filePath,
   };
 }
 
@@ -507,15 +522,15 @@ function normalizeDebugMuxConfig(input: unknown): HarnessDebugMuxConfig {
       : DEFAULT_HARNESS_CONFIG.debug.mux.validateAnsi;
   const resizeMinIntervalMs = normalizeNonNegativeInt(
     record['resizeMinIntervalMs'],
-    DEFAULT_HARNESS_CONFIG.debug.mux.resizeMinIntervalMs
+    DEFAULT_HARNESS_CONFIG.debug.mux.resizeMinIntervalMs,
   );
   const ptyResizeSettleMs = normalizeNonNegativeInt(
     record['ptyResizeSettleMs'],
-    DEFAULT_HARNESS_CONFIG.debug.mux.ptyResizeSettleMs
+    DEFAULT_HARNESS_CONFIG.debug.mux.ptyResizeSettleMs,
   );
   const startupSettleQuietMs = normalizeNonNegativeInt(
     record['startupSettleQuietMs'],
-    DEFAULT_HARNESS_CONFIG.debug.mux.startupSettleQuietMs
+    DEFAULT_HARNESS_CONFIG.debug.mux.startupSettleQuietMs,
   );
   const serverSnapshotModelEnabled =
     typeof record['serverSnapshotModelEnabled'] === 'boolean'
@@ -527,7 +542,42 @@ function normalizeDebugMuxConfig(input: unknown): HarnessDebugMuxConfig {
     resizeMinIntervalMs,
     ptyResizeSettleMs,
     startupSettleQuietMs,
-    serverSnapshotModelEnabled
+    serverSnapshotModelEnabled,
+  };
+}
+
+function normalizeInspectPort(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  const normalized = Math.floor(value);
+  if (normalized < 1 || normalized > 65535) {
+    return fallback;
+  }
+  return normalized;
+}
+
+function normalizeDebugInspectConfig(input: unknown): HarnessDebugInspectConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.debug.inspect;
+  }
+  const enabled =
+    typeof record['enabled'] === 'boolean'
+      ? record['enabled']
+      : DEFAULT_HARNESS_CONFIG.debug.inspect.enabled;
+  const gatewayPort = normalizeInspectPort(
+    record['gatewayPort'],
+    DEFAULT_HARNESS_CONFIG.debug.inspect.gatewayPort,
+  );
+  const clientPort = normalizeInspectPort(
+    record['clientPort'],
+    DEFAULT_HARNESS_CONFIG.debug.inspect.clientPort,
+  );
+  return {
+    enabled,
+    gatewayPort,
+    clientPort,
   };
 }
 
@@ -536,22 +586,26 @@ function normalizeDebugConfig(input: unknown, legacyPerf: HarnessPerfConfig): Ha
   if (record === null) {
     return {
       ...DEFAULT_HARNESS_CONFIG.debug,
-      perf: legacyPerf
+      perf: legacyPerf,
     };
   }
   const enabled =
-    typeof record['enabled'] === 'boolean' ? record['enabled'] : DEFAULT_HARNESS_CONFIG.debug.enabled;
+    typeof record['enabled'] === 'boolean'
+      ? record['enabled']
+      : DEFAULT_HARNESS_CONFIG.debug.enabled;
   const overwriteArtifactsOnStart =
     typeof record['overwriteArtifactsOnStart'] === 'boolean'
       ? record['overwriteArtifactsOnStart']
       : DEFAULT_HARNESS_CONFIG.debug.overwriteArtifactsOnStart;
   const perf = normalizePerfConfig(record['perf']);
   const mux = normalizeDebugMuxConfig(record['mux']);
+  const inspect = normalizeDebugInspectConfig(record['inspect']);
   return {
     enabled,
     overwriteArtifactsOnStart,
     perf,
-    mux
+    mux,
+    inspect,
   };
 }
 
@@ -608,7 +662,7 @@ function normalizeCodexTelemetryConfig(input: unknown): HarnessCodexTelemetryCon
     captureVerboseEvents:
       typeof record['captureVerboseEvents'] === 'boolean'
         ? record['captureVerboseEvents']
-        : DEFAULT_HARNESS_CONFIG.codex.telemetry.captureVerboseEvents
+        : DEFAULT_HARNESS_CONFIG.codex.telemetry.captureVerboseEvents,
   };
 }
 
@@ -627,7 +681,7 @@ function normalizeCodexHistoryConfig(input: unknown): HarnessCodexHistoryConfig 
         ? record['enabled']
         : DEFAULT_HARNESS_CONFIG.codex.history.enabled,
     filePath,
-    pollMs: normalizeNonNegativeInt(record['pollMs'], DEFAULT_HARNESS_CONFIG.codex.history.pollMs)
+    pollMs: normalizeNonNegativeInt(record['pollMs'], DEFAULT_HARNESS_CONFIG.codex.history.pollMs),
   };
 }
 
@@ -643,7 +697,7 @@ function readCodexLaunchMode(value: unknown): HarnessCodexLaunchMode | null {
 }
 
 function normalizeCodexDirectoryModesConfig(
-  input: unknown
+  input: unknown,
 ): Readonly<Record<string, HarnessCodexLaunchMode>> {
   const record = asRecord(input);
   if (record === null) {
@@ -673,7 +727,7 @@ function normalizeCodexLaunchConfig(input: unknown): HarnessCodexLaunchConfig {
     readCodexLaunchMode(record['defaultMode']) ?? DEFAULT_HARNESS_CONFIG.codex.launch.defaultMode;
   return {
     defaultMode,
-    directoryModes: normalizeCodexDirectoryModesConfig(record['directoryModes'])
+    directoryModes: normalizeCodexDirectoryModesConfig(record['directoryModes']),
   };
 }
 
@@ -685,7 +739,7 @@ function normalizeCodexConfig(input: unknown): HarnessCodexConfig {
   return {
     telemetry: normalizeCodexTelemetryConfig(record['telemetry']),
     history: normalizeCodexHistoryConfig(record['history']),
-    launch: normalizeCodexLaunchConfig(record['launch'])
+    launch: normalizeCodexLaunchConfig(record['launch']),
   };
 }
 
@@ -694,7 +748,7 @@ function isHarnessLifecycleEventType(value: string): value is HarnessLifecycleEv
 }
 
 function normalizeLifecycleEventCategoryMap(
-  input: unknown
+  input: unknown,
 ): Readonly<Partial<Record<HarnessLifecycleEventType, string>>> {
   const record = asRecord(input);
   if (record === null) {
@@ -734,7 +788,7 @@ function normalizeLifecycleProviders(input: unknown): HarnessLifecycleProviderCo
     controlPlane:
       typeof record['controlPlane'] === 'boolean'
         ? record['controlPlane']
-        : DEFAULT_HARNESS_CONFIG.hooks.lifecycle.providers.controlPlane
+        : DEFAULT_HARNESS_CONFIG.hooks.lifecycle.providers.controlPlane,
   };
 }
 
@@ -754,9 +808,9 @@ function normalizeLifecyclePeonPingConfig(input: unknown): HarnessLifecyclePeonP
         : DEFAULT_HARNESS_CONFIG.hooks.lifecycle.peonPing.baseUrl,
     timeoutMs: normalizeNonNegativeInt(
       record['timeoutMs'],
-      DEFAULT_HARNESS_CONFIG.hooks.lifecycle.peonPing.timeoutMs
+      DEFAULT_HARNESS_CONFIG.hooks.lifecycle.peonPing.timeoutMs,
     ),
-    eventCategoryMap: normalizeLifecycleEventCategoryMap(record['eventCategoryMap'])
+    eventCategoryMap: normalizeLifecycleEventCategoryMap(record['eventCategoryMap']),
   };
 }
 
@@ -799,7 +853,7 @@ function normalizeLifecycleEventTypes(input: unknown): readonly HarnessLifecycle
 
 function normalizeLifecycleWebhookConfig(
   input: unknown,
-  index: number
+  index: number,
 ): HarnessLifecycleWebhookConfig | null {
   const record = asRecord(input);
   if (record === null) {
@@ -826,7 +880,7 @@ function normalizeLifecycleWebhookConfig(
     method,
     timeoutMs: normalizeNonNegativeInt(record['timeoutMs'], 1200),
     headers: normalizeStringMap(record['headers']),
-    eventTypes: normalizeLifecycleEventTypes(record['eventTypes'])
+    eventTypes: normalizeLifecycleEventTypes(record['eventTypes']),
   };
 }
 
@@ -850,7 +904,7 @@ function normalizeLifecycleHooksConfig(input: unknown): HarnessLifecycleHooksCon
         : DEFAULT_HARNESS_CONFIG.hooks.lifecycle.enabled,
     providers: normalizeLifecycleProviders(record['providers']),
     peonPing: normalizeLifecyclePeonPingConfig(record['peonPing']),
-    webhooks
+    webhooks,
   };
 }
 
@@ -872,13 +926,13 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
     mux: {
       keybindings: mux === null ? {} : normalizeKeybindings(mux['keybindings']),
       ui: mux === null ? DEFAULT_HARNESS_CONFIG.mux.ui : normalizeMuxUiConfig(mux['ui']),
-      git: mux === null ? DEFAULT_HARNESS_CONFIG.mux.git : normalizeMuxGitConfig(mux['git'])
+      git: mux === null ? DEFAULT_HARNESS_CONFIG.mux.git : normalizeMuxGitConfig(mux['git']),
     },
     debug,
     codex,
     hooks: {
-      lifecycle: hooks
-    }
+      lifecycle: hooks,
+    },
   };
 }
 
@@ -900,7 +954,7 @@ export function loadHarnessConfig(options?: {
       filePath,
       config: lastKnownGood,
       fromLastKnownGood: false,
-      error: null
+      error: null,
     };
   }
 
@@ -910,14 +964,14 @@ export function loadHarnessConfig(options?: {
       filePath,
       config: parseHarnessConfigText(raw),
       fromLastKnownGood: false,
-      error: null
+      error: null,
     };
   } catch (error: unknown) {
     return {
       filePath,
       config: lastKnownGood,
       fromLastKnownGood: true,
-      error: String(error)
+      error: String(error),
     };
   }
 }
@@ -972,7 +1026,7 @@ export function updateHarnessMuxUiConfig(
   options?: {
     cwd?: string;
     filePath?: string;
-  }
+  },
 ): HarnessConfig {
   const updateOptions: {
     cwd?: string;
@@ -1000,11 +1054,11 @@ export function updateHarnessMuxUiConfig(
             paneWidthPercent:
               nextPaneWidthPercent === null ? null : roundUiPercent(nextPaneWidthPercent),
             repositoriesCollapsed: nextRepositoriesCollapsed,
-            shortcutsCollapsed: nextShortcutsCollapsed
-          }
-        }
+            shortcutsCollapsed: nextShortcutsCollapsed,
+          },
+        },
       };
-    }
+    },
   };
   if (options?.cwd !== undefined) {
     updateOptions.cwd = options.cwd;
