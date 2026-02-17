@@ -227,12 +227,18 @@ import { routeInputTokensForConversation as routeInputTokensForConversationHelpe
 import { handleProjectPaneActionClick as handleProjectPaneActionClickHelper } from '../src/mux/live-mux/project-pane-pointer.ts';
 import { handleLeftRailActionClick as handleLeftRailActionClickHelper } from '../src/mux/live-mux/left-rail-actions.ts';
 import { handleLeftRailConversationClick as handleLeftRailConversationClickHelper } from '../src/mux/live-mux/left-rail-conversation-click.ts';
-import { handleHomePaneActionClick as handleHomePaneActionClickHelper } from '../src/mux/live-mux/home-pane-actions.ts';
-import { handleHomePaneEntityClick as handleHomePaneEntityClickHelper } from '../src/mux/live-mux/home-pane-entity-click.ts';
 import {
   handleLeftRailPointerClick as handleLeftRailPointerClickHelper,
   type LeftRailPointerContext,
 } from '../src/mux/live-mux/left-rail-pointer.ts';
+import {
+  handleHomePaneDragMove as handleHomePaneDragMoveHelper,
+  handleMainPaneWheelInput as handleMainPaneWheelInputHelper,
+  handlePaneDividerDragInput as handlePaneDividerDragInputHelper,
+  handleSeparatorPointerPress as handleSeparatorPointerPressHelper,
+} from '../src/mux/live-mux/pointer-routing.ts';
+import { handleHomePaneDragRelease as handleHomePaneDragReleaseHelper } from '../src/mux/live-mux/home-pane-drop.ts';
+import { handleHomePanePointerClick as handleHomePanePointerClickHelper } from '../src/mux/live-mux/home-pane-pointer.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4469,82 +4475,86 @@ async function main(): Promise<number> {
         continue;
       }
 
-      if (paneDividerDragActive) {
-        if (isMouseRelease(token.event.final)) {
-          paneDividerDragActive = false;
-          markDirty();
-          continue;
-        }
-        if (!isWheelMouseCode(token.event.code)) {
-          applyPaneDividerAtCol(token.event.col);
-          continue;
-        }
+      if (
+        handlePaneDividerDragInputHelper({
+          paneDividerDragActive,
+          isMouseRelease: isMouseRelease(token.event.final),
+          isWheelMouseCode: isWheelMouseCode(token.event.code),
+          mouseCol: token.event.col,
+          setPaneDividerDragActive: (active) => { paneDividerDragActive = active; },
+          applyPaneDividerAtCol,
+          markDirty,
+        })
+      ) {
+        continue;
       }
 
       const target = classifyPaneAt(layout, token.event.col, token.event.row);
-      if (homePaneDragState !== null && isMouseRelease(token.event.final)) {
-        const drag = homePaneDragState;
-        homePaneDragState = null;
-        if (mainPaneMode === 'home' && target === 'right' && drag.hasDragged) {
-          const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
-          if (drag.kind === 'task') {
-            const targetTaskId = taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
-            if (targetTaskId !== null) {
-              reorderTaskByDrop(drag.itemId, targetTaskId);
-            }
-          } else {
-            const targetRepositoryId = taskFocusedPaneRepositoryIdAtRow(
-              latestTaskPaneView,
-              rowIndex,
-            );
-            if (targetRepositoryId !== null) {
-              reorderRepositoryByDrop(drag.itemId, targetRepositoryId);
-            }
-          }
-        }
-        markDirty();
+      if (
+        handleHomePaneDragReleaseHelper({
+          homePaneDragState,
+          isMouseRelease: isMouseRelease(token.event.final),
+          mainPaneMode,
+          target,
+          rowIndex: Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1)),
+          taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(latestTaskPaneView, index),
+          repositoryIdAtRow: (index) => taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, index),
+          reorderTaskByDrop,
+          reorderRepositoryByDrop,
+          setHomePaneDragState: (next) => { homePaneDragState = next; },
+          markDirty,
+        })
+      ) {
         continue;
       }
       if (
-        target === 'separator' &&
-        isLeftButtonPress(token.event.code, token.event.final) &&
-        !hasAltModifier(token.event.code)
+        handleSeparatorPointerPressHelper({
+          target,
+          isLeftButtonPress: isLeftButtonPress(token.event.code, token.event.final),
+          hasAltModifier: hasAltModifier(token.event.code),
+          mouseCol: token.event.col,
+          setPaneDividerDragActive: (active) => { paneDividerDragActive = active; },
+          applyPaneDividerAtCol,
+        })
       ) {
-        paneDividerDragActive = true;
-        applyPaneDividerAtCol(token.event.col);
         continue;
       }
       const isMainPaneTarget = target === 'right';
       const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
-      if (wheelDelta !== null) {
-        if (target === 'right') {
-          if (mainPaneMode === 'project') {
-            projectPaneScrollTop = Math.max(0, projectPaneScrollTop + wheelDelta);
-          } else if (mainPaneMode === 'home') {
-            taskPaneScrollTop = Math.max(0, taskPaneScrollTop + wheelDelta);
-          } else if (inputConversation !== null) {
-            inputConversation.oracle.scrollViewport(wheelDelta);
-            snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
-          }
-          markDirty();
-          continue;
-        }
+      if (
+        handleMainPaneWheelInputHelper({
+          target,
+          wheelDelta,
+          mainPaneMode,
+          onProjectWheel: (delta) => {
+            projectPaneScrollTop = Math.max(0, projectPaneScrollTop + delta);
+          },
+          onHomeWheel: (delta) => {
+            taskPaneScrollTop = Math.max(0, taskPaneScrollTop + delta);
+          },
+          onConversationWheel: (delta) => {
+            if (inputConversation !== null) {
+              inputConversation.oracle.scrollViewport(delta);
+              snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
+            }
+          },
+          markDirty,
+        })
+      ) {
+        continue;
       }
       if (
-        homePaneDragState !== null &&
-        mainPaneMode === 'home' &&
-        target === 'right' &&
-        isSelectionDrag(token.event.code, token.event.final) &&
-        !hasAltModifier(token.event.code)
+        handleHomePaneDragMoveHelper({
+          homePaneDragState,
+          mainPaneMode,
+          target,
+          isSelectionDrag: isSelectionDrag(token.event.code, token.event.final),
+          hasAltModifier: hasAltModifier(token.event.code),
+          rowIndex: Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1)),
+          setHomePaneDragState: (next) => { homePaneDragState = next; },
+          markDirty,
+        })
       ) {
-        const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
-        homePaneDragState = {
-          ...homePaneDragState,
-          latestRowIndex: rowIndex,
-          hasDragged:
-            homePaneDragState.hasDragged || rowIndex !== homePaneDragState.startedRowIndex,
-        };
-        markDirty();
         continue;
       }
       const projectPaneActionClick =
@@ -4579,72 +4589,42 @@ async function main(): Promise<number> {
         isLeftButtonPress(token.event.code, token.event.final) &&
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
-      if (taskPaneActionClick) {
-        const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
-        const colIndex = Math.max(
-          0,
-          Math.min(layout.rightCols - 1, token.event.col - layout.rightStartCol),
-        );
-        const action =
-          taskFocusedPaneActionAtCell(latestTaskPaneView, rowIndex, colIndex) ??
-          taskFocusedPaneActionAtRow(latestTaskPaneView, rowIndex);
-        if (
-          handleHomePaneActionClickHelper({
-            action,
-            rowIndex,
-            clearTaskEditClickState: () => {
-              taskPaneTaskEditClickState = null;
-            },
-            clearRepositoryEditClickState: () => {
-              taskPaneRepositoryEditClickState = null;
-            },
-            clearHomePaneDragState: () => {
-              homePaneDragState = null;
-            },
-            getTaskRepositoryDropdownOpen: () => taskRepositoryDropdownOpen,
-            setTaskRepositoryDropdownOpen: (open) => {
-              taskRepositoryDropdownOpen = open;
-            },
-            taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(latestTaskPaneView, index),
-            repositoryIdAtRow: (index) => taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, index),
-            selectTaskById,
-            selectRepositoryById,
-            runTaskPaneAction,
-            markDirty,
-          })
-        ) {
-          continue;
-        }
-        if (
-          handleHomePaneEntityClickHelper({
-            rowIndex,
-            nowMs: Date.now(),
-            homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-            taskEditClickState: taskPaneTaskEditClickState,
-            repositoryEditClickState: taskPaneRepositoryEditClickState,
-            taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(latestTaskPaneView, index),
-            repositoryIdAtRow: (index) => taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, index),
-            selectTaskById,
-            selectRepositoryById,
-            clearTaskPaneNotice: () => {
-              taskPaneNotice = null;
-            },
-            setTaskEditClickState: (next) => {
-              taskPaneTaskEditClickState = next;
-            },
-            setRepositoryEditClickState: (next) => {
-              taskPaneRepositoryEditClickState = next;
-            },
-            setHomePaneDragState: (next) => {
-              homePaneDragState = next;
-            },
-            openTaskEditPrompt,
-            openRepositoryPromptForEdit,
-            markDirty,
-          })
-        ) {
-          continue;
-        }
+      if (
+        handleHomePanePointerClickHelper({
+          clickEligible: taskPaneActionClick,
+          paneRows: layout.paneRows,
+          rightCols: layout.rightCols,
+          rightStartCol: layout.rightStartCol,
+          pointerRow: token.event.row,
+          pointerCol: token.event.col,
+          actionAtCell: (rowIndex, colIndex) =>
+            taskFocusedPaneActionAtCell(latestTaskPaneView, rowIndex, colIndex),
+          actionAtRow: (rowIndex) => taskFocusedPaneActionAtRow(latestTaskPaneView, rowIndex),
+          clearTaskEditClickState: () => { taskPaneTaskEditClickState = null; },
+          clearRepositoryEditClickState: () => { taskPaneRepositoryEditClickState = null; },
+          clearHomePaneDragState: () => { homePaneDragState = null; },
+          getTaskRepositoryDropdownOpen: () => taskRepositoryDropdownOpen,
+          setTaskRepositoryDropdownOpen: (open) => { taskRepositoryDropdownOpen = open; },
+          taskIdAtRow: (rowIndex) => taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex),
+          repositoryIdAtRow: (rowIndex) =>
+            taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, rowIndex),
+          selectTaskById,
+          selectRepositoryById,
+          runTaskPaneAction,
+          nowMs: Date.now(),
+          homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
+          taskEditClickState: taskPaneTaskEditClickState,
+          repositoryEditClickState: taskPaneRepositoryEditClickState,
+          clearTaskPaneNotice: () => { taskPaneNotice = null; },
+          setTaskEditClickState: (next) => { taskPaneTaskEditClickState = next; },
+          setRepositoryEditClickState: (next) => { taskPaneRepositoryEditClickState = next; },
+          setHomePaneDragState: (next) => { homePaneDragState = next; },
+          openTaskEditPrompt,
+          openRepositoryPromptForEdit,
+          markDirty,
+        })
+      ) {
+        continue;
       }
       const leftPaneConversationSelect =
         target === 'left' &&

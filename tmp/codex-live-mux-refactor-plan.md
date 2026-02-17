@@ -561,3 +561,24 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4773 -> 4766 LOC
+
+### Checkpoint 29 (2026-02-17): pointer routing + home-pane pointer orchestration extraction
+
+- Added `src/mux/live-mux/pointer-routing.ts`:
+  - pane-divider drag reducer
+  - separator pointer-press reducer
+  - main-pane wheel routing reducer
+  - home-pane drag-move reducer
+- Added `src/mux/live-mux/home-pane-drop.ts`:
+  - home-pane drag-release/drop reducer for task/repository reorder
+- Added `src/mux/live-mux/home-pane-pointer.ts`:
+  - home-pane pointer click orchestration combining action-click and entity-click handlers
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate the above pointer pre-routing and home-pane pointer orchestration logic through helpers.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4766 -> 4746 LOC
