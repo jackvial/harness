@@ -34,7 +34,6 @@ import {
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
-import { detectEntityDoubleClick } from '../src/mux/double-click.ts';
 import {
   actionAtWorkspaceRailCell,
   conversationIdAtWorkspaceRailRow,
@@ -234,6 +233,7 @@ import { handleProjectPaneActionClick as handleProjectPaneActionClickHelper } fr
 import { handleLeftRailActionClick as handleLeftRailActionClickHelper } from '../src/mux/live-mux/left-rail-actions.ts';
 import { handleLeftRailConversationClick as handleLeftRailConversationClickHelper } from '../src/mux/live-mux/left-rail-conversation-click.ts';
 import { handleHomePaneActionClick as handleHomePaneActionClickHelper } from '../src/mux/live-mux/home-pane-actions.ts';
+import { handleHomePaneEntityClick as handleHomePaneEntityClickHelper } from '../src/mux/live-mux/home-pane-entity-click.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4616,63 +4616,36 @@ async function main(): Promise<number> {
         ) {
           continue;
         }
-        const taskId = taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
-        if (taskId !== null) {
-          const click = detectEntityDoubleClick(
-            taskPaneTaskEditClickState,
-            taskId,
-            Date.now(),
-            HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-          );
-          selectTaskById(taskId);
-          taskPaneNotice = null;
-          taskPaneTaskEditClickState = click.nextState;
-          taskPaneRepositoryEditClickState = null;
-          if (click.doubleClick) {
-            homePaneDragState = null;
-            openTaskEditPrompt(taskId);
-          } else {
-            homePaneDragState = {
-              kind: 'task',
-              itemId: taskId,
-              startedRowIndex: rowIndex,
-              latestRowIndex: rowIndex,
-              hasDragged: false,
-            };
-          }
-          markDirty();
+        if (
+          handleHomePaneEntityClickHelper({
+            rowIndex,
+            nowMs: Date.now(),
+            homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
+            taskEditClickState: taskPaneTaskEditClickState,
+            repositoryEditClickState: taskPaneRepositoryEditClickState,
+            taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(latestTaskPaneView, index),
+            repositoryIdAtRow: (index) => taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, index),
+            selectTaskById,
+            selectRepositoryById,
+            clearTaskPaneNotice: () => {
+              taskPaneNotice = null;
+            },
+            setTaskEditClickState: (next) => {
+              taskPaneTaskEditClickState = next;
+            },
+            setRepositoryEditClickState: (next) => {
+              taskPaneRepositoryEditClickState = next;
+            },
+            setHomePaneDragState: (next) => {
+              homePaneDragState = next;
+            },
+            openTaskEditPrompt,
+            openRepositoryPromptForEdit,
+            markDirty,
+          })
+        ) {
           continue;
         }
-        const repositoryId = taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, rowIndex);
-        if (repositoryId !== null) {
-          const click = detectEntityDoubleClick(
-            taskPaneRepositoryEditClickState,
-            repositoryId,
-            Date.now(),
-            HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-          );
-          selectRepositoryById(repositoryId);
-          taskPaneNotice = null;
-          taskPaneRepositoryEditClickState = click.nextState;
-          taskPaneTaskEditClickState = null;
-          if (click.doubleClick) {
-            homePaneDragState = null;
-            openRepositoryPromptForEdit(repositoryId);
-          } else {
-            homePaneDragState = {
-              kind: 'repository',
-              itemId: repositoryId,
-              startedRowIndex: rowIndex,
-              latestRowIndex: rowIndex,
-              hasDragged: false,
-            };
-          }
-          markDirty();
-          continue;
-        }
-        taskPaneTaskEditClickState = null;
-        taskPaneRepositoryEditClickState = null;
-        homePaneDragState = null;
       }
       const leftPaneConversationSelect =
         target === 'left' &&

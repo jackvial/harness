@@ -529,3 +529,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4810 -> 4800 LOC
+
+### Checkpoint 27 (2026-02-17): home-pane entity click helper extraction
+
+- Added `src/mux/live-mux/home-pane-entity-click.ts`:
+  - home-pane task/repository entity click handling with double-click edit behavior and drag-start state setup
+  - preserves empty-row click behavior (state reset without forced dirty mark)
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate home-pane entity click branching through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4800 -> 4773 LOC
