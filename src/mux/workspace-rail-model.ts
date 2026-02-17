@@ -299,6 +299,13 @@ function directoryDisplayName(directory: WorkspaceRailDirectorySummary): string 
   return name;
 }
 
+function trackedProjectGitSuffix(git: WorkspaceRailGitSummary): string {
+  if (git.additions === 0 && git.deletions === 0) {
+    return ` (${git.branch})`;
+  }
+  return ` (${git.branch}:+${String(git.additions)},-${String(git.deletions)})`;
+}
+
 function conversationDisplayTitle(conversation: WorkspaceRailConversationSummary): string {
   const title = conversation.title.trim();
   if (title.length === 0) {
@@ -463,9 +470,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
       const projectIsLast = directoryIndex + 1 >= group.directories.length;
       const projectTreePrefix = `│  ${projectIsLast ? '└' : '├'}─ `;
       const projectChildPrefix = `│  ${projectIsLast ? '   ' : '│  '}`;
-      const projectGitSuffix = group.tracked
-        ? ` (${directory.git.branch}:+${String(directory.git.additions)},-${String(directory.git.deletions)})`
-        : '';
+      const projectGitSuffix = group.tracked ? trackedProjectGitSuffix(directory.git) : '';
       pushRow(
         rows,
         'dir-header',

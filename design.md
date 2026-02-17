@@ -1114,7 +1114,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - Home pane state is hydrated from `repository.list` + `task.list` and kept live through scoped `stream.subscribe` updates
     - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread
     - thread creation opens a modal selector (`codex`, `claude`, or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
-    - left rail composition uses repository-grouped project/thread tree blocks; project headers inline branch/diff summary as `(branch:+N,-M)` and untracked projects omit git suffix
+    - left rail composition uses repository-grouped project/thread tree blocks; tracked project headers show `(branch)` when diff counters are zero and `(branch:+N,-M)` when non-zero, while untracked projects omit git suffix
     - thread status detail lines align to thread label text and suppress connector overhang under last-thread elbows
     - repository groups expose project/active counts and collapse state (`[+]`/`[-]`) directly in the group header rows
     - git summary uses an adaptive per-project scheduler (`mux.background.git-summary`) with config-driven active/idle/burst intervals and bounded concurrency (`mux.git.*`), while process-usage sampling (`mux.background.process-usage`) remains opt-in through `HARNESS_MUX_BACKGROUND_PROBES=1`

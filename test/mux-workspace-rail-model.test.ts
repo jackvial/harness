@@ -905,6 +905,57 @@ void test('workspace rail model groups tracked projects by repository and keeps 
   );
 });
 
+void test('workspace rail model hides zero diff counters on tracked project headers', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositories: [
+        {
+          repositoryId: 'repository-1',
+          name: 'harness',
+          remoteUrl: 'https://github.com/jmoyers/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 321,
+          lastCommitAt: '2026-01-01T00:00:00.000Z',
+          shortCommitHash: 'abc1234'
+        }
+      ],
+      directories: [
+        {
+          key: 'tracked-clean-dir',
+          workspaceId: 'tracked-clean',
+          worktreeId: 'worktree-local',
+          repositoryId: 'repository-1',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    24
+  );
+
+  const trackedHeader = rows.find(
+    (row) =>
+      row.kind === 'dir-header' &&
+      row.repositoryId === 'repository-1' &&
+      row.text.includes('tracked-clean')
+  );
+  if (trackedHeader === undefined) {
+    throw new Error('expected tracked project header row');
+  }
+  assert.equal(trackedHeader.text.includes('(main)'), true);
+  assert.equal(trackedHeader.text.includes('(main:+0,-0)'), false);
+  assert.equal(trackedHeader.text.includes('(main:)'), false);
+});
+
 void test('workspace rail model repository id helper returns null and starting fallback status line is covered', () => {
   const rows = buildWorkspaceRailViewRows(
     {
