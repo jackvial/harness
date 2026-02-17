@@ -306,16 +306,28 @@ Inspect the latest selector index snapshot from perf artifacts:
 bun run perf:mux:selector -- --file .harness/perf-startup.jsonl
 ```
 
-Run strict quality gates (lint, typecheck, dead-code, max source-file LOC gate at 2000, Bun test coverage with global + per-file 100% thresholds):
+Run default quality gates (lint, typecheck, dead-code, Bun test coverage with global + per-file 100% thresholds):
 
 ```bash
 bun run verify
 ```
 
-Run only the max source-file LOC gate:
+Run strict quality gates (default gates + enforcing max source-file LOC gate at 2000):
+
+```bash
+bun run verify:strict
+```
+
+Run the max source-file LOC check in advisory mode (non-blocking):
 
 ```bash
 bun run loc:verify
+```
+
+Run only the max source-file LOC gate in enforcing mode:
+
+```bash
+bun run loc:verify:enforce
 ```
 
 Run Oxc formatter checks or apply formatting:

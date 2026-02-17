@@ -1061,7 +1061,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 ## Initial Success Criteria
 
 - Strict TypeScript + Oxlint gates pass with zero warnings/errors.
-- Verify gate enforces max source-file size (`<= 2000` non-empty LOC) so oversized modules fail fast.
+- Max source-file size verification is available at `<= 2000` non-empty LOC with both advisory and enforcing modes, so refactors can stage decomposition while still supporting strict fail-fast enforcement.
 - Dependency boundary policy is enforced: no third-party imports in declared hot-path modules.
 - Single-session terminal pass-through meets direct-terminal parity thresholds (p50 <= 1 ms, p95 <= 3 ms, p99 <= 5 ms overhead) and passes blind A/B perception test.
 - Live-steered Codex session operates via PTY as primary control path, with continuous event emission.

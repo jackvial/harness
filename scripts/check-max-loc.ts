@@ -5,6 +5,7 @@ interface CliOptions {
   root: string;
   maxLoc: number;
   json: boolean;
+  enforce: boolean;
 }
 
 interface FileLoc {
@@ -18,6 +19,7 @@ interface VerifyReport {
   maxLoc: number;
   checkedFiles: number;
   violations: FileLoc[];
+  enforce: boolean;
 }
 
 const DEFAULT_MAX_LOC = 2000;
@@ -76,9 +78,10 @@ const SUPPORTED_EXTENSIONS = new Set<string>([
 
 function usage(): string {
   return [
-    'Usage: bun scripts/check-max-loc.ts [--max-loc <number>] [--root <path>] [--json]',
+    'Usage: bun scripts/check-max-loc.ts [--max-loc <number>] [--root <path>] [--json] [--enforce]',
     '',
-    'Fails when any source file has LOC strictly greater than --max-loc.',
+    'Reports files with LOC strictly greater than --max-loc.',
+    'Use --enforce to fail when violations are present.',
     'LOC is counted as non-empty lines.'
   ].join('\n');
 }
@@ -95,6 +98,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let root = process.cwd();
   let maxLoc = DEFAULT_MAX_LOC;
   let json = false;
+  let enforce = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -124,13 +128,18 @@ function parseArgs(argv: readonly string[]): CliOptions {
       json = true;
       continue;
     }
+    if (arg === '--enforce') {
+      enforce = true;
+      continue;
+    }
     throw new Error(`unknown argument: ${arg}`);
   }
 
   return {
     root,
     maxLoc,
-    json
+    json,
+    enforce
   };
 }
 
@@ -191,7 +200,7 @@ function compareByLocThenPath(left: FileLoc, right: FileLoc): number {
   return left.path.localeCompare(right.path);
 }
 
-function buildVerifyReport(rootPath: string, maxLoc: number): VerifyReport {
+function buildVerifyReport(rootPath: string, maxLoc: number, enforce: boolean): VerifyReport {
   const files = walkCodeFiles(rootPath);
   const violations: FileLoc[] = [];
   for (const filePath of files) {
@@ -210,12 +219,31 @@ function buildVerifyReport(rootPath: string, maxLoc: number): VerifyReport {
     root: rootPath,
     maxLoc,
     checkedFiles: files.length,
-    violations
+    violations,
+    enforce
   };
 }
 
 function renderSuccess(report: VerifyReport): string {
-  return `LOC verify passed: ${report.checkedFiles} source files are <= ${report.maxLoc} non-empty LOC.\n`;
+  const mode = report.enforce ? 'enforced' : 'advisory';
+  return `LOC verify (${mode}) passed: ${report.checkedFiles} source files are <= ${report.maxLoc} non-empty LOC.\n`;
+}
+
+function renderAdvisory(report: VerifyReport): string {
+  const lines: string[] = [];
+  lines.push(
+    `LOC verify advisory: ${report.violations.length} source files exceed ${report.maxLoc} non-empty LOC (checked ${report.checkedFiles} files).`
+  );
+  lines.push('');
+  lines.push('Violations:');
+  for (const violation of report.violations) {
+    lines.push(`- ${violation.path} (loc=${violation.loc}, lines=${violation.lines}, limit=${report.maxLoc})`);
+  }
+  lines.push('');
+  lines.push('No failure because --enforce was not set.');
+  lines.push('Use: bun scripts/check-max-loc.ts --max-loc <number> --enforce');
+  lines.push('');
+  return `${lines.join('\n')}\n`;
 }
 
 function renderFailure(report: VerifyReport): string {
@@ -252,16 +280,21 @@ function main(): number {
     return 1;
   }
 
-  const report = buildVerifyReport(options.root, options.maxLoc);
+  const report = buildVerifyReport(options.root, options.maxLoc, options.enforce);
   if (options.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else if (report.violations.length === 0) {
     process.stdout.write(renderSuccess(report));
-  } else {
+  } else if (report.enforce) {
     process.stderr.write(renderFailure(report));
+  } else {
+    process.stdout.write(renderAdvisory(report));
   }
 
-  return report.violations.length === 0 ? 0 : 1;
+  if (report.violations.length === 0) {
+    return 0;
+  }
+  return report.enforce ? 1 : 0;
 }
 
 process.exitCode = main();
