@@ -239,6 +239,7 @@ import {
 } from '../src/mux/live-mux/pointer-routing.ts';
 import { handleHomePaneDragRelease as handleHomePaneDragReleaseHelper } from '../src/mux/live-mux/home-pane-drop.ts';
 import { handleHomePanePointerClick as handleHomePanePointerClickHelper } from '../src/mux/live-mux/home-pane-pointer.ts';
+import { runTaskPaneAction as runTaskPaneActionHelper } from '../src/mux/live-mux/actions-task.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3029,128 +3030,76 @@ async function main(): Promise<number> {
   };
 
   const runTaskPaneAction = (action: TaskPaneAction): void => {
-    if (action === 'task.create') {
-      openTaskCreatePrompt();
-      return;
-    }
-    if (action === 'repository.create') {
-      taskPaneNotice = null;
-      openRepositoryPromptForCreate();
-      return;
-    }
-    if (action === 'repository.edit') {
-      const selectedRepositoryId = taskPaneSelectedRepositoryId;
-      if (selectedRepositoryId === null || !repositories.has(selectedRepositoryId)) {
-        taskPaneNotice = 'select a repository first';
-        markDirty();
-        return;
-      }
-      taskPaneSelectionFocus = 'repository';
-      taskPaneNotice = null;
-      openRepositoryPromptForEdit(selectedRepositoryId);
-      return;
-    }
-    if (action === 'repository.archive') {
-      const selectedRepositoryId = taskPaneSelectedRepositoryId;
-      if (selectedRepositoryId === null || !repositories.has(selectedRepositoryId)) {
-        taskPaneNotice = 'select a repository first';
-        markDirty();
-        return;
-      }
-      taskPaneSelectionFocus = 'repository';
-      queueControlPlaneOp(async () => {
-        await archiveRepositoryById(selectedRepositoryId);
-        syncTaskPaneRepositorySelection();
-      }, 'tasks-archive-repository');
-      return;
-    }
-    const selected = selectedTaskRecord();
-    if (selected === null) {
-      taskPaneNotice = 'select a task first';
-      markDirty();
-      return;
-    }
-    if (action === 'task.edit') {
-      taskPaneSelectionFocus = 'task';
-      openTaskEditPrompt(selected.taskId);
-      return;
-    }
-    if (action === 'task.delete') {
-      taskPaneSelectionFocus = 'task';
-      queueControlPlaneOp(async () => {
-        clearTaskAutosaveTimer(selected.taskId);
-        await streamClient.sendCommand({
-          type: 'task.delete',
-          taskId: selected.taskId,
-        });
-        tasks.delete(selected.taskId);
-        taskComposerByTaskId.delete(selected.taskId);
-        if (taskEditorTarget.kind === 'task' && taskEditorTarget.taskId === selected.taskId) {
-          taskEditorTarget = {
-            kind: 'draft',
-          };
-        }
-        syncTaskPaneSelection();
-        markDirty();
-      }, 'tasks-delete');
-      return;
-    }
-    if (action === 'task.ready') {
-      taskPaneSelectionFocus = 'task';
-      queueControlPlaneOp(async () => {
-        const result = await streamClient.sendCommand({
-          type: 'task.ready',
-          taskId: selected.taskId,
-        });
-        applyTaskFromCommandResult(result);
-      }, 'tasks-ready');
-      return;
-    }
-    if (action === 'task.draft') {
-      taskPaneSelectionFocus = 'task';
-      queueControlPlaneOp(async () => {
-        const result = await streamClient.sendCommand({
-          type: 'task.draft',
-          taskId: selected.taskId,
-        });
-        applyTaskFromCommandResult(result);
-      }, 'tasks-draft');
-      return;
-    }
-    if (action === 'task.complete') {
-      taskPaneSelectionFocus = 'task';
-      queueControlPlaneOp(async () => {
-        const result = await streamClient.sendCommand({
-          type: 'task.complete',
-          taskId: selected.taskId,
-        });
-        applyTaskFromCommandResult(result);
-      }, 'tasks-complete');
-      return;
-    }
-    if (action === 'task.reorder-up' || action === 'task.reorder-down') {
-      const ordered = orderedTaskRecords();
-      const activeTasks = ordered.filter((task) => task.status !== 'completed');
-      const selectedIndex = activeTasks.findIndex((task) => task.taskId === selected.taskId);
-      if (selectedIndex < 0) {
-        taskPaneNotice = 'cannot reorder completed tasks';
-        markDirty();
-        return;
-      }
-      const swapIndex = action === 'task.reorder-up' ? selectedIndex - 1 : selectedIndex + 1;
-      if (swapIndex < 0 || swapIndex >= activeTasks.length) {
-        return;
-      }
-      const reordered = [...activeTasks];
-      const currentTask = reordered[selectedIndex]!;
-      reordered[selectedIndex] = reordered[swapIndex]!;
-      reordered[swapIndex] = currentTask;
-      taskPaneSelectionFocus = 'task';
-      queueTaskReorderByIds(
-        reordered.map((task) => task.taskId),
-        action === 'task.reorder-up' ? 'tasks-reorder-up' : 'tasks-reorder-down',
-      );
-    }
+    runTaskPaneActionHelper({
+      action,
+      openTaskCreatePrompt,
+      openRepositoryPromptForCreate,
+      selectedRepositoryId: taskPaneSelectedRepositoryId,
+      repositoryExists: (repositoryId) => repositories.has(repositoryId),
+      setTaskPaneNotice: (notice) => {
+        taskPaneNotice = notice;
+      },
+      markDirty,
+      setTaskPaneSelectionFocus: (focus) => {
+        taskPaneSelectionFocus = focus;
+      },
+      openRepositoryPromptForEdit,
+      queueArchiveRepository: (repositoryId) => {
+        queueControlPlaneOp(async () => {
+          await archiveRepositoryById(repositoryId);
+          syncTaskPaneRepositorySelection();
+        }, 'tasks-archive-repository');
+      },
+      selectedTask: selectedTaskRecord(),
+      openTaskEditPrompt,
+      queueDeleteTask: (taskId) => {
+        queueControlPlaneOp(async () => {
+          clearTaskAutosaveTimer(taskId);
+          await streamClient.sendCommand({
+            type: 'task.delete',
+            taskId,
+          });
+          tasks.delete(taskId);
+          taskComposerByTaskId.delete(taskId);
+          if (taskEditorTarget.kind === 'task' && taskEditorTarget.taskId === taskId) {
+            taskEditorTarget = {
+              kind: 'draft',
+            };
+          }
+          syncTaskPaneSelection();
+          markDirty();
+        }, 'tasks-delete');
+      },
+      queueTaskReady: (taskId) => {
+        queueControlPlaneOp(async () => {
+          const result = await streamClient.sendCommand({
+            type: 'task.ready',
+            taskId,
+          });
+          applyTaskFromCommandResult(result);
+        }, 'tasks-ready');
+      },
+      queueTaskDraft: (taskId) => {
+        queueControlPlaneOp(async () => {
+          const result = await streamClient.sendCommand({
+            type: 'task.draft',
+            taskId,
+          });
+          applyTaskFromCommandResult(result);
+        }, 'tasks-draft');
+      },
+      queueTaskComplete: (taskId) => {
+        queueControlPlaneOp(async () => {
+          const result = await streamClient.sendCommand({
+            type: 'task.complete',
+            taskId,
+          });
+          applyTaskFromCommandResult(result);
+        }, 'tasks-complete');
+      },
+      orderedTaskRecords,
+      queueTaskReorderByIds,
+    });
   };
 
   const openNewThreadPrompt = (directoryId: string): void => {

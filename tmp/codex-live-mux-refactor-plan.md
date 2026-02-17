@@ -582,3 +582,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4766 -> 4746 LOC
+
+### Checkpoint 30 (2026-02-17): task action domain extraction
+
+- Added `src/mux/live-mux/actions-task.ts`:
+  - task-pane action dispatcher for task/repository create/edit/archive/status/reorder branches
+  - callback-driven side effects preserving existing queue labels and notice/focus behavior
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate `runTaskPaneAction` branching through the task action helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4746 -> 4695 LOC
