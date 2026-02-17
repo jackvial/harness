@@ -206,27 +206,20 @@ import {
 import { handleTaskEditorPromptInput as handleTaskEditorPromptInputHelper } from '../src/mux/live-mux/modal-task-editor-handler.ts';
 import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputHelper } from '../src/mux/live-mux/task-pane-shortcuts.ts';
 import { handleGlobalShortcut as handleGlobalShortcutHelper } from '../src/mux/live-mux/global-shortcut-handlers.ts';
+import {
+  applyObservedGitStatusEvent as applyObservedGitStatusEventHelper,
+  deleteDirectoryGitState as deleteDirectoryGitStateHelper,
+  ensureDirectoryGitState as ensureDirectoryGitStateHelper,
+  syncGitStateWithDirectories as syncGitStateWithDirectoriesHelper,
+  type GitRepositorySnapshot,
+  type GitSummary,
+} from '../src/mux/live-mux/git-state.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
 type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
-interface GitSummary {
-  readonly branch: string;
-  readonly changedFiles: number;
-  readonly additions: number;
-  readonly deletions: number;
-}
-
-interface GitRepositorySnapshot {
-  readonly normalizedRemoteUrl: string | null;
-  readonly commitCount: number | null;
-  readonly lastCommitAt: string | null;
-  readonly shortCommitHash: string | null;
-  readonly inferredName: string | null;
-  readonly defaultBranch: string | null;
-}
 
 type ProcessUsageSample = Awaited<ReturnType<typeof readProcessUsageSample>>;
 
@@ -1445,45 +1438,28 @@ async function main(): Promise<number> {
   const processUsageEqual = (left: ProcessUsageSample, right: ProcessUsageSample): boolean =>
     left.cpuPercent === right.cpuPercent && left.memoryMb === right.memoryMb;
 
-  const gitSummaryEqual = (left: GitSummary, right: GitSummary): boolean =>
-    left.branch === right.branch &&
-    left.changedFiles === right.changedFiles &&
-    left.additions === right.additions &&
-    left.deletions === right.deletions;
-
-  const gitRepositorySnapshotEqual = (
-    left: GitRepositorySnapshot,
-    right: GitRepositorySnapshot,
-  ): boolean =>
-    left.normalizedRemoteUrl === right.normalizedRemoteUrl &&
-    left.commitCount === right.commitCount &&
-    left.lastCommitAt === right.lastCommitAt &&
-    left.shortCommitHash === right.shortCommitHash &&
-    left.defaultBranch === right.defaultBranch &&
-    left.inferredName === right.inferredName;
-
   const ensureDirectoryGitState = (directoryId: string): void => {
-    if (!gitSummaryByDirectoryId.has(directoryId)) {
-      gitSummaryByDirectoryId.set(directoryId, GIT_SUMMARY_LOADING);
-    }
+    ensureDirectoryGitStateHelper(gitSummaryByDirectoryId, directoryId, GIT_SUMMARY_LOADING);
   };
 
   const deleteDirectoryGitState = (directoryId: string): void => {
-    gitSummaryByDirectoryId.delete(directoryId);
-    directoryRepositorySnapshotByDirectoryId.delete(directoryId);
-    repositoryAssociationByDirectoryId.delete(directoryId);
+    deleteDirectoryGitStateHelper(
+      directoryId,
+      gitSummaryByDirectoryId,
+      directoryRepositorySnapshotByDirectoryId,
+      repositoryAssociationByDirectoryId,
+    );
   };
 
   const syncGitStateWithDirectories = (): void => {
-    for (const directoryId of directories.keys()) {
-      ensureDirectoryGitState(directoryId);
-    }
-    const staleDirectoryIds = [...gitSummaryByDirectoryId.keys()].filter(
-      (directoryId) => !directories.has(directoryId),
-    );
-    for (const directoryId of staleDirectoryIds) {
-      deleteDirectoryGitState(directoryId);
-    }
+    syncGitStateWithDirectoriesHelper({
+      directoryIds: [...directories.keys()],
+      directoriesHas: (directoryId) => directories.has(directoryId),
+      gitSummaryByDirectoryId,
+      directoryRepositorySnapshotByDirectoryId,
+      repositoryAssociationByDirectoryId,
+      loadingSummary: GIT_SUMMARY_LOADING,
+    });
     syncRepositoryAssociationsWithDirectorySnapshots();
   };
 
@@ -1495,61 +1471,31 @@ async function main(): Promise<number> {
   };
 
   const applyObservedGitStatusEvent = (observed: StreamObservedEvent): void => {
-    if (!configuredMuxGit.enabled) {
+    const reduced = applyObservedGitStatusEventHelper({
+      enabled: configuredMuxGit.enabled,
+      observed,
+      gitSummaryByDirectoryId,
+      loadingSummary: GIT_SUMMARY_LOADING,
+      directoryRepositorySnapshotByDirectoryId,
+      emptyRepositorySnapshot: GIT_REPOSITORY_NONE,
+      repositoryAssociationByDirectoryId,
+      repositories,
+      parseRepositoryRecord,
+      repositoryRecordChanged: (previous, repository) =>
+        previous === undefined ||
+        previous.name !== repository.name ||
+        previous.remoteUrl !== repository.remoteUrl ||
+        previous.defaultBranch !== repository.defaultBranch ||
+        previous.archivedAt !== repository.archivedAt,
+    });
+    if (!reduced.handled) {
       return;
     }
-    if (observed.type !== 'directory-git-updated') {
-      return;
-    }
-    const previousSummary =
-      gitSummaryByDirectoryId.get(observed.directoryId) ?? GIT_SUMMARY_LOADING;
-    const summaryChanged = !gitSummaryEqual(previousSummary, observed.summary);
-    gitSummaryByDirectoryId.set(observed.directoryId, observed.summary);
-
-    const previousRepositorySnapshot =
-      directoryRepositorySnapshotByDirectoryId.get(observed.directoryId) ?? GIT_REPOSITORY_NONE;
-    const repositorySnapshotChanged = !gitRepositorySnapshotEqual(
-      previousRepositorySnapshot,
-      observed.repositorySnapshot,
-    );
-    directoryRepositorySnapshotByDirectoryId.set(observed.directoryId, observed.repositorySnapshot);
-
-    let associationChanged = false;
-    if (observed.repositoryId === null) {
-      associationChanged = repositoryAssociationByDirectoryId.delete(observed.directoryId);
-    } else {
-      const previousRepositoryId =
-        repositoryAssociationByDirectoryId.get(observed.directoryId) ?? null;
-      repositoryAssociationByDirectoryId.set(observed.directoryId, observed.repositoryId);
-      associationChanged = previousRepositoryId !== observed.repositoryId;
-    }
-
-    let repositoryRecordChanged = false;
-    if (observed.repository !== null) {
-      const repository = parseRepositoryRecord(observed.repository);
-      if (repository !== null) {
-        const previous = repositories.get(repository.repositoryId);
-        repositories.set(repository.repositoryId, repository);
-        repositoryRecordChanged =
-          previous === undefined ||
-          previous.name !== repository.name ||
-          previous.remoteUrl !== repository.remoteUrl ||
-          previous.defaultBranch !== repository.defaultBranch ||
-          previous.archivedAt !== repository.archivedAt;
-      }
-    }
-
-    if (repositoryRecordChanged) {
+    if (reduced.repositoryRecordChanged) {
       syncRepositoryAssociationsWithDirectorySnapshots();
       syncTaskPaneRepositorySelection();
     }
-
-    if (
-      summaryChanged ||
-      repositorySnapshotChanged ||
-      associationChanged ||
-      repositoryRecordChanged
-    ) {
+    if (reduced.changed) {
       markDirty();
     }
   };

@@ -363,3 +363,19 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5076 -> 5038 LOC
+
+### Checkpoint 16 (2026-02-17): git state helper extraction
+
+- Added `src/mux/live-mux/git-state.ts`:
+  - git summary/repository snapshot equality helpers
+  - directory git state map ensure/delete/sync helpers
+  - observed `directory-git-updated` reducer with structured changed flags
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate git state mutation and observed git event handling through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5038 -> 4992 LOC
