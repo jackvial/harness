@@ -1,6 +1,6 @@
 import type { TerminalSnapshotFrameCore } from '../../terminal/snapshot-oracle.ts';
 
-interface SelectionPoint {
+export interface SelectionPoint {
   readonly rowAbs: number;
   readonly col: number;
 }
@@ -9,6 +9,12 @@ export interface PaneSelection {
   readonly anchor: SelectionPoint;
   readonly focus: SelectionPoint;
   readonly text: string;
+}
+
+export interface PaneSelectionDrag {
+  readonly anchor: SelectionPoint;
+  readonly focus: SelectionPoint;
+  readonly hasDragged: boolean;
 }
 
 export interface SelectionLayout {
@@ -91,6 +97,121 @@ export function isMouseRelease(final: 'M' | 'm'): boolean {
 
 export function isSelectionDrag(code: number, final: 'M' | 'm'): boolean {
   return final === 'M' && isMotionMouseCode(code);
+}
+
+interface ReduceConversationMouseSelectionOptions {
+  selection: PaneSelection | null;
+  selectionDrag: PaneSelectionDrag | null;
+  point: SelectionPoint;
+  isMainPaneTarget: boolean;
+  isLeftButtonPress: boolean;
+  isSelectionDrag: boolean;
+  isMouseRelease: boolean;
+  isWheelMouseCode: boolean;
+  selectionTextForPane: (selection: PaneSelection) => string;
+}
+
+interface ReduceConversationMouseSelectionResult {
+  selection: PaneSelection | null;
+  selectionDrag: PaneSelectionDrag | null;
+  pinViewport: boolean;
+  releaseViewportPin: boolean;
+  markDirty: boolean;
+  consumed: boolean;
+}
+
+export function reduceConversationMouseSelection(
+  options: ReduceConversationMouseSelectionOptions
+): ReduceConversationMouseSelectionResult {
+  const startSelection = options.isMainPaneTarget && options.isLeftButtonPress;
+  const updateSelection = options.selectionDrag !== null && options.isMainPaneTarget && options.isSelectionDrag;
+  const releaseSelection = options.selectionDrag !== null && options.isMouseRelease;
+
+  if (startSelection) {
+    return {
+      selection: null,
+      selectionDrag: {
+        anchor: options.point,
+        focus: options.point,
+        hasDragged: false
+      },
+      pinViewport: true,
+      releaseViewportPin: false,
+      markDirty: true,
+      consumed: true
+    };
+  }
+
+  if (updateSelection && options.selectionDrag !== null) {
+    return {
+      selection: options.selection,
+      selectionDrag: {
+        anchor: options.selectionDrag.anchor,
+        focus: options.point,
+        hasDragged:
+          options.selectionDrag.hasDragged || !selectionPointsEqual(options.selectionDrag.anchor, options.point)
+      },
+      pinViewport: false,
+      releaseViewportPin: false,
+      markDirty: true,
+      consumed: true
+    };
+  }
+
+  if (releaseSelection && options.selectionDrag !== null) {
+    const finalized = {
+      anchor: options.selectionDrag.anchor,
+      focus: options.point,
+      hasDragged:
+        options.selectionDrag.hasDragged || !selectionPointsEqual(options.selectionDrag.anchor, options.point)
+    };
+    if (finalized.hasDragged) {
+      const completedSelection: PaneSelection = {
+        anchor: finalized.anchor,
+        focus: finalized.focus,
+        text: ''
+      };
+      return {
+        selection: {
+          ...completedSelection,
+          text: options.selectionTextForPane(completedSelection)
+        },
+        selectionDrag: null,
+        pinViewport: false,
+        releaseViewportPin: false,
+        markDirty: true,
+        consumed: true
+      };
+    }
+    return {
+      selection: null,
+      selectionDrag: null,
+      pinViewport: false,
+      releaseViewportPin: true,
+      markDirty: true,
+      consumed: true
+    };
+  }
+
+  if (options.selection !== null && !options.isWheelMouseCode) {
+    return {
+      selection: null,
+      selectionDrag: null,
+      pinViewport: false,
+      releaseViewportPin: true,
+      markDirty: true,
+      consumed: false
+    };
+  }
+
+  return {
+    selection: options.selection,
+    selectionDrag: options.selectionDrag,
+    pinViewport: false,
+    releaseViewportPin: false,
+    markDirty: false,
+    consumed: false
+  };
 }
 
 function cellGlyphForOverlay(frame: TerminalSnapshotFrameCore, row: number, col: number): string {

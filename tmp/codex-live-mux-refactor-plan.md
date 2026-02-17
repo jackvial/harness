@@ -442,3 +442,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4943 -> 4936 LOC
+
+### Checkpoint 21 (2026-02-17): conversation selection mouse reducer extraction
+
+- Updated `src/mux/live-mux/selection.ts`:
+  - exported selection point/drag interfaces
+  - added conversation selection mouse reducer (`start`, `drag`, `release`, `clear`) with explicit side-effect flags
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate conversation mouse selection transitions through the reducer.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4936 -> 4891 LOC

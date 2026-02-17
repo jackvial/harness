@@ -195,10 +195,11 @@ import {
   isWheelMouseCode,
   mergeUniqueRows,
   pointFromMouseEvent,
+  reduceConversationMouseSelection,
   renderSelectionOverlay,
-  selectionPointsEqual,
   selectionText,
   selectionVisibleRows,
+  type PaneSelectionDrag,
   type PaneSelection,
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
@@ -250,17 +251,6 @@ interface MuxPerfStatusRow {
   readonly outputHandleAvgMs: number;
   readonly outputHandleMaxMs: number;
   readonly eventLoopP95Ms: number;
-}
-
-interface SelectionPoint {
-  readonly rowAbs: number;
-  readonly col: number;
-}
-
-interface PaneSelectionDrag {
-  readonly anchor: SelectionPoint;
-  readonly focus: SelectionPoint;
-  readonly hasDragged: boolean;
 }
 
 interface ConversationTitleEditState {
@@ -4886,74 +4876,33 @@ async function main(): Promise<number> {
         routedTokens.push(token);
         continue;
       }
-      const point = pointFromMouseEvent(layout, snapshotForInput, token.event);
-      const startSelection =
-        isMainPaneTarget &&
-        isLeftButtonPress(token.event.code, token.event.final) &&
-        !hasAltModifier(token.event.code);
-      const updateSelection =
-        selectionDrag !== null &&
-        isMainPaneTarget &&
-        isSelectionDrag(token.event.code, token.event.final) &&
-        !hasAltModifier(token.event.code);
-      const releaseSelection = selectionDrag !== null && isMouseRelease(token.event.final);
-
-      if (startSelection) {
-        selection = null;
+      const selectionFrame = snapshotForInput;
+      const selectionReduced = reduceConversationMouseSelection({
+        selection,
+        selectionDrag,
+        point: pointFromMouseEvent(layout, selectionFrame, token.event),
+        isMainPaneTarget,
+        isLeftButtonPress:
+          isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code),
+        isSelectionDrag:
+          isSelectionDrag(token.event.code, token.event.final) && !hasAltModifier(token.event.code),
+        isMouseRelease: isMouseRelease(token.event.final),
+        isWheelMouseCode: isWheelMouseCode(token.event.code),
+        selectionTextForPane: (nextSelection) => selectionText(selectionFrame, nextSelection),
+      });
+      selection = selectionReduced.selection;
+      selectionDrag = selectionReduced.selectionDrag;
+      if (selectionReduced.pinViewport) {
         pinViewportForSelection();
-        selectionDrag = {
-          anchor: point,
-          focus: point,
-          hasDragged: false,
-        };
-        markDirty();
-        continue;
       }
-
-      if (updateSelection && selectionDrag !== null) {
-        selectionDrag = {
-          anchor: selectionDrag.anchor,
-          focus: point,
-          hasDragged:
-            selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point),
-        };
-        markDirty();
-        continue;
-      }
-
-      if (releaseSelection && selectionDrag !== null) {
-        const finalized = {
-          anchor: selectionDrag.anchor,
-          focus: point,
-          hasDragged:
-            selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point),
-        };
-        if (finalized.hasDragged) {
-          const completedSelection: PaneSelection = {
-            anchor: finalized.anchor,
-            focus: finalized.focus,
-            text: '',
-          };
-          selection = {
-            ...completedSelection,
-            text: selectionText(snapshotForInput, completedSelection),
-          };
-        } else {
-          selection = null;
-        }
-        if (!finalized.hasDragged) {
-          releaseViewportPinForSelection();
-        }
-        selectionDrag = null;
-        markDirty();
-        continue;
-      }
-
-      if (selection !== null && !isWheelMouseCode(token.event.code)) {
-        selection = null;
-        selectionDrag = null;
+      if (selectionReduced.releaseViewportPin) {
         releaseViewportPinForSelection();
+      }
+      if (selectionReduced.markDirty) {
         markDirty();
+      }
+      if (selectionReduced.consumed) {
+        continue;
       }
 
       routedTokens.push(token);
