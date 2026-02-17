@@ -233,6 +233,7 @@ import { routeInputTokensForConversation as routeInputTokensForConversationHelpe
 import { handleProjectPaneActionClick as handleProjectPaneActionClickHelper } from '../src/mux/live-mux/project-pane-pointer.ts';
 import { handleLeftRailActionClick as handleLeftRailActionClickHelper } from '../src/mux/live-mux/left-rail-actions.ts';
 import { handleLeftRailConversationClick as handleLeftRailConversationClickHelper } from '../src/mux/live-mux/left-rail-conversation-click.ts';
+import { handleHomePaneActionClick as handleHomePaneActionClickHelper } from '../src/mux/live-mux/home-pane-actions.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4588,42 +4589,31 @@ async function main(): Promise<number> {
         const action =
           taskFocusedPaneActionAtCell(latestTaskPaneView, rowIndex, colIndex) ??
           taskFocusedPaneActionAtRow(latestTaskPaneView, rowIndex);
-        if (action !== null) {
-          taskPaneTaskEditClickState = null;
-          taskPaneRepositoryEditClickState = null;
-          homePaneDragState = null;
-          if (action === 'repository.dropdown.toggle') {
-            taskRepositoryDropdownOpen = !taskRepositoryDropdownOpen;
-          } else if (action === 'repository.select') {
-            const repositoryId = taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, rowIndex);
-            if (repositoryId !== null) {
-              selectRepositoryById(repositoryId);
-            }
-          } else if (action === 'task.focus') {
-            const taskId = taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
-            if (taskId !== null) {
-              selectTaskById(taskId);
-            }
-          } else if (action === 'task.status.ready') {
-            const taskId = taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
-            if (taskId !== null) {
-              selectTaskById(taskId);
-              runTaskPaneAction('task.ready');
-            }
-          } else if (action === 'task.status.draft') {
-            const taskId = taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
-            if (taskId !== null) {
-              selectTaskById(taskId);
-              runTaskPaneAction('task.draft');
-            }
-          } else if (action === 'task.status.complete') {
-            const taskId = taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
-            if (taskId !== null) {
-              selectTaskById(taskId);
-              runTaskPaneAction('task.complete');
-            }
-          }
-          markDirty();
+        if (
+          handleHomePaneActionClickHelper({
+            action,
+            rowIndex,
+            clearTaskEditClickState: () => {
+              taskPaneTaskEditClickState = null;
+            },
+            clearRepositoryEditClickState: () => {
+              taskPaneRepositoryEditClickState = null;
+            },
+            clearHomePaneDragState: () => {
+              homePaneDragState = null;
+            },
+            getTaskRepositoryDropdownOpen: () => taskRepositoryDropdownOpen,
+            setTaskRepositoryDropdownOpen: (open) => {
+              taskRepositoryDropdownOpen = open;
+            },
+            taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(latestTaskPaneView, index),
+            repositoryIdAtRow: (index) => taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, index),
+            selectTaskById,
+            selectRepositoryById,
+            runTaskPaneAction,
+            markDirty,
+          })
+        ) {
           continue;
         }
         const taskId = taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
