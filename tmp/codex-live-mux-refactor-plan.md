@@ -333,3 +333,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5239 -> 5111 LOC
+
+### Checkpoint 14 (2026-02-17): left-nav activation/cycle extraction
+
+- Added `src/mux/live-mux/left-nav-activation.ts`:
+  - left-nav target activation helper
+  - left-nav selection cycle helper
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate activation and cycle behavior through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5111 -> 5076 LOC

@@ -32,9 +32,6 @@ import {
   resolveMuxShortcutBindings,
 } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
-import {
-  cycleConversationId,
-} from '../src/mux/conversation-rail.ts';
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
 import { detectConversationDoubleClick, detectEntityDoubleClick } from '../src/mux/double-click.ts';
@@ -124,10 +121,13 @@ import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
 import { dismissModalOnOutsideClick as dismissModalOnOutsideClickHelper } from '../src/mux/live-mux/modal-pointer.ts';
 import {
-  leftNavTargetKey,
   visibleLeftNavTargets,
   type LeftNavSelection,
 } from '../src/mux/live-mux/left-nav.ts';
+import {
+  activateLeftNavTarget as activateLeftNavTargetHelper,
+  cycleLeftNavSelection as cycleLeftNavSelectionHelper,
+} from '../src/mux/live-mux/left-nav-activation.ts';
 import {
   reduceRepositoryFoldChordInput,
   repositoryTreeArrowAction,
@@ -4384,68 +4384,33 @@ async function main(): Promise<number> {
     target: LeftNavSelection,
     direction: 'next' | 'previous',
   ): void => {
-    if (target.kind === 'home') {
-      enterHomePane();
-      return;
-    }
-    if (target.kind === 'repository') {
-      const firstDirectoryId = firstDirectoryForRepositoryGroup(target.repositoryId);
-      if (firstDirectoryId !== null) {
-        enterProjectPane(firstDirectoryId);
-      } else {
+    activateLeftNavTargetHelper({
+      target,
+      direction,
+      enterHomePane,
+      firstDirectoryForRepositoryGroup,
+      enterProjectPane,
+      setMainPaneProjectMode: () => {
         mainPaneMode = 'project';
-      }
-      selectLeftNavRepository(target.repositoryId);
-      markDirty();
-      return;
-    }
-    if (target.kind === 'project') {
-      if (directories.has(target.directoryId)) {
-        enterProjectPane(target.directoryId);
-        markDirty();
-        return;
-      }
-      const visibleTargets = visibleLeftNavTargetsForState();
-      const fallbackConversation = visibleTargets.find(
-        (entry): entry is Extract<LeftNavSelection, { kind: 'conversation' }> =>
-          entry.kind === 'conversation' &&
-          conversations.get(entry.sessionId)?.directoryId === target.directoryId,
-      );
-      if (fallbackConversation !== undefined) {
-        queueControlPlaneOp(async () => {
-          await activateConversation(fallbackConversation.sessionId);
-        }, `shortcut-activate-${direction}-directory-fallback`);
-      }
-      return;
-    }
-    if (!conversations.has(target.sessionId)) {
-      return;
-    }
-    queueControlPlaneOp(async () => {
-      await activateConversation(target.sessionId);
-    }, `shortcut-activate-${direction}`);
+      },
+      selectLeftNavRepository,
+      markDirty,
+      directoriesHas: (directoryId) => directories.has(directoryId),
+      visibleTargetsForState: visibleLeftNavTargetsForState,
+      conversationDirectoryId: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
+      queueControlPlaneOp,
+      activateConversation,
+      conversationsHas: (sessionId) => conversations.has(sessionId),
+    });
   };
 
   const cycleLeftNavSelection = (direction: 'next' | 'previous'): boolean => {
-    const targets = visibleLeftNavTargetsForState();
-    if (targets.length === 0) {
-      return false;
-    }
-    const targetKeys = targets.map((target) => leftNavTargetKey(target));
-    const targetKey = cycleConversationId(
-      targetKeys,
-      leftNavTargetKey(leftNavSelection),
+    return cycleLeftNavSelectionHelper({
+      visibleTargets: visibleLeftNavTargetsForState(),
+      currentSelection: leftNavSelection,
       direction,
-    );
-    if (targetKey === null) {
-      return false;
-    }
-    const target = targets.find((entry) => leftNavTargetKey(entry) === targetKey);
-    if (target === undefined) {
-      return false;
-    }
-    activateLeftNavTarget(target, direction);
-    return true;
+      activateTarget: activateLeftNavTarget,
+    });
   };
 
   const handleRepositoryTreeArrow = (input: Buffer): boolean => {

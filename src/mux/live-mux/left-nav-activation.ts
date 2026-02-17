@@ -1,0 +1,102 @@
+import { cycleConversationId } from '../conversation-rail.ts';
+import { leftNavTargetKey, type LeftNavSelection } from './left-nav.ts';
+
+interface ActivateLeftNavTargetOptions {
+  target: LeftNavSelection;
+  direction: 'next' | 'previous';
+  enterHomePane: () => void;
+  firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
+  enterProjectPane: (directoryId: string) => void;
+  setMainPaneProjectMode: () => void;
+  selectLeftNavRepository: (repositoryGroupId: string) => void;
+  markDirty: () => void;
+  directoriesHas: (directoryId: string) => boolean;
+  visibleTargetsForState: () => readonly LeftNavSelection[];
+  conversationDirectoryId: (sessionId: string) => string | null;
+  queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
+  activateConversation: (sessionId: string) => Promise<void>;
+  conversationsHas: (sessionId: string) => boolean;
+}
+
+export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): void {
+  const {
+    target,
+    direction,
+    enterHomePane,
+    firstDirectoryForRepositoryGroup,
+    enterProjectPane,
+    setMainPaneProjectMode,
+    selectLeftNavRepository,
+    markDirty,
+    directoriesHas,
+    visibleTargetsForState,
+    conversationDirectoryId,
+    queueControlPlaneOp,
+    activateConversation,
+    conversationsHas,
+  } = options;
+  if (target.kind === 'home') {
+    enterHomePane();
+    return;
+  }
+  if (target.kind === 'repository') {
+    const firstDirectoryId = firstDirectoryForRepositoryGroup(target.repositoryId);
+    if (firstDirectoryId !== null) {
+      enterProjectPane(firstDirectoryId);
+    } else {
+      setMainPaneProjectMode();
+    }
+    selectLeftNavRepository(target.repositoryId);
+    markDirty();
+    return;
+  }
+  if (target.kind === 'project') {
+    if (directoriesHas(target.directoryId)) {
+      enterProjectPane(target.directoryId);
+      markDirty();
+      return;
+    }
+    const visibleTargets = visibleTargetsForState();
+    const fallbackConversation = visibleTargets.find(
+      (entry): entry is Extract<LeftNavSelection, { kind: 'conversation' }> =>
+        entry.kind === 'conversation' && conversationDirectoryId(entry.sessionId) === target.directoryId,
+    );
+    if (fallbackConversation !== undefined) {
+      queueControlPlaneOp(async () => {
+        await activateConversation(fallbackConversation.sessionId);
+      }, `shortcut-activate-${direction}-directory-fallback`);
+    }
+    return;
+  }
+  if (!conversationsHas(target.sessionId)) {
+    return;
+  }
+  queueControlPlaneOp(async () => {
+    await activateConversation(target.sessionId);
+  }, `shortcut-activate-${direction}`);
+}
+
+interface CycleLeftNavSelectionOptions {
+  visibleTargets: readonly LeftNavSelection[];
+  currentSelection: LeftNavSelection;
+  direction: 'next' | 'previous';
+  activateTarget: (target: LeftNavSelection, direction: 'next' | 'previous') => void;
+}
+
+export function cycleLeftNavSelection(options: CycleLeftNavSelectionOptions): boolean {
+  const { visibleTargets, currentSelection, direction, activateTarget } = options;
+  if (visibleTargets.length === 0) {
+    return false;
+  }
+  const targetKeys = visibleTargets.map((target) => leftNavTargetKey(target));
+  const targetKey = cycleConversationId(targetKeys, leftNavTargetKey(currentSelection), direction);
+  if (targetKey === null) {
+    return false;
+  }
+  const target = visibleTargets.find((entry) => leftNavTargetKey(entry) === targetKey);
+  if (target === undefined) {
+    return false;
+  }
+  activateTarget(target, direction);
+  return true;
+}
