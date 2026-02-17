@@ -199,6 +199,10 @@ import {
   type PaneSelection,
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
+import {
+  reduceLinePromptInput,
+  reduceTaskEditorPromptInput as reduceTaskEditorModalInput,
+} from '../src/mux/live-mux/modal-input-reducers.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4169,45 +4173,12 @@ async function main(): Promise<number> {
       return true;
     }
     const prompt = taskEditorPrompt;
-    let nextTitle = prompt.title;
-    let nextDescription = prompt.description;
-    let nextFieldIndex = prompt.fieldIndex;
-    let nextRepositoryIndex = prompt.repositoryIndex;
-    let submit = false;
-    const text = input.toString('utf8');
-    if (text === '\u001b[C') {
-      nextFieldIndex = 1;
-      nextRepositoryIndex = Math.min(prompt.repositoryIds.length - 1, prompt.repositoryIndex + 1);
-    } else if (text === '\u001b[D') {
-      nextFieldIndex = 1;
-      nextRepositoryIndex = Math.max(0, prompt.repositoryIndex - 1);
-    } else {
-      for (const byte of input) {
-        if (byte === 0x0d || byte === 0x0a) {
-          submit = true;
-          break;
-        }
-        if (byte === 0x09) {
-          nextFieldIndex = ((nextFieldIndex + 1) % 3) as 0 | 1 | 2;
-          continue;
-        }
-        if (byte === 0x7f || byte === 0x08) {
-          if (nextFieldIndex === 0) {
-            nextTitle = nextTitle.slice(0, -1);
-          } else if (nextFieldIndex === 2) {
-            nextDescription = nextDescription.slice(0, -1);
-          }
-          continue;
-        }
-        if (byte >= 32 && byte <= 126) {
-          if (nextFieldIndex === 0) {
-            nextTitle += String.fromCharCode(byte);
-          } else if (nextFieldIndex === 2) {
-            nextDescription += String.fromCharCode(byte);
-          }
-        }
-      }
-    }
+    const reduced = reduceTaskEditorModalInput(prompt, input);
+    const nextTitle = reduced.title;
+    const nextDescription = reduced.description;
+    const nextFieldIndex = reduced.fieldIndex;
+    const nextRepositoryIndex = reduced.repositoryIndex;
+    const submit = reduced.submit;
     const changed =
       nextTitle !== prompt.title ||
       nextDescription !== prompt.description ||
@@ -4354,21 +4325,9 @@ async function main(): Promise<number> {
       return true;
     }
 
-    let nextValue = edit.value;
-    let done = false;
-    for (const byte of input) {
-      if (byte === 0x0d || byte === 0x0a) {
-        done = true;
-        break;
-      }
-      if (byte === 0x7f || byte === 0x08) {
-        nextValue = nextValue.slice(0, -1);
-        continue;
-      }
-      if (byte >= 32 && byte <= 126) {
-        nextValue += String.fromCharCode(byte);
-      }
-    }
+    const reduced = reduceLinePromptInput(edit.value, input);
+    const nextValue = reduced.value;
+    const done = reduced.submit;
 
     if (nextValue !== edit.value) {
       edit.value = nextValue;
@@ -4477,21 +4436,9 @@ async function main(): Promise<number> {
       return true;
     }
 
-    let value = addDirectoryPrompt.value;
-    let submit = false;
-    for (const byte of input) {
-      if (byte === 0x0d || byte === 0x0a) {
-        submit = true;
-        break;
-      }
-      if (byte === 0x7f || byte === 0x08) {
-        value = value.slice(0, -1);
-        continue;
-      }
-      if (byte >= 32 && byte <= 126) {
-        value += String.fromCharCode(byte);
-      }
-    }
+    const reduced = reduceLinePromptInput(addDirectoryPrompt.value, input);
+    const value = reduced.value;
+    const submit = reduced.submit;
 
     if (!submit) {
       addDirectoryPrompt = {
@@ -4541,21 +4488,9 @@ async function main(): Promise<number> {
       return true;
     }
 
-    let value = repositoryPrompt.value;
-    let submit = false;
-    for (const byte of input) {
-      if (byte === 0x0d || byte === 0x0a) {
-        submit = true;
-        break;
-      }
-      if (byte === 0x7f || byte === 0x08) {
-        value = value.slice(0, -1);
-        continue;
-      }
-      if (byte >= 32 && byte <= 126) {
-        value += String.fromCharCode(byte);
-      }
-    }
+    const reduced = reduceLinePromptInput(repositoryPrompt.value, input);
+    const value = reduced.value;
+    const submit = reduced.submit;
 
     if (!submit) {
       repositoryPrompt = {
