@@ -193,3 +193,19 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5823 -> 5684 LOC
+
+### Checkpoint 5 (2026-02-17): observed stream helper extraction
+
+- Added `src/mux/live-mux/observed-stream.ts`:
+  - read stream cursor baseline helper
+  - subscribe observed stream helper
+  - unsubscribe observed stream helper
+- Updated `scripts/codex-live-mux-runtime.ts` to use extracted observed stream helpers.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5684 -> 5637 LOC

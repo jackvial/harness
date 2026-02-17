@@ -138,6 +138,11 @@ import {
 import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
 import {
+  readObservedStreamCursorBaseline,
+  subscribeObservedStream,
+  unsubscribeObservedStream,
+} from '../src/mux/live-mux/observed-stream.ts';
+import {
   buildAddDirectoryModalOverlay as buildAddDirectoryModalOverlayFrame,
   buildConversationTitleModalOverlay as buildConversationTitleModalOverlayFrame,
   buildNewThreadModalOverlay as buildNewThreadModalOverlayFrame,
@@ -575,7 +580,7 @@ async function main(): Promise<number> {
   });
   controlPlaneOpenSpan.end();
   const streamClient = controlPlaneClient.client;
-  const startupObservedCursor = await readStreamCursorBaseline();
+  const startupObservedCursor = await readObservedStreamCursorBaseline(streamClient, options.scope);
   const directoryUpsertSpan = startPerfSpan('mux.startup.directory-upsert');
   const directoryResult = await streamClient.sendCommand({
     type: 'directory.upsert',
@@ -2858,78 +2863,25 @@ async function main(): Promise<number> {
     }
   };
 
-  async function readStreamCursorBaseline(): Promise<number | null> {
-    const subscribed = await streamClient.sendCommand({
-      type: 'stream.subscribe',
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-      conversationId: `cursor-probe-${randomUUID()}`,
-    });
-    const subscriptionId = subscribed['subscriptionId'];
-    if (typeof subscriptionId !== 'string' || subscriptionId.length === 0) {
-      throw new Error('control-plane stream.subscribe returned malformed subscription id');
-    }
-    try {
-      const cursor = subscribed['cursor'];
-      if (typeof cursor !== 'number' || !Number.isInteger(cursor) || cursor < 0) {
-        return null;
-      }
-      return cursor;
-    } finally {
-      try {
-        await streamClient.sendCommand({
-          type: 'stream.unsubscribe',
-          subscriptionId,
-        });
-      } catch {
-        // Best-effort unsubscribe only.
-      }
-    }
-  }
-
-  async function subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {
+  const subscribeTaskPlanningEvents = async (afterCursor: number | null): Promise<void> => {
     if (observedStreamSubscriptionId !== null) {
       return;
     }
-    const command: {
-      type: 'stream.subscribe';
-      tenantId: string;
-      userId: string;
-      workspaceId: string;
-      afterCursor?: number;
-    } = {
-      type: 'stream.subscribe',
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-    };
-    if (afterCursor !== null) {
-      command.afterCursor = afterCursor;
-    }
-    const subscribed = await streamClient.sendCommand(command);
-    const subscriptionId = subscribed['subscriptionId'];
-    if (typeof subscriptionId !== 'string') {
-      throw new Error('control-plane stream.subscribe returned malformed subscription id');
-    }
-    observedStreamSubscriptionId = subscriptionId;
-  }
+    observedStreamSubscriptionId = await subscribeObservedStream(
+      streamClient,
+      options.scope,
+      afterCursor,
+    );
+  };
 
-  async function unsubscribeTaskPlanningEvents(): Promise<void> {
+  const unsubscribeTaskPlanningEvents = async (): Promise<void> => {
     if (observedStreamSubscriptionId === null) {
       return;
     }
     const subscriptionId = observedStreamSubscriptionId;
     observedStreamSubscriptionId = null;
-    try {
-      await streamClient.sendCommand({
-        type: 'stream.unsubscribe',
-        subscriptionId,
-      });
-    } catch {
-      // Best-effort unsubscribe only.
-    }
-  }
+    await unsubscribeObservedStream(streamClient, subscriptionId);
+  };
 
   const activateConversation = async (sessionId: string): Promise<void> => {
     if (activeConversationId === sessionId) {
