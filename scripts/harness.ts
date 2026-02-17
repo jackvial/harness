@@ -44,8 +44,10 @@ const DEFAULT_GATEWAY_STOP_TIMEOUT_MS = 5000;
 const DEFAULT_GATEWAY_STOP_POLL_MS = 50;
 const DEFAULT_PROFILE_ROOT_PATH = '.harness/profiles';
 const DEFAULT_SESSION_ROOT_PATH = '.harness/sessions';
+const PROFILE_STATE_FILE_NAME = 'active-profile.json';
 const PROFILE_CLIENT_FILE_NAME = 'client.cpuprofile';
 const PROFILE_GATEWAY_FILE_NAME = 'gateway.cpuprofile';
+const PROFILE_STATE_VERSION = 1;
 const SESSION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 
 interface GatewayStartOptions {
@@ -68,10 +70,24 @@ interface ParsedGatewayCommand {
   callJson?: string;
 }
 
-interface ParsedProfileCommand {
+interface ParsedProfileRunCommand {
+  type: 'run';
   profileDir: string | null;
   muxArgs: readonly string[];
 }
+
+interface ParsedProfileStartCommand {
+  type: 'start';
+  profileDir: string | null;
+  startOptions: GatewayStartOptions;
+}
+
+interface ParsedProfileStopCommand {
+  type: 'stop';
+  stopOptions: GatewayStopOptions;
+}
+
+type ParsedProfileCommand = ParsedProfileRunCommand | ParsedProfileStartCommand | ParsedProfileStopCommand;
 
 interface RuntimeCpuProfileOptions {
   cpuProfileDir: string;
@@ -88,6 +104,7 @@ interface SessionPaths {
   logPath: string;
   defaultStateDbPath: string;
   profileDir: string;
+  profileStatePath: string;
 }
 
 interface ParsedGlobalCliOptions {
@@ -125,6 +142,17 @@ interface OrphanSqliteCleanupResult {
   terminatedPids: readonly number[];
   failedPids: readonly number[];
   errorMessage: string | null;
+}
+
+interface ActiveProfileState {
+  version: number;
+  pid: number;
+  host: string;
+  port: number;
+  stateDbPath: string;
+  profileDir: string;
+  gatewayProfilePath: string;
+  startedAt: string;
 }
 
 function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
@@ -204,6 +232,7 @@ function resolveSessionPaths(
       logPath: resolveGatewayLogPath(invocationDirectory),
       defaultStateDbPath: resolve(invocationDirectory, DEFAULT_GATEWAY_DB_PATH),
       profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH),
+      profileStatePath: resolve(invocationDirectory, '.harness', PROFILE_STATE_FILE_NAME),
     };
   }
   const sessionRoot = resolve(invocationDirectory, DEFAULT_SESSION_ROOT_PATH, sessionName);
@@ -212,10 +241,11 @@ function resolveSessionPaths(
     logPath: resolve(sessionRoot, 'gateway.log'),
     defaultStateDbPath: resolve(sessionRoot, 'control-plane.sqlite'),
     profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH, sessionName),
+    profileStatePath: resolve(sessionRoot, PROFILE_STATE_FILE_NAME),
   };
 }
 
-function parseProfileCommand(argv: readonly string[]): ParsedProfileCommand {
+function parseProfileRunCommand(argv: readonly string[]): ParsedProfileRunCommand {
   let profileDir: string | null = null;
   const muxArgs: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
@@ -228,9 +258,57 @@ function parseProfileCommand(argv: readonly string[]): ParsedProfileCommand {
     muxArgs.push(arg);
   }
   return {
+    type: 'run',
     profileDir,
     muxArgs,
   };
+}
+
+function parseProfileStartCommand(argv: readonly string[]): ParsedProfileStartCommand {
+  let profileDir: string | null = null;
+  const gatewayArgs: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === '--profile-dir') {
+      profileDir = readCliValue(argv, index, '--profile-dir');
+      index += 1;
+      continue;
+    }
+    gatewayArgs.push(arg);
+  }
+  return {
+    type: 'start',
+    profileDir,
+    startOptions: parseGatewayStartOptions(gatewayArgs)
+  };
+}
+
+function parseProfileStopCommand(argv: readonly string[]): ParsedProfileStopCommand {
+  return {
+    type: 'stop',
+    stopOptions: parseGatewayStopOptions(argv)
+  };
+}
+
+function parseProfileCommand(argv: readonly string[]): ParsedProfileCommand {
+  if (argv.length === 0) {
+    return parseProfileRunCommand(argv);
+  }
+  const subcommand = argv[0]!;
+  const rest = argv.slice(1);
+  if (subcommand === 'start') {
+    return parseProfileStartCommand(rest);
+  }
+  if (subcommand === 'stop') {
+    return parseProfileStopCommand(rest);
+  }
+  if (subcommand === 'run') {
+    return parseProfileRunCommand(rest);
+  }
+  if (subcommand.startsWith('-')) {
+    return parseProfileRunCommand(argv);
+  }
+  return parseProfileRunCommand(argv);
 }
 
 function buildCpuProfileRuntimeArgs(options: RuntimeCpuProfileOptions): readonly string[] {
@@ -438,6 +516,9 @@ function printUsage(): void {
       '  harness [--session <name>] gateway status',
       '  harness [--session <name>] gateway restart [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
       '  harness [--session <name>] gateway call --json \'{"type":"session.list"}\'',
+      '  harness [--session <name>] profile start [--profile-dir <path>] [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
+      '  harness [--session <name>] profile stop [--force] [--timeout-ms <ms>] [--cleanup-orphans|--no-cleanup-orphans]',
+      '  harness [--session <name>] profile run [--profile-dir <path>] [mux-args...]',
       '  harness [--session <name>] profile [--profile-dir <path>] [mux-args...]',
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
       '',
@@ -490,6 +571,75 @@ function removeGatewayRecord(recordPath: string): void {
   }
 }
 
+function parseActiveProfileState(raw: unknown): ActiveProfileState | null {
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  const candidate = raw as Record<string, unknown>;
+  if (candidate['version'] !== PROFILE_STATE_VERSION) {
+    return null;
+  }
+  const pid = candidate['pid'];
+  const host = candidate['host'];
+  const port = candidate['port'];
+  const stateDbPath = candidate['stateDbPath'];
+  const profileDir = candidate['profileDir'];
+  const gatewayProfilePath = candidate['gatewayProfilePath'];
+  const startedAt = candidate['startedAt'];
+  if (!Number.isInteger(pid) || (pid as number) <= 0) {
+    return null;
+  }
+  if (typeof host !== 'string' || host.length === 0) {
+    return null;
+  }
+  if (!Number.isInteger(port) || (port as number) <= 0 || (port as number) > 65535) {
+    return null;
+  }
+  if (typeof stateDbPath !== 'string' || stateDbPath.length === 0) {
+    return null;
+  }
+  if (typeof profileDir !== 'string' || profileDir.length === 0) {
+    return null;
+  }
+  if (typeof gatewayProfilePath !== 'string' || gatewayProfilePath.length === 0) {
+    return null;
+  }
+  if (typeof startedAt !== 'string' || startedAt.length === 0) {
+    return null;
+  }
+  return {
+    version: PROFILE_STATE_VERSION,
+    pid: pid as number,
+    host,
+    port: port as number,
+    stateDbPath,
+    profileDir,
+    gatewayProfilePath,
+    startedAt
+  };
+}
+
+function readActiveProfileState(profileStatePath: string): ActiveProfileState | null {
+  if (!existsSync(profileStatePath)) {
+    return null;
+  }
+  try {
+    const raw = JSON.parse(readFileSync(profileStatePath, 'utf8')) as unknown;
+    return parseActiveProfileState(raw);
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveProfileState(profileStatePath: string, state: ActiveProfileState): void {
+  mkdirSync(dirname(profileStatePath), { recursive: true });
+  writeFileSync(profileStatePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function removeActiveProfileState(profileStatePath: string): void {
+  removeFileIfExists(profileStatePath);
+}
+
 function isPidRunning(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) {
     return false;
@@ -515,6 +665,17 @@ async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> 
     await delay(DEFAULT_GATEWAY_STOP_POLL_MS);
   }
   return !isPidRunning(pid);
+}
+
+async function waitForFileExists(filePath: string, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (existsSync(filePath)) {
+      return true;
+    }
+    await delay(DEFAULT_GATEWAY_STOP_POLL_MS);
+  }
+  return existsSync(filePath);
 }
 
 function readProcessTable(): readonly ProcessTableEntry[] {
@@ -1253,29 +1414,32 @@ async function runDefaultClient(
   );
 }
 
-async function runProfileClient(
+async function runProfileRun(
   invocationDirectory: string,
   daemonScriptPath: string,
   muxScriptPath: string,
   sessionPaths: SessionPaths,
-  args: readonly string[],
+  command: ParsedProfileRunCommand,
   runtimeOptions: RuntimeInspectOptions,
 ): Promise<number> {
-  if (args.length > 0 && (args[0] === '--help' || args[0] === '-h')) {
-    printUsage();
-    return 0;
-  }
-  const parsed = parseProfileCommand(args);
   const profileDir =
-    parsed.profileDir === null
+    command.profileDir === null
       ? sessionPaths.profileDir
-      : resolve(invocationDirectory, parsed.profileDir);
+      : resolve(invocationDirectory, command.profileDir);
   mkdirSync(profileDir, { recursive: true });
 
   const clientProfilePath = resolve(profileDir, PROFILE_CLIENT_FILE_NAME);
   const gatewayProfilePath = resolve(profileDir, PROFILE_GATEWAY_FILE_NAME);
   removeFileIfExists(clientProfilePath);
   removeFileIfExists(gatewayProfilePath);
+
+  const existingProfileState = readActiveProfileState(sessionPaths.profileStatePath);
+  if (existingProfileState !== null) {
+    if (isPidRunning(existingProfileState.pid)) {
+      throw new Error('profile run requires no active profile session; stop it first with `harness profile stop`');
+    }
+    removeActiveProfileState(sessionPaths.profileStatePath);
+  }
 
   const existingRecord = readGatewayRecord(sessionPaths.recordPath);
   if (existingRecord !== null) {
@@ -1321,7 +1485,7 @@ async function runProfileClient(
       muxScriptPath,
       invocationDirectory,
       gateway,
-      parsed.muxArgs,
+      command.muxArgs,
       [
         ...runtimeOptions.clientRuntimeArgs,
         ...buildCpuProfileRuntimeArgs({
@@ -1355,6 +1519,146 @@ async function runProfileClient(
 
   process.stdout.write(`profiles: client=${clientProfilePath} gateway=${gatewayProfilePath}\n`);
   return clientExitCode;
+}
+
+async function runProfileStart(
+  invocationDirectory: string,
+  daemonScriptPath: string,
+  sessionPaths: SessionPaths,
+  command: ParsedProfileStartCommand,
+  runtimeOptions: RuntimeInspectOptions,
+): Promise<number> {
+  const profileDir =
+    command.profileDir === null ? sessionPaths.profileDir : resolve(invocationDirectory, command.profileDir);
+  mkdirSync(profileDir, { recursive: true });
+  const gatewayProfilePath = resolve(profileDir, PROFILE_GATEWAY_FILE_NAME);
+  removeFileIfExists(gatewayProfilePath);
+
+  const existingProfileState = readActiveProfileState(sessionPaths.profileStatePath);
+  if (existingProfileState !== null) {
+    if (isPidRunning(existingProfileState.pid)) {
+      throw new Error('profile already running; stop it first with `harness profile stop`');
+    }
+    removeActiveProfileState(sessionPaths.profileStatePath);
+  }
+
+  const existingRecord = readGatewayRecord(sessionPaths.recordPath);
+  if (existingRecord !== null) {
+    const existingProbe = await probeGateway(existingRecord);
+    if (existingProbe.connected || isPidRunning(existingRecord.pid)) {
+      throw new Error('profile start requires the target session gateway to be stopped first');
+    }
+    removeGatewayRecord(sessionPaths.recordPath);
+  }
+
+  const provisionalHost = normalizeGatewayHost(command.startOptions.host ?? process.env.HARNESS_CONTROL_PLANE_HOST);
+  const startOptions: GatewayStartOptions = {
+    ...command.startOptions,
+    stateDbPath: command.startOptions.stateDbPath ?? sessionPaths.defaultStateDbPath
+  };
+  if (startOptions.port === undefined) {
+    startOptions.port = await reservePort(provisionalHost);
+  }
+  const settings = resolveGatewaySettings(
+    invocationDirectory,
+    null,
+    startOptions,
+    process.env,
+    sessionPaths.defaultStateDbPath
+  );
+
+  const gateway = await startDetachedGateway(
+    invocationDirectory,
+    sessionPaths.recordPath,
+    sessionPaths.logPath,
+    settings,
+    daemonScriptPath,
+    [
+      ...runtimeOptions.gatewayRuntimeArgs,
+      ...buildCpuProfileRuntimeArgs({
+        cpuProfileDir: profileDir,
+        cpuProfileName: PROFILE_GATEWAY_FILE_NAME,
+      }),
+    ],
+  );
+
+  writeActiveProfileState(sessionPaths.profileStatePath, {
+    version: PROFILE_STATE_VERSION,
+    pid: gateway.pid,
+    host: gateway.host,
+    port: gateway.port,
+    stateDbPath: gateway.stateDbPath,
+    profileDir,
+    gatewayProfilePath,
+    startedAt: new Date().toISOString()
+  });
+
+  process.stdout.write(
+    `profile started pid=${String(gateway.pid)} host=${gateway.host} port=${String(gateway.port)}\n`
+  );
+  process.stdout.write(`record: ${sessionPaths.recordPath}\n`);
+  process.stdout.write(`log: ${sessionPaths.logPath}\n`);
+  process.stdout.write(`profile-state: ${sessionPaths.profileStatePath}\n`);
+  process.stdout.write(`profile-target: ${gatewayProfilePath}\n`);
+  process.stdout.write('stop with: harness profile stop\n');
+  return 0;
+}
+
+async function runProfileStop(sessionPaths: SessionPaths, command: ParsedProfileStopCommand): Promise<number> {
+  const profileState = readActiveProfileState(sessionPaths.profileStatePath);
+  if (profileState === null) {
+    throw new Error('no active profile run for this session; start one with `harness profile start`');
+  }
+
+  const stopped = await stopGateway(sessionPaths.recordPath, command.stopOptions);
+  process.stdout.write(`${stopped.message}\n`);
+  if (!stopped.stopped) {
+    throw new Error(`failed to stop profile gateway: ${stopped.message}`);
+  }
+
+  const profileFlushed = await waitForFileExists(profileState.gatewayProfilePath, command.stopOptions.timeoutMs);
+  if (!profileFlushed) {
+    throw new Error(`missing gateway CPU profile: ${profileState.gatewayProfilePath}`);
+  }
+
+  removeActiveProfileState(sessionPaths.profileStatePath);
+  process.stdout.write(`profile: gateway=${profileState.gatewayProfilePath}\n`);
+  return 0;
+}
+
+async function runProfileCommandEntry(
+  invocationDirectory: string,
+  daemonScriptPath: string,
+  muxScriptPath: string,
+  sessionPaths: SessionPaths,
+  args: readonly string[],
+  runtimeOptions: RuntimeInspectOptions,
+): Promise<number> {
+  if (args.length > 0 && (args[0] === '--help' || args[0] === '-h')) {
+    printUsage();
+    return 0;
+  }
+  const command = parseProfileCommand(args);
+  if (command.type === 'start') {
+    return await runProfileStart(
+      invocationDirectory,
+      daemonScriptPath,
+      sessionPaths,
+      command,
+      runtimeOptions,
+    );
+  }
+  if (command.type === 'stop') {
+    return await runProfileStop(sessionPaths, command);
+  }
+  return await runProfileRun(
+    invocationDirectory,
+    daemonScriptPath,
+    muxScriptPath,
+    sessionPaths,
+    command,
+    runtimeOptions,
+  );
 }
 
 async function main(): Promise<number> {
@@ -1398,7 +1702,7 @@ async function main(): Promise<number> {
   }
 
   if (argv.length > 0 && argv[0] === 'profile') {
-    return await runProfileClient(
+    return await runProfileCommandEntry(
       invocationDirectory,
       daemonScriptPath,
       muxScriptPath,

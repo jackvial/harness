@@ -578,6 +578,51 @@ void test('harness profile writes client and gateway CPU profiles in isolated se
   }
 });
 
+void test('harness profile start/stop writes gateway CPU profile to .harness/profiles for the target session', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'profile-start-stop-a';
+  const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
+  const profileStatePath = join(workspace, `.harness/sessions/${sessionName}/active-profile.json`);
+  const gatewayProfilePath = join(workspace, `.harness/profiles/${sessionName}/gateway.cpuprofile`);
+  try {
+    const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
+    assert.equal(startResult.code, 0);
+    assert.equal(startResult.stdout.includes('profile started pid='), true);
+    assert.equal(startResult.stdout.includes(`profile-target: ${gatewayProfilePath}`), true);
+    assert.equal(existsSync(sessionRecordPath), true);
+    assert.equal(existsSync(profileStatePath), true);
+
+    const statusRunning = await runHarness(workspace, ['--session', sessionName, 'gateway', 'status']);
+    assert.equal(statusRunning.code, 0);
+    assert.equal(statusRunning.stdout.includes('gateway status: running'), true);
+
+    const stopResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'stop']);
+    assert.equal(stopResult.code, 0);
+    assert.equal(stopResult.stdout.includes('profile: gateway='), true);
+    assert.equal(existsSync(gatewayProfilePath), true);
+    assert.equal(existsSync(profileStatePath), false);
+
+    const statusStopped = await runHarness(workspace, ['--session', sessionName, 'gateway', 'status']);
+    assert.equal(statusStopped.code, 0);
+    assert.equal(statusStopped.stdout.includes('gateway status: stopped'), true);
+  } finally {
+    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness profile stop fails when there is no active profile state', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'profile-stop-missing';
+  try {
+    const stopResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'stop']);
+    assert.equal(stopResult.code, 1);
+    assert.equal(stopResult.stderr.includes('no active profile run for this session'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test(
   'named session can run two terminal threads that execute harness animate for throughput load',
   async () => {

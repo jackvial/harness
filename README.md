@@ -62,7 +62,7 @@ Harness is built for developers who want to:
 - When a thread/terminal process owns the main pane, the bottom status row switches to a single-line debug bar showing the spawned command.
 - `harness gateway stop` also performs workspace-scoped orphan `sqlite3` cleanup for the configured state DB path by default (`--no-cleanup-orphans` disables it).
 - Named gateway sessions (`harness --session <name> ...`) isolate record/log/state paths under `.harness/sessions/<name>/...` so perf/test sessions do not mutate the default gateway state.
-- Built-in CPU profiling workflow (`harness [--session <name>] profile`) captures Bun CPU profiles for both mux client and gateway at `.harness/profiles[/<session>]/{client,gateway}.cpuprofile`.
+- Built-in CPU profiling supports both one-shot capture (`harness [--session <name>] profile`) and long-lived incident capture (`harness [--session <name>] profile start|stop`), writing artifacts under `.harness/profiles[/<session>]/`.
 
 ## Programmable Interface
 
@@ -267,6 +267,14 @@ Capture a programmatic Bun CPU profile for both gateway and client in one run (g
 
 ```bash
 harness --session perf-a profile
+```
+
+Start/stop gateway-only profiling for live incident windows (writes `gateway.cpuprofile` under `.harness/profiles/<session>/` on stop):
+
+```bash
+harness --session perf-a profile start
+# reproduce the issue
+harness --session perf-a profile stop
 ```
 
 Configuration is file-first via `harness.config.jsonc`.
