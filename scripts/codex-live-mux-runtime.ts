@@ -144,7 +144,6 @@ import {
   type GitRepositorySnapshot,
   type GitSummary,
 } from '../src/mux/live-mux/git-state.ts';
-import { refreshProcessUsageSnapshots as refreshProcessUsageSnapshotsFn } from '../src/mux/live-mux/process-usage.ts';
 import {
   resolveDirectoryForAction as resolveDirectoryForActionFn,
 } from '../src/mux/live-mux/directory-resolution.ts';
@@ -184,6 +183,7 @@ import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { EventPersistence } from '../src/services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../src/services/mux-ui-state-persistence.ts';
+import { ProcessUsageRefreshService } from '../src/services/process-usage-refresh.ts';
 import { RecordingService } from '../src/services/recording.ts';
 import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
@@ -983,7 +983,6 @@ async function main(): Promise<number> {
     }
   }
 
-  const processUsageBySessionId = new Map<string, ProcessUsageSample>();
   const selectorIndexBySessionId = new Map<
     string,
     {
@@ -994,7 +993,6 @@ async function main(): Promise<number> {
   >();
   let lastSelectorSnapshotHash: string | null = null;
   let selectorSnapshotVersion = 0;
-  let processUsageRefreshInFlight = false;
 
   const projectionSnapshotForConversation = (
     conversation: ConversationState,
@@ -1005,8 +1003,8 @@ async function main(): Promise<number> {
         directoryKey: conversation.directoryId ?? 'directory-missing',
         title: conversation.title,
         agentLabel: conversation.agentType,
-        cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
-        memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null,
+        cpuPercent: processUsageRefreshService.getSample(conversation.sessionId)?.cpuPercent ?? null,
+        memoryMb: processUsageRefreshService.getSample(conversation.sessionId)?.memoryMb ?? null,
         lastKnownWork: conversation.lastKnownWork,
         lastKnownWorkAt: conversation.lastKnownWorkAt,
         controller: conversation.controller,
@@ -1118,9 +1116,6 @@ async function main(): Promise<number> {
 
   refreshSelectorInstrumentation('startup');
 
-  const processUsageEqual = (left: ProcessUsageSample, right: ProcessUsageSample): boolean =>
-    left.cpuPercent === right.cpuPercent && left.memoryMb === right.memoryMb;
-
   const ensureDirectoryGitState = (directoryId: string): void => {
     directoryManager.ensureGitSummary(directoryId, GIT_SUMMARY_LOADING);
   };
@@ -1176,36 +1171,6 @@ async function main(): Promise<number> {
     }
   };
 
-  const refreshProcessUsage = async (reason: 'startup' | 'interval'): Promise<void> => {
-    if (processUsageRefreshInFlight) {
-      return;
-    }
-    processUsageRefreshInFlight = true;
-    const usageSpan = startPerfSpan('mux.background.process-usage', {
-      reason,
-      conversations: conversationManager.size(),
-    });
-    try {
-      const refreshed = await refreshProcessUsageSnapshotsFn({
-        conversations: _unsafeConversationMap,
-        processUsageBySessionId,
-        readProcessUsageSample,
-        processIdForConversation: (conversation) => conversation.processId,
-        processUsageEqual,
-      });
-
-      if (refreshed.changed) {
-        markDirty();
-      }
-      usageSpan.end({
-        reason,
-        samples: refreshed.samples,
-        changed: refreshed.changed,
-      });
-    } finally {
-      processUsageRefreshInFlight = false;
-    }
-  };
 
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
@@ -1342,6 +1307,17 @@ async function main(): Promise<number> {
     screen.markDirty();
     scheduleRender();
   };
+  const processUsageRefreshService = new ProcessUsageRefreshService<
+    ConversationState,
+    ProcessUsageSample
+  >({
+    readProcessUsageSample,
+    processIdForConversation: (conversation) => conversation.processId,
+    processUsageEqual: (left, right) =>
+      left.cpuPercent === right.cpuPercent && left.memoryMb === right.memoryMb,
+    startPerfSpan,
+    onChanged: markDirty,
+  });
 
   keyEventSubscription = await subscribeControlPlaneKeyEvents(streamClient, {
     tenantId: options.scope.tenantId,
@@ -1402,7 +1378,8 @@ async function main(): Promise<number> {
     isShuttingDown: () => shuttingDown,
     waitForSettled: () => startupSequencer.waitForSettled(),
     settledObserved: () => startupSequencer.snapshot().settledObserved,
-    refreshProcessUsage: (reason) => void refreshProcessUsage(reason),
+    refreshProcessUsage: (reason) =>
+      void processUsageRefreshService.refresh(reason, _unsafeConversationMap),
     recordPerfEvent,
   });
   const startupBackgroundResumeService = new StartupBackgroundResumeService({
@@ -2358,7 +2335,7 @@ async function main(): Promise<number> {
     }
     conversationManager.remove(sessionId);
     ptySizeByConversationId.delete(sessionId);
-    processUsageBySessionId.delete(sessionId);
+    processUsageRefreshService.deleteSession(sessionId);
   };
 
   const reorderIdsByMove = (
@@ -2961,7 +2938,7 @@ async function main(): Promise<number> {
       collapsedRepositoryGroupIds: repositoryManager.readonlyCollapsedRepositoryGroupIds(),
       shortcutsCollapsed: workspace.shortcutsCollapsed,
       gitSummaryByDirectoryId: _unsafeDirectoryGitSummaryMap,
-      processUsageBySessionId,
+      processUsageBySessionId: processUsageRefreshService.readonlyUsage(),
       shortcutBindings,
       loadingGitSummary: GIT_SUMMARY_LOADING,
     });

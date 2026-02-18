@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3668 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3647 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1067,3 +1067,25 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3668 non-empty LOC
+
+### Checkpoint BD (2026-02-18): Service extraction continues with class-based process-usage refresh ownership
+
+- Added `src/services/process-usage-refresh.ts` with a class-based `ProcessUsageRefreshService` that owns:
+  - per-session process-usage map state
+  - in-flight refresh guard behavior
+  - refresh span lifecycle for `mux.background.process-usage`
+  - changed/not-changed dirty-mark signaling through callback wiring
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate process-usage refresh/map ownership to `ProcessUsageRefreshService`, removing inline map/in-flight/refresh function logic and wiring:
+  - rail render usage snapshots via `readonlyUsage()`
+  - projection reads via `getSample(...)`
+  - session cleanup via `deleteSession(...)`
+  - background probe refresh callback via `refresh(reason, conversations)`
+- Added `test/services-process-usage-refresh.test.ts` with coverage for:
+  - changed refresh path + span attribution
+  - unchanged refresh path without dirty callback
+  - overlapping refresh guard behavior
+  - usage map lifecycle helpers (`getSample`, `readonlyUsage`, `deleteSession`)
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3647 non-empty LOC
