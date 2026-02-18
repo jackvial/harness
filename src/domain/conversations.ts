@@ -21,6 +21,7 @@ interface PersistedConversationRecord {
   agentType: string;
   adapterState: Record<string, unknown>;
   runtimeStatus: ConversationState['status'];
+  runtimeStatusModel: ConversationState['statusModel'];
   runtimeLive: boolean;
 }
 
@@ -298,11 +299,12 @@ export class ConversationManager {
     conversation.scope.tenantId = record.tenantId;
     conversation.scope.userId = record.userId;
     conversation.scope.workspaceId = record.workspaceId;
-    conversation.status =
-      !record.runtimeLive &&
-      (record.runtimeStatus === 'running' || record.runtimeStatus === 'needs-input')
-        ? 'completed'
-        : record.runtimeStatus;
+    const runtimeStatusModel = record.runtimeStatusModel;
+    conversation.status = record.runtimeStatus;
+    conversation.statusModel = runtimeStatusModel;
+    conversation.attentionReason = runtimeStatusModel?.attentionReason ?? null;
+    conversation.lastKnownWork = runtimeStatusModel?.lastKnownWork ?? null;
+    conversation.lastKnownWorkAt = runtimeStatusModel?.lastKnownWorkAt ?? null;
     // Persisted runtime flags are advisory; session.list is authoritative for live sessions.
     conversation.live = false;
     return conversation;

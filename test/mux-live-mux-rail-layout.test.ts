@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
 import { buildRailModel, buildRailRows } from '../src/mux/live-mux/rail-layout.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 const ESC = String.fromCharCode(27);
 const ANSI_CSI_PATTERN = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]`, 'gu');
@@ -55,6 +56,14 @@ void test('live-mux rail layout infers untracked directories from conversation-o
           title: 'thread-1',
           agentType: 'codex',
           status: 'running',
+          statusModel: statusModelFor('running', {
+            detailText: 'active',
+            phase: 'working',
+            phaseHint: 'working',
+            lastKnownWork: 'active',
+            lastKnownWorkAt: '2026-02-17T00:00:01.000Z',
+            observedAt: '2026-02-17T00:00:01.000Z',
+          }),
           attentionReason: null,
           live: true,
           startedAt: '2026-02-17T00:00:00.000Z',
@@ -72,6 +81,13 @@ void test('live-mux rail layout infers untracked directories from conversation-o
           title: 'thread-untracked',
           agentType: 'terminal',
           status: 'completed',
+          statusModel: statusModelFor('completed', {
+            detailText: 'inactive',
+            phaseHint: 'idle',
+            lastKnownWork: 'inactive',
+            lastKnownWorkAt: '2026-02-17T00:00:02.000Z',
+            observedAt: '2026-02-17T00:00:02.000Z',
+          }),
           attentionReason: null,
           live: false,
           startedAt: '2026-02-17T00:00:00.000Z',
@@ -227,6 +243,7 @@ void test('live-mux rail model selects latest repository snapshot metadata and s
           title: 'thread-1',
           agentType: 'codex',
           status: 'running',
+          statusModel: statusModelFor('running'),
           attentionReason: null,
           live: true,
           startedAt: '2026-02-17T00:00:00.000Z',

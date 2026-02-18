@@ -1,4 +1,5 @@
 import type { StreamSessionController } from '../../control-plane/stream-protocol.ts';
+import type { StreamSessionStatusModel } from '../../control-plane/stream-protocol.ts';
 import type { ConversationRailSessionSummary } from '../conversation-rail.ts';
 
 interface ControlPlaneDirectoryRecord {
@@ -21,6 +22,7 @@ interface ControlPlaneConversationRecord {
   readonly agentType: string;
   readonly adapterState: Record<string, unknown>;
   readonly runtimeStatus: ConversationRailSessionSummary['status'];
+  readonly runtimeStatusModel: StreamSessionStatusModel | null;
   readonly runtimeLive: boolean;
 }
 
@@ -121,6 +123,80 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function parseRuntimeStatusModel(
+  value: unknown,
+): StreamSessionStatusModel | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  const model = asObjectRecord(value);
+  if (model === null) {
+    return undefined;
+  }
+  const runtimeStatus = model['runtimeStatus'];
+  const phase = model['phase'];
+  const glyph = model['glyph'];
+  const badge = model['badge'];
+  const detailText = asRequiredString(model['detailText']);
+  const attentionReason = asNullableString(model['attentionReason']);
+  const lastKnownWork = asNullableString(model['lastKnownWork']);
+  const lastKnownWorkAt = asNullableString(model['lastKnownWorkAt']);
+  const phaseHint = model['phaseHint'];
+  const observedAt = asRequiredString(model['observedAt']);
+  if (
+    detailText === null ||
+    attentionReason === undefined ||
+    lastKnownWork === undefined ||
+    lastKnownWorkAt === undefined ||
+    observedAt === null
+  ) {
+    return undefined;
+  }
+  if (
+    runtimeStatus !== 'running' &&
+    runtimeStatus !== 'needs-input' &&
+    runtimeStatus !== 'completed' &&
+    runtimeStatus !== 'exited'
+  ) {
+    return undefined;
+  }
+  if (
+    phase !== 'needs-action' &&
+    phase !== 'starting' &&
+    phase !== 'working' &&
+    phase !== 'idle' &&
+    phase !== 'exited'
+  ) {
+    return undefined;
+  }
+  if (glyph !== '▲' && glyph !== '◔' && glyph !== '◆' && glyph !== '○' && glyph !== '■') {
+    return undefined;
+  }
+  if (badge !== 'NEED' && badge !== 'RUN ' && badge !== 'DONE' && badge !== 'EXIT') {
+    return undefined;
+  }
+  if (
+    phaseHint !== null &&
+    phaseHint !== 'needs-action' &&
+    phaseHint !== 'working' &&
+    phaseHint !== 'idle'
+  ) {
+    return undefined;
+  }
+  return {
+    runtimeStatus,
+    phase,
+    glyph,
+    badge,
+    detailText,
+    attentionReason,
+    lastKnownWork,
+    lastKnownWorkAt,
+    phaseHint,
+    observedAt,
+  };
+}
+
 export function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecord | null {
   const record = asRecord(value);
   if (record === null) {
@@ -173,6 +249,7 @@ export function parseConversationRecord(value: unknown): ControlPlaneConversatio
   const agentType = asRequiredString(record['agentType']);
   const adapterState = asObjectRecord(record['adapterState']);
   const runtimeStatus = record['runtimeStatus'];
+  const runtimeStatusModel = parseRuntimeStatusModel(record['runtimeStatusModel']);
   const runtimeLive = record['runtimeLive'];
 
   if (
@@ -184,6 +261,7 @@ export function parseConversationRecord(value: unknown): ControlPlaneConversatio
     title === null ||
     agentType === null ||
     adapterState === null ||
+    runtimeStatusModel === undefined ||
     typeof runtimeLive !== 'boolean'
   ) {
     return null;
@@ -208,6 +286,7 @@ export function parseConversationRecord(value: unknown): ControlPlaneConversatio
     agentType,
     adapterState,
     runtimeStatus,
+    runtimeStatusModel,
     runtimeLive,
   };
 }

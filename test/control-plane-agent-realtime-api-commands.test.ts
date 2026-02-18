@@ -16,6 +16,7 @@ import {
   type StreamServerEnvelope,
   type StreamSignal,
 } from '../src/control-plane/stream-protocol.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 interface MockHarnessServer {
   address: AddressInfo;
@@ -219,6 +220,9 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     createdAt: timestamp,
     archivedAt: null,
     runtimeStatus: 'running',
+    runtimeStatusModel: statusModelFor('running', {
+      observedAt: timestamp,
+    }),
     runtimeLive: true,
     runtimeAttentionReason: null,
     runtimeProcessId: null,
@@ -256,6 +260,9 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     createdAt: timestamp,
     archivedAt: null,
     runtimeStatus: 'running',
+    runtimeStatusModel: statusModelFor('running', {
+      observedAt: timestamp,
+    }),
     runtimeLive: true,
     runtimeAttentionReason: null,
     runtimeLastEventAt: timestamp,
@@ -563,6 +570,9 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     worktreeId: 'worktree-local',
     status: 'running',
     attentionReason: null,
+    statusModel: statusModelFor('running', {
+      observedAt: timestamp,
+    }),
     latestCursor: 7,
     processId: 51000,
     attachedClients: 1,
@@ -1027,6 +1037,9 @@ void test('agent realtime client accepts draft task status and completed thread 
         createdAt: timestamp,
         archivedAt: null,
         runtimeStatus: 'completed',
+        runtimeStatusModel: statusModelFor('completed', {
+          observedAt: timestamp,
+        }),
         runtimeLive: false,
         runtimeAttentionReason: null,
         runtimeProcessId: null,
@@ -1440,6 +1453,7 @@ void test('agent realtime connect drops post-connect events for unknown subscrip
           sessionId: 'session-other',
           status: 'running',
           attentionReason: null,
+          statusModel: statusModelFor('running'),
           live: true,
           ts: '2026-02-02T00:00:00.000Z',
           directoryId: null,
@@ -1459,6 +1473,7 @@ void test('agent realtime connect drops post-connect events for unknown subscrip
           sessionId: 'session-main',
           status: 'running',
           attentionReason: null,
+          statusModel: statusModelFor('running'),
           live: true,
           ts: '2026-02-02T00:00:01.000Z',
           directoryId: null,
@@ -1583,6 +1598,9 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
         worktreeId: 'worktree-local',
         status: 'running',
         attentionReason: null,
+        statusModel: statusModelFor('running', {
+          observedAt: timestamp,
+        }),
         latestCursor: 9,
         processId: 51000,
         attachedClients: 1,
@@ -1607,6 +1625,9 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
     worktreeId: 'worktree-local',
     status: 'running',
     attentionReason: null,
+    statusModel: statusModelFor('running', {
+      observedAt: timestamp,
+    }),
     latestCursor: 9,
     processId: 51000,
     attachedClients: 1,

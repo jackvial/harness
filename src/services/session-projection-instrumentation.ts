@@ -56,8 +56,7 @@ export class SessionProjectionInstrumentation {
         agentLabel: conversation.agentType,
         cpuPercent: this.options.getProcessUsageSample(conversation.sessionId)?.cpuPercent ?? null,
         memoryMb: this.options.getProcessUsageSample(conversation.sessionId)?.memoryMb ?? null,
-        lastKnownWork: conversation.lastKnownWork,
-        lastKnownWorkAt: conversation.lastKnownWorkAt,
+        statusModel: conversation.statusModel,
         controller: conversation.controller,
       },
       {

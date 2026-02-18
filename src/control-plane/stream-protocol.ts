@@ -7,6 +7,12 @@ export type StreamSessionListSort = 'attention-first' | 'started-desc' | 'starte
 export type StreamTelemetrySource = 'otlp-log' | 'otlp-metric' | 'otlp-trace' | 'history';
 export type StreamTelemetryStatusHint = 'running' | 'completed' | 'needs-input';
 export type StreamSessionControllerType = 'human' | 'agent' | 'automation';
+export type StreamSessionDisplayPhase =
+  | 'needs-action'
+  | 'starting'
+  | 'working'
+  | 'idle'
+  | 'exited';
 
 export interface StreamSessionController {
   controllerId: string;
@@ -20,6 +26,19 @@ export interface StreamTelemetrySummary {
   eventName: string | null;
   severity: string | null;
   summary: string | null;
+  observedAt: string;
+}
+
+export interface StreamSessionStatusModel {
+  runtimeStatus: StreamSessionRuntimeStatus;
+  phase: StreamSessionDisplayPhase;
+  glyph: '▲' | '◔' | '◆' | '○' | '■';
+  badge: 'NEED' | 'RUN ' | 'DONE' | 'EXIT';
+  detailText: string;
+  attentionReason: string | null;
+  lastKnownWork: string | null;
+  lastKnownWorkAt: string | null;
+  phaseHint: 'needs-action' | 'working' | 'idle' | null;
   observedAt: string;
 }
 
@@ -599,6 +618,7 @@ export type StreamObservedEvent =
       sessionId: string;
       status: StreamSessionRuntimeStatus;
       attentionReason: string | null;
+      statusModel: StreamSessionStatusModel | null;
       live: boolean;
       ts: string;
       directoryId: string | null;
@@ -1005,6 +1025,70 @@ function parseTelemetrySummary(value: unknown): StreamTelemetrySummary | null | 
   };
 }
 
+function parseSessionStatusModel(value: unknown): StreamSessionStatusModel | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const record = asRecord(value);
+  if (record === null) {
+    return undefined;
+  }
+  const runtimeStatus = readString(record['runtimeStatus']);
+  const phase = readString(record['phase']);
+  const glyph = readString(record['glyph']);
+  const badge = readString(record['badge']);
+  const detailText = readString(record['detailText']);
+  const attentionReason =
+    record['attentionReason'] === null ? null : readString(record['attentionReason']);
+  const lastKnownWork =
+    record['lastKnownWork'] === null ? null : readString(record['lastKnownWork']);
+  const lastKnownWorkAt =
+    record['lastKnownWorkAt'] === null ? null : readString(record['lastKnownWorkAt']);
+  const phaseHint = record['phaseHint'] === null ? null : readString(record['phaseHint']);
+  const observedAt = readString(record['observedAt']);
+  if (
+    runtimeStatus === null ||
+    (runtimeStatus !== 'running' &&
+      runtimeStatus !== 'needs-input' &&
+      runtimeStatus !== 'completed' &&
+      runtimeStatus !== 'exited') ||
+    phase === null ||
+    (phase !== 'needs-action' &&
+      phase !== 'starting' &&
+      phase !== 'working' &&
+      phase !== 'idle' &&
+      phase !== 'exited') ||
+    glyph === null ||
+    (glyph !== '▲' && glyph !== '◔' && glyph !== '◆' && glyph !== '○' && glyph !== '■') ||
+    badge === null ||
+    (badge !== 'NEED' && badge !== 'RUN ' && badge !== 'DONE' && badge !== 'EXIT') ||
+    detailText === null ||
+    (attentionReason === null && record['attentionReason'] !== null) ||
+    (lastKnownWork === null && record['lastKnownWork'] !== null) ||
+    (lastKnownWorkAt === null && record['lastKnownWorkAt'] !== null) ||
+    (phaseHint === null && record['phaseHint'] !== null) ||
+    (phaseHint !== null && phaseHint !== 'needs-action' && phaseHint !== 'working' && phaseHint !== 'idle') ||
+    observedAt === null
+  ) {
+    return undefined;
+  }
+  return {
+    runtimeStatus,
+    phase,
+    glyph,
+    badge,
+    detailText,
+    attentionReason,
+    lastKnownWork,
+    lastKnownWorkAt,
+    phaseHint,
+    observedAt,
+  };
+}
+
 function parseSessionKeyEventRecord(value: unknown): StreamSessionKeyEventRecord | null {
   const record = asRecord(value);
   if (record === null) {
@@ -1298,6 +1382,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     const sessionId = readString(record['sessionId']);
     const status = readString(record['status']);
     const attentionReason = readString(record['attentionReason']);
+    const statusModel = parseSessionStatusModel(record['statusModel']);
     const live = readBoolean(record['live']);
     const ts = readString(record['ts']);
     const directoryId = readString(record['directoryId']);
@@ -1307,6 +1392,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     if (
       sessionId === null ||
       status === null ||
+      statusModel === undefined ||
       live === null ||
       ts === null ||
       (record['attentionReason'] !== null && attentionReason === null) ||
@@ -1330,6 +1416,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       sessionId,
       status,
       attentionReason: record['attentionReason'] === null ? null : attentionReason,
+      statusModel,
       live,
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,

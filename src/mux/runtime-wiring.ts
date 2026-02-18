@@ -1,20 +1,14 @@
 import type { ControlPlaneKeyEvent } from '../control-plane/codex-session-stream.ts';
 import type {
-  StreamSessionKeyEventRecord,
   StreamSessionController,
   StreamSessionRuntimeStatus,
+  StreamSessionStatusModel,
 } from '../control-plane/stream-protocol.ts';
-
-interface MuxTelemetrySummaryInput {
-  readonly source: string;
-  readonly eventName: string | null;
-  readonly summary: string | null;
-  readonly observedAt: string;
-}
 
 export interface MuxRuntimeConversationState {
   directoryId: string | null;
   status: StreamSessionRuntimeStatus;
+  statusModel: StreamSessionStatusModel | null;
   attentionReason: string | null;
   live: boolean;
   controller: StreamSessionController | null;
@@ -33,17 +27,16 @@ interface ApplyMuxControlPlaneKeyEventOptions<TConversation extends MuxRuntimeCo
   ensureConversation: (sessionId: string, seed?: EnsureConversationSeed) => TConversation;
 }
 
+interface MuxTelemetrySummaryInput {
+  readonly source: string;
+  readonly eventName: string | null;
+  readonly summary: string | null;
+  readonly observedAt: string;
+}
+
 interface ProjectedTelemetrySummary {
   readonly text: string | null;
 }
-
-const RUNNING_STATUS_HINT_EVENT_NAMES = new Set([
-  'codex.user_prompt',
-  'claude.userpromptsubmit',
-  'cursor.beforesubmitprompt',
-  'cursor.beforeshellexecution',
-  'cursor.beforemcptool',
-]);
 
 function parseIsoMs(value: string | null): number {
   if (value === null) {
@@ -153,36 +146,6 @@ export function applyTelemetrySummaryToConversation<
   }
 }
 
-function shouldApplyTelemetryStatusHint(keyEvent: StreamSessionKeyEventRecord): boolean {
-  if (keyEvent.statusHint === null) {
-    return false;
-  }
-  if (keyEvent.source === 'otlp-trace' || keyEvent.source === 'history') {
-    return false;
-  }
-  const eventName = normalizeEventName(keyEvent.eventName);
-  if (keyEvent.statusHint === 'needs-input') {
-    return false;
-  }
-  if (keyEvent.statusHint === 'completed') {
-    return false;
-  }
-  return RUNNING_STATUS_HINT_EVENT_NAMES.has(eventName);
-}
-
-function applyCompletedStatusToConversation<TConversation extends MuxRuntimeConversationState>(
-  target: TConversation,
-  observedAt: string,
-): void {
-  const observedAtMs = parseIsoMs(observedAt);
-  const currentAtMs = parseIsoMs(target.lastKnownWorkAt);
-  if (Number.isFinite(currentAtMs) && Number.isFinite(observedAtMs) && observedAtMs < currentAtMs) {
-    return;
-  }
-  target.lastKnownWork = 'inactive';
-  target.lastKnownWorkAt = observedAt;
-}
-
 export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeConversationState>(
   event: ControlPlaneKeyEvent,
   options: ApplyMuxControlPlaneKeyEventOptions<TConversation>,
@@ -199,15 +162,14 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
 
   if (event.type === 'session-status') {
     conversation.status = event.status;
-    conversation.attentionReason =
-      event.attentionReason === 'telemetry' ? null : event.attentionReason;
+    conversation.statusModel = event.statusModel;
+    conversation.attentionReason = event.attentionReason;
     conversation.live = event.live;
     conversation.controller = event.controller;
     conversation.lastEventAt = event.ts;
-    applyTelemetrySummaryToConversation(conversation, event.telemetry);
-    if (event.status === 'completed') {
-      applyCompletedStatusToConversation(conversation, event.ts);
-    }
+    conversation.lastKnownWork = event.statusModel?.lastKnownWork ?? null;
+    conversation.lastKnownWorkAt = event.statusModel?.lastKnownWorkAt ?? null;
+    conversation.lastTelemetrySource = event.telemetry?.source ?? null;
     return conversation;
   }
 
@@ -217,20 +179,7 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
     return conversation;
   }
 
-  applyTelemetrySummaryToConversation(conversation, {
-    source: event.keyEvent.source,
-    eventName: event.keyEvent.eventName,
-    summary: event.keyEvent.summary,
-    observedAt: event.keyEvent.observedAt,
-  });
   conversation.lastEventAt = event.keyEvent.observedAt;
-  if (!shouldApplyTelemetryStatusHint(event.keyEvent)) {
-    return conversation;
-  }
-  if (event.keyEvent.statusHint === 'running' && conversation.status !== 'exited') {
-    conversation.status = 'running';
-    conversation.attentionReason = null;
-    return conversation;
-  }
+  conversation.lastTelemetrySource = event.keyEvent.source;
   return conversation;
 }

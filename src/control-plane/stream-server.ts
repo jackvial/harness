@@ -19,6 +19,7 @@ import {
   type StreamSessionController,
   type StreamSessionListSort,
   type StreamSessionRuntimeStatus,
+  type StreamSessionStatusModel,
   type StreamClientEnvelope,
   type StreamCommand,
   type StreamServerEnvelope,
@@ -78,6 +79,7 @@ import {
   setSessionStatus as setRuntimeSessionStatus,
 } from './stream-server-session-runtime.ts';
 import { closeOwnedStateStore as closeOwnedStreamServerStateStore } from './stream-server-state-store.ts';
+import { SessionStatusEngine } from './status/session-status-engine.ts';
 import {
   eventIncludesRepositoryId as filterEventIncludesRepositoryId,
   eventIncludesTaskId as filterEventIncludesTaskId,
@@ -270,6 +272,7 @@ interface SessionState {
   attachmentByConnectionId: Map<string, string>;
   unsubscribe: (() => void) | null;
   status: StreamSessionRuntimeStatus;
+  statusModel: StreamSessionStatusModel | null;
   attentionReason: string | null;
   lastEventAt: string | null;
   lastExit: PtyExit | null;
@@ -726,6 +729,7 @@ export class ControlPlaneStreamServer {
   private readonly cursorHooks: CursorHooksConfig;
   private readonly gitStatusMonitor: GitStatusMonitorConfig;
   private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
+  private readonly statusEngine = new SessionStatusEngine();
   private readonly server: Server;
   private readonly telemetryServer: HttpServer | null;
   private telemetryAddress: AddressInfo | null = null;
@@ -1258,6 +1262,9 @@ export class ControlPlaneStreamServer {
 
     const persistedRuntimeStatus = persistedConversation?.runtimeStatus;
     const persistedRuntimeLastEventAt = persistedConversation?.runtimeLastEventAt ?? null;
+    const latestTelemetry = this.stateStore.latestTelemetrySummary(command.sessionId);
+    const startupObservedAt =
+      persistedRuntimeLastEventAt ?? latestTelemetry?.observedAt ?? new Date().toISOString();
     const initialStatus: StreamSessionRuntimeStatus =
       persistedRuntimeStatus === undefined ||
       persistedRuntimeStatus === 'running' ||
@@ -1269,6 +1276,14 @@ export class ControlPlaneStreamServer {
       initialStatus === 'needs-input'
         ? (persistedConversation?.runtimeAttentionReason ?? null)
         : null;
+    const initialStatusModel = this.statusEngine.project({
+      agentType,
+      runtimeStatus: initialStatus,
+      attentionReason: initialAttentionReason,
+      telemetry: latestTelemetry,
+      observedAt: startupObservedAt,
+      previous: persistedConversation?.runtimeStatusModel ?? null,
+    });
     this.sessions.set(command.sessionId, {
       id: command.sessionId,
       directoryId: persistedConversation?.directoryId ?? null,
@@ -1284,6 +1299,7 @@ export class ControlPlaneStreamServer {
       attachmentByConnectionId: new Map<string, string>(),
       unsubscribe,
       status: initialStatus,
+      statusModel: initialStatusModel,
       attentionReason: initialAttentionReason,
       lastEventAt: persistedConversation?.runtimeLastEventAt ?? null,
       lastExit: persistedConversation?.runtimeLastExit ?? null,
@@ -1292,7 +1308,7 @@ export class ControlPlaneStreamServer {
       exitedAt: null,
       tombstoneTimer: null,
       lastObservedOutputCursor: session.latestCursorValue(),
-      latestTelemetry: this.stateStore.latestTelemetrySummary(command.sessionId),
+      latestTelemetry,
       controller: null,
       diagnostics: createSessionDiagnostics(),
     });
@@ -1487,7 +1503,6 @@ export class ControlPlaneStreamServer {
       if (event.providerThreadId !== null) {
         this.updateSessionThreadId(sessionState, event.providerThreadId, event.observedAt);
       }
-      let statusPublished = false;
       const shouldApplyStatusHint =
         event.statusHint !== null &&
         event.source !== 'history' &&
@@ -1499,10 +1514,13 @@ export class ControlPlaneStreamServer {
         } else {
           this.setSessionStatus(sessionState, event.statusHint, null, event.observedAt);
         }
-        statusPublished = true;
-      }
-      if (!statusPublished) {
-        this.publishStatusObservedEvent(sessionState);
+      } else {
+        this.setSessionStatus(
+          sessionState,
+          sessionState.status,
+          sessionState.attentionReason,
+          event.observedAt,
+        );
       }
     }
 
@@ -1738,6 +1756,17 @@ export class ControlPlaneStreamServer {
     );
   }
 
+  private refreshSessionStatusModel(state: SessionState, observedAt: string): void {
+    state.statusModel = this.statusEngine.project({
+      agentType: state.agentType,
+      runtimeStatus: state.status,
+      attentionReason: state.attentionReason,
+      telemetry: state.latestTelemetry,
+      observedAt,
+      previous: state.statusModel,
+    });
+  }
+
   private persistConversationRuntime(state: SessionState): void {
     persistRuntimeConversationState(
       this as unknown as Parameters<typeof persistRuntimeConversationState>[0],
@@ -1860,6 +1889,7 @@ export class ControlPlaneStreamServer {
       createdAt: conversation.createdAt,
       archivedAt: conversation.archivedAt,
       runtimeStatus: conversation.runtimeStatus,
+      runtimeStatusModel: conversation.runtimeStatusModel,
       runtimeLive: conversation.runtimeLive,
       runtimeAttentionReason: conversation.runtimeAttentionReason,
       runtimeProcessId: conversation.runtimeProcessId,
@@ -2268,6 +2298,7 @@ export class ControlPlaneStreamServer {
       worktreeId: state.worktreeId,
       status: state.status,
       attentionReason: state.attentionReason,
+      statusModel: state.statusModel,
       latestCursor: state.session?.latestCursorValue() ?? null,
       processId: state.session?.processId() ?? null,
       attachedClients: state.attachmentByConnectionId.size,

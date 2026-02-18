@@ -1,6 +1,7 @@
 import type {
   StreamSessionListSort,
   StreamSessionRuntimeStatus,
+  StreamSessionStatusModel,
 } from '../control-plane/stream-protocol.ts';
 import { padOrTrimDisplay } from './dual-pane-core.ts';
 import {
@@ -15,6 +16,7 @@ import { paintUiRow } from '../ui/kit.ts';
 export interface ConversationRailSessionSummary {
   readonly sessionId: string;
   readonly status: StreamSessionRuntimeStatus;
+  readonly statusModel: StreamSessionStatusModel | null;
   readonly attentionReason: string | null;
   readonly live: boolean;
   readonly startedAt: string;

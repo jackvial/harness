@@ -4,6 +4,7 @@ import {
   parseSessionSummaryList,
   parseSessionSummaryRecord,
 } from '../src/control-plane/session-summary.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 const validSummary = {
   sessionId: 'conversation-1',
@@ -14,6 +15,9 @@ const validSummary = {
   worktreeId: 'worktree-local',
   status: 'running',
   attentionReason: null,
+  statusModel: statusModelFor('running', {
+    observedAt: '2026-01-01T00:01:00.000Z',
+  }),
   latestCursor: 12,
   processId: 51000,
   attachedClients: 1,
@@ -48,6 +52,10 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
     ...validSummary,
     directoryId: null,
     status: 'exited',
+    statusModel: statusModelFor('exited', {
+      attentionReason: 'approval',
+      observedAt: '2026-01-01T00:02:00.000Z',
+    }),
     live: false,
     attentionReason: 'approval',
     latestCursor: null,
@@ -65,12 +73,18 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
   const needsInput = parseSessionSummaryRecord({
     ...validSummary,
     status: 'needs-input',
+    statusModel: statusModelFor('needs-input', {
+      observedAt: '2026-01-01T00:01:00.000Z',
+    }),
   });
   assert.equal(needsInput?.status, 'needs-input');
 
   const completed = parseSessionSummaryRecord({
     ...validSummary,
     status: 'completed',
+    statusModel: statusModelFor('completed', {
+      observedAt: '2026-01-01T00:01:00.000Z',
+    }),
   });
   assert.equal(completed?.status, 'completed');
 
@@ -174,6 +188,26 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
+      statusModel: {
+        ...validSummary.statusModel,
+        phaseHint: 'unsupported',
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      statusModel: {
+        ...validSummary.statusModel,
+        lastKnownWork: 123,
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
       telemetry: {
         source: 'bad',
         eventName: null,
@@ -224,6 +258,26 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
 });
 
 void test('parseSessionSummaryRecord rejects missing nullable fields when absent', () => {
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      statusModel: undefined,
+    }),
+    null,
+  );
+  const withoutStatusModel = parseSessionSummaryRecord({
+    ...validSummary,
+    statusModel: null,
+  });
+  assert.notEqual(withoutStatusModel, null);
+  assert.equal(withoutStatusModel?.statusModel, null);
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      statusModel: 12,
+    }),
+    null,
+  );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,

@@ -1,9 +1,81 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
-  renderWorkspaceRailAnsiRows,
+  renderWorkspaceRailAnsiRows as renderWorkspaceRailAnsiRowsRaw,
   renderWorkspaceRailRowAnsiForTest,
 } from '../src/mux/workspace-rail.ts';
+import { statusModelFor } from './support/status-model.ts';
+
+type StrictWorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRowsRaw>[0];
+type StrictWorkspaceConversation = StrictWorkspaceRailModel['conversations'][number];
+type FixtureWorkspaceConversation = Omit<StrictWorkspaceConversation, 'statusModel'> & {
+  statusModel?: StrictWorkspaceConversation['statusModel'];
+};
+type FixtureWorkspaceRailModel = Omit<StrictWorkspaceRailModel, 'conversations'> & {
+  conversations: readonly FixtureWorkspaceConversation[];
+};
+
+function normalizeConversationFixture(
+  value: FixtureWorkspaceConversation,
+): StrictWorkspaceConversation {
+  if (value.statusModel !== undefined && value.statusModel !== null) {
+    return value as StrictWorkspaceConversation;
+  }
+  const status = value.status ?? 'completed';
+  const lastKnownWork = value.lastKnownWork ?? null;
+  const attentionReason = value.attentionReason;
+  const lastKnownWorkAt = value.lastKnownWorkAt ?? null;
+  const detailLower = (lastKnownWork ?? '').toLowerCase();
+  const phase =
+    status === 'needs-input'
+      ? 'needs-action'
+      : status === 'exited'
+        ? 'exited'
+        : detailLower === 'active' || detailLower === 'working' || detailLower.startsWith('working:')
+          ? 'working'
+          : detailLower === 'inactive' ||
+              detailLower.includes('turn complete') ||
+              detailLower.includes('turn completed')
+            ? 'idle'
+            : status === 'running'
+              ? 'starting'
+              : 'idle';
+  const modelOptions: NonNullable<Parameters<typeof statusModelFor>[1]> = {
+    attentionReason,
+    phase,
+    lastKnownWork,
+    lastKnownWorkAt,
+    phaseHint:
+      phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
+  };
+  if (lastKnownWork !== null || attentionReason !== null) {
+    modelOptions.detailText = (lastKnownWork ?? attentionReason) as string;
+  }
+  if (lastKnownWorkAt !== null) {
+    modelOptions.observedAt = lastKnownWorkAt;
+  } else if (value.lastEventAt !== null) {
+    modelOptions.observedAt = value.lastEventAt;
+  }
+  return {
+    ...value,
+    statusModel: statusModelFor(status, modelOptions),
+  };
+}
+
+function renderWorkspaceRailAnsiRows(
+  model: FixtureWorkspaceRailModel,
+  width: number,
+  rows: number,
+): ReturnType<typeof renderWorkspaceRailAnsiRowsRaw> {
+  return renderWorkspaceRailAnsiRowsRaw(
+    {
+      ...model,
+      conversations: model.conversations.map((entry) => normalizeConversationFixture(entry)),
+    },
+    width,
+    rows,
+  );
+}
 
 function stripAnsi(value: string): string {
   let output = '';

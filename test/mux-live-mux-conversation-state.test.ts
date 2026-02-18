@@ -11,6 +11,7 @@ import {
   type ConversationState,
 } from '../src/mux/live-mux/conversation-state.ts';
 import type { EventScope } from '../src/events/normalized-events.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 void test('conversation-state create/apply/summary helpers preserve session projections', () => {
   const scope: EventScope = {
@@ -54,6 +55,15 @@ void test('conversation-state create/apply/summary helpers preserve session proj
     directoryId: 'dir-b',
     status: 'needs-input',
     attentionReason: 'needs-input',
+    statusModel: statusModelFor('needs-input', {
+      attentionReason: 'needs-input',
+      detailText: 'active',
+      phase: 'working',
+      lastKnownWork: 'active',
+      lastKnownWorkAt: '2026-02-18T00:01:00.000Z',
+      phaseHint: 'working',
+      observedAt: '2026-02-18T00:01:00.000Z',
+    }),
     latestCursor: 42,
     attachedClients: 1,
     eventSubscribers: 2,
@@ -87,11 +97,12 @@ void test('conversation-state create/apply/summary helpers preserve session proj
   assert.equal(state.lastEventAt, '2026-02-18T00:01:00.000Z');
   assert.equal(state.live, false);
   assert.equal(state.lastKnownWork, 'active');
-  assert.equal(state.lastTelemetrySource, 'otlp-log');
+  assert.equal(state.lastTelemetrySource, null);
 
   assert.deepEqual(conversationSummary(state), {
     sessionId: 'session-a',
     status: 'needs-input',
+    statusModel: state.statusModel,
     attentionReason: 'needs-input',
     live: false,
     startedAt: '2026-02-18T00:00:00.000Z',

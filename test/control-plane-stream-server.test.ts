@@ -15,6 +15,7 @@ import {
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import { encodeStreamEnvelope } from '../src/control-plane/stream-protocol.ts';
 import { SqliteControlPlaneStore } from '../src/store/control-plane-store.ts';
+import { statusModelFor } from './support/status-model.ts';
 import {
   FakeLiveSession,
   collectEnvelopes,
@@ -1425,6 +1426,7 @@ void test('stream server list/query options apply tenant scoping and snapshot re
           conversationId: string,
           runtime: {
             status: 'needs-input';
+            statusModel: ReturnType<typeof statusModelFor>;
             live: boolean;
             attentionReason: string | null;
             processId: number | null;
@@ -1436,6 +1438,9 @@ void test('stream server list/query options apply tenant scoping and snapshot re
     };
     statefulInternals.stateStore.updateConversationRuntime('conversation-needs-input-seed', {
       status: 'needs-input',
+      statusModel: statusModelFor('needs-input', {
+        attentionReason: 'approval needed',
+      }),
       live: false,
       attentionReason: 'approval needed',
       processId: null,
@@ -1465,6 +1470,7 @@ void test('stream server list/query options apply tenant scoping and snapshot re
     });
     statefulInternals.stateStore.updateConversationRuntime('conversation-needs-input-null-reason', {
       status: 'needs-input',
+      statusModel: statusModelFor('needs-input'),
       live: false,
       attentionReason: null,
       processId: null,

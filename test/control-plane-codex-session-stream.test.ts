@@ -19,6 +19,7 @@ import {
   parseClientEnvelope,
   type StreamClientEnvelope,
 } from '../src/control-plane/stream-protocol.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 interface MockHarnessServer {
   address: AddressInfo;
@@ -501,6 +502,7 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
             sessionId: 'conversation-1',
             status: 'running',
             attentionReason: null,
+            statusModel: statusModelFor('running'),
             live: true,
             ts: '2026-01-01T00:00:00.000Z',
             directoryId: 'directory-1',
@@ -653,6 +655,7 @@ void test('subscribeControlPlaneKeyEvents emits post-subscribe events without bu
               sessionId: 'conversation-live',
               status: 'running',
               attentionReason: null,
+              statusModel: statusModelFor('running'),
               live: true,
               ts: '2026-01-01T00:00:03.000Z',
               directoryId: 'directory-live',
@@ -819,6 +822,7 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
             sessionId: 'conversation-1',
             status: 'running',
             attentionReason: null,
+            statusModel: statusModelFor('running'),
             live: true,
             ts: '2026-01-01T00:00:00.000Z',
             directoryId: 'directory-1',
@@ -847,6 +851,7 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
               sessionId: 'conversation-1',
               status: 'running',
               attentionReason: null,
+              statusModel: statusModelFor('running'),
               live: true,
               ts: '2026-01-01T00:00:01.000Z',
               directoryId: 'directory-1',

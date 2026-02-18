@@ -5,6 +5,7 @@ import { test } from 'bun:test';
 import { LifecycleHooksRuntime } from '../src/control-plane/lifecycle-hooks.ts';
 import type { HarnessLifecycleHooksConfig } from '../src/config/config-core.ts';
 import type { StreamObservedEvent } from '../src/control-plane/stream-protocol.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 function makeScope(): {
   tenantId: string;
@@ -132,11 +133,15 @@ function makeSessionStatusEvent(
   scope: ReturnType<typeof makeScope>,
   status: 'running' | 'completed' | 'needs-input' | 'exited',
 ): StreamObservedEvent {
+  const attentionReason = status === 'needs-input' ? 'approval' : null;
   return {
     type: 'session-status',
     sessionId: scope.conversationId,
     status,
-    attentionReason: status === 'needs-input' ? 'approval' : null,
+    attentionReason,
+    statusModel: statusModelFor(status, {
+      attentionReason,
+    }),
     live: status !== 'exited',
     ts: new Date().toISOString(),
     directoryId: scope.directoryId,
@@ -172,11 +177,12 @@ void test('lifecycle hooks dispatch peon-ping categories from normalized session
     }),
   );
   const scope = makeScope();
-  const running: StreamObservedEvent = {
+  const running: Extract<StreamObservedEvent, { type: 'session-status' }> = {
     type: 'session-status',
     sessionId: 'conversation-test',
     status: 'running',
     attentionReason: null,
+    statusModel: statusModelFor('running'),
     live: true,
     ts: new Date().toISOString(),
     directoryId: scope.directoryId,
@@ -295,11 +301,12 @@ void test('lifecycle hooks continue processing after connector failures', async 
     }),
   );
   const scope = makeScope();
-  const running: StreamObservedEvent = {
+  const running: Extract<StreamObservedEvent, { type: 'session-status' }> = {
     type: 'session-status',
     sessionId: 'conversation-test',
     status: 'running',
     attentionReason: null,
+    statusModel: statusModelFor('running'),
     live: true,
     ts: new Date().toISOString(),
     directoryId: scope.directoryId,

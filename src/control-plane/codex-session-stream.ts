@@ -5,6 +5,7 @@ import type {
   StreamSessionController,
   StreamSessionKeyEventRecord,
   StreamSessionRuntimeStatus,
+  StreamSessionStatusModel,
   StreamTelemetrySummary,
 } from './stream-protocol.ts';
 
@@ -54,6 +55,7 @@ export type ControlPlaneKeyEvent =
       sessionId: string;
       status: StreamSessionRuntimeStatus;
       attentionReason: string | null;
+      statusModel: StreamSessionStatusModel | null;
       live: boolean;
       ts: string;
       directoryId: string | null;
@@ -114,6 +116,7 @@ function mapObservedEventToKeyEvent(
       sessionId: event.sessionId,
       status: event.status,
       attentionReason: event.attentionReason,
+      statusModel: event.statusModel,
       live: event.live,
       ts: event.ts,
       directoryId: event.directoryId,

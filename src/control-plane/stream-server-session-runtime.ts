@@ -6,6 +6,7 @@ import type {
   StreamSessionEvent,
   StreamSessionKeyEventRecord,
   StreamSessionRuntimeStatus,
+  StreamSessionStatusModel,
   StreamSignal,
 } from './stream-protocol.ts';
 
@@ -32,6 +33,7 @@ interface RuntimeSession {
   adapterState: Record<string, unknown>;
   eventSubscriberConnectionIds: Set<string>;
   status: StreamSessionRuntimeStatus;
+  statusModel: StreamSessionStatusModel | null;
   attentionReason: string | null;
   lastEventAt: string | null;
   lastExit: { code: number | null; signal: NodeJS.Signals | null } | null;
@@ -81,6 +83,7 @@ interface StreamRuntimeContext {
     state: RuntimeSession,
     keyEvent: StreamSessionKeyEventRecord,
   ): void;
+  refreshSessionStatusModel(state: RuntimeSession, observedAt: string): void;
   toPublicSessionController(
     controller: StreamSessionController | null,
   ): StreamSessionController | null;
@@ -93,6 +96,7 @@ interface StreamRuntimeContext {
       conversationId: string,
       input: {
         status: StreamSessionRuntimeStatus;
+        statusModel: StreamSessionStatusModel | null;
         live: boolean;
         attentionReason: string | null;
         processId: number | null;
@@ -169,6 +173,7 @@ function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
 export function persistConversationRuntime(ctx: StreamRuntimeContext, state: RuntimeSession): void {
   ctx.stateStore.updateConversationRuntime(state.id, {
     status: state.status,
+    statusModel: state.statusModel,
     live: state.session !== null,
     attentionReason: state.attentionReason,
     processId: state.session?.processId() ?? null,
@@ -183,6 +188,7 @@ export function publishStatusObservedEvent(ctx: StreamRuntimeContext, state: Run
     sessionId: state.id,
     status: state.status,
     attentionReason: state.attentionReason,
+    statusModel: state.statusModel,
     live: state.session !== null,
     ts: new Date().toISOString(),
     directoryId: state.directoryId,
@@ -207,6 +213,8 @@ export function setSessionStatus(
   if (lastEventAt !== null) {
     state.lastEventAt = lastEventAt;
   }
+  const observedAt = lastEventAt ?? state.lastEventAt ?? new Date().toISOString();
+  ctx.refreshSessionStatusModel(state, observedAt);
   persistConversationRuntime(ctx, state);
   publishStatusObservedEvent(ctx, state);
 }

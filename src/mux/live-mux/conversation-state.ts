@@ -1,12 +1,14 @@
 import { resolveTerminalCommandForEnvironment } from '../../control-plane/stream-server.ts';
 import type { parseSessionSummaryRecord } from '../../control-plane/session-summary.ts';
-import type { StreamSessionController } from '../../control-plane/stream-protocol.ts';
+import type {
+  StreamSessionController,
+  StreamSessionStatusModel,
+} from '../../control-plane/stream-protocol.ts';
 import type { EventScope } from '../../events/normalized-events.ts';
 import type { PtyExit } from '../../pty/pty_host.ts';
 import { TerminalSnapshotOracle } from '../../terminal/snapshot-oracle.ts';
 import { type ConversationRailSessionSummary } from '../conversation-rail.ts';
 import { normalizeThreadAgentType } from '../new-thread-prompt.ts';
-import { applyTelemetrySummaryToConversation } from '../runtime-wiring.ts';
 
 type SessionSummaryRecord = NonNullable<ReturnType<typeof parseSessionSummaryRecord>>;
 
@@ -20,6 +22,7 @@ export interface ConversationState {
   scope: EventScope;
   oracle: TerminalSnapshotOracle;
   status: ConversationRailSessionSummary['status'];
+  statusModel: StreamSessionStatusModel | null;
   attentionReason: string | null;
   startedAt: string;
   lastEventAt: string | null;
@@ -62,6 +65,8 @@ export function createConversationState(
   cols: number,
   rows: number,
 ): ConversationState {
+  const startedAt = new Date().toISOString();
+  const statusModel: StreamSessionStatusModel | null = null;
   return {
     sessionId,
     directoryId,
@@ -72,8 +77,9 @@ export function createConversationState(
     scope: createConversationScope(baseScope, sessionId, turnId),
     oracle: new TerminalSnapshotOracle(cols, rows),
     status: 'running',
+    statusModel,
     attentionReason: null,
-    startedAt: new Date().toISOString(),
+    startedAt,
     lastEventAt: null,
     exitedAt: null,
     lastExit: null,
@@ -102,6 +108,7 @@ export function applySummaryToConversation(
   target.scope.worktreeId = summary.worktreeId;
   target.directoryId = summary.directoryId;
   target.status = summary.status;
+  target.statusModel = summary.statusModel;
   target.attentionReason = summary.attentionReason;
   target.startedAt = summary.startedAt;
   target.lastEventAt = summary.lastEventAt;
@@ -110,7 +117,9 @@ export function applySummaryToConversation(
   target.processId = summary.processId;
   target.live = summary.live;
   target.controller = summary.controller;
-  applyTelemetrySummaryToConversation(target, summary.telemetry);
+  const statusModel = summary.statusModel;
+  target.lastKnownWork = statusModel?.lastKnownWork ?? null;
+  target.lastKnownWorkAt = statusModel?.lastKnownWorkAt ?? null;
 }
 
 export function conversationSummary(
@@ -119,6 +128,7 @@ export function conversationSummary(
   return {
     sessionId: conversation.sessionId,
     status: conversation.status,
+    statusModel: conversation.statusModel,
     attentionReason: conversation.attentionReason,
     live: conversation.live,
     startedAt: conversation.startedAt,

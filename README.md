@@ -15,6 +15,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Plan work as scoped tasks (`project`, `repository`, `global`) and pull only `ready` tasks.
 - Gate automation globally/per-repository/per-project (enable/disable + freeze), with optional project branch pinning and project-local task focus mode.
 - See project/thread lifecycle updates from other connected clients in real time (no client restart rehydration loop).
+- Get gateway-canonical thread status icons/text for structured agent threads (single server projection, no client-side status interpretation).
 
 ## Demo
 

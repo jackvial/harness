@@ -6,6 +6,7 @@ import {
   type ConversationState,
 } from '../src/mux/live-mux/conversation-state.ts';
 import type { EventScope } from '../src/events/normalized-events.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 const BASE_SCOPE: EventScope = {
   tenantId: 'tenant-a',
@@ -207,12 +208,13 @@ void test('conversation manager persistence, summaries, io updates, and attach/d
       agentType: 'codex',
       adapterState: { persisted: true },
       runtimeStatus: 'running',
+      runtimeStatusModel: statusModelFor('running'),
       runtimeLive: false,
     },
     ensureConversation: (sessionId, seed) => manager.ensure(sessionId, seed),
   });
   assert.equal(persisted.scope.tenantId, 'tenant-persisted');
-  assert.equal(persisted.status, 'completed');
+  assert.equal(persisted.status, 'running');
   assert.equal(persisted.live, false);
 
   const persistedLive = manager.upsertFromPersistedRecord({
@@ -226,6 +228,10 @@ void test('conversation manager persistence, summaries, io updates, and attach/d
       agentType: 'claude',
       adapterState: { persisted: true },
       runtimeStatus: 'needs-input',
+      runtimeStatusModel: statusModelFor('needs-input', {
+        attentionReason: 'needs-input',
+        detailText: 'needs-input',
+      }),
       runtimeLive: true,
     },
     ensureConversation: (sessionId, seed) => manager.ensure(sessionId, seed),
@@ -243,6 +249,11 @@ void test('conversation manager persistence, summaries, io updates, and attach/d
       directoryId: 'dir-summary',
       status: 'needs-input',
       attentionReason: 'needs-input',
+      statusModel: statusModelFor('needs-input', {
+        attentionReason: 'needs-input',
+        observedAt: '2026-02-18T00:00:01.000Z',
+        detailText: 'needs-input',
+      }),
       latestCursor: 12,
       attachedClients: 1,
       eventSubscribers: 2,

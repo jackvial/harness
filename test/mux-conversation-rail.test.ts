@@ -8,8 +8,27 @@ import {
   sortConversationRailSessions,
   type ConversationRailSessionSummary,
 } from '../src/mux/conversation-rail.ts';
+import { statusModelFor } from './support/status-model.ts';
 
-const sessions: readonly ConversationRailSessionSummary[] = [
+function withStatusModel(
+  session: Omit<ConversationRailSessionSummary, 'statusModel'>,
+): ConversationRailSessionSummary {
+  return {
+    ...session,
+    statusModel: statusModelFor(session.status, {
+      attentionReason: session.attentionReason,
+      observedAt: session.lastEventAt ?? session.startedAt,
+    }),
+  };
+}
+
+function withStatusModels(
+  sessions: readonly Omit<ConversationRailSessionSummary, 'statusModel'>[],
+): readonly ConversationRailSessionSummary[] {
+  return sessions.map((session) => withStatusModel(session));
+}
+
+const sessions: readonly ConversationRailSessionSummary[] = withStatusModels([
   {
     sessionId: 'conversation-cccccccc-0000',
     status: 'completed',
@@ -42,7 +61,7 @@ const sessions: readonly ConversationRailSessionSummary[] = [
     startedAt: '2026-01-01T00:02:00.000Z',
     lastEventAt: null,
   },
-];
+]);
 
 void test('sortConversationRailSessions honors attention-first and started sorts', () => {
   const attentionSorted = sortConversationRailSessions(sessions, 'attention-first');
@@ -119,14 +138,14 @@ void test('buildConversationRailLines renders header, active marker, and truncat
 
   const shortConversationId = buildConversationRailLines(
     [
-      {
+      withStatusModel({
         sessionId: 'conversation-12345678',
         status: 'running',
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
         lastEventAt: '2026-01-01T00:01:00.000Z',
-      },
+      }),
     ],
     'conversation-12345678',
     48,
@@ -136,14 +155,14 @@ void test('buildConversationRailLines renders header, active marker, and truncat
 
   const emptyAttentionReason = buildConversationRailLines(
     [
-      {
+      withStatusModel({
         sessionId: 'conversation-empty-reason',
         status: 'needs-input',
         attentionReason: '',
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
         lastEventAt: '2026-01-01T00:01:00.000Z',
-      },
+      }),
     ],
     'conversation-empty-reason',
     48,
@@ -163,7 +182,7 @@ void test('cycleConversationId wraps and handles missing active session', () => 
 });
 
 void test('attention-first sort handles last-event and started/id tie-breakers', () => {
-  const tieRows: readonly ConversationRailSessionSummary[] = [
+  const tieRows: readonly ConversationRailSessionSummary[] = withStatusModels([
     {
       sessionId: 'short-id',
       status: 'running',
@@ -188,7 +207,7 @@ void test('attention-first sort handles last-event and started/id tie-breakers',
       startedAt: '2026-01-01T00:03:00.000Z',
       lastEventAt: '2026-01-01T00:05:00.000Z',
     },
-  ];
+  ]);
 
   const sorted = sortConversationRailSessions(tieRows, 'attention-first');
   assert.deepEqual(
@@ -203,22 +222,22 @@ void test('attention-first sort handles last-event and started/id tie-breakers',
 
   const byStartedDescFallback = sortConversationRailSessions(
     [
-      {
+      withStatusModel({
         sessionId: 'id-2',
         status: 'running',
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
         lastEventAt: '2026-01-01T00:01:00.000Z',
-      },
-      {
+      }),
+      withStatusModel({
         sessionId: 'id-1',
         status: 'running',
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:02:00.000Z',
         lastEventAt: '2026-01-01T00:01:00.000Z',
-      },
+      }),
     ],
     'attention-first',
   );
@@ -242,7 +261,7 @@ void test('buildConversationRailLines supports stable input order mode', () => {
 });
 
 void test('attention-first sort covers null and non-null lastEvent comparator branches', () => {
-  const rows: readonly ConversationRailSessionSummary[] = [
+  const rows: readonly ConversationRailSessionSummary[] = withStatusModels([
     {
       sessionId: 'left-null',
       status: 'running',
@@ -259,7 +278,7 @@ void test('attention-first sort covers null and non-null lastEvent comparator br
       startedAt: '2026-01-01T00:01:00.000Z',
       lastEventAt: '2026-01-01T00:05:00.000Z',
     },
-  ];
+  ]);
 
   const nullCompared = sortConversationRailSessions(rows, 'attention-first');
   assert.deepEqual(
@@ -269,22 +288,22 @@ void test('attention-first sort covers null and non-null lastEvent comparator br
 
   const localeCompared = sortConversationRailSessions(
     [
-      {
+      withStatusModel({
         sessionId: 'event-b',
         status: 'running',
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
         lastEventAt: '2026-01-01T00:05:00.000Z',
-      },
-      {
+      }),
+      withStatusModel({
         sessionId: 'event-a',
         status: 'running',
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
         lastEventAt: '2026-01-01T00:04:00.000Z',
-      },
+      }),
     ],
     'attention-first',
   );

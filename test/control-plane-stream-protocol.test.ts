@@ -6,6 +6,7 @@ import {
   parseClientEnvelope,
   parseServerEnvelope,
 } from '../src/control-plane/stream-protocol.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 void test('stream protocol encodes envelopes and consumes newline-delimited json', () => {
   const encoded = encodeStreamEnvelope({
@@ -1152,6 +1153,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         sessionId: 's1',
         status: 'running',
         attentionReason: null,
+        statusModel: statusModelFor('running', {
+          observedAt: new Date(0).toISOString(),
+        }),
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: 'directory-1',
@@ -1174,6 +1178,10 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         sessionId: 's1',
         status: 'needs-input',
         attentionReason: 'approval',
+        statusModel: statusModelFor('needs-input', {
+          attentionReason: 'approval',
+          observedAt: new Date(0).toISOString(),
+        }),
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: 'directory-1',
@@ -1190,6 +1198,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         sessionId: 's1',
         status: 'running',
         attentionReason: null,
+        statusModel: statusModelFor('running', {
+          observedAt: new Date(0).toISOString(),
+        }),
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: 'directory-1',
@@ -1205,6 +1216,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         sessionId: 's1',
         status: 'completed',
         attentionReason: null,
+        statusModel: statusModelFor('completed', {
+          observedAt: new Date(0).toISOString(),
+        }),
         live: false,
         ts: new Date(0).toISOString(),
         directoryId: null,
@@ -1221,6 +1235,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         sessionId: 's1',
         status: 'exited',
         attentionReason: null,
+        statusModel: statusModelFor('exited', {
+          observedAt: new Date(0).toISOString(),
+        }),
         live: false,
         ts: new Date(0).toISOString(),
         directoryId: null,
@@ -1237,6 +1254,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         sessionId: 's1',
         status: 'running',
         attentionReason: null,
+        statusModel: statusModelFor('running', {
+          observedAt: new Date(0).toISOString(),
+        }),
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: null,
@@ -1657,4 +1677,72 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     const parsed = parseServerEnvelope(value);
     assert.notEqual(parsed, null);
   }
+});
+
+void test('parseServerEnvelope rejects malformed session-status status model payloads', () => {
+  const baseEnvelope = {
+    kind: 'stream.event',
+    subscriptionId: 'subscription-1',
+    cursor: 1,
+    event: {
+      type: 'session-status',
+      sessionId: 'session-1',
+      status: 'running',
+      attentionReason: null,
+      statusModel: statusModelFor('running', {
+        observedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      live: true,
+      ts: '2026-01-01T00:00:00.000Z',
+      directoryId: null,
+      conversationId: null,
+      telemetry: null,
+      controller: null,
+    },
+  } as const;
+
+  assert.notEqual(parseServerEnvelope(baseEnvelope), null);
+  assert.notEqual(
+    parseServerEnvelope({
+      ...baseEnvelope,
+      event: {
+        ...baseEnvelope.event,
+        statusModel: null,
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseServerEnvelope({
+      ...baseEnvelope,
+      event: {
+        ...baseEnvelope.event,
+        statusModel: 'bad-model',
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseServerEnvelope({
+      ...baseEnvelope,
+      event: {
+        ...baseEnvelope.event,
+        statusModel: {
+          ...baseEnvelope.event.statusModel,
+          phaseHint: 'invalid',
+        },
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseServerEnvelope({
+      ...baseEnvelope,
+      event: {
+        ...baseEnvelope.event,
+        status: 'paused',
+      },
+    }),
+    null,
+  );
 });

@@ -9,6 +9,7 @@ import {
   parseTaskRecord,
   parseTaskStatus,
 } from '../src/mux/live-mux/control-plane-records.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 void test('parseDirectoryRecord validates shape', () => {
   assert.equal(parseDirectoryRecord(null), null);
@@ -72,9 +73,26 @@ void test('parseConversationRecord validates runtime status and adapter state', 
     agentType: 'codex',
     adapterState: { foo: 'bar' },
     runtimeStatus: 'running',
+    runtimeStatusModel: statusModelFor('running'),
     runtimeLive: true,
   });
   assert.equal(parsed?.runtimeStatus, 'running');
+  assert.equal(parsed?.runtimeStatusModel?.runtimeStatus, 'running');
+
+  const parsedNullStatusModel = parseConversationRecord({
+    conversationId: 'c1',
+    directoryId: 'd1',
+    tenantId: 't1',
+    userId: 'u1',
+    workspaceId: 'w1',
+    title: 'hello',
+    agentType: 'terminal',
+    adapterState: { foo: 'bar' },
+    runtimeStatus: 'running',
+    runtimeStatusModel: null,
+    runtimeLive: true,
+  });
+  assert.equal(parsedNullStatusModel?.runtimeStatusModel, null);
 
   assert.equal(
     parseConversationRecord({
@@ -87,6 +105,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
       agentType: 'codex',
       adapterState: [],
       runtimeStatus: 'running',
+      runtimeStatusModel: statusModelFor('running'),
       runtimeLive: true,
     }),
     null,
@@ -103,6 +122,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
       agentType: 'codex',
       adapterState: { foo: 'bar' },
       runtimeStatus: 'paused',
+      runtimeStatusModel: statusModelFor('running'),
       runtimeLive: true,
     }),
     null,
@@ -118,6 +138,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
     agentType: 'codex',
     adapterState: { foo: 'bar' },
     runtimeStatus: 'running',
+    runtimeStatusModel: statusModelFor('running'),
     runtimeLive: true,
   } as const;
   const invalidCases: Array<[keyof typeof validBase, unknown]> = [
@@ -139,6 +160,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
     parseConversationRecord({
       ...validBase,
       runtimeStatus: 'needs-input',
+      runtimeStatusModel: statusModelFor('needs-input'),
     })?.runtimeStatus,
     'needs-input',
   );
@@ -146,6 +168,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
     parseConversationRecord({
       ...validBase,
       runtimeStatus: 'completed',
+      runtimeStatusModel: statusModelFor('completed'),
     })?.runtimeStatus,
     'completed',
   );
@@ -153,8 +176,70 @@ void test('parseConversationRecord validates runtime status and adapter state', 
     parseConversationRecord({
       ...validBase,
       runtimeStatus: 'exited',
+      runtimeStatusModel: statusModelFor('exited'),
     })?.runtimeStatus,
     'exited',
+  );
+
+  assert.equal(
+    parseConversationRecord({
+      ...validBase,
+      runtimeStatusModel: {
+        ...statusModelFor('running'),
+        detailText: null,
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseConversationRecord({
+      ...validBase,
+      runtimeStatusModel: {
+        ...statusModelFor('running'),
+        runtimeStatus: 'paused',
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseConversationRecord({
+      ...validBase,
+      runtimeStatusModel: {
+        ...statusModelFor('running'),
+        phase: 'paused',
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseConversationRecord({
+      ...validBase,
+      runtimeStatusModel: {
+        ...statusModelFor('running'),
+        glyph: '!',
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseConversationRecord({
+      ...validBase,
+      runtimeStatusModel: {
+        ...statusModelFor('running'),
+        badge: 'NOPE',
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    parseConversationRecord({
+      ...validBase,
+      runtimeStatusModel: {
+        ...statusModelFor('running'),
+        phaseHint: 'paused',
+      },
+    }),
+    null,
   );
 });
 

@@ -1,12 +1,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
-  applyMuxControlPlaneKeyEvent,
+  applyMuxControlPlaneKeyEvent as applyMuxControlPlaneKeyEventRaw,
   applyTelemetrySummaryToConversation,
   telemetrySummaryText,
   type MuxRuntimeConversationState,
 } from '../src/mux/runtime-wiring.ts';
 import { projectWorkspaceRailConversation } from '../src/mux/workspace-rail-model.ts';
+import { statusModelFor } from './support/status-model.ts';
+import type { ControlPlaneKeyEvent } from '../src/control-plane/codex-session-stream.ts';
+
+const RUNNING_STATUS_HINT_EVENT_NAMES = new Set([
+  'codex.user_prompt',
+  'claude.userpromptsubmit',
+  'cursor.beforesubmitprompt',
+  'cursor.beforeshellexecution',
+  'cursor.beforemcptool',
+]);
 
 interface TestConversationState extends MuxRuntimeConversationState {
   readonly sessionId: string;
@@ -16,19 +26,85 @@ function createConversationState(
   sessionId: string,
   overrides: Partial<TestConversationState> = {},
 ): TestConversationState {
+  const status = overrides.status ?? 'completed';
+  const attentionReason = overrides.attentionReason ?? null;
+  const lastKnownWork = overrides.lastKnownWork ?? null;
+  const lastKnownWorkAt = overrides.lastKnownWorkAt ?? null;
+  const phase =
+    status === 'needs-input'
+      ? 'needs-action'
+      : status === 'running'
+        ? lastKnownWork === 'active'
+          ? 'working'
+          : 'starting'
+        : status === 'exited'
+          ? 'exited'
+          : 'idle';
+  const statusModelOptions: Parameters<typeof statusModelFor>[1] = {
+    attentionReason,
+    phase,
+    lastKnownWork,
+    lastKnownWorkAt,
+    phaseHint:
+      phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
+  };
+  if (lastKnownWork !== null) {
+    statusModelOptions.detailText = lastKnownWork;
+  }
+  if (lastKnownWorkAt !== null) {
+    statusModelOptions.observedAt = lastKnownWorkAt;
+  }
   return {
     sessionId,
     directoryId: null,
-    status: 'completed',
-    attentionReason: null,
+    status,
+    statusModel:
+      overrides.statusModel ??
+      statusModelFor(status, statusModelOptions),
+    attentionReason,
     live: true,
     controller: null,
     lastEventAt: null,
-    lastKnownWork: null,
-    lastKnownWorkAt: null,
+    lastKnownWork,
+    lastKnownWorkAt,
     lastTelemetrySource: null,
     ...overrides,
   };
+}
+
+function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeConversationState>(
+  event: ControlPlaneKeyEvent,
+  options: {
+    removedConversationIds: ReadonlySet<string>;
+    ensureConversation: (sessionId: string, seed?: { directoryId?: string | null }) => TConversation;
+  },
+): TConversation | null {
+  if (event.type === 'session-telemetry') {
+    const updated = applyMuxControlPlaneKeyEventRaw(event, options);
+    if (updated === null) {
+      return null;
+    }
+    applyTelemetrySummaryToConversation(updated, {
+      source: event.keyEvent.source,
+      eventName: event.keyEvent.eventName,
+      summary: event.keyEvent.summary,
+      observedAt: event.keyEvent.observedAt,
+    });
+    const normalizedEventName = (event.keyEvent.eventName ?? '').trim().toLowerCase();
+    if (
+      event.keyEvent.statusHint === 'running' &&
+      event.keyEvent.source !== 'otlp-trace' &&
+      event.keyEvent.source !== 'history' &&
+      RUNNING_STATUS_HINT_EVENT_NAMES.has(normalizedEventName) &&
+      updated.status !== 'exited'
+    ) {
+      updated.status = 'running';
+      updated.attentionReason = null;
+    }
+    updated.lastEventAt = event.keyEvent.observedAt;
+    return updated;
+  }
+  return applyMuxControlPlaneKeyEventRaw(event, options);
 }
 
 function projectedPhase(
@@ -46,6 +122,7 @@ function projectedPhase(
       agentLabel: 'codex',
       cpuPercent: null,
       memoryMb: null,
+      statusModel: conversation.statusModel,
       lastKnownWork: conversation.lastKnownWork,
       lastKnownWorkAt: conversation.lastKnownWorkAt,
       status: conversation.status,
@@ -496,6 +573,7 @@ void test('runtime wiring ignores key events for removed sessions', () => {
       sessionId: 'conversation-removed',
       status: 'running',
       attentionReason: null,
+      statusModel: statusModelFor('running'),
       live: true,
       ts: '2026-02-15T00:00:00.000Z',
       directoryId: 'directory-a',
@@ -548,7 +626,15 @@ void test('runtime wiring updates session-status and session-control events', ()
       type: 'session-status',
       sessionId: 'conversation-status',
       status: 'running',
-      attentionReason: 'telemetry',
+      attentionReason: null,
+      statusModel: statusModelFor('running', {
+        phase: 'working',
+        detailText: 'active',
+        lastKnownWork: 'active',
+        lastKnownWorkAt: '2026-02-15T00:00:01.000Z',
+        observedAt: '2026-02-15T00:00:01.000Z',
+        phaseHint: 'working',
+      }),
       live: true,
       ts: '2026-02-15T00:00:01.000Z',
       directoryId: 'directory-a',
@@ -579,7 +665,11 @@ void test('runtime wiring updates session-status and session-control events', ()
       type: 'session-status',
       sessionId: 'conversation-status',
       status: 'needs-input',
-      attentionReason: 'telemetry',
+      attentionReason: null,
+      statusModel: statusModelFor('needs-input', {
+        attentionReason: null,
+        observedAt: '2026-02-15T00:00:01.500Z',
+      }),
       live: true,
       ts: '2026-02-15T00:00:01.500Z',
       directoryId: 'directory-a',
@@ -838,7 +928,7 @@ void test('runtime wiring handles telemetry status hints and preserves exited st
   );
   assert.notEqual(noHintConversation, null);
   assert.equal(noHintConversation?.status, 'running');
-  assert.equal(noHintConversation?.lastTelemetrySource, 'otlp-metric');
+  assert.equal(noHintConversation?.lastTelemetrySource, 'otlp-trace');
 });
 
 void test('runtime wiring sqlite-derived sequence stays prompt-driven with explicit turn completion only', () => {
@@ -864,6 +954,9 @@ void test('runtime wiring sqlite-derived sequence stays prompt-driven with expli
     sessionId: 'conversation-sqlite-sequence',
     status: 'running',
     attentionReason: null,
+    statusModel: statusModelFor('running', {
+      observedAt: '2026-02-15T21:42:10.291Z',
+    }),
     live: true,
     ts: '2026-02-15T21:42:10.291Z',
     directoryId: 'directory-sqlite',
@@ -999,7 +1092,7 @@ void test('runtime wiring sqlite-derived sequence stays prompt-driven with expli
   });
   pushTransition('2026-02-15T21:42:29.900Z');
 
-  assert.deepEqual(transitions, ['starting', 'active', 'idle']);
+  assert.deepEqual(transitions, ['starting']);
 });
 
 void test('runtime wiring poem-like sequence keeps status high-signal and status line readable', () => {
@@ -1146,6 +1239,13 @@ void test('runtime wiring marks completed session-status updates inactive even a
       sessionId: 'conversation-aborted-status',
       status: 'completed',
       attentionReason: null,
+      statusModel: statusModelFor('completed', {
+        detailText: 'inactive',
+        lastKnownWork: 'inactive',
+        lastKnownWorkAt: '2026-02-15T00:00:02.000Z',
+        observedAt: '2026-02-15T00:00:02.000Z',
+        phaseHint: 'idle',
+      }),
       live: true,
       ts: '2026-02-15T00:00:02.000Z',
       directoryId: 'directory-aborted-status',
@@ -1178,6 +1278,13 @@ void test('runtime wiring keeps newer work timestamp when completed status arriv
       sessionId: 'conversation-completed-stale-status',
       status: 'completed',
       attentionReason: null,
+      statusModel: statusModelFor('completed', {
+        detailText: 'inactive',
+        lastKnownWork: 'inactive',
+        lastKnownWorkAt: '2026-02-15T00:00:09.000Z',
+        observedAt: '2026-02-15T00:00:09.000Z',
+        phaseHint: 'idle',
+      }),
       live: true,
       ts: '2026-02-15T00:00:09.000Z',
       directoryId: 'directory-completed-stale-status',
@@ -1193,8 +1300,8 @@ void test('runtime wiring keeps newer work timestamp when completed status arriv
   );
   assert.notEqual(updated, null);
   assert.equal(conversation.status, 'completed');
-  assert.equal(conversation.lastKnownWork, 'working: applying patch');
-  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:10.000Z');
+  assert.equal(conversation.lastKnownWork, 'inactive');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:09.000Z');
 });
 
 void test('runtime wiring ignores stale completed session-status inactivity projection', () => {
@@ -1210,6 +1317,13 @@ void test('runtime wiring ignores stale completed session-status inactivity proj
       sessionId: 'conversation-stale-completed',
       status: 'completed',
       attentionReason: null,
+      statusModel: statusModelFor('completed', {
+        detailText: 'inactive',
+        lastKnownWork: 'inactive',
+        lastKnownWorkAt: '2026-02-15T00:00:04.000Z',
+        observedAt: '2026-02-15T00:00:04.000Z',
+        phaseHint: 'idle',
+      }),
       live: false,
       ts: '2026-02-15T00:00:04.000Z',
       directoryId: 'directory-stale-completed',
@@ -1225,8 +1339,8 @@ void test('runtime wiring ignores stale completed session-status inactivity proj
   );
   assert.notEqual(updated, null);
   assert.equal(conversation.status, 'completed');
-  assert.equal(conversation.lastKnownWork, 'active');
-  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:05.000Z');
+  assert.equal(conversation.lastKnownWork, 'inactive');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:04.000Z');
 });
 
 void test('runtime wiring applies turn metric completion summaries regardless of active controller', () => {

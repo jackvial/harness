@@ -1,5 +1,8 @@
 import type { PtyExit } from '../pty/pty_host.ts';
-import type { StreamSessionRuntimeStatus } from '../control-plane/stream-protocol.ts';
+import type {
+  StreamSessionRuntimeStatus,
+  StreamSessionStatusModel,
+} from '../control-plane/stream-protocol.ts';
 import type { CodexTelemetrySource } from '../control-plane/codex-telemetry.ts';
 
 export interface ControlPlaneDirectoryRecord {
@@ -23,6 +26,7 @@ export interface ControlPlaneConversationRecord {
   readonly createdAt: string;
   readonly archivedAt: string | null;
   readonly runtimeStatus: StreamSessionRuntimeStatus;
+  readonly runtimeStatusModel: StreamSessionStatusModel | null;
   readonly runtimeLive: boolean;
   readonly runtimeAttentionReason: string | null;
   readonly runtimeProcessId: number | null;

@@ -3,13 +3,98 @@ import { test } from 'bun:test';
 import {
   actionAtWorkspaceRailCell,
   actionAtWorkspaceRailRow,
-  buildWorkspaceRailViewRows,
+  buildWorkspaceRailViewRows as buildWorkspaceRailViewRowsRaw,
   conversationIdAtWorkspaceRailRow,
-  projectWorkspaceRailConversation,
+  projectWorkspaceRailConversation as projectWorkspaceRailConversationRaw,
   projectIdAtWorkspaceRailRow,
   repositoryIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow,
 } from '../src/mux/workspace-rail-model.ts';
+import { statusModelFor } from './support/status-model.ts';
+
+type StrictWorkspaceRailModel = Parameters<typeof buildWorkspaceRailViewRowsRaw>[0];
+type StrictWorkspaceConversation = StrictWorkspaceRailModel['conversations'][number];
+type FixtureWorkspaceConversation = Omit<StrictWorkspaceConversation, 'statusModel'> & {
+  statusModel?: StrictWorkspaceConversation['statusModel'];
+};
+type FixtureWorkspaceRailModel = Omit<StrictWorkspaceRailModel, 'conversations'> & {
+  conversations: readonly FixtureWorkspaceConversation[];
+};
+
+function normalizeConversationFixture(
+  value: FixtureWorkspaceConversation,
+): StrictWorkspaceConversation {
+  if (value.statusModel !== undefined && value.statusModel !== null) {
+    return value as StrictWorkspaceConversation;
+  }
+  const status = value.status ?? 'completed';
+  const attentionReason = value.attentionReason;
+  const lastKnownWork = value.lastKnownWork ?? null;
+  const lastKnownWorkAt = value.lastKnownWorkAt ?? null;
+  const detailLower = lastKnownWork?.toLowerCase() ?? '';
+  const phase =
+    status === 'needs-input'
+      ? 'needs-action'
+      : status === 'exited'
+        ? 'exited'
+        : detailLower.includes('needs input') ||
+            detailLower.includes('needs-input') ||
+            detailLower.includes('attention-required') ||
+            detailLower.includes('attention required') ||
+            detailLower.includes('approval denied')
+          ? 'needs-action'
+          : detailLower === 'active' || detailLower === 'working' || detailLower.startsWith('working:')
+            ? 'working'
+            : detailLower === 'inactive' ||
+                detailLower.includes('turn complete') ||
+                detailLower.includes('turn completed')
+              ? 'idle'
+            : status === 'running'
+              ? 'starting'
+              : 'idle';
+  const modelOptions: NonNullable<Parameters<typeof statusModelFor>[1]> = {
+    attentionReason,
+    phase,
+    lastKnownWork,
+    lastKnownWorkAt,
+    phaseHint:
+      phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
+  };
+  if (lastKnownWork !== null || attentionReason !== null) {
+    modelOptions.detailText = (lastKnownWork ?? attentionReason) as string;
+  }
+  if (lastKnownWorkAt !== null) {
+    modelOptions.observedAt = lastKnownWorkAt;
+  } else if (value.lastEventAt !== null) {
+    modelOptions.observedAt = value.lastEventAt;
+  }
+  return {
+    ...value,
+    statusModel: statusModelFor(status, modelOptions),
+  };
+}
+
+function normalizeModelFixture(value: FixtureWorkspaceRailModel): StrictWorkspaceRailModel {
+  const conversations = value.conversations.map((entry) => normalizeConversationFixture(entry));
+  return {
+    ...value,
+    conversations,
+  };
+}
+
+function buildWorkspaceRailViewRows(
+  model: FixtureWorkspaceRailModel,
+  rows: number,
+): ReturnType<typeof buildWorkspaceRailViewRowsRaw> {
+  return buildWorkspaceRailViewRowsRaw(normalizeModelFixture(model), rows);
+}
+
+function projectWorkspaceRailConversation(
+  conversation: FixtureWorkspaceConversation,
+  options?: Parameters<typeof projectWorkspaceRailConversationRaw>[1],
+): ReturnType<typeof projectWorkspaceRailConversationRaw> {
+  return projectWorkspaceRailConversationRaw(normalizeConversationFixture(conversation), options);
+}
 
 void test('workspace rail model builds rows with conversation spacing and process metadata', () => {
   const rows = buildWorkspaceRailViewRows(
@@ -1950,4 +2035,194 @@ void test('workspace rail conversation projection supports default option branch
   assert.equal(projected.status, 'starting');
   assert.equal(projected.glyph, '◔');
   assert.equal(projected.detailText, 'starting');
+});
+
+void test('workspace rail conversation projection falls back to attention reason when detail text is blank', () => {
+  const projected = projectWorkspaceRailConversation({
+    sessionId: 'conversation-attention-fallback',
+    directoryKey: 'dir',
+    title: 'task',
+    agentLabel: 'codex',
+    cpuPercent: null,
+    memoryMb: null,
+    status: 'needs-input',
+    statusModel: {
+      ...statusModelFor('needs-input', {
+        attentionReason: null,
+      }),
+      detailText: '   ',
+    },
+    lastKnownWork: null,
+    lastKnownWorkAt: null,
+    attentionReason: 'manual approval',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    lastEventAt: '2026-01-01T00:00:01.000Z',
+  });
+  assert.equal(projected.detailText, 'manual approval');
+});
+
+void test('workspace rail conversation projection falls back to status label when detail and attention are blank', () => {
+  const projected = projectWorkspaceRailConversation({
+    sessionId: 'conversation-status-label-fallback',
+    directoryKey: 'dir',
+    title: 'task',
+    agentLabel: 'codex',
+    cpuPercent: null,
+    memoryMb: null,
+    status: 'completed',
+    statusModel: {
+      ...statusModelFor('completed', {
+        attentionReason: null,
+      }),
+      detailText: '   ',
+    },
+    lastKnownWork: null,
+    lastKnownWorkAt: null,
+    attentionReason: null,
+    startedAt: '2026-01-01T00:00:00.000Z',
+    lastEventAt: '2026-01-01T00:00:01.000Z',
+  });
+  assert.equal(projected.detailText, 'inactive');
+});
+
+void test('workspace rail model suppresses status icon and detail rows for terminal and critique conversations', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-terminal',
+          directoryKey: 'dir',
+          title: 'shell',
+          agentLabel: 'terminal',
+          cpuPercent: 0,
+          memoryMb: 0,
+          status: 'running',
+          statusModel: statusModelFor('running', {
+            phase: 'working',
+            detailText: 'active',
+            phaseHint: 'working',
+          }),
+          lastKnownWork: 'active',
+          lastKnownWorkAt: '2026-01-01T00:00:01.000Z',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
+        {
+          sessionId: 'conversation-critique',
+          directoryKey: 'dir',
+          title: 'review',
+          agentLabel: 'critique',
+          cpuPercent: 0,
+          memoryMb: 0,
+          status: 'running',
+          statusModel: statusModelFor('running', {
+            phase: 'working',
+            detailText: 'active',
+            phaseHint: 'working',
+          }),
+          lastKnownWork: 'active',
+          lastKnownWorkAt: '2026-01-01T00:00:01.000Z',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-terminal',
+    },
+    24,
+  );
+
+  const terminalTitle = rows.find(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-terminal',
+  );
+  const critiqueTitle = rows.find(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-critique',
+  );
+  assert.notEqual(terminalTitle, undefined);
+  assert.notEqual(critiqueTitle, undefined);
+  assert.equal(terminalTitle?.text.includes('terminal - shell'), true);
+  assert.equal(critiqueTitle?.text.includes('critique - review'), true);
+  assert.equal(terminalTitle?.text.includes('◆'), false);
+  assert.equal(critiqueTitle?.text.includes('◆'), false);
+
+  assert.equal(
+    rows.some(
+      (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-terminal',
+    ),
+    false,
+  );
+  assert.equal(
+    rows.some(
+      (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-critique',
+    ),
+    false,
+  );
+});
+
+void test('workspace rail projection maps runtime status when status model is null', () => {
+  const baseConversation: StrictWorkspaceConversation = {
+    sessionId: 'conversation-1',
+    directoryKey: 'dir',
+    title: 'thread',
+    agentLabel: 'codex',
+    cpuPercent: null,
+    memoryMb: null,
+    attentionReason: null,
+    startedAt: '2026-01-01T00:00:00.000Z',
+    lastEventAt: null,
+    status: 'completed',
+    statusModel: null,
+  };
+
+  assert.equal(
+    projectWorkspaceRailConversationRaw({
+      ...baseConversation,
+      status: 'needs-input',
+    }).status,
+    'needs-action',
+  );
+  assert.equal(
+    projectWorkspaceRailConversationRaw({
+      ...baseConversation,
+      status: 'running',
+    }).status,
+    'starting',
+  );
+  assert.equal(
+    projectWorkspaceRailConversationRaw({
+      ...baseConversation,
+      status: 'exited',
+    }).status,
+    'exited',
+  );
+  assert.equal(
+    projectWorkspaceRailConversationRaw({
+      ...baseConversation,
+      status: 'completed',
+    }).status,
+    'idle',
+  );
+  assert.equal(
+    projectWorkspaceRailConversationRaw({
+      ...baseConversation,
+      status: 'running',
+    }).statusVisible,
+    false,
+  );
 });

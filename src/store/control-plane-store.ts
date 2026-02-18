@@ -43,7 +43,49 @@ import type {
 } from './control-plane-store-types.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 import type { CodexTelemetrySource } from '../control-plane/codex-telemetry.ts';
-import type { StreamSessionRuntimeStatus } from '../control-plane/stream-protocol.ts';
+import type {
+  StreamSessionRuntimeStatus,
+  StreamSessionStatusModel,
+} from '../control-plane/stream-protocol.ts';
+
+const DEFAULT_RUNTIME_STATUS_MODEL_JSON = JSON.stringify({
+  runtimeStatus: 'running',
+  phase: 'starting',
+  glyph: '◔',
+  badge: 'RUN ',
+  detailText: 'starting',
+  attentionReason: null,
+  lastKnownWork: null,
+  lastKnownWorkAt: null,
+  phaseHint: null,
+  observedAt: new Date(0).toISOString(),
+} satisfies StreamSessionStatusModel | null);
+
+function statusModelEnabledForAgentType(agentType: string): boolean {
+  const normalized = agentType.trim().toLowerCase();
+  return normalized === 'codex' || normalized === 'claude' || normalized === 'cursor';
+}
+
+function initialRuntimeStatusModel(
+  agentType: string,
+  observedAt: string,
+): StreamSessionStatusModel | null {
+  if (!statusModelEnabledForAgentType(agentType)) {
+    return null;
+  }
+  return {
+    runtimeStatus: 'running',
+    phase: 'starting',
+    glyph: '◔',
+    badge: 'RUN ',
+    detailText: 'starting',
+    attentionReason: null,
+    lastKnownWork: null,
+    lastKnownWorkAt: null,
+    phaseHint: null,
+    observedAt,
+  };
+}
 
 export type {
   ControlPlaneAutomationPolicyRecord,
@@ -98,6 +140,7 @@ interface ListConversationQuery {
 
 interface ConversationRuntimeUpdate {
   status: StreamSessionRuntimeStatus;
+  statusModel: StreamSessionStatusModel | null;
   live: boolean;
   attentionReason: string | null;
   processId: number | null;
@@ -435,6 +478,7 @@ export class SqliteControlPlaneStore {
       }
 
       const createdAt = new Date().toISOString();
+      const initialStatusModel = initialRuntimeStatusModel(input.agentType, createdAt);
       this.db
         .prepare(
           `
@@ -449,6 +493,7 @@ export class SqliteControlPlaneStore {
             created_at,
             archived_at,
             runtime_status,
+            runtime_status_model_json,
             runtime_live,
             runtime_attention_reason,
             runtime_process_id,
@@ -456,7 +501,7 @@ export class SqliteControlPlaneStore {
             runtime_last_exit_code,
             runtime_last_exit_signal,
             adapter_state_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'running', 0, NULL, NULL, NULL, NULL, NULL, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'running', ?, 0, NULL, NULL, NULL, NULL, NULL, ?)
         `,
         )
         .run(
@@ -468,6 +513,7 @@ export class SqliteControlPlaneStore {
           input.title,
           input.agentType,
           createdAt,
+          JSON.stringify(initialStatusModel),
           JSON.stringify(input.adapterState ?? {}),
         );
       const created = this.getConversation(input.conversationId);
@@ -497,6 +543,7 @@ export class SqliteControlPlaneStore {
           created_at,
           archived_at,
           runtime_status,
+          runtime_status_model_json,
           runtime_live,
           runtime_attention_reason,
           runtime_process_id,
@@ -554,6 +601,7 @@ export class SqliteControlPlaneStore {
           created_at,
           archived_at,
           runtime_status,
+          runtime_status_model_json,
           runtime_live,
           runtime_attention_reason,
           runtime_process_id,
@@ -677,6 +725,7 @@ export class SqliteControlPlaneStore {
         UPDATE conversations
         SET
           runtime_status = ?,
+          runtime_status_model_json = ?,
           runtime_live = ?,
           runtime_attention_reason = ?,
           runtime_process_id = ?,
@@ -688,6 +737,7 @@ export class SqliteControlPlaneStore {
       )
       .run(
         update.status,
+        JSON.stringify(update.statusModel),
         update.live ? 1 : 0,
         update.attentionReason,
         update.processId,
@@ -1978,6 +2028,7 @@ export class SqliteControlPlaneStore {
         created_at TEXT NOT NULL,
         archived_at TEXT,
         runtime_status TEXT NOT NULL,
+        runtime_status_model_json TEXT NOT NULL DEFAULT '${DEFAULT_RUNTIME_STATUS_MODEL_JSON}',
         runtime_live INTEGER NOT NULL,
         runtime_attention_reason TEXT,
         runtime_process_id INTEGER,
@@ -1999,6 +2050,11 @@ export class SqliteControlPlaneStore {
       'conversations',
       'adapter_state_json',
       `adapter_state_json TEXT NOT NULL DEFAULT '{}'`,
+    );
+    this.ensureColumnExists(
+      'conversations',
+      'runtime_status_model_json',
+      `runtime_status_model_json TEXT NOT NULL DEFAULT '${DEFAULT_RUNTIME_STATUS_MODEL_JSON}'`,
     );
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS session_telemetry (

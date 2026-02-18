@@ -16,6 +16,7 @@ import {
 } from '../src/mux/runtime-wiring.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -87,6 +88,7 @@ function createConversationState(sessionId: string): TestConversationState {
     sessionId,
     directoryId: null,
     status: 'running',
+    statusModel: statusModelFor('running'),
     attentionReason: null,
     live: true,
     controller: null,
@@ -333,6 +335,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
               agentLabel: 'codex',
               cpuPercent: null,
               memoryMb: null,
+              statusModel: runningConversation?.statusModel,
               lastKnownWork: runningConversation?.lastKnownWork ?? null,
               lastKnownWorkAt: runningConversation?.lastKnownWorkAt ?? null,
               status: runningConversation?.status ?? 'running',
@@ -394,7 +397,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const completedConversation = conversations.get('conversation-runtime');
       assert.notEqual(completedConversation, undefined);
       assert.equal(completedConversation?.status, 'running');
-      assert.equal(completedConversation?.lastKnownWork, 'active');
+      assert.equal(completedConversation?.lastKnownWork, 'inactive');
 
       const delayedMetricResponse = await postJson(
         {
@@ -755,6 +758,9 @@ void test('mux runtime wiring integration applies completion projection regardle
               agentLabel: 'codex',
               cpuPercent: null,
               memoryMb: null,
+              statusModel:
+                afterTurnCompletion?.statusModel ??
+                statusModelFor(afterTurnCompletion?.status ?? 'running'),
               lastKnownWork: afterTurnCompletion?.lastKnownWork ?? null,
               lastKnownWorkAt: afterTurnCompletion?.lastKnownWorkAt ?? null,
               status: afterTurnCompletion?.status ?? 'running',
@@ -844,6 +850,9 @@ void test('mux runtime wiring integration applies completion projection regardle
               agentLabel: 'codex',
               cpuPercent: null,
               memoryMb: null,
+              statusModel:
+                afterTaskTerminal?.statusModel ??
+                statusModelFor(afterTaskTerminal?.status ?? 'running'),
               lastKnownWork: afterTaskTerminal?.lastKnownWork ?? null,
               lastKnownWorkAt: afterTaskTerminal?.lastKnownWorkAt ?? null,
               status: afterTaskTerminal?.status ?? 'running',

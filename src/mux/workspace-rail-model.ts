@@ -1,6 +1,9 @@
 import type { ConversationRailSessionSummary } from './conversation-rail.ts';
 import { formatUiButton } from '../ui/kit.ts';
-import type { StreamSessionController } from '../control-plane/stream-protocol.ts';
+import type {
+  StreamSessionController,
+  StreamSessionDisplayPhase,
+} from '../control-plane/stream-protocol.ts';
 
 interface WorkspaceRailGitSummary {
   readonly branch: string;
@@ -24,9 +27,10 @@ interface WorkspaceRailConversationSummary {
   readonly agentLabel: string;
   readonly cpuPercent: number | null;
   readonly memoryMb: number | null;
-  readonly lastKnownWork: string | null;
+  readonly status?: ConversationRailSessionSummary['status'];
+  readonly lastKnownWork?: string | null;
   readonly lastKnownWorkAt?: string | null;
-  readonly status: ConversationRailSessionSummary['status'];
+  readonly statusModel: ConversationRailSessionSummary['statusModel'] | null;
   readonly attentionReason: string | null;
   readonly startedAt: string;
   readonly lastEventAt: string | null;
@@ -100,9 +104,6 @@ const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'add project',
   prefixIcon: '>',
 });
-const STARTING_TEXT_STALE_MS = 2_000;
-const WORKING_TEXT_STALE_MS = 5_000;
-const NEEDS_ACTION_TEXT_STALE_MS = 60_000;
 
 type WorkspaceRailAction =
   | 'conversation.new'
@@ -117,112 +118,13 @@ type WorkspaceRailAction =
   | 'repository.archive'
   | 'repositories.toggle';
 
-type NormalizedConversationStatus = 'needs-action' | 'starting' | 'working' | 'idle' | 'exited';
+type NormalizedConversationStatus = StreamSessionDisplayPhase;
 
 interface WorkspaceRailConversationProjection {
   readonly status: NormalizedConversationStatus;
   readonly glyph: string;
   readonly detailText: string;
-}
-
-function parseIsoMs(value: string | null | undefined): number {
-  if (value === null || value === undefined) {
-    return Number.NaN;
-  }
-  return Date.parse(value);
-}
-
-function isLastKnownWorkCurrent(
-  conversation: WorkspaceRailConversationSummary,
-  nowMs: number,
-): boolean {
-  const lastKnownWorkAtMs = parseIsoMs(conversation.lastKnownWorkAt ?? null);
-  if (!Number.isFinite(lastKnownWorkAtMs)) {
-    return true;
-  }
-  const ageMs = Math.max(0, nowMs - lastKnownWorkAtMs);
-  const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
-  if (inferred === 'starting') {
-    return ageMs <= STARTING_TEXT_STALE_MS;
-  }
-  if (inferred === 'working') {
-    return ageMs <= WORKING_TEXT_STALE_MS;
-  }
-  if (inferred === 'needs-action') {
-    return ageMs <= NEEDS_ACTION_TEXT_STALE_MS;
-  }
-  return true;
-}
-
-function inferStatusFromLastKnownWork(
-  lastKnownWork: string | null,
-): NormalizedConversationStatus | null {
-  const normalized = summaryText(lastKnownWork)?.toLowerCase() ?? null;
-  if (normalized === null) {
-    return null;
-  }
-  if (
-    normalized.includes('needs-input') ||
-    normalized.includes('needs input') ||
-    normalized.includes('attention-required') ||
-    normalized.includes('approval denied')
-  ) {
-    return 'needs-action';
-  }
-  if (normalized === 'starting' || normalized.includes('conversation started')) {
-    return 'starting';
-  }
-  if (
-    normalized === 'inactive' ||
-    normalized === 'idle' ||
-    normalized.includes('turn complete') ||
-    normalized.includes('turn completed')
-  ) {
-    return 'idle';
-  }
-  if (normalized === 'active' || normalized.startsWith('working:') || normalized === 'working') {
-    return 'working';
-  }
-  return null;
-}
-
-function normalizeConversationStatus(
-  conversation: WorkspaceRailConversationSummary,
-  nowMs: number,
-): NormalizedConversationStatus {
-  if (conversation.status === 'needs-input') {
-    return 'needs-action';
-  }
-  if (conversation.status === 'exited') {
-    return 'exited';
-  }
-  const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
-  if (inferred === 'working') {
-    return 'working';
-  }
-  if (inferred !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
-    return inferred;
-  }
-  if (conversation.status === 'running') {
-    return 'starting';
-  }
-  return 'idle';
-}
-
-function statusGlyph(status: NormalizedConversationStatus): string {
-  if (status === 'needs-action') {
-    return '▲';
-  }
-  if (status === 'starting') {
-    return '◔';
-  }
-  if (status === 'working') {
-    return '◆';
-  }
-  if (status === 'idle') {
-    return '○';
-  }
-  return '■';
+  readonly statusVisible: boolean;
 }
 
 function processStatusText(status: WorkspaceRailProcessSummary['status']): string {
@@ -265,11 +167,10 @@ function statusLineLabel(status: NormalizedConversationStatus): string {
 function conversationDetailText(
   conversation: WorkspaceRailConversationSummary,
   normalizedStatus: NormalizedConversationStatus,
-  nowMs: number,
 ): string {
-  const lastKnownWork = summaryText(conversation.lastKnownWork);
-  if (lastKnownWork !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
-    return lastKnownWork;
+  const detailText = summaryText(conversation.statusModel?.detailText ?? null);
+  if (detailText !== null) {
+    return detailText;
   }
   const attentionReason = summaryText(conversation.attentionReason);
   if (attentionReason !== null) {
@@ -278,18 +179,40 @@ function conversationDetailText(
   return statusLineLabel(normalizedStatus);
 }
 
+function statusFromRuntimeStatus(
+  status: WorkspaceRailConversationSummary['status'] | undefined,
+): NormalizedConversationStatus {
+  if (status === 'needs-input') {
+    return 'needs-action';
+  }
+  if (status === 'running') {
+    return 'starting';
+  }
+  if (status === 'exited') {
+    return 'exited';
+  }
+  return 'idle';
+}
+
+function statusVisibleForAgent(agentLabel: string): boolean {
+  const normalized = agentLabel.trim().toLowerCase();
+  return normalized !== 'terminal' && normalized !== 'critique';
+}
+
 export function projectWorkspaceRailConversation(
   conversation: WorkspaceRailConversationSummary,
-  options: {
+  _options: {
     readonly nowMs?: number;
   } = {},
 ): WorkspaceRailConversationProjection {
-  const nowMs = options.nowMs ?? Date.now();
-  const normalizedStatus = normalizeConversationStatus(conversation, nowMs);
+  const statusModel = conversation.statusModel;
+  const normalizedStatus = statusModel?.phase ?? statusFromRuntimeStatus(conversation.status);
+  const statusVisible = statusModel !== null && statusVisibleForAgent(conversation.agentLabel);
   return {
     status: normalizedStatus,
-    glyph: statusGlyph(normalizedStatus),
-    detailText: conversationDetailText(conversation, normalizedStatus, nowMs),
+    glyph: statusVisible ? (statusModel?.glyph ?? '') : '',
+    detailText: statusVisible ? conversationDetailText(conversation, normalizedStatus) : '',
+    statusVisible,
   };
 }
 
@@ -416,6 +339,9 @@ function buildContentRows(
     const projection = projectWorkspaceRailConversation(conversation, {
       nowMs,
     });
+    if (!projection.statusVisible) {
+      continue;
+    }
     if (
       projection.status !== 'working' &&
       projection.status !== 'starting' &&
@@ -501,30 +427,37 @@ function buildContentRows(
         const projection = projectWorkspaceRailConversation(conversation, {
           nowMs,
         });
+        const titleText = projection.statusVisible
+          ? `${projectChildPrefix}${conversationIsLast ? '└' : '├'}─ ${projection.glyph} ${conversationDisplayTitle(
+              conversation,
+            )}`
+          : `${projectChildPrefix}${conversationIsLast ? '└' : '├'}─ ${conversationDisplayTitle(
+              conversation,
+            )}`;
         pushRow(
           rows,
           'conversation-title',
-          `${projectChildPrefix}${conversationIsLast ? '└' : '├'}─ ${projection.glyph} ${conversationDisplayTitle(
-            conversation,
-          )}`,
+          titleText,
           active,
           conversation.sessionId,
           directory.key,
           repositoryId,
           null,
-          projection.status,
+          projection.statusVisible ? projection.status : null,
         );
-        pushRow(
-          rows,
-          'conversation-body',
-          `${projectChildPrefix}${conversationIsLast ? '     ' : '│    '}${projection.detailText}`,
-          active,
-          conversation.sessionId,
-          directory.key,
-          repositoryId,
-          null,
-          projection.status,
-        );
+        if (projection.statusVisible) {
+          pushRow(
+            rows,
+            'conversation-body',
+            `${projectChildPrefix}${conversationIsLast ? '     ' : '│    '}${projection.detailText}`,
+            active,
+            conversation.sessionId,
+            directory.key,
+            repositoryId,
+            null,
+            projection.status,
+          );
+        }
       }
 
       const processes = model.processes.filter((process) => process.directoryKey === directory.key);

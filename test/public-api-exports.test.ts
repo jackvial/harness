@@ -57,6 +57,7 @@ import type {
   ControlPlaneTaskRecord,
   ControlPlaneTelemetryRecord,
 } from '../src/store/control-plane-store.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 void test('public api exports stay importable and structurally typed', () => {
   const subscription: AgentRealtimeSubscriptionFilter = {
@@ -99,6 +100,7 @@ void test('public api exports stay importable and structurally typed', () => {
       sessionId: 'conversation-1',
       status: 'running',
       attentionReason: null,
+      statusModel: statusModelFor('running'),
       live: true,
       ts: new Date(0).toISOString(),
       directoryId: null,
@@ -112,6 +114,7 @@ void test('public api exports stay importable and structurally typed', () => {
     sessionId: 'conversation-1',
     status: 'running',
     attentionReason: null,
+    statusModel: statusModelFor('running'),
     live: true,
     ts: new Date(0).toISOString(),
     directoryId: null,
@@ -295,6 +298,7 @@ void test('public api exports stay importable and structurally typed', () => {
     createdAt: new Date(0).toISOString(),
     archivedAt: null,
     runtimeStatus: 'running',
+    runtimeStatusModel: statusModelFor('running'),
     runtimeLive: true,
     runtimeAttentionReason: null,
     runtimeProcessId: null,

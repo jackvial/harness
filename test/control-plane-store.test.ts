@@ -9,6 +9,7 @@ import {
   normalizeStoredConversationRow,
   normalizeStoredDirectoryRow,
 } from '../src/store/control-plane-store.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 function tempStorePath(): string {
   const dir = mkdtempSync(join(tmpdir(), 'harness-control-plane-store-'));
@@ -64,6 +65,10 @@ void test('control-plane store upserts directories and persists conversations/ru
 
     const runtimeUpdated = store.updateConversationRuntime('conversation-1', {
       status: 'needs-input',
+      statusModel: statusModelFor('needs-input', {
+        attentionReason: 'approval',
+        detailText: 'approval',
+      }),
       live: true,
       attentionReason: 'approval',
       processId: 73001,
@@ -77,6 +82,7 @@ void test('control-plane store upserts directories and persists conversations/ru
 
     const runtimeExited = store.updateConversationRuntime('conversation-1', {
       status: 'exited',
+      statusModel: statusModelFor('exited'),
       live: false,
       attentionReason: null,
       processId: null,
@@ -196,6 +202,7 @@ void test('control-plane store restores archived directory and validates errors'
     assert.equal(
       store.updateConversationRuntime('missing-conversation', {
         status: 'running',
+        statusModel: statusModelFor('running'),
         live: true,
         attentionReason: null,
         processId: null,
@@ -494,6 +501,96 @@ void test('control-plane store normalization helpers validate row shapes and fie
   );
 
   assert.throws(() => normalizeStoredConversationRow(null), /expected object row/);
+  const conversationRowBase = {
+    conversation_id: 'c',
+    directory_id: 'd',
+    tenant_id: 't',
+    user_id: 'u',
+    workspace_id: 'w',
+    title: 'title',
+    agent_type: 'codex',
+    created_at: '2026-02-14T00:00:00.000Z',
+    archived_at: null,
+    runtime_status: 'running',
+    runtime_status_model_json: JSON.stringify(statusModelFor('running')),
+    runtime_live: 1,
+    runtime_attention_reason: null,
+    runtime_process_id: null,
+    runtime_last_event_at: null,
+    runtime_last_exit_code: null,
+    runtime_last_exit_signal: null,
+    adapter_state_json: '{}',
+  } as const;
+
+  const parsedNullStatusModel = normalizeStoredConversationRow({
+    ...conversationRowBase,
+    runtime_status_model_json: null,
+  });
+  assert.equal(parsedNullStatusModel.runtimeStatusModel, null);
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        ...conversationRowBase,
+        runtime_status_model_json: 12,
+      }),
+    /runtime_status_model_json/,
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        ...conversationRowBase,
+        runtime_status_model_json: JSON.stringify({
+          ...statusModelFor('running'),
+          runtimeStatus: 'paused',
+        }),
+      }),
+    /runtimeStatus enum value/,
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        ...conversationRowBase,
+        runtime_status_model_json: JSON.stringify({
+          ...statusModelFor('running'),
+          phase: 'paused',
+        }),
+      }),
+    /phase enum value/,
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        ...conversationRowBase,
+        runtime_status_model_json: JSON.stringify({
+          ...statusModelFor('running'),
+          glyph: '!',
+        }),
+      }),
+    /glyph enum value/,
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        ...conversationRowBase,
+        runtime_status_model_json: JSON.stringify({
+          ...statusModelFor('running'),
+          badge: 'NOPE',
+        }),
+      }),
+    /badge enum value/,
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        ...conversationRowBase,
+        runtime_status_model_json: JSON.stringify({
+          ...statusModelFor('running'),
+          phaseHint: 'paused',
+        }),
+      }),
+    /phaseHint enum value/,
+  );
+
   assert.throws(
     () =>
       normalizeStoredConversationRow({
@@ -507,6 +604,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
         created_at: '2026-02-14T00:00:00.000Z',
         archived_at: null,
         runtime_status: 'invalid-status',
+        runtime_status_model_json: JSON.stringify(statusModelFor('running')),
         runtime_live: 0,
         runtime_attention_reason: null,
         runtime_process_id: null,
@@ -530,6 +628,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
         created_at: '2026-02-14T00:00:00.000Z',
         archived_at: null,
         runtime_status: 'running',
+        runtime_status_model_json: JSON.stringify(statusModelFor('running')),
         runtime_live: 2,
         runtime_attention_reason: null,
         runtime_process_id: null,
@@ -553,6 +652,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
         created_at: '2026-02-14T00:00:00.000Z',
         archived_at: null,
         runtime_status: 'running',
+        runtime_status_model_json: JSON.stringify(statusModelFor('running')),
         runtime_live: 1,
         runtime_attention_reason: null,
         runtime_process_id: null,
@@ -576,6 +676,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
         created_at: '2026-02-14T00:00:00.000Z',
         archived_at: null,
         runtime_status: 'running',
+        runtime_status_model_json: JSON.stringify(statusModelFor('running')),
         runtime_live: 'true',
         runtime_attention_reason: null,
         runtime_process_id: null,
@@ -599,6 +700,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
         created_at: '2026-02-14T00:00:00.000Z',
         archived_at: null,
         runtime_status: 'running',
+        runtime_status_model_json: JSON.stringify(statusModelFor('running')),
         runtime_live: 1.5,
         runtime_attention_reason: null,
         runtime_process_id: null,
@@ -622,6 +724,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
         created_at: '2026-02-14T00:00:00.000Z',
         archived_at: null,
         runtime_status: 'running',
+        runtime_status_model_json: JSON.stringify(statusModelFor('running')),
         runtime_live: 1,
         runtime_attention_reason: null,
         runtime_process_id: 'x',
@@ -645,6 +748,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
         created_at: '2026-02-14T00:00:00.000Z',
         archived_at: null,
         runtime_status: 'running',
+        runtime_status_model_json: JSON.stringify(statusModelFor('running')),
         runtime_live: 1,
         runtime_attention_reason: null,
         runtime_process_id: Infinity,
@@ -668,6 +772,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
         created_at: '2026-02-14T00:00:00.000Z',
         archived_at: null,
         runtime_status: 'running',
+        runtime_status_model_json: JSON.stringify(statusModelFor('running')),
         runtime_live: 1,
         runtime_attention_reason: null,
         runtime_process_id: null,
@@ -689,6 +794,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
     created_at: '2026-02-14T00:00:00.000Z',
     archived_at: null,
     runtime_status: 'running',
+    runtime_status_model_json: JSON.stringify(statusModelFor('running')),
     runtime_live: 1,
     runtime_attention_reason: null,
     runtime_process_id: null,
@@ -716,6 +822,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
     created_at: '2026-02-14T00:00:00.000Z',
     archived_at: null,
     runtime_status: 'running',
+    runtime_status_model_json: JSON.stringify(statusModelFor('running')),
     runtime_live: 1,
     runtime_attention_reason: null,
     runtime_process_id: null,
@@ -739,6 +846,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
     created_at: '2026-02-14T00:00:00.000Z',
     archived_at: null,
     runtime_status: 'running',
+    runtime_status_model_json: JSON.stringify(statusModelFor('running')),
     runtime_live: 1,
     runtime_attention_reason: null,
     runtime_process_id: null,

@@ -17,6 +17,7 @@ import {
   type StreamServerEnvelope,
   type StreamSignal,
 } from '../src/control-plane/stream-protocol.ts';
+import { statusModelFor } from './support/status-model.ts';
 import {
   startControlPlaneStreamServer,
   type StartControlPlaneSessionInput,
@@ -747,6 +748,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       sessionId: 'conversation-1',
       status: 'running',
       attentionReason: null,
+      statusModel: statusModelFor('running'),
       live: true,
       telemetry: null,
       controller: null,
@@ -857,6 +859,9 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
         worktreeId: 'worktree-local',
         status: 'running',
         attentionReason: null,
+        statusModel: statusModelFor('running', {
+          observedAt: timestamp,
+        }),
         latestCursor: 7,
         processId: 51000,
         attachedClients: 1,
@@ -884,6 +889,9 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     worktreeId: 'worktree-local',
     status: 'running',
     attentionReason: null,
+    statusModel: statusModelFor('running', {
+      observedAt: timestamp,
+    }),
     latestCursor: 7,
     processId: 51000,
     attachedClients: 1,

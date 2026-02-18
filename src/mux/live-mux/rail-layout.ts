@@ -4,7 +4,10 @@ import { firstShortcutText } from '../input-shortcuts.ts';
 import type { resolveMuxShortcutBindings } from '../input-shortcuts.ts';
 import { buildWorkspaceRailViewRows } from '../workspace-rail-model.ts';
 import { renderWorkspaceRailAnsiRows } from '../workspace-rail.ts';
-import type { StreamSessionController } from '../../control-plane/stream-protocol.ts';
+import type {
+  StreamSessionController,
+  StreamSessionStatusModel,
+} from '../../control-plane/stream-protocol.ts';
 
 type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
@@ -42,12 +45,11 @@ interface MuxRailConversationRecord {
   readonly title: string;
   readonly agentType: string;
   readonly status: ConversationRailSessionSummary['status'];
+  readonly statusModel: StreamSessionStatusModel | null;
   readonly attentionReason: string | null;
   readonly live: boolean;
   readonly startedAt: string;
   readonly lastEventAt: string | null;
-  readonly lastKnownWork: string | null;
-  readonly lastKnownWorkAt: string | null;
   readonly controller: StreamSessionController | null;
 }
 
@@ -110,6 +112,7 @@ function conversationSummary(
   return {
     sessionId: conversation.sessionId,
     status: conversation.status,
+    statusModel: conversation.statusModel,
     attentionReason: conversation.attentionReason,
     live: conversation.live,
     startedAt: conversation.startedAt,
@@ -204,8 +207,6 @@ export function buildRailModel(args: BuildRailModelArgs): WorkspaceRailModel {
           agentLabel: conversation.agentType,
           cpuPercent: args.processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
           memoryMb: args.processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null,
-          lastKnownWork: conversation.lastKnownWork,
-          lastKnownWorkAt: conversation.lastKnownWorkAt,
           controller: conversation.controller,
         };
       })

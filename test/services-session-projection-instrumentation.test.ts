@@ -6,6 +6,7 @@ import {
   type ConversationState,
 } from '../src/mux/live-mux/conversation-state.ts';
 import { SessionProjectionInstrumentation } from '../src/services/session-projection-instrumentation.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 function createConversation(sessionId: string, title = 'Session'): ConversationState {
   return createConversationState(
@@ -66,12 +67,21 @@ void test('session projection instrumentation records transition metadata for te
   service.refreshSelectorSnapshot('startup', directories, conversations, ['session-a']);
 
   const before = service.snapshotForConversation(conversation);
+  conversation.statusModel = statusModelFor('running', {
+    phase: 'working',
+    detailText: 'working on changes',
+    lastKnownWork: 'working on changes',
+    lastKnownWorkAt: '2026-02-18T00:00:00.000Z',
+    phaseHint: 'working',
+    observedAt: '2026-02-18T00:00:00.000Z',
+  });
   conversation.lastKnownWork = 'working on changes';
+  conversation.lastKnownWorkAt = '2026-02-18T00:00:00.000Z';
   const event = {
     type: 'session-telemetry',
     sessionId: 'session-a',
     keyEvent: {
-      source: 'codex',
+      source: 'otlp-log',
       eventName: 'turn.completed',
       summary: 'done',
     },
@@ -81,7 +91,7 @@ void test('session projection instrumentation records transition metadata for te
 
   const transition = events.find((entry) => entry.startsWith('mux.session-projection.transition:'));
   assert.equal(transition !== undefined, true);
-  assert.equal(transition?.includes('"source":"codex"'), true);
+  assert.equal(transition?.includes('"source":"otlp-log"'), true);
   assert.equal(transition?.includes('"eventName":"turn.completed"'), true);
   assert.equal(transition?.includes('"selectorIndex":1'), true);
 });

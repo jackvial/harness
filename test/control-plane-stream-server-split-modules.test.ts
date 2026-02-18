@@ -16,6 +16,7 @@ import type {
   ControlPlaneDirectoryRecord,
   ControlPlaneRepositoryRecord,
 } from '../src/store/control-plane-store.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 const FIXED_TS = '2026-02-17T00:00:00.000Z';
 
@@ -388,6 +389,7 @@ void test('split module coverage: session runtime handles notify key events with
     adapterState: {},
     eventSubscriberConnectionIds: new Set<string>(),
     status: 'running' as const,
+    statusModel: statusModelFor('running'),
     attentionReason: null,
     lastEventAt: null,
     lastExit: null,
@@ -414,6 +416,7 @@ void test('split module coverage: session runtime handles notify key events with
     }),
     publishObservedEvent: () => {},
     publishSessionKeyObservedEvent: () => {},
+    refreshSessionStatusModel: () => {},
     toPublicSessionController: (controller) => controller,
     stateStore: {
       updateConversationAdapterState: () => {},

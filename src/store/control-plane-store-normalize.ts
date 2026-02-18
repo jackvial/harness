@@ -1,4 +1,7 @@
-import type { StreamSessionRuntimeStatus } from '../control-plane/stream-protocol.ts';
+import type {
+  StreamSessionRuntimeStatus,
+  StreamSessionStatusModel,
+} from '../control-plane/stream-protocol.ts';
 import type { CodexTelemetrySource } from '../control-plane/codex-telemetry.ts';
 import type {
   ControlPlaneAutomationPolicyRecord,
@@ -100,6 +103,75 @@ function normalizeRuntimeStatus(value: unknown): StreamSessionRuntimeStatus {
   throw new Error('expected runtime_status enum value');
 }
 
+function normalizeRuntimeStatusModel(
+  value: unknown,
+): StreamSessionStatusModel | null {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    throw new Error('expected string for runtime_status_model_json');
+  }
+  const parsed = JSON.parse(value) as unknown;
+  if (parsed === null) {
+    return null;
+  }
+  const model = asRecord(parsed);
+  const runtimeStatusRaw = asString(model.runtimeStatus, 'runtimeStatus');
+  if (
+    runtimeStatusRaw !== 'running' &&
+    runtimeStatusRaw !== 'needs-input' &&
+    runtimeStatusRaw !== 'completed' &&
+    runtimeStatusRaw !== 'exited'
+  ) {
+    throw new Error('expected runtimeStatus enum value');
+  }
+  const phaseRaw = asString(model.phase, 'phase');
+  if (
+    phaseRaw !== 'needs-action' &&
+    phaseRaw !== 'starting' &&
+    phaseRaw !== 'working' &&
+    phaseRaw !== 'idle' &&
+    phaseRaw !== 'exited'
+  ) {
+    throw new Error('expected phase enum value');
+  }
+  const glyph = asString(model.glyph, 'glyph') as StreamSessionStatusModel['glyph'];
+  if (glyph !== '▲' && glyph !== '◔' && glyph !== '◆' && glyph !== '○' && glyph !== '■') {
+    throw new Error('expected glyph enum value');
+  }
+  const badge = asString(model.badge, 'badge') as StreamSessionStatusModel['badge'];
+  if (badge !== 'NEED' && badge !== 'RUN ' && badge !== 'DONE' && badge !== 'EXIT') {
+    throw new Error('expected badge enum value');
+  }
+  const detailText = asString(model.detailText, 'detailText');
+  const attentionReason = asStringOrNull(model.attentionReason, 'attentionReason');
+  const lastKnownWork = asStringOrNull(model.lastKnownWork, 'lastKnownWork');
+  const lastKnownWorkAt = asStringOrNull(model.lastKnownWorkAt, 'lastKnownWorkAt');
+  const phaseHintRaw = asStringOrNull(model.phaseHint, 'phaseHint');
+  const observedAt = asString(model.observedAt, 'observedAt');
+  if (
+    phaseHintRaw !== null &&
+    phaseHintRaw !== 'needs-action' &&
+    phaseHintRaw !== 'working' &&
+    phaseHintRaw !== 'idle'
+  ) {
+    throw new Error('expected phaseHint enum value');
+  }
+  return {
+    runtimeStatus: runtimeStatusRaw,
+    phase: phaseRaw,
+    glyph,
+    badge,
+    detailText,
+    attentionReason,
+    lastKnownWork,
+    lastKnownWorkAt,
+    phaseHint: phaseHintRaw,
+    observedAt,
+  };
+}
+
 export function normalizeStoredDirectoryRow(value: unknown): ControlPlaneDirectoryRecord {
   const row = asRecord(value);
   return {
@@ -115,6 +187,12 @@ export function normalizeStoredDirectoryRow(value: unknown): ControlPlaneDirecto
 
 export function normalizeStoredConversationRow(value: unknown): ControlPlaneConversationRecord {
   const row = asRecord(value);
+  const runtimeStatus = normalizeRuntimeStatus(row.runtime_status);
+  const runtimeAttentionReason = asStringOrNull(
+    row.runtime_attention_reason,
+    'runtime_attention_reason',
+  );
+  const runtimeLastEventAt = asStringOrNull(row.runtime_last_event_at, 'runtime_last_event_at');
   const lastExitSignal = asStringOrNull(row.runtime_last_exit_signal, 'runtime_last_exit_signal');
   if (lastExitSignal !== null && !/^SIG[A-Z0-9]+(?:_[A-Z0-9]+)*$/.test(lastExitSignal)) {
     throw new Error('expected runtime_last_exit_signal to be a signal name');
@@ -129,14 +207,14 @@ export function normalizeStoredConversationRow(value: unknown): ControlPlaneConv
     agentType: asString(row.agent_type, 'agent_type'),
     createdAt: asString(row.created_at, 'created_at'),
     archivedAt: asStringOrNull(row.archived_at, 'archived_at'),
-    runtimeStatus: normalizeRuntimeStatus(row.runtime_status),
-    runtimeLive: asBooleanFromInt(row.runtime_live, 'runtime_live'),
-    runtimeAttentionReason: asStringOrNull(
-      row.runtime_attention_reason,
-      'runtime_attention_reason',
+    runtimeStatus,
+    runtimeStatusModel: normalizeRuntimeStatusModel(
+      row.runtime_status_model_json,
     ),
+    runtimeLive: asBooleanFromInt(row.runtime_live, 'runtime_live'),
+    runtimeAttentionReason,
     runtimeProcessId: asNumberOrNull(row.runtime_process_id, 'runtime_process_id'),
-    runtimeLastEventAt: asStringOrNull(row.runtime_last_event_at, 'runtime_last_event_at'),
+    runtimeLastEventAt,
     runtimeLastExit:
       row.runtime_last_exit_code === null && row.runtime_last_exit_signal === null
         ? null

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import type { StreamCommand } from '../src/control-plane/stream-protocol.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 class MockCommandClient {
   readonly commands: StreamCommand[] = [];
@@ -58,6 +59,7 @@ function conversationRecord(
     agentType: 'codex',
     adapterState: {},
     runtimeStatus: 'running',
+    runtimeStatusModel: statusModelFor('running'),
     runtimeLive: true,
   };
 }
@@ -107,6 +109,9 @@ function sessionSummaryRecord(sessionId = 'session-1'): Record<string, unknown> 
     worktreeId: 'worktree-1',
     status: 'running',
     attentionReason: null,
+    statusModel: statusModelFor('running', {
+      observedAt: '2026-02-18T00:01:00.000Z',
+    }),
     latestCursor: 12,
     processId: 51000,
     attachedClients: 1,
