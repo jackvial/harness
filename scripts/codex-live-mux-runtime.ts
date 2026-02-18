@@ -23,11 +23,7 @@ import {
 } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
-import {
-  projectWorkspaceRailConversation,
-} from '../src/mux/workspace-rail-model.ts';
 import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
-import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
 import {
   createNewThreadPromptState,
   normalizeThreadAgentType,
@@ -99,8 +95,6 @@ import {
   unsubscribeObservedStream,
 } from '../src/mux/live-mux/observed-stream.ts';
 import {
-  compactDebugText,
-  conversationSummary,
   createConversationState,
   debugFooterForConversation,
   formatCommandForDebugBar,
@@ -185,6 +179,7 @@ import { EventPersistence } from '../src/services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../src/services/mux-ui-state-persistence.ts';
 import { ProcessUsageRefreshService } from '../src/services/process-usage-refresh.ts';
 import { RecordingService } from '../src/services/recording.ts';
+import { SessionProjectionInstrumentation } from '../src/services/session-projection-instrumentation.ts';
 import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
 import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
@@ -227,12 +222,6 @@ interface MuxPerfStatusRow {
   readonly outputHandleAvgMs: number;
   readonly outputHandleMaxMs: number;
   readonly eventLoopP95Ms: number;
-}
-
-interface ConversationProjectionSnapshot {
-  readonly status: string;
-  readonly glyph: string;
-  readonly detailText: string;
 }
 
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
@@ -712,7 +701,7 @@ async function main(): Promise<number> {
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
     const existing = conversationManager.get(event.sessionId);
     const beforeProjection =
-      existing === undefined ? null : projectionSnapshotForConversation(existing);
+      existing === undefined ? null : sessionProjectionInstrumentation.snapshotForConversation(existing);
     const updated = applyMuxControlPlaneKeyEvent(event, {
       removedConversationIds: conversationManager.removedConversationIds,
       ensureConversation,
@@ -720,8 +709,13 @@ async function main(): Promise<number> {
     if (updated === null) {
       return;
     }
-    refreshSelectorInstrumentation(`event:${event.type}`);
-    recordProjectionTransition(event, beforeProjection, updated);
+    sessionProjectionInstrumentation.refreshSelectorSnapshot(
+      `event:${event.type}`,
+      _unsafeDirectoryMap,
+      _unsafeConversationMap,
+      conversationManager.orderedIds(),
+    );
+    sessionProjectionInstrumentation.recordTransition(event, beforeProjection, updated);
   };
 
   const hydrateDirectoryList = async (): Promise<void> => {
@@ -983,139 +977,6 @@ async function main(): Promise<number> {
     }
   }
 
-  const selectorIndexBySessionId = new Map<
-    string,
-    {
-      selectorIndex: number;
-      directoryIndex: number;
-      directoryId: string;
-    }
-  >();
-  let lastSelectorSnapshotHash: string | null = null;
-  let selectorSnapshotVersion = 0;
-
-  const projectionSnapshotForConversation = (
-    conversation: ConversationState,
-  ): ConversationProjectionSnapshot => {
-    const projected = projectWorkspaceRailConversation(
-      {
-        ...conversationSummary(conversation),
-        directoryKey: conversation.directoryId ?? 'directory-missing',
-        title: conversation.title,
-        agentLabel: conversation.agentType,
-        cpuPercent: processUsageRefreshService.getSample(conversation.sessionId)?.cpuPercent ?? null,
-        memoryMb: processUsageRefreshService.getSample(conversation.sessionId)?.memoryMb ?? null,
-        lastKnownWork: conversation.lastKnownWork,
-        lastKnownWorkAt: conversation.lastKnownWorkAt,
-        controller: conversation.controller,
-      },
-      {
-        nowMs: Date.now(),
-      },
-    );
-    return {
-      status: projected.status,
-      glyph: projected.glyph,
-      detailText: compactDebugText(projected.detailText),
-    };
-  };
-
-  const projectionSnapshotEqual = (
-    left: ConversationProjectionSnapshot | null,
-    right: ConversationProjectionSnapshot,
-  ): boolean => {
-    if (left === null) {
-      return false;
-    }
-    return (
-      left.status === right.status &&
-      left.glyph === right.glyph &&
-      left.detailText === right.detailText
-    );
-  };
-
-  const refreshSelectorInstrumentation = (reason: string): void => {
-    const orderedIds = conversationManager.orderedIds();
-    const entries = buildSelectorIndexEntries(_unsafeDirectoryMap, _unsafeConversationMap, orderedIds);
-    const hash = entries
-      .map(
-        (entry) =>
-          `${entry.selectorIndex}:${entry.directoryId}:${entry.sessionId}:${entry.directoryIndex}:${entry.title}:${entry.agentType}`,
-      )
-      .join('|');
-    if (hash === lastSelectorSnapshotHash) {
-      return;
-    }
-    lastSelectorSnapshotHash = hash;
-    selectorSnapshotVersion += 1;
-    selectorIndexBySessionId.clear();
-    for (const entry of entries) {
-      selectorIndexBySessionId.set(entry.sessionId, {
-        selectorIndex: entry.selectorIndex,
-        directoryIndex: entry.directoryIndex,
-        directoryId: entry.directoryId,
-      });
-    }
-    recordPerfEvent('mux.selector.snapshot', {
-      reason: compactDebugText(reason),
-      version: selectorSnapshotVersion,
-      count: entries.length,
-    });
-    for (const entry of entries) {
-      recordPerfEvent('mux.selector.entry', {
-        version: selectorSnapshotVersion,
-        index: entry.selectorIndex,
-        directoryIndex: entry.directoryIndex,
-        sessionId: entry.sessionId,
-        directoryId: entry.directoryId,
-        title: compactDebugText(entry.title),
-        agentType: entry.agentType,
-      });
-    }
-  };
-
-  const recordProjectionTransition = (
-    event: ControlPlaneKeyEvent,
-    before: ConversationProjectionSnapshot | null,
-    conversation: ConversationState,
-  ): void => {
-    const after = projectionSnapshotForConversation(conversation);
-    if (projectionSnapshotEqual(before, after)) {
-      return;
-    }
-    const selectorEntry = selectorIndexBySessionId.get(conversation.sessionId);
-    let source = '';
-    let eventName = '';
-    let summary: string | null = null;
-    if (event.type === 'session-telemetry') {
-      source = event.keyEvent.source;
-      eventName = event.keyEvent.eventName ?? '';
-      summary = event.keyEvent.summary;
-    } else if (event.type === 'session-status') {
-      source = event.telemetry?.source ?? '';
-      eventName = event.telemetry?.eventName ?? '';
-      summary = event.telemetry?.summary ?? null;
-    }
-    recordPerfEvent('mux.session-projection.transition', {
-      sessionId: conversation.sessionId,
-      eventType: event.type,
-      cursor: event.cursor,
-      selectorIndex: selectorEntry?.selectorIndex ?? 0,
-      directoryIndex: selectorEntry?.directoryIndex ?? 0,
-      statusFrom: before?.status ?? '',
-      statusTo: after.status,
-      glyphFrom: before?.glyph ?? '',
-      glyphTo: after.glyph,
-      detailFrom: before?.detailText ?? '',
-      detailTo: after.detailText,
-      source,
-      eventName,
-      summary: compactDebugText(summary),
-    });
-  };
-
-  refreshSelectorInstrumentation('startup');
-
   const ensureDirectoryGitState = (directoryId: string): void => {
     directoryManager.ensureGitSummary(directoryId, GIT_SUMMARY_LOADING);
   };
@@ -1318,6 +1179,16 @@ async function main(): Promise<number> {
     startPerfSpan,
     onChanged: markDirty,
   });
+  const sessionProjectionInstrumentation = new SessionProjectionInstrumentation({
+    getProcessUsageSample: (sessionId) => processUsageRefreshService.getSample(sessionId),
+    recordPerfEvent,
+  });
+  sessionProjectionInstrumentation.refreshSelectorSnapshot(
+    'startup',
+    _unsafeDirectoryMap,
+    _unsafeConversationMap,
+    conversationManager.orderedIds(),
+  );
 
   keyEventSubscription = await subscribeControlPlaneKeyEvents(streamClient, {
     tenantId: options.scope.tenantId,
@@ -2919,7 +2790,12 @@ async function main(): Promise<number> {
     const selectionRows =
       rightFrame === null ? [] : selectionVisibleRows(rightFrame, renderSelection);
     const orderedIds = conversationManager.orderedIds();
-    refreshSelectorInstrumentation('render');
+    sessionProjectionInstrumentation.refreshSelectorSnapshot(
+      'render',
+      _unsafeDirectoryMap,
+      _unsafeConversationMap,
+      orderedIds,
+    );
     const rail = leftRailPane.render({
       layout,
       repositories,

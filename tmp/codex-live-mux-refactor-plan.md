@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3647 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3530 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1089,3 +1089,20 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3647 non-empty LOC
+
+### Checkpoint BE (2026-02-18): Service extraction continues with class-based session projection instrumentation
+
+- Added `src/services/session-projection-instrumentation.ts` with a class-based `SessionProjectionInstrumentation` that owns:
+  - selector snapshot hashing + dedupe
+  - selector index versioning + per-session selector position tracking
+  - projection snapshot generation (status/glyph/detail) using runtime conversation + process-usage state
+  - projection transition perf-event emission for status/telemetry/control key-event flows
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate selector/projection instrumentation to `SessionProjectionInstrumentation`, removing inline selector map/hash/version/projection/transition helper logic.
+- Added `test/services-session-projection-instrumentation.test.ts` with coverage for:
+  - selector snapshot emission only on changed snapshots
+  - telemetry transition metadata emission path
+  - unchanged transition skip behavior and non-telemetry fallback branch behavior
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3530 non-empty LOC
