@@ -163,6 +163,7 @@ import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { RuntimeTaskPaneActions } from '../src/services/runtime-task-pane-actions.ts';
+import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
@@ -1443,6 +1444,18 @@ async function main(): Promise<number> {
     });
   };
 
+  const applyTaskRecord = (task: ControlPlaneTaskRecord): ControlPlaneTaskRecord => {
+    taskManager.setTask(task);
+    workspace.taskPaneSelectedTaskId = task.taskId;
+    if (task.repositoryId !== null && repositories.has(task.repositoryId)) {
+      workspace.taskPaneSelectedRepositoryId = task.repositoryId;
+    }
+    workspace.taskPaneSelectionFocus = 'task';
+    syncTaskPaneSelection();
+    markDirty();
+    return task;
+  };
+
   const taskComposerPersistence = new RuntimeTaskComposerPersistenceService<
     ControlPlaneTaskRecord,
     TaskComposerBuffer
@@ -1689,10 +1702,6 @@ async function main(): Promise<number> {
     processUsageRefreshService.deleteSession(sessionId);
   };
 
-  const applyTaskRecord = (parsed: ControlPlaneTaskRecord): ControlPlaneTaskRecord => {
-    return runtimeTaskPaneActions.applyTaskRecord(parsed);
-  };
-
   const openNewThreadPrompt = (directoryId: string): void => {
     openNewThreadPromptFn({
       directoryId,
@@ -1803,6 +1812,13 @@ async function main(): Promise<number> {
     syncTaskPaneSelection,
     markDirty,
   });
+  const runtimeTaskEditorActions = new RuntimeTaskEditorActions<ControlPlaneTaskRecord>({
+    workspace,
+    controlPlaneService,
+    applyTaskRecord,
+    queueControlPlaneOp,
+    markDirty,
+  });
 
   const runtimeDirectoryActions = new RuntimeDirectoryActions({
     controlPlaneService,
@@ -1883,6 +1899,8 @@ async function main(): Promise<number> {
     directoryActions: runtimeDirectoryActions,
     repositoryActions: runtimeRepositoryActions,
     controlActions: runtimeControlActions,
+    taskPaneActions: runtimeTaskPaneActions,
+    taskPaneShortcuts: runtimeTaskPaneShortcuts,
     orderedActiveRepositoryIds: () =>
       orderedActiveRepositoryRecords().map((repository) => repository.repositoryId),
   });
@@ -2200,42 +2218,7 @@ async function main(): Promise<number> {
       workspace.taskEditorPrompt = next;
     },
     submitTaskEditorPayload: (payload) => {
-      queueControlPlaneOp(async () => {
-        try {
-          if (payload.mode === 'create') {
-            applyTaskRecord(
-              await controlPlaneService.createTask({
-                repositoryId: payload.repositoryId,
-                title: payload.title,
-                description: payload.description,
-              }),
-            );
-          } else {
-            if (payload.taskId === null) {
-              throw new Error('task edit state missing task id');
-            }
-            applyTaskRecord(
-              await controlPlaneService.updateTask({
-                taskId: payload.taskId,
-                repositoryId: payload.repositoryId,
-                title: payload.title,
-                description: payload.description,
-              }),
-            );
-          }
-          workspace.taskEditorPrompt = null;
-          workspace.taskPaneNotice = null;
-        } catch (error: unknown) {
-          if (workspace.taskEditorPrompt !== null) {
-            workspace.taskEditorPrompt.error =
-              error instanceof Error ? error.message : String(error);
-          } else {
-            workspace.taskPaneNotice = error instanceof Error ? error.message : String(error);
-          }
-        } finally {
-          markDirty();
-        }
-      }, payload.commandLabel);
+      runtimeTaskEditorActions.submitTaskEditorPayload(payload);
     },
     getConversationTitleEdit: () => workspace.conversationTitleEdit,
     getNewThreadPrompt: () => workspace.newThreadPrompt,
@@ -2416,7 +2399,7 @@ async function main(): Promise<number> {
     selectTaskById,
     selectRepositoryById,
     runTaskPaneAction: (action) => {
-      runtimeTaskPaneActions.runTaskPaneAction(action);
+      runtimeWorkspaceActions.runTaskPaneAction(action);
     },
     nowMs: () => Date.now(),
     homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
@@ -2435,7 +2418,7 @@ async function main(): Promise<number> {
       workspace.homePaneDragState = next;
     },
     openTaskEditPrompt: (taskId) => {
-      runtimeTaskPaneActions.openTaskEditPrompt(taskId);
+      runtimeWorkspaceActions.openTaskEditPrompt(taskId);
     },
     openRepositoryPromptForEdit: (repositoryId) => {
       runtimeWorkspaceActions.openRepositoryPromptForEdit(repositoryId);
@@ -2457,7 +2440,7 @@ async function main(): Promise<number> {
     repositoryIdAtRow: (index) =>
       taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, index),
     reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
-      runtimeTaskPaneActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
+      runtimeWorkspaceActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
     },
     reorderRepositoryByDrop: (draggedRepositoryId, targetRepositoryId) => {
       runtimeWorkspaceActions.reorderRepositoryByDrop(draggedRepositoryId, targetRepositoryId);
@@ -2576,7 +2559,7 @@ async function main(): Promise<number> {
       repositoryFoldInput.handleRepositoryFoldChords(input) ||
       repositoryFoldInput.handleRepositoryTreeArrow(input),
     handleGlobalShortcutInput: (input) => globalShortcutInput.handleInput(input),
-    handleTaskPaneShortcutInput: (input) => runtimeTaskPaneShortcuts.handleInput(input),
+    handleTaskPaneShortcutInput: (input) => runtimeWorkspaceActions.handleTaskPaneShortcutInput(input),
     handleCopyShortcutInput: (input) => {
       if (
         workspace.mainPaneMode !== 'conversation' ||

@@ -1,3 +1,5 @@
+import type { TaskPaneAction } from '../mux/harness-core-ui.ts';
+
 interface RuntimeWorkspaceConversationActions {
   activateConversation(sessionId: string): Promise<void>;
   createAndActivateConversationInDirectory(directoryId: string, agentType: string): Promise<void>;
@@ -28,11 +30,23 @@ interface RuntimeWorkspaceControlActions {
   toggleGatewayProfiler(): Promise<void>;
 }
 
+interface RuntimeWorkspaceTaskPaneActions {
+  runTaskPaneAction(action: TaskPaneAction): void;
+  openTaskEditPrompt(taskId: string): void;
+  reorderTaskByDrop(draggedTaskId: string, targetTaskId: string): void;
+}
+
+interface RuntimeWorkspaceTaskPaneShortcuts {
+  handleInput(input: Buffer): boolean;
+}
+
 interface RuntimeWorkspaceActionsOptions {
   readonly conversationActions: RuntimeWorkspaceConversationActions;
   readonly directoryActions: RuntimeWorkspaceDirectoryActions;
   readonly repositoryActions: RuntimeWorkspaceRepositoryActions;
   readonly controlActions: RuntimeWorkspaceControlActions;
+  readonly taskPaneActions: RuntimeWorkspaceTaskPaneActions;
+  readonly taskPaneShortcuts: RuntimeWorkspaceTaskPaneShortcuts;
   readonly orderedActiveRepositoryIds: () => readonly string[];
 }
 
@@ -109,5 +123,21 @@ export class RuntimeWorkspaceActions {
 
   async toggleGatewayProfiler(): Promise<void> {
     await this.options.controlActions.toggleGatewayProfiler();
+  }
+
+  runTaskPaneAction(action: TaskPaneAction): void {
+    this.options.taskPaneActions.runTaskPaneAction(action);
+  }
+
+  openTaskEditPrompt(taskId: string): void {
+    this.options.taskPaneActions.openTaskEditPrompt(taskId);
+  }
+
+  reorderTaskByDrop(draggedTaskId: string, targetTaskId: string): void {
+    this.options.taskPaneActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
+  }
+
+  handleTaskPaneShortcutInput(input: Buffer): boolean {
+    return this.options.taskPaneShortcuts.handleInput(input);
   }
 }

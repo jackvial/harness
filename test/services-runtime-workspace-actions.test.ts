@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
+import type { TaskPaneAction } from '../src/mux/harness-core-ui.ts';
 import { RuntimeWorkspaceActions } from '../src/services/runtime-workspace-actions.ts';
 
 void test('runtime workspace actions delegates conversation directory repository and control actions', async () => {
@@ -57,6 +58,23 @@ void test('runtime workspace actions delegates conversation directory repository
         calls.push('toggleGatewayProfiler');
       },
     },
+    taskPaneActions: {
+      runTaskPaneAction: (action: TaskPaneAction) => {
+        calls.push(`runTaskPaneAction:${action}`);
+      },
+      openTaskEditPrompt: (taskId) => {
+        calls.push(`openTaskEditPrompt:${taskId}`);
+      },
+      reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
+        calls.push(`reorderTaskByDrop:${draggedTaskId}:${targetTaskId}`);
+      },
+    },
+    taskPaneShortcuts: {
+      handleInput: (input) => {
+        calls.push(`handleTaskPaneShortcutInput:${input.toString('utf8')}`);
+        return true;
+      },
+    },
     orderedActiveRepositoryIds: () => ['repository-1', 'repository-2'],
   });
 
@@ -75,6 +93,10 @@ void test('runtime workspace actions delegates conversation directory repository
   await actions.archiveRepositoryById('repository-2');
   await actions.interruptConversation('session-3');
   await actions.toggleGatewayProfiler();
+  actions.runTaskPaneAction('task.edit');
+  actions.openTaskEditPrompt('task-4');
+  actions.reorderTaskByDrop('task-4', 'task-5');
+  const handledShortcut = actions.handleTaskPaneShortcutInput(Buffer.from('k', 'utf8'));
 
   assert.deepEqual(calls, [
     'activateConversation:session-1',
@@ -92,5 +114,10 @@ void test('runtime workspace actions delegates conversation directory repository
     'archiveRepositoryById:repository-2',
     'interruptConversation:session-3',
     'toggleGatewayProfiler',
+    'runTaskPaneAction:task.edit',
+    'openTaskEditPrompt:task-4',
+    'reorderTaskByDrop:task-4:task-5',
+    'handleTaskPaneShortcutInput:k',
   ]);
+  assert.equal(handledShortcut, true);
 });

@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2612 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2595 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2173 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1840,10 +1840,35 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2612 non-empty LOC
 
+### Checkpoint CV (2026-02-18): Task editor orchestration extracted and task input routing folded into workspace facade
+
+- Added `src/services/runtime-task-editor-actions.ts` with class-based `RuntimeTaskEditorActions` to own task-editor modal submit orchestration:
+  - create vs edit submit branching
+  - queueing through control-plane op queue labels
+  - prompt-error vs pane-notice fallback behavior
+  - final dirty-mark lifecycle
+- Added `test/services-runtime-task-editor-actions.test.ts` with branch coverage for:
+  - create success path
+  - edit missing-task-id guard path
+  - edit error fallback to pane notice when prompt is absent
+- Extended `src/services/runtime-workspace-actions.ts` + `test/services-runtime-workspace-actions.test.ts` so the workspace facade now also owns task-pane action routing:
+  - `runTaskPaneAction(...)`
+  - `openTaskEditPrompt(...)`
+  - `reorderTaskByDrop(...)`
+  - `handleTaskPaneShortcutInput(...)`
+- Updated `scripts/codex-live-mux-runtime.ts` to:
+  - delegate task-editor modal submit handling to `RuntimeTaskEditorActions`
+  - route main-pane pointer and preflight task input through `RuntimeWorkspaceActions` task-pane methods
+  - keep task selection/projection behavior equivalent while removing runtime-local task-editor submit logic
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1007` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2595 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
-  - continue subsystem rollup: fold `RuntimeTaskPaneActions`/`RuntimeTaskPaneShortcuts` behind the workspace action facade so input modules consume one task action surface
+  - continue subsystem rollup: remove remaining direct runtime references to task-pane services by passing a unified task action surface into input modules
   - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
   - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
   - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history
