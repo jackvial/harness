@@ -13,8 +13,12 @@ interface TestComposerBuffer {
   readonly cursor: number;
 }
 
+interface TestAutosaveTimer {
+  readonly id: string;
+}
+
 void test('task manager owns task-map lifecycle helpers', () => {
-  const manager = new TaskManager<TestTaskRecord, TestComposerBuffer>();
+  const manager = new TaskManager<TestTaskRecord, TestComposerBuffer, TestAutosaveTimer>();
   const map = manager.readonlyTasks();
   const composers = manager.readonlyTaskComposers();
 
@@ -57,13 +61,22 @@ void test('task manager owns task-map lifecycle helpers', () => {
   assert.equal(manager.deleteTaskComposer('task-a'), true);
   assert.equal(manager.deleteTaskComposer('task-a'), false);
 
+  assert.equal(manager.getTaskAutosaveTimer('task-a'), undefined);
+  manager.setTaskAutosaveTimer('task-a', { id: 'timer-a' });
+  assert.equal(manager.getTaskAutosaveTimer('task-a')?.id, 'timer-a');
+  assert.deepEqual([...manager.autosaveTaskIds()], ['task-a']);
+  assert.equal(manager.deleteTaskAutosaveTimer('task-a'), true);
+  assert.equal(manager.deleteTaskAutosaveTimer('task-a'), false);
+
   assert.equal(manager.deleteTask('task-a'), true);
   assert.equal(manager.deleteTask('task-missing'), false);
   assert.equal(manager.hasTask('task-a'), false);
 
   manager.clearTasks();
   manager.clearTaskComposers();
+  manager.clearTaskAutosaveTimers();
   assert.equal(map.size, 0);
   assert.equal(composers.size, 0);
+  assert.deepEqual([...manager.autosaveTaskIds()], []);
   assert.deepEqual([...manager.values()], []);
 });

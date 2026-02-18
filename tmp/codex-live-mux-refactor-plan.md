@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4582 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4581 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -580,3 +580,21 @@ bun run loc:verify:enforce
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4582 non-empty LOC
+
+### Checkpoint Y (2026-02-18): Task autosave timer ownership moved into TaskManager
+
+- Continued Phase 4 by moving per-task autosave timer state into `TaskManager`.
+- Extended `src/domain/tasks.ts` with autosave timer APIs:
+  - `autosaveTaskIds()`
+  - `getTaskAutosaveTimer(...)`
+  - `setTaskAutosaveTimer(...)`
+  - `deleteTaskAutosaveTimer(...)`
+  - `clearTaskAutosaveTimers()`
+- Updated `scripts/codex-live-mux-runtime.ts` autosave lifecycle to delegate timer map reads/writes through `TaskManager`.
+- Expanded `test/domain-tasks.test.ts` to cover autosave timer lifecycle methods.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4581 non-empty LOC

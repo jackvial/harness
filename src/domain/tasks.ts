@@ -1,6 +1,11 @@
-export class TaskManager<TTaskRecord extends { taskId: string }, TTaskComposerBuffer> {
+export class TaskManager<
+  TTaskRecord extends { taskId: string },
+  TTaskComposerBuffer,
+  TTaskAutosaveTimer,
+> {
   private readonly tasksById = new Map<string, TTaskRecord>();
   private readonly taskComposerByTaskId = new Map<string, TTaskComposerBuffer>();
+  private readonly taskAutosaveTimerByTaskId = new Map<string, TTaskAutosaveTimer>();
 
   constructor() {}
 
@@ -50,5 +55,25 @@ export class TaskManager<TTaskRecord extends { taskId: string }, TTaskComposerBu
 
   clearTaskComposers(): void {
     this.taskComposerByTaskId.clear();
+  }
+
+  autosaveTaskIds(): IterableIterator<string> {
+    return this.taskAutosaveTimerByTaskId.keys();
+  }
+
+  getTaskAutosaveTimer(taskId: string): TTaskAutosaveTimer | undefined {
+    return this.taskAutosaveTimerByTaskId.get(taskId);
+  }
+
+  setTaskAutosaveTimer(taskId: string, timer: TTaskAutosaveTimer): void {
+    this.taskAutosaveTimerByTaskId.set(taskId, timer);
+  }
+
+  deleteTaskAutosaveTimer(taskId: string): boolean {
+    return this.taskAutosaveTimerByTaskId.delete(taskId);
+  }
+
+  clearTaskAutosaveTimers(): void {
+    this.taskAutosaveTimerByTaskId.clear();
   }
 }

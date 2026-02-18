@@ -616,7 +616,6 @@ async function main(): Promise<number> {
   workspace.taskEditorTarget = {
     kind: 'draft',
   };
-  const taskAutosaveTimerByTaskId = new Map<string, NodeJS.Timeout>();
   workspace.taskPaneSelectionFocus = 'task';
   workspace.taskPaneNotice = null;
   workspace.taskPaneTaskEditClickState = null;
@@ -644,7 +643,7 @@ async function main(): Promise<number> {
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversationManager = new ConversationManager();
   const _unsafeConversationMap = conversationManager.readonlyMap();
-  const taskManager = new TaskManager<ControlPlaneTaskRecord, TaskComposerBuffer>();
+  const taskManager = new TaskManager<ControlPlaneTaskRecord, TaskComposerBuffer, NodeJS.Timeout>();
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
@@ -1452,7 +1451,7 @@ async function main(): Promise<number> {
         'taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string'
           ? workspace.taskEditorTarget.taskId
           : null,
-      autosaveTaskIds: [...taskAutosaveTimerByTaskId.keys()],
+      autosaveTaskIds: [...taskManager.autosaveTaskIds()],
       flushTaskComposerPersist,
       closeLiveSessionsOnClientStop,
       orderedConversationIds: conversationManager.orderedIds(),
@@ -2315,10 +2314,10 @@ async function main(): Promise<number> {
   };
 
   const clearTaskAutosaveTimer = (taskId: string): void => {
-    const timer = taskAutosaveTimerByTaskId.get(taskId);
+    const timer = taskManager.getTaskAutosaveTimer(taskId);
     if (timer !== undefined) {
       clearTimeout(timer);
-      taskAutosaveTimerByTaskId.delete(taskId);
+      taskManager.deleteTaskAutosaveTimer(taskId);
     }
   };
 
@@ -2368,11 +2367,11 @@ async function main(): Promise<number> {
   const scheduleTaskComposerPersist = (taskId: string): void => {
     clearTaskAutosaveTimer(taskId);
     const timer = setTimeout(() => {
-      taskAutosaveTimerByTaskId.delete(taskId);
+      taskManager.deleteTaskAutosaveTimer(taskId);
       queuePersistTaskComposer(taskId, 'debounced');
     }, DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS);
     timer.unref?.();
-    taskAutosaveTimerByTaskId.set(taskId, timer);
+    taskManager.setTaskAutosaveTimer(taskId, timer);
   };
 
   const flushTaskComposerPersist = (taskId: string): void => {
@@ -4693,7 +4692,7 @@ async function main(): Promise<number> {
     if ('taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string') {
       flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
     }
-    for (const taskId of taskAutosaveTimerByTaskId.keys()) {
+    for (const taskId of taskManager.autosaveTaskIds()) {
       flushTaskComposerPersist(taskId);
     }
     if (renderScheduled) {
