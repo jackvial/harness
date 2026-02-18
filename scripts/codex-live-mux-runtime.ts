@@ -183,6 +183,7 @@ import { RepositoryManager } from '../src/domain/repositories.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
+import { RecordingService } from '../src/services/recording.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { HomePane } from '../src/ui/panes/home.ts';
@@ -448,6 +449,15 @@ async function main(): Promise<number> {
     muxRecordingWriter = createTerminalRecordingWriter(recordingWriterOptions);
     muxRecordingOracle = new TerminalSnapshotOracle(size.cols, size.rows);
   }
+  const recordingService = new RecordingService({
+    recordingWriter: muxRecordingWriter,
+    recordingPath: options.recordingPath,
+    recordingGifOutputPath: options.recordingGifOutputPath,
+    renderTerminalRecordingToGif,
+    writeStderr: (text) => {
+      process.stderr.write(text);
+    },
+  });
   const controlPlaneMode =
     options.controlPlaneHost !== null && options.controlPlanePort !== null
       ? {
@@ -4104,44 +4114,10 @@ async function main(): Promise<number> {
       // Best-effort shutdown only.
     }
     flushPendingPersistedEvents('shutdown');
-    if (muxRecordingWriter !== null) {
-      try {
-        await muxRecordingWriter.close();
-      } catch (error: unknown) {
-        recordingCloseError = error;
-      }
-    }
+    recordingCloseError = await recordingService.closeWriter();
     store.close();
     restoreTerminalState(true, inputModeManager.restore);
-    if (
-      options.recordingGifOutputPath !== null &&
-      options.recordingPath !== null &&
-      recordingCloseError === null
-    ) {
-      try {
-        await renderTerminalRecordingToGif({
-          recordingPath: options.recordingPath,
-          outputPath: options.recordingGifOutputPath,
-        });
-        process.stderr.write(
-          `[mux-recording] jsonl=${options.recordingPath} gif=${options.recordingGifOutputPath}\n`,
-        );
-      } catch (error: unknown) {
-        process.stderr.write(
-          `[mux-recording] gif-export-failed ${
-            error instanceof Error ? error.message : String(error)
-          }\n`,
-        );
-      }
-    } else if (recordingCloseError !== null) {
-      const recordingCloseErrorMessage =
-        recordingCloseError instanceof Error
-          ? recordingCloseError.message
-          : typeof recordingCloseError === 'string'
-            ? recordingCloseError
-            : 'unknown error';
-      process.stderr.write(`[mux-recording] close-failed ${recordingCloseErrorMessage}\n`);
-    }
+    await recordingService.finalizeAfterShutdown(recordingCloseError);
     endStartupActiveStartCommandSpan({
       observed: false,
     });

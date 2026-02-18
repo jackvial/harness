@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3995 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3971 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -903,3 +903,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3995 non-empty LOC
+
+### Checkpoint AS (2026-02-18): Service extraction continues with class-based recording shutdown service
+
+- Added `src/services/recording.ts` with a class-based `RecordingService` that owns:
+  - recording-writer close lifecycle with explicit error capture
+  - post-shutdown gif export flow orchestration
+  - recording-related stderr status/error formatting and emission
+- Updated `scripts/codex-live-mux-runtime.ts` shutdown path to delegate recording close + gif-export/reporting behavior to `RecordingService`.
+- Added `test/services-recording.test.ts` covering close lifecycle success/failure, gif export success/failure, and close-error formatting branches.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3971 non-empty LOC
