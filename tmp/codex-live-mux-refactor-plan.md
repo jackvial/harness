@@ -1257,8 +1257,24 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3254 non-empty LOC
 
+### Checkpoint BO (2026-02-18): Task-pane reconcile flows extracted into class service
+
+- Extended `src/services/task-pane-selection-actions.ts` to own:
+  - `syncTaskPaneSelectionFocus()`
+  - `syncTaskPaneSelection()`
+  - `syncTaskPaneRepositorySelection()`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate all task-pane selection/reconcile transitions through `TaskPaneSelectionActions`.
+- Expanded `test/services-task-pane-selection-actions.test.ts` with coverage for:
+  - focus reconciliation fallback branches
+  - scoped-task selection reconciliation
+  - repository-selection normalization (missing/archived -> active fallback)
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3213 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue action-handler extraction before wiring cleanup:
-  - task + selection transition ownership into workspace/task domain methods (sync/reconcile flows)
   - hydration flow extraction into manager/service-owned methods
+  - migrate startup/task-planning hydrate flows into manager/service-owned orchestration classes

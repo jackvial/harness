@@ -1759,67 +1759,29 @@ async function main(): Promise<number> {
     queuePersistTaskComposer(taskId, 'flush');
   };
 
-  function syncTaskPaneSelectionFocus(): void {
-    const hasTaskSelection =
-      workspace.taskPaneSelectedTaskId !== null && taskManager.hasTask(workspace.taskPaneSelectedTaskId);
-    const hasRepositorySelection =
-      workspace.taskPaneSelectedRepositoryId !== null && repositories.has(workspace.taskPaneSelectedRepositoryId);
-    if (workspace.taskPaneSelectionFocus === 'task' && hasTaskSelection) {
-      return;
-    }
-    if (workspace.taskPaneSelectionFocus === 'repository' && hasRepositorySelection) {
-      return;
-    }
-    if (hasTaskSelection) {
-      workspace.taskPaneSelectionFocus = 'task';
-      return;
-    }
-    if (hasRepositorySelection) {
-      workspace.taskPaneSelectionFocus = 'repository';
-      return;
-    }
-    workspace.taskPaneSelectionFocus = 'task';
-  }
-
-  function syncTaskPaneSelection(): void {
-    const scopedTaskIds = new Set(selectedRepositoryTaskRecords().map((task) => task.taskId));
-    if (workspace.taskPaneSelectedTaskId !== null && !scopedTaskIds.has(workspace.taskPaneSelectedTaskId)) {
-      workspace.taskPaneSelectedTaskId = null;
-    }
-    if (workspace.taskPaneSelectedTaskId === null) {
-      const scopedTasks = selectedRepositoryTaskRecords();
-      workspace.taskPaneSelectedTaskId = scopedTasks[0]?.taskId ?? null;
-    }
-    syncTaskPaneSelectionFocus();
-    if (workspace.taskEditorTarget.kind === 'task' && !scopedTaskIds.has(workspace.taskEditorTarget.taskId)) {
-      focusDraftComposer();
-    }
-  }
-
-  function syncTaskPaneRepositorySelection(): void {
-    if (workspace.taskPaneSelectedRepositoryId !== null) {
-      const selectedRepository = repositories.get(workspace.taskPaneSelectedRepositoryId);
-      if (selectedRepository === undefined || selectedRepository.archivedAt !== null) {
-        workspace.taskPaneSelectedRepositoryId = null;
-      }
-    }
-    if (workspace.taskPaneSelectedRepositoryId === null) {
-      workspace.taskPaneSelectedRepositoryId = activeRepositoryIds()[0] ?? null;
-    }
-    workspace.taskRepositoryDropdownOpen = false;
-    syncTaskPaneSelectionFocus();
-    syncTaskPaneSelection();
-  }
+  const activeRepositoryIds = (): readonly string[] => {
+    return orderedActiveRepositoryRecords().map((repository) => repository.repositoryId);
+  };
 
   const taskPaneSelectionActions = new TaskPaneSelectionActions<ControlPlaneTaskRecord>({
     workspace,
     taskRecordById: (taskId) => taskManager.getTask(taskId),
     hasTask: (taskId) => taskManager.hasTask(taskId),
     hasRepository: (repositoryId) => repositories.has(repositoryId),
+    repositoryById: (repositoryId) => repositories.get(repositoryId),
+    selectedRepositoryTasks: selectedRepositoryTaskRecords,
+    activeRepositoryIds,
     flushTaskComposerPersist,
-    syncTaskPaneSelection,
     markDirty,
   });
+
+  const syncTaskPaneSelection = (): void => {
+    taskPaneSelectionActions.syncTaskPaneSelection();
+  };
+
+  const syncTaskPaneRepositorySelection = (): void => {
+    taskPaneSelectionActions.syncTaskPaneRepositorySelection();
+  };
 
   const focusDraftComposer = (): void => {
     taskPaneSelectionActions.focusDraftComposer();
@@ -1842,10 +1804,6 @@ async function main(): Promise<number> {
 
   const selectRepositoryById = (repositoryId: string): void => {
     taskPaneSelectionActions.selectRepositoryById(repositoryId);
-  };
-
-  const activeRepositoryIds = (): readonly string[] => {
-    return orderedActiveRepositoryRecords().map((repository) => repository.repositoryId);
   };
 
   const enterHomePane = (): void => {
