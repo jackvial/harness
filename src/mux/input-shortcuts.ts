@@ -2,6 +2,7 @@ type MuxGlobalShortcutAction =
   | 'mux.app.quit'
   | 'mux.app.interrupt-all'
   | 'mux.conversation.new'
+  | 'mux.conversation.critique.open-or-create'
   | 'mux.conversation.next'
   | 'mux.conversation.previous'
   | 'mux.conversation.archive'
@@ -32,6 +33,7 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.app.quit',
   'mux.app.interrupt-all',
   'mux.conversation.new',
+  'mux.conversation.critique.open-or-create',
   'mux.conversation.next',
   'mux.conversation.previous',
   'mux.conversation.archive',
@@ -45,6 +47,7 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction
   'mux.app.quit': [],
   'mux.app.interrupt-all': ['ctrl+c'],
   'mux.conversation.new': ['ctrl+t'],
+  'mux.conversation.critique.open-or-create': ['ctrl+g'],
   'mux.conversation.next': ['ctrl+j'],
   'mux.conversation.previous': ['ctrl+k'],
   'mux.conversation.archive': [],
@@ -534,6 +537,9 @@ function withDefaultBindings(
       overrides?.['mux.app.interrupt-all'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.interrupt-all'],
     'mux.conversation.new':
       overrides?.['mux.conversation.new'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.new'],
+    'mux.conversation.critique.open-or-create':
+      overrides?.['mux.conversation.critique.open-or-create'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.critique.open-or-create'],
     'mux.conversation.next':
       overrides?.['mux.conversation.next'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.next'],
     'mux.conversation.previous':
@@ -561,6 +567,9 @@ export function resolveMuxShortcutBindings(
       'mux.app.quit': parseBindingsForAction(rawByAction['mux.app.quit']),
       'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
       'mux.conversation.new': parseBindingsForAction(rawByAction['mux.conversation.new']),
+      'mux.conversation.critique.open-or-create': parseBindingsForAction(
+        rawByAction['mux.conversation.critique.open-or-create']
+      ),
       'mux.conversation.next': parseBindingsForAction(rawByAction['mux.conversation.next']),
       'mux.conversation.previous': parseBindingsForAction(rawByAction['mux.conversation.previous']),
       'mux.conversation.archive': parseBindingsForAction(rawByAction['mux.conversation.archive']),

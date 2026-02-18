@@ -10,6 +10,10 @@ import {
 void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () => {
   const bindings = resolveMuxShortcutBindings();
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x14]), bindings), 'mux.conversation.new');
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from([0x07]), bindings),
+    'mux.conversation.critique.open-or-create'
+  );
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0a]), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0b]), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0c]), bindings), 'mux.conversation.takeover');
@@ -25,11 +29,19 @@ void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () =
 void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control combos', () => {
   const bindings = resolveMuxShortcutBindings();
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[116;5u', 'utf8'), bindings), 'mux.conversation.new');
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[103;5u', 'utf8'), bindings),
+    'mux.conversation.critique.open-or-create'
+  );
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[106;5u', 'utf8'), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[107;5u', 'utf8'), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[108;5u', 'utf8'), bindings), 'mux.conversation.takeover');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[93;5u', 'utf8'), bindings), null);
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;116~', 'utf8'), bindings), 'mux.conversation.new');
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;103~', 'utf8'), bindings),
+    'mux.conversation.critique.open-or-create'
+  );
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;106~', 'utf8'), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;107~', 'utf8'), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;108~', 'utf8'), bindings), 'mux.conversation.takeover');
@@ -40,6 +52,7 @@ void test('resolveMuxShortcutBindings applies config overrides and display helpe
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.next': ['alt+j', 'ctrl+n'],
     'mux.conversation.previous': ['alt+k'],
+    'mux.conversation.critique.open-or-create': ['ctrl+g'],
     'mux.app.quit': ['ctrl+q'],
     'mux.unknown.action': ['ctrl+x']
   });
@@ -54,6 +67,7 @@ void test('resolveMuxShortcutBindings applies config overrides and display helpe
 void test('shortcut parsing ignores malformed bindings and malformed protocol sequences', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['ctrl+', '', '+', 'meta+bad+token', 'ctrl+t'],
+    'mux.conversation.critique.open-or-create': ['ctrl+g'],
     'mux.conversation.next': ['unknownkey', 'ctrl+j'],
     'mux.conversation.previous': ['ctrl+h'],
     'mux.app.quit': ['ctrl+]'],
@@ -80,6 +94,7 @@ void test('shortcut parsing ignores malformed bindings and malformed protocol se
 void test('shortcut parser handles named keys aliases and modifier combinations', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['esc', 't'],
+    'mux.conversation.critique.open-or-create': ['ctrl+g'],
     'mux.conversation.next': ['return'],
     'mux.conversation.previous': ['tab'],
     'mux.app.quit': ['spacebar'],
@@ -102,6 +117,7 @@ void test('shortcut parser handles named keys aliases and modifier combinations'
 void test('control punctuation shortcuts decode through raw bytes', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['ctrl+\\'],
+    'mux.conversation.critique.open-or-create': ['ctrl+g'],
     'mux.conversation.next': ['ctrl+^'],
     'mux.conversation.previous': ['ctrl+_'],
     'mux.app.quit': ['ctrl+]'],
@@ -116,6 +132,7 @@ void test('control punctuation shortcuts decode through raw bytes', () => {
 void test('shortcut parser covers alias tokens and non-escape two-byte input guard', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['control+t'],
+    'mux.conversation.critique.open-or-create': ['ctrl+g'],
     'mux.conversation.next': ['super+n'],
     'mux.conversation.previous': ['option+p'],
     'mux.app.quit': ['ctrl+]'],
@@ -132,6 +149,7 @@ void test('shortcut parser covers alias tokens and non-escape two-byte input gua
 void test('shortcut parser stress-covers decode paths across raw kitty and modify variants', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['ctrl+t', 'escape'],
+    'mux.conversation.critique.open-or-create': ['ctrl+g'],
     'mux.conversation.next': ['ctrl+j', 'enter'],
     'mux.conversation.previous': ['ctrl+h', 'tab'],
     'mux.app.quit': ['ctrl+]', 'space'],
@@ -166,6 +184,7 @@ void test('shortcut parser stress-covers decode paths across raw kitty and modif
 void test('firstShortcutText falls back when action has no configured bindings', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': [],
+    'mux.conversation.critique.open-or-create': ['ctrl+g'],
     'mux.conversation.next': ['ctrl+j'],
     'mux.conversation.previous': ['ctrl+h'],
     'mux.app.quit': ['ctrl+]'],
@@ -179,6 +198,7 @@ void test('firstShortcutText falls back when action has no configured bindings',
 void test('shortcut matcher covers modifier mismatch branches for equal keys', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['ctrl+t'],
+    'mux.conversation.critique.open-or-create': ['ctrl+g'],
     'mux.conversation.next': ['ctrl+alt+t'],
     'mux.conversation.previous': ['ctrl+alt+shift+t'],
     'mux.app.quit': ['ctrl+alt+shift+meta+t'],

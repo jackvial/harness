@@ -173,6 +173,10 @@ export const NEW_THREAD_MODAL_TERMINAL_BUTTON = formatUiButton({
   label: 'terminal',
   prefixIcon: '▣'
 });
+export const NEW_THREAD_MODAL_CRITIQUE_BUTTON = formatUiButton({
+  label: 'critique',
+  prefixIcon: '▤'
+});
 
 const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
 

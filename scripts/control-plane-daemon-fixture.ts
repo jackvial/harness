@@ -167,6 +167,7 @@ async function main(): Promise<number> {
     stateStorePath: options.stateDbPath,
     codexTelemetry: loadedConfig.config.codex.telemetry,
     codexHistory: loadedConfig.config.codex.history,
+    critique: loadedConfig.config.critique,
     gitStatus: {
       enabled: loadedConfig.config.mux.git.enabled,
       pollMs: loadedConfig.config.mux.git.idlePollMs,

@@ -15,12 +15,14 @@ void test('new thread prompt defaults and normalization are stable', () => {
   assert.equal(state.selectedAgentType, 'codex');
   assert.equal(normalizeThreadAgentType('claude'), 'claude');
   assert.equal(normalizeThreadAgentType('terminal'), 'terminal');
+  assert.equal(normalizeThreadAgentType('critique'), 'critique');
   assert.equal(normalizeThreadAgentType('codex'), 'codex');
   assert.equal(normalizeThreadAgentType('claude'), 'claude');
   assert.equal(normalizeThreadAgentType('other'), 'codex');
   assert.equal(nextThreadAgentType('codex'), 'claude');
   assert.equal(nextThreadAgentType('claude'), 'terminal');
-  assert.equal(nextThreadAgentType('terminal'), 'codex');
+  assert.equal(nextThreadAgentType('terminal'), 'critique');
+  assert.equal(nextThreadAgentType('critique'), 'codex');
 });
 
 void test('new thread prompt reduces keyboard input into selection and submit', () => {
@@ -120,6 +122,10 @@ void test('new thread prompt accepts numeric claude and terminal shortcut keys',
   const selected = reduceNewThreadPromptInput(claudeSelected.nextState, Uint8Array.from([0x33]));
   assert.equal(selected.nextState.selectedAgentType, 'terminal');
   assert.equal(selected.submit, false);
+
+  const critiqueSelected = reduceNewThreadPromptInput(selected.nextState, Uint8Array.from([0x34]));
+  assert.equal(critiqueSelected.nextState.selectedAgentType, 'critique');
+  assert.equal(critiqueSelected.submit, false);
 });
 
 void test('new thread prompt row mapping and body lines remain deterministic', () => {
@@ -127,34 +133,53 @@ void test('new thread prompt row mapping and body lines remain deterministic', (
   const body = newThreadPromptBodyLines(state, {
     codexButtonLabel: '[ codex ]',
     claudeButtonLabel: '[ claude ]',
-    terminalButtonLabel: '[ terminal ]'
+    terminalButtonLabel: '[ terminal ]',
+    critiqueButtonLabel: '[ critique ]'
   });
   assert.equal(body[2], '● [ codex ]');
   assert.equal(body[3], '○ [ claude ]');
   assert.equal(body[4], '○ [ terminal ]');
+  assert.equal(body[5], '○ [ critique ]');
 
   const withClaude = reduceNewThreadPromptInput(state, Uint8Array.from([0x20])).nextState;
   const bodyClaude = newThreadPromptBodyLines(withClaude, {
     codexButtonLabel: '[ codex ]',
     claudeButtonLabel: '[ claude ]',
-    terminalButtonLabel: '[ terminal ]'
+    terminalButtonLabel: '[ terminal ]',
+    critiqueButtonLabel: '[ critique ]'
   });
   assert.equal(bodyClaude[2], '○ [ codex ]');
   assert.equal(bodyClaude[3], '● [ claude ]');
   assert.equal(bodyClaude[4], '○ [ terminal ]');
+  assert.equal(bodyClaude[5], '○ [ critique ]');
 
   const withTerminal = reduceNewThreadPromptInput(withClaude, Uint8Array.from([0x20])).nextState;
   const bodyTerminal = newThreadPromptBodyLines(withTerminal, {
     codexButtonLabel: '[ codex ]',
     claudeButtonLabel: '[ claude ]',
-    terminalButtonLabel: '[ terminal ]'
+    terminalButtonLabel: '[ terminal ]',
+    critiqueButtonLabel: '[ critique ]'
   });
   assert.equal(bodyTerminal[2], '○ [ codex ]');
   assert.equal(bodyTerminal[3], '○ [ claude ]');
   assert.equal(bodyTerminal[4], '● [ terminal ]');
+  assert.equal(bodyTerminal[5], '○ [ critique ]');
+
+  const withCritique = reduceNewThreadPromptInput(withTerminal, Uint8Array.from([0x20])).nextState;
+  const bodyCritique = newThreadPromptBodyLines(withCritique, {
+    codexButtonLabel: '[ codex ]',
+    claudeButtonLabel: '[ claude ]',
+    terminalButtonLabel: '[ terminal ]',
+    critiqueButtonLabel: '[ critique ]'
+  });
+  assert.equal(bodyCritique[2], '○ [ codex ]');
+  assert.equal(bodyCritique[3], '○ [ claude ]');
+  assert.equal(bodyCritique[4], '○ [ terminal ]');
+  assert.equal(bodyCritique[5], '● [ critique ]');
 
   assert.equal(resolveNewThreadPromptAgentByRow(10, 15), 'codex');
   assert.equal(resolveNewThreadPromptAgentByRow(10, 16), 'claude');
   assert.equal(resolveNewThreadPromptAgentByRow(10, 17), 'terminal');
+  assert.equal(resolveNewThreadPromptAgentByRow(10, 18), 'critique');
   assert.equal(resolveNewThreadPromptAgentByRow(10, 14), null);
 });

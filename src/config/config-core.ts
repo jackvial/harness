@@ -121,6 +121,20 @@ interface HarnessClaudeConfig {
   readonly launch: HarnessClaudeLaunchConfig;
 }
 
+interface HarnessCritiqueLaunchConfig {
+  readonly defaultArgs: readonly string[];
+}
+
+interface HarnessCritiqueInstallConfig {
+  readonly autoInstall: boolean;
+  readonly package: string;
+}
+
+interface HarnessCritiqueConfig {
+  readonly launch: HarnessCritiqueLaunchConfig;
+  readonly install: HarnessCritiqueInstallConfig;
+}
+
 interface HarnessLifecycleProviderConfig {
   readonly codex: boolean;
   readonly claude: boolean;
@@ -160,6 +174,7 @@ interface HarnessConfig {
   readonly debug: HarnessDebugConfig;
   readonly codex: HarnessCodexConfig;
   readonly claude: HarnessClaudeConfig;
+  readonly critique: HarnessCritiqueConfig;
   readonly hooks: HarnessHooksConfig;
 }
 
@@ -236,6 +251,15 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       defaultMode: 'yolo',
       directoryModes: {}
     }
+  },
+  critique: {
+    launch: {
+      defaultArgs: ['--watch'],
+    },
+    install: {
+      autoInstall: true,
+      package: 'critique@latest',
+    },
   },
   hooks: {
     lifecycle: {
@@ -825,6 +849,58 @@ function normalizeClaudeConfig(input: unknown): HarnessClaudeConfig {
   };
 }
 
+function normalizeStringArray(input: unknown, fallback: readonly string[]): readonly string[] {
+  if (!Array.isArray(input)) {
+    return fallback;
+  }
+  const normalized = input
+    .flatMap((value) => (typeof value === 'string' ? [value.trim()] : []))
+    .filter((value) => value.length > 0);
+  return normalized.length === 0 ? fallback : normalized;
+}
+
+function normalizeCritiqueLaunchConfig(input: unknown): HarnessCritiqueLaunchConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.critique.launch;
+  }
+  return {
+    defaultArgs: normalizeStringArray(
+      record['defaultArgs'],
+      DEFAULT_HARNESS_CONFIG.critique.launch.defaultArgs,
+    ),
+  };
+}
+
+function normalizeCritiqueInstallConfig(input: unknown): HarnessCritiqueInstallConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.critique.install;
+  }
+  const packageName =
+    typeof record['package'] === 'string' && record['package'].trim().length > 0
+      ? record['package'].trim()
+      : DEFAULT_HARNESS_CONFIG.critique.install.package;
+  return {
+    autoInstall:
+      typeof record['autoInstall'] === 'boolean'
+        ? record['autoInstall']
+        : DEFAULT_HARNESS_CONFIG.critique.install.autoInstall,
+    package: packageName,
+  };
+}
+
+function normalizeCritiqueConfig(input: unknown): HarnessCritiqueConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.critique;
+  }
+  return {
+    launch: normalizeCritiqueLaunchConfig(record['launch']),
+    install: normalizeCritiqueInstallConfig(record['install']),
+  };
+}
+
 function isHarnessLifecycleEventType(value: string): value is HarnessLifecycleEventType {
   return (HARNESS_LIFECYCLE_EVENT_TYPES as readonly string[]).includes(value);
 }
@@ -1003,6 +1079,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   const debug = normalizeDebugConfig(root['debug'], legacyPerf);
   const codex = normalizeCodexConfig(root['codex']);
   const claude = normalizeClaudeConfig(root['claude']);
+  const critique = normalizeCritiqueConfig(root['critique']);
   const hooks = normalizeLifecycleHooksConfig(asRecord(root['hooks'])?.['lifecycle']);
 
   return {
@@ -1014,6 +1091,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
     debug,
     codex,
     claude,
+    critique,
     hooks: {
       lifecycle: hooks,
     },

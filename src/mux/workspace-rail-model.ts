@@ -556,6 +556,7 @@ function shortcutDescriptionRows(shortcutHint: string | undefined): readonly str
   if (normalized === undefined || normalized.length === 0) {
     return [
       'ctrl+t new thread',
+      'ctrl+g critique thread',
       'ctrl+x archive thread',
       'ctrl+l take over thread',
       'ctrl+o add project',

@@ -248,6 +248,7 @@ import {
   archiveConversation as archiveConversationFn,
   closeDirectory as closeDirectoryFn,
   createAndActivateConversationInDirectory as createAndActivateConversationInDirectoryFn,
+  openOrCreateCritiqueConversationInDirectory as openOrCreateCritiqueConversationInDirectoryFn,
   openNewThreadPrompt as openNewThreadPromptFn,
   takeoverConversation as takeoverConversationFn,
 } from '../src/mux/live-mux/actions-conversation.ts';
@@ -399,6 +400,7 @@ async function main(): Promise<number> {
     'mux.app.quit': ['escape'],
     'mux.app.interrupt-all': [],
     'mux.conversation.new': [],
+    'mux.conversation.critique.open-or-create': [],
     'mux.conversation.next': [],
     'mux.conversation.previous': [],
     'mux.conversation.archive': [],
@@ -417,6 +419,7 @@ async function main(): Promise<number> {
   const configuredMuxUi = loadedConfig.config.mux.ui;
   const configuredMuxGit = loadedConfig.config.mux.git;
   const configuredCodexLaunch = loadedConfig.config.codex.launch;
+  const configuredCritique = loadedConfig.config.critique;
   const codexLaunchModeByDirectoryPath: Record<string, 'yolo' | 'standard'> = {};
   for (const [directoryPath, mode] of Object.entries(configuredCodexLaunch.directoryModes)) {
     const normalizedDirectoryPath = resolveWorkspacePathForMux(
@@ -525,6 +528,7 @@ async function main(): Promise<number> {
         ),
         codexTelemetry: loadedConfig.config.codex.telemetry,
         codexHistory: loadedConfig.config.codex.history,
+        critique: loadedConfig.config.critique,
         gitStatus: {
           enabled: loadedConfig.config.mux.git.enabled,
           pollMs: loadedConfig.config.mux.git.idlePollMs,
@@ -1031,7 +1035,12 @@ async function main(): Promise<number> {
       const existing = conversationManager.get(sessionId);
       const targetConversation = existing ?? ensureConversation(sessionId);
       const agentType = normalizeThreadAgentType(targetConversation.agentType);
-      const baseArgsForAgent = agentType === 'codex' ? options.codexArgs : [];
+      const baseArgsForAgent =
+        agentType === 'codex'
+          ? options.codexArgs
+          : agentType === 'critique'
+            ? configuredCritique.launch.defaultArgs
+            : [];
       const configuredDirectoryPath =
         targetConversation.directoryId === null
           ? null
@@ -3139,6 +3148,29 @@ async function main(): Promise<number> {
     });
   };
 
+  const openOrCreateCritiqueConversationInDirectory = async (
+    directoryId: string,
+  ): Promise<void> => {
+    await openOrCreateCritiqueConversationInDirectoryFn({
+      directoryId,
+      orderedConversationIds: () => conversationManager.orderedIds(),
+      conversationById: (sessionId) => {
+        const conversation = conversations.get(sessionId);
+        if (conversation === undefined) {
+          return null;
+        }
+        return {
+          directoryId: conversation.directoryId,
+          agentType: conversation.agentType,
+        };
+      },
+      activateConversation,
+      createAndActivateCritiqueConversationInDirectory: async (targetDirectoryId) => {
+        await createAndActivateConversationInDirectory(targetDirectoryId, 'critique');
+      },
+    });
+  };
+
   const archiveConversation = async (sessionId: string): Promise<void> => {
     await archiveConversationFn({
       sessionId,
@@ -4224,6 +4256,7 @@ async function main(): Promise<number> {
         requestStop,
         resolveDirectoryForAction,
         openNewThreadPrompt,
+        openOrCreateCritiqueConversationInDirectory,
         resolveConversationForAction: () =>
           workspace.mainPaneMode === 'conversation' ? conversationManager.activeConversationId : null,
         conversationsHas: (sessionId) => conversationManager.has(sessionId),

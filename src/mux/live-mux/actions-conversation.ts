@@ -72,6 +72,41 @@ export async function createAndActivateConversationInDirectory<TAgentType>(
   await options.activateConversation(sessionId);
 }
 
+interface OpenOrCreateCritiqueConversationInDirectoryOptions {
+  directoryId: string;
+  orderedConversationIds: () => readonly string[];
+  conversationById: (
+    sessionId: string,
+  ) => {
+    readonly directoryId: string | null;
+    readonly agentType: string;
+  } | null;
+  activateConversation: (sessionId: string) => Promise<unknown>;
+  createAndActivateCritiqueConversationInDirectory: (directoryId: string) => Promise<unknown>;
+}
+
+function isCritiqueAgentType(agentType: string): boolean {
+  return agentType.trim().toLowerCase() === 'critique';
+}
+
+export async function openOrCreateCritiqueConversationInDirectory(
+  options: OpenOrCreateCritiqueConversationInDirectoryOptions,
+): Promise<void> {
+  const existingConversationId =
+    options.orderedConversationIds().find((sessionId) => {
+      const conversation = options.conversationById(sessionId);
+      if (conversation === null) {
+        return false;
+      }
+      return conversation.directoryId === options.directoryId && isCritiqueAgentType(conversation.agentType);
+    }) ?? null;
+  if (existingConversationId !== null) {
+    await options.activateConversation(existingConversationId);
+    return;
+  }
+  await options.createAndActivateCritiqueConversationInDirectory(options.directoryId);
+}
+
 interface ArchiveConversationOptions {
   sessionId: string;
   conversations: ReadonlyMap<string, ConversationStateLike>;

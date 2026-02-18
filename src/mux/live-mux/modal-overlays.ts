@@ -2,6 +2,7 @@ import {
   CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL,
   NEW_THREAD_MODAL_CLAUDE_BUTTON,
   NEW_THREAD_MODAL_CODEX_BUTTON,
+  NEW_THREAD_MODAL_CRITIQUE_BUTTON,
   NEW_THREAD_MODAL_TERMINAL_BUTTON,
   resolveGoldenModalSize,
 } from '../harness-core-ui.ts';
@@ -61,6 +62,7 @@ export function buildNewThreadModalOverlay(
       codexButtonLabel: NEW_THREAD_MODAL_CODEX_BUTTON,
       claudeButtonLabel: NEW_THREAD_MODAL_CLAUDE_BUTTON,
       terminalButtonLabel: NEW_THREAD_MODAL_TERMINAL_BUTTON,
+      critiqueButtonLabel: NEW_THREAD_MODAL_CRITIQUE_BUTTON,
     }),
     footer: 'enter create  esc',
     theme,

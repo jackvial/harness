@@ -5,6 +5,7 @@ interface HandleGlobalShortcutOptions {
   requestStop: () => void;
   resolveDirectoryForAction: () => string | null;
   openNewThreadPrompt: (directoryId: string) => void;
+  openOrCreateCritiqueConversationInDirectory: (directoryId: string) => Promise<void>;
   resolveConversationForAction: () => string | null;
   conversationsHas: (sessionId: string) => boolean;
   queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
@@ -22,6 +23,7 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
     requestStop,
     resolveDirectoryForAction,
     openNewThreadPrompt,
+    openOrCreateCritiqueConversationInDirectory,
     resolveConversationForAction,
     conversationsHas,
     queueControlPlaneOp,
@@ -43,6 +45,15 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
     const targetDirectoryId = resolveDirectoryForAction();
     if (targetDirectoryId !== null) {
       openNewThreadPrompt(targetDirectoryId);
+    }
+    return true;
+  }
+  if (shortcut === 'mux.conversation.critique.open-or-create') {
+    const targetDirectoryId = resolveDirectoryForAction();
+    if (targetDirectoryId !== null) {
+      queueControlPlaneOp(async () => {
+        await openOrCreateCritiqueConversationInDirectory(targetDirectoryId);
+      }, 'shortcut-open-or-create-critique-conversation');
     }
     return true;
   }

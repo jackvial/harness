@@ -87,6 +87,8 @@ interface BuildRailRowsArgs extends BuildRailModelArgs {
 
 function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
+  const critiqueConversation =
+    firstShortcutText(bindings, 'mux.conversation.critique.open-or-create') || 'ctrl+g';
   const deleteConversation = firstShortcutText(bindings, 'mux.conversation.delete') || 'ctrl+x';
   const takeoverConversation = firstShortcutText(bindings, 'mux.conversation.takeover') || 'ctrl+l';
   const addProject = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
@@ -95,7 +97,7 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ←/→ collapse/expand  ${interrupt} quit`;
+  return `${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ←/→ collapse/expand  ${interrupt} quit`;
 }
 
 function conversationSummary(conversation: MuxRailConversationRecord): ConversationRailSessionSummary {

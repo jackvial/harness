@@ -159,6 +159,20 @@ interface CodexLaunchConfig {
   readonly directoryModes: Readonly<Record<string, 'yolo' | 'standard'>>;
 }
 
+interface CritiqueLaunchConfig {
+  readonly defaultArgs: readonly string[];
+}
+
+interface CritiqueInstallConfig {
+  readonly autoInstall: boolean;
+  readonly package: string;
+}
+
+interface CritiqueConfig {
+  readonly launch: CritiqueLaunchConfig;
+  readonly install: CritiqueInstallConfig;
+}
+
 interface GitStatusMonitorConfig {
   readonly enabled: boolean;
   readonly pollMs: number;
@@ -182,6 +196,7 @@ interface StartControlPlaneStreamServerOptions {
   codexTelemetry?: CodexTelemetryServerConfig;
   codexHistory?: CodexHistoryIngestConfig;
   codexLaunch?: CodexLaunchConfig;
+  critique?: CritiqueConfig;
   gitStatus?: GitStatusMonitorConfig;
   readGitDirectorySnapshot?: GitDirectorySnapshotReader;
   lifecycleHooks?: HarnessLifecycleHooksConfig;
@@ -322,6 +337,8 @@ const DEFAULT_WORKTREE_ID = 'worktree-local';
 const DEFAULT_CLAUDE_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/codex-notify-relay.ts', import.meta.url)
 );
+const DEFAULT_CRITIQUE_DEFAULT_ARGS = ['--watch'] as const;
+const DEFAULT_CRITIQUE_PACKAGE = 'critique@latest';
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
   'codex.turn.e2e_duration_ms',
@@ -448,6 +465,30 @@ function normalizeCodexLaunchConfig(input: CodexLaunchConfig | undefined): Codex
   return {
     defaultMode: input?.defaultMode ?? 'standard',
     directoryModes: input?.directoryModes ?? {},
+  };
+}
+
+function normalizeCritiqueConfig(input: CritiqueConfig | undefined): CritiqueConfig {
+  const normalizedDefaultArgs = input?.launch.defaultArgs
+    ?.flatMap((value) => (typeof value === 'string' ? [value.trim()] : []))
+    .filter((value) => value.length > 0);
+  const defaultArgs =
+    normalizedDefaultArgs === undefined || normalizedDefaultArgs.length === 0
+      ? [...DEFAULT_CRITIQUE_DEFAULT_ARGS]
+      : normalizedDefaultArgs;
+  const packageNameRaw = input?.install.package;
+  const packageName =
+    typeof packageNameRaw === 'string' && packageNameRaw.trim().length > 0
+      ? packageNameRaw.trim()
+      : DEFAULT_CRITIQUE_PACKAGE;
+  return {
+    launch: {
+      defaultArgs,
+    },
+    install: {
+      autoInstall: input?.install.autoInstall ?? true,
+      package: packageName,
+    },
   };
 }
 
@@ -630,6 +671,7 @@ export class ControlPlaneStreamServer {
   private readonly codexTelemetry: CodexTelemetryServerConfig;
   private readonly codexHistory: CodexHistoryIngestConfig;
   private readonly codexLaunch: CodexLaunchConfig;
+  private readonly critique: CritiqueConfig;
   private readonly gitStatusMonitor: GitStatusMonitorConfig;
   private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
   private readonly server: Server;
@@ -681,6 +723,7 @@ export class ControlPlaneStreamServer {
     this.codexTelemetry = normalizeCodexTelemetryConfig(options.codexTelemetry);
     this.codexHistory = normalizeCodexHistoryConfig(options.codexHistory);
     this.codexLaunch = normalizeCodexLaunchConfig(options.codexLaunch);
+    this.critique = normalizeCritiqueConfig(options.critique);
     this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
     this.readGitDirectorySnapshot =
       options.readGitDirectorySnapshot ??
@@ -970,6 +1013,12 @@ export class ControlPlaneStreamServer {
         baseArgs: []
       };
     }
+    if (agentType === 'critique') {
+      return {
+        command: 'critique',
+        baseArgs: []
+      };
+    }
     if (agentType !== 'terminal') {
       return {};
     }
@@ -986,7 +1035,8 @@ export class ControlPlaneStreamServer {
     for (const conversation of conversations) {
       const adapterState = normalizeAdapterState(conversation.adapterState);
       const directory = this.stateStore.getDirectory(conversation.directoryId);
-      const startArgs = buildAgentSessionStartArgs(conversation.agentType, [], adapterState, {
+      const baseArgs = conversation.agentType === 'critique' ? this.critique.launch.defaultArgs : [];
+      const startArgs = buildAgentSessionStartArgs(conversation.agentType, baseArgs, adapterState, {
         directoryPath: directory?.path ?? null,
         codexLaunchDefaultMode: this.codexLaunch.defaultMode,
         codexLaunchModeByDirectoryPath: this.codexLaunch.directoryModes,
@@ -1028,15 +1078,25 @@ export class ControlPlaneStreamServer {
 
     const persistedConversation = this.stateStore.getConversation(command.sessionId);
     const agentType = persistedConversation?.agentType ?? 'codex';
+    const baseSessionArgs =
+      agentType === 'critique' && command.args.length === 0
+        ? [...this.critique.launch.defaultArgs]
+        : [...command.args];
     const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
     const claudeHookLaunchConfig = this.claudeHookLaunchConfigForSession(command.sessionId, agentType);
     const launchProfile = this.launchProfileForAgent(agentType);
+    let launchCommandName = launchProfile.command ?? 'codex';
+    let launchArgs = [...codexLaunchArgs, ...(claudeHookLaunchConfig?.args ?? []), ...baseSessionArgs];
+    if (agentType === 'critique' && this.critique.install.autoInstall) {
+      launchCommandName = 'bunx';
+      launchArgs = [this.critique.install.package, ...launchArgs];
+    }
     const launchCommand = formatLaunchCommand(
-      launchProfile.command ?? 'codex',
-      command.args,
+      launchCommandName,
+      launchArgs,
     );
     const startInput: StartControlPlaneSessionInput = {
-      args: [...codexLaunchArgs, ...(claudeHookLaunchConfig?.args ?? []), ...command.args],
+      args: launchArgs,
       initialCols: command.initialCols,
       initialRows: command.initialRows,
     };
@@ -1047,8 +1107,8 @@ export class ControlPlaneStreamServer {
     if (claudeHookLaunchConfig !== null) {
       startInput.notifyFilePath = claudeHookLaunchConfig.notifyFilePath;
     }
-    if (launchProfile.command !== undefined) {
-      startInput.command = launchProfile.command;
+    if (launchProfile.command !== undefined || launchCommandName !== 'codex') {
+      startInput.command = launchCommandName;
     }
     if (launchProfile.baseArgs !== undefined) {
       startInput.baseArgs = [...launchProfile.baseArgs];

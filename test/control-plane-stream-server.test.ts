@@ -613,6 +613,134 @@ void test('stream server auto-starts persisted conversations during gateway star
   }
 });
 
+void test('stream server starts critique sessions through bunx when auto-install is enabled', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    critique: {
+      launch: {
+        defaultArgs: ['--watch'],
+      },
+      install: {
+        autoInstall: true,
+        package: 'critique@latest',
+      },
+    },
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-critique',
+      tenantId: 'tenant-critique',
+      userId: 'user-critique',
+      workspaceId: 'workspace-critique',
+      path: '/tmp/critique',
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-critique',
+      directoryId: 'directory-critique',
+      title: 'critique thread',
+      agentType: 'critique',
+      adapterState: {},
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-critique',
+      args: [],
+      initialCols: 100,
+      initialRows: 40,
+      tenantId: 'tenant-critique',
+      userId: 'user-critique',
+      workspaceId: 'workspace-critique',
+      worktreeId: 'worktree-critique',
+    });
+    assert.equal(created.length, 1);
+    assert.equal(created[0]?.input.command, 'bunx');
+    assert.deepEqual(created[0]?.input.args, ['critique@latest', '--watch']);
+    assert.deepEqual(created[0]?.input.baseArgs, []);
+
+    const status = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-critique',
+    });
+    assert.equal(status['launchCommand'], 'bunx critique@latest --watch');
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server starts critique sessions directly when auto-install is disabled', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    critique: {
+      launch: {
+        defaultArgs: ['--watch'],
+      },
+      install: {
+        autoInstall: false,
+        package: 'critique@latest',
+      },
+    },
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-critique-present',
+      tenantId: 'tenant-critique',
+      userId: 'user-critique',
+      workspaceId: 'workspace-critique',
+      path: '/tmp/critique-present',
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-critique-present',
+      directoryId: 'directory-critique-present',
+      title: 'critique thread present',
+      agentType: 'critique',
+      adapterState: {},
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-critique-present',
+      args: [],
+      initialCols: 100,
+      initialRows: 40,
+      tenantId: 'tenant-critique',
+      userId: 'user-critique',
+      workspaceId: 'workspace-critique',
+      worktreeId: 'worktree-critique',
+    });
+    assert.equal(created.length, 1);
+    assert.equal(created[0]?.input.command, 'critique');
+    assert.deepEqual(created[0]?.input.args, ['--watch']);
+    assert.deepEqual(created[0]?.input.baseArgs, []);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('stream server supports start/attach/io/events/cleanup over one protocol path', async () => {
   const created: FakeLiveSession[] = [];
   const startSession = (input: StartControlPlaneSessionInput): FakeLiveSession => {

@@ -1,4 +1,4 @@
-type ThreadAgentType = 'codex' | 'claude' | 'terminal';
+type ThreadAgentType = 'codex' | 'claude' | 'terminal' | 'critique';
 
 const EMPTY_NEW_THREAD_PROMPT_INPUT = new Uint8Array();
 
@@ -20,7 +20,7 @@ export function createNewThreadPromptState(directoryId: string): NewThreadPrompt
 }
 
 export function normalizeThreadAgentType(value: string): ThreadAgentType {
-  if (value === 'terminal' || value === 'claude') {
+  if (value === 'terminal' || value === 'claude' || value === 'critique') {
     return value;
   }
   return 'codex';
@@ -32,6 +32,9 @@ export function nextThreadAgentType(value: ThreadAgentType): ThreadAgentType {
   }
   if (value === 'claude') {
     return 'terminal';
+  }
+  if (value === 'terminal') {
+    return 'critique';
   }
   return 'codex';
 }
@@ -88,6 +91,8 @@ export function reduceNewThreadPromptInput(
       selectedAgentType = 'claude';
     } else if (byte === 0x33 || byte === 0x74 || byte === 0x54) {
       selectedAgentType = 'terminal';
+    } else if (byte === 0x34 || byte === 0x72 || byte === 0x52) {
+      selectedAgentType = 'critique';
     }
   }
   return {
@@ -106,6 +111,7 @@ export function resolveNewThreadPromptAgentByRow(
   const codexRow = overlayTopRowZeroBased + 4;
   const claudeRow = overlayTopRowZeroBased + 5;
   const terminalRow = overlayTopRowZeroBased + 6;
+  const critiqueRow = overlayTopRowZeroBased + 7;
   if (rowOneBased - 1 === codexRow) {
     return 'codex';
   }
@@ -114,6 +120,9 @@ export function resolveNewThreadPromptAgentByRow(
   }
   if (rowOneBased - 1 === terminalRow) {
     return 'terminal';
+  }
+  if (rowOneBased - 1 === critiqueRow) {
+    return 'critique';
   }
   return null;
 }
@@ -124,18 +133,21 @@ export function newThreadPromptBodyLines(
     readonly codexButtonLabel: string;
     readonly claudeButtonLabel: string;
     readonly terminalButtonLabel: string;
+    readonly critiqueButtonLabel: string;
   }
 ): readonly string[] {
   const codexSelected = state.selectedAgentType === 'codex';
   const claudeSelected = state.selectedAgentType === 'claude';
   const terminalSelected = state.selectedAgentType === 'terminal';
+  const critiqueSelected = state.selectedAgentType === 'critique';
   return [
     'choose thread type',
     '',
     `${codexSelected ? '●' : '○'} ${labels.codexButtonLabel}`,
     `${claudeSelected ? '●' : '○'} ${labels.claudeButtonLabel}`,
     `${terminalSelected ? '●' : '○'} ${labels.terminalButtonLabel}`,
+    `${critiqueSelected ? '●' : '○'} ${labels.critiqueButtonLabel}`,
     '',
-    'c/a/t toggle'
+    'c/a/t/r toggle'
   ];
 }

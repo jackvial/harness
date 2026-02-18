@@ -161,6 +161,7 @@ async function main(): Promise<number> {
       defaultMode: loadedConfig.config.codex.launch.defaultMode,
       directoryModes: codexLaunchDirectoryModes
     },
+    critique: loadedConfig.config.critique,
     gitStatus: {
       enabled: loadedConfig.config.mux.git.enabled,
       pollMs: loadedConfig.config.mux.git.idlePollMs,

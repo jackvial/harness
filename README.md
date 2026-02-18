@@ -32,7 +32,7 @@ Harness is built for developers who want to:
 - `ctrl+j/k` cycles the full left-nav order of visible items (Home, repository groups, project headers, then project threads).
 - `left/right` collapses or expands the selected repository group; `ctrl+k ctrl+0` collapses all groups, `ctrl+k ctrl+j` expands all groups.
 - Projects can remain empty; threads start only via explicit `new thread` actions.
-- Parallel `codex`, `claude`, and `terminal` threads in the same workspace.
+- Parallel `codex`, `claude`, `terminal`, and `critique` threads in the same workspace.
 - Fresh context per thread by default (plus persisted continuity when supported).
 - Session control ownership: claim/release/takeover semantics for human-agent handoff.
 - Thread lifecycle management: create, rename, archive, and restore-ready metadata.
@@ -48,6 +48,7 @@ Harness is built for developers who want to:
 - Home pane task input is Codex-style and keyboard-first: growing multiline composer, `enter` submits and marks `ready`, `tab` queues in `draft`, `shift+enter` newline, `↑` boundary to jump into task edit, `↓` boundary to save and return to draft composer.
 - Queued/ready/complete controls are pinned on each task row and support both keyboard actions and mouse clicks.
 - Home-pane task/repo/composer keybindings are config-driven under `mux.keybindings` action IDs (`mux.home.*`), so defaults can be fully remapped in `harness.config.jsonc`.
+- Conversation keybindings are config-driven under `mux.keybindings`; `mux.conversation.critique.open-or-create` defaults to `ctrl+g` and opens or creates the current project's critique thread.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Control-plane-owned git monitoring publishes `directory-git-updated` events; git polling/execution is no longer done in the client mux loop.
 - Mux startup hydrates git/repository grouping from the gateway cache via `directory.git-status`, so early startup events cannot strand tracked projects under `untracked`.
@@ -196,6 +197,7 @@ Harness is built to expose operational truth, not hide it.
 - Rust toolchain (for PTY helper build)
 - Codex CLI (for `codex` thread type)
 - Claude Code CLI (for `claude` thread type)
+- Critique CLI (optional; Harness can auto-run via `bunx` for `critique` thread type)
 
 ### Migrate Older Checkout To Bun
 

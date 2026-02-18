@@ -598,6 +598,48 @@ void test('parseHarnessConfigText parses claude launch settings', () => {
   });
 });
 
+void test('parseHarnessConfigText parses critique launch/install settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "critique": {
+        "launch": {
+          "defaultArgs": ["--watch", "--help"]
+        },
+        "install": {
+          "autoInstall": false,
+          "package": " critique@next "
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.critique, {
+    launch: {
+      defaultArgs: ['--watch', '--help'],
+    },
+    install: {
+      autoInstall: false,
+      package: 'critique@next',
+    },
+  });
+});
+
+void test('parseHarnessConfigText falls back for invalid critique settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "critique": {
+        "launch": {
+          "defaultArgs": [true, "   "]
+        },
+        "install": {
+          "autoInstall": "yes",
+          "package": " "
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.critique, DEFAULT_HARNESS_CONFIG.critique);
+});
+
 void test('parseHarnessConfigText falls back for invalid claude settings', () => {
   const parsed = parseHarnessConfigText(`
     {
