@@ -140,6 +140,7 @@ Control-plane boundaries:
 - Screen dirty-tracking and terminal frame flush state is moving behind a class-based UI abstraction (`src/ui/screen.ts`) so runtime no longer directly owns row diff/cursor/bracketed-paste/frame-cache state.
 - Pane rendering seams are moving behind class-based UI modules (`src/ui/panes/conversation.ts`, `src/ui/panes/home.ts`, `src/ui/panes/project.ts`, `src/ui/panes/left-rail.ts`) so runtime delegates per-pane rendering responsibilities instead of assembling pane-specific rows inline.
 - Modal overlay lifecycle and outside-click dismissal are moving behind a class-based `ModalManager` (`src/ui/modals/manager.ts`) so runtime delegates modal overlay selection/building and pointer-dismiss routing instead of keeping modal orchestration inline.
+- Modal prompt input dispatch is moving behind a class-based `InputRouter` (`src/ui/input.ts`) so runtime delegates per-modal prompt routing order and handler wiring instead of maintaining inline prompt-dispatch trees.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

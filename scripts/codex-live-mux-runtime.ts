@@ -162,15 +162,6 @@ import {
   type PaneSelection,
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
-import {
-  handleConversationTitleEditInput as handleConversationTitleEditInputFn,
-  handleNewThreadPromptInput as handleNewThreadPromptInputFn,
-} from '../src/mux/live-mux/modal-conversation-handlers.ts';
-import {
-  handleAddDirectoryPromptInput as handleAddDirectoryPromptInputFn,
-  handleRepositoryPromptInput as handleRepositoryPromptInputFn,
-} from '../src/mux/live-mux/modal-prompt-handlers.ts';
-import { handleTaskEditorPromptInput as handleTaskEditorPromptInputFn } from '../src/mux/live-mux/modal-task-editor-handler.ts';
 import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputFn } from '../src/mux/live-mux/task-pane-shortcuts.ts';
 import { handleGlobalShortcut as handleGlobalShortcutFn } from '../src/mux/live-mux/global-shortcut-handlers.ts';
 import {
@@ -238,6 +229,7 @@ import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
+import { InputRouter } from '../src/ui/input.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3486,135 +3478,80 @@ async function main(): Promise<number> {
     });
   })();
 
-  const handleTaskEditorPromptInput = (input: Buffer): boolean => {
-    const handled = handleTaskEditorPromptInputFn({
-      input,
-      prompt: taskEditorPrompt,
-      isQuitShortcut: (rawInput) =>
-        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
-      dismissOnOutsideClick: (rawInput, dismiss) => dismissModalOnOutsideClick(rawInput, dismiss),
-    });
-    if (!handled.handled) {
-      return false;
-    }
-    if (handled.nextPrompt !== undefined) {
-      taskEditorPrompt = handled.nextPrompt;
-    }
-    if (handled.markDirty) {
-      markDirty();
-    }
-    if (handled.submitPayload === undefined) {
-      return true;
-    }
-    const payload = handled.submitPayload;
-    queueControlPlaneOp(async () => {
-      try {
-        if (payload.mode === 'create') {
-          applyTaskRecord(await controlPlaneService.createTask({
-            repositoryId: payload.repositoryId,
-            title: payload.title,
-            description: payload.description,
-          }));
-        } else {
-          if (payload.taskId === null) {
-            throw new Error('task edit state missing task id');
+  const inputRouter = new InputRouter({
+    isModalDismissShortcut: (rawInput) =>
+      detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
+    isArchiveConversationShortcut: (rawInput) => {
+      const action = detectMuxGlobalShortcut(rawInput, shortcutBindings);
+      return action === 'mux.conversation.archive' || action === 'mux.conversation.delete';
+    },
+    dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
+      dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+    buildConversationTitleModalOverlay: () => buildConversationTitleModalOverlay(layout.rows),
+    buildNewThreadModalOverlay: () => buildNewThreadModalOverlay(layout.rows),
+    resolveNewThreadPromptAgentByRow,
+    stopConversationTitleEdit,
+    queueControlPlaneOp,
+    archiveConversation,
+    createAndActivateConversationInDirectory,
+    addDirectoryByPath,
+    normalizeGitHubRemoteUrl,
+    upsertRepositoryByRemoteUrl,
+    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+    markDirty,
+    conversations: _unsafeConversationMap,
+    scheduleConversationTitlePersist,
+    getTaskEditorPrompt: () => taskEditorPrompt,
+    setTaskEditorPrompt: (next) => {
+      taskEditorPrompt = next;
+    },
+    submitTaskEditorPayload: (payload) => {
+      queueControlPlaneOp(async () => {
+        try {
+          if (payload.mode === 'create') {
+            applyTaskRecord(await controlPlaneService.createTask({
+              repositoryId: payload.repositoryId,
+              title: payload.title,
+              description: payload.description,
+            }));
+          } else {
+            if (payload.taskId === null) {
+              throw new Error('task edit state missing task id');
+            }
+            applyTaskRecord(await controlPlaneService.updateTask({
+              taskId: payload.taskId,
+              repositoryId: payload.repositoryId,
+              title: payload.title,
+              description: payload.description,
+            }));
           }
-          applyTaskRecord(await controlPlaneService.updateTask({
-            taskId: payload.taskId,
-            repositoryId: payload.repositoryId,
-            title: payload.title,
-            description: payload.description,
-          }));
+          taskEditorPrompt = null;
+          workspace.taskPaneNotice = null;
+        } catch (error: unknown) {
+          if (taskEditorPrompt !== null) {
+            taskEditorPrompt.error = error instanceof Error ? error.message : String(error);
+          } else {
+            workspace.taskPaneNotice = error instanceof Error ? error.message : String(error);
+          }
+        } finally {
+          markDirty();
         }
-        taskEditorPrompt = null;
-        workspace.taskPaneNotice = null;
-      } catch (error: unknown) {
-        if (taskEditorPrompt !== null) {
-          taskEditorPrompt.error = error instanceof Error ? error.message : String(error);
-        } else {
-          workspace.taskPaneNotice = error instanceof Error ? error.message : String(error);
-        }
-      } finally {
-        markDirty();
-      }
-    }, payload.commandLabel);
-    return true;
-  };
-
-  const handleConversationTitleEditInput = (input: Buffer): boolean => {
-    return handleConversationTitleEditInputFn({
-      input,
-      edit: conversationTitleEdit,
-      isQuitShortcut: (rawInput) =>
-        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
-      isArchiveShortcut: (rawInput) => {
-        const action = detectMuxGlobalShortcut(rawInput, shortcutBindings);
-        return action === 'mux.conversation.archive' || action === 'mux.conversation.delete';
-      },
-      dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
-        dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
-      buildConversationTitleModalOverlay: () => buildConversationTitleModalOverlay(layout.rows),
-      stopConversationTitleEdit,
-      queueControlPlaneOp,
-      archiveConversation,
-      markDirty,
-      conversations: _unsafeConversationMap,
-      scheduleConversationTitlePersist,
-    });
-  };
-
-  const handleNewThreadPromptInput = (input: Buffer): boolean => {
-    return handleNewThreadPromptInputFn({
-      input,
-      prompt: newThreadPrompt,
-      isQuitShortcut: (rawInput) =>
-        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
-      dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
-        dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
-      buildNewThreadModalOverlay: () => buildNewThreadModalOverlay(layout.rows),
-      resolveNewThreadPromptAgentByRow,
-      queueControlPlaneOp,
-      createAndActivateConversationInDirectory,
-      markDirty,
-      setPrompt: (prompt) => {
-        newThreadPrompt = prompt;
-      },
-    });
-  };
-
-  const handleAddDirectoryPromptInput = (input: Buffer): boolean => {
-    return handleAddDirectoryPromptInputFn({
-      input,
-      prompt: addDirectoryPrompt,
-      isQuitShortcut: (rawInput) =>
-        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
-      dismissOnOutsideClick: (rawInput, dismiss) => dismissModalOnOutsideClick(rawInput, dismiss),
-      setPrompt: (next) => {
-        addDirectoryPrompt = next;
-      },
-      markDirty,
-      queueControlPlaneOp,
-      addDirectoryByPath,
-    });
-  };
-
-  const handleRepositoryPromptInput = (input: Buffer): boolean => {
-    return handleRepositoryPromptInputFn({
-      input,
-      prompt: repositoryPrompt,
-      isQuitShortcut: (rawInput) =>
-        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
-      dismissOnOutsideClick: (rawInput, dismiss) => dismissModalOnOutsideClick(rawInput, dismiss),
-      setPrompt: (next) => {
-        repositoryPrompt = next;
-      },
-      markDirty,
-      repositoriesHas: (repositoryId) => repositories.has(repositoryId),
-      normalizeGitHubRemoteUrl,
-      queueControlPlaneOp,
-      upsertRepositoryByRemoteUrl,
-    });
-  };
+      }, payload.commandLabel);
+    },
+    getConversationTitleEdit: () => conversationTitleEdit,
+    getNewThreadPrompt: () => newThreadPrompt,
+    setNewThreadPrompt: (prompt) => {
+      newThreadPrompt = prompt;
+    },
+    getAddDirectoryPrompt: () => addDirectoryPrompt,
+    setAddDirectoryPrompt: (next) => {
+      addDirectoryPrompt = next;
+    },
+    getRepositoryPrompt: () => repositoryPrompt,
+    setRepositoryPrompt: (next) => {
+      repositoryPrompt = next;
+    },
+  });
 
   const homeEditorBuffer = (): TaskComposerBuffer => {
     if (workspace.taskEditorTarget.kind === 'task') {
@@ -3808,19 +3745,7 @@ async function main(): Promise<number> {
     if (shuttingDown) {
       return;
     }
-    if (handleTaskEditorPromptInput(chunk)) {
-      return;
-    }
-    if (handleRepositoryPromptInput(chunk)) {
-      return;
-    }
-    if (handleNewThreadPromptInput(chunk)) {
-      return;
-    }
-    if (handleConversationTitleEditInput(chunk)) {
-      return;
-    }
-    if (handleAddDirectoryPromptInput(chunk)) {
+    if (inputRouter.routeModalInput(chunk)) {
       return;
     }
 
