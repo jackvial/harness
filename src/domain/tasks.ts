@@ -76,4 +76,77 @@ export class TaskManager<
   clearTaskAutosaveTimers(): void {
     this.taskAutosaveTimerByTaskId.clear();
   }
+
+  orderedTasks(
+    sortTasks: (tasks: readonly TTaskRecord[]) => readonly TTaskRecord[],
+  ): readonly TTaskRecord[] {
+    return sortTasks([...this.tasksById.values()]);
+  }
+
+  tasksForRepository(input: {
+    repositoryId: string | null;
+    sortTasks: (tasks: readonly TTaskRecord[]) => readonly TTaskRecord[];
+    taskRepositoryId: (task: TTaskRecord) => string | null;
+  }): readonly TTaskRecord[] {
+    if (input.repositoryId === null) {
+      return [];
+    }
+    return this.orderedTasks(input.sortTasks).filter(
+      (task) => input.taskRepositoryId(task) === input.repositoryId,
+    );
+  }
+
+  taskReorderPayloadIds(input: {
+    orderedActiveTaskIds: readonly string[];
+    sortTasks: (tasks: readonly TTaskRecord[]) => readonly TTaskRecord[];
+    isCompleted: (task: TTaskRecord) => boolean;
+  }): readonly string[] {
+    const completedTaskIds = this.orderedTasks(input.sortTasks)
+      .filter(input.isCompleted)
+      .map((task) => task.taskId);
+    return [...input.orderedActiveTaskIds, ...completedTaskIds];
+  }
+
+  reorderedActiveTaskIdsForDrop(input: {
+    draggedTaskId: string;
+    targetTaskId: string;
+    sortTasks: (tasks: readonly TTaskRecord[]) => readonly TTaskRecord[];
+    isCompleted: (task: TTaskRecord) => boolean;
+  }): readonly string[] | 'cannot-reorder-completed' | null {
+    const draggedTask = this.tasksById.get(input.draggedTaskId);
+    const targetTask = this.tasksById.get(input.targetTaskId);
+    if (draggedTask === undefined || targetTask === undefined) {
+      return null;
+    }
+    if (input.isCompleted(draggedTask) || input.isCompleted(targetTask)) {
+      return 'cannot-reorder-completed';
+    }
+    const orderedActiveTaskIds = this.orderedTasks(input.sortTasks)
+      .filter((task) => !input.isCompleted(task))
+      .map((task) => task.taskId);
+    return this.reorderIdsByMove(
+      orderedActiveTaskIds,
+      input.draggedTaskId,
+      input.targetTaskId,
+    );
+  }
+
+  private reorderIdsByMove(
+    orderedIds: readonly string[],
+    movedId: string,
+    targetId: string,
+  ): readonly string[] | null {
+    const fromIndex = orderedIds.indexOf(movedId);
+    const targetIndex = orderedIds.indexOf(targetId);
+    if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) {
+      return null;
+    }
+    const reordered = [...orderedIds];
+    const [moved] = reordered.splice(fromIndex, 1);
+    if (moved === undefined) {
+      return null;
+    }
+    reordered.splice(targetIndex, 0, moved);
+    return reordered;
+  }
 }

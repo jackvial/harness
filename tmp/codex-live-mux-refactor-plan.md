@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4581 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4580 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -147,7 +147,7 @@ bun run loc:verify:enforce
 - [x] Phase 1: WorkspaceModel extraction completed.
 - [~] Phase 2: ConversationManager extraction in progress.
 - [~] Phase 3: RepositoryManager + DirectoryManager extraction in progress.
-- [~] Phase 4: TaskManager extraction.
+- [x] Phase 4: TaskManager extraction.
 - [ ] Phase 5: ControlPlaneService extraction.
 - [ ] Phase 6: Screen extraction.
 - [ ] Phase 7: Pane extraction.
@@ -598,3 +598,23 @@ bun run loc:verify:enforce
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4581 non-empty LOC
+
+### Checkpoint Z (2026-02-18): Task reorder semantics moved into TaskManager
+
+- Continued Phase 4 by moving task ordering/repository-filter/reorder payload semantics into `TaskManager`.
+- Extended `src/domain/tasks.ts` with class-owned methods:
+  - `orderedTasks(...)`
+  - `tasksForRepository(...)`
+  - `taskReorderPayloadIds(...)`
+  - `reorderedActiveTaskIdsForDrop(...)`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate:
+  - selected-repository task list derivation
+  - task reorder payload assembly for `task.reorder`
+  - drag-drop task reorder validation + active-task id reordering
+- Expanded `test/domain-tasks.test.ts` to cover new ordering/reorder behavior and edge cases.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4580 non-empty LOC

@@ -2288,7 +2288,7 @@ async function main(): Promise<number> {
   };
 
   function orderedTaskRecords(): readonly ControlPlaneTaskRecord[] {
-    return sortTasksByOrder([...taskManager.values()]);
+    return taskManager.orderedTasks(sortTasksByOrder);
   }
 
   function orderedActiveRepositoryRecords(): readonly ControlPlaneRepositoryRecord[] {
@@ -2321,11 +2321,12 @@ async function main(): Promise<number> {
     }
   };
 
-  const taskBelongsToSelectedRepository = (task: ControlPlaneTaskRecord): boolean =>
-    workspace.taskPaneSelectedRepositoryId !== null && task.repositoryId === workspace.taskPaneSelectedRepositoryId;
-
   const selectedRepositoryTaskRecords = (): readonly ControlPlaneTaskRecord[] => {
-    return orderedTaskRecords().filter(taskBelongsToSelectedRepository);
+    return taskManager.tasksForRepository({
+      repositoryId: workspace.taskPaneSelectedRepositoryId,
+      sortTasks: sortTasksByOrder,
+      taskRepositoryId: (task) => task.repositoryId,
+    });
   };
 
   const queuePersistTaskComposer = (taskId: string, reason: string): void => {
@@ -2734,14 +2735,6 @@ async function main(): Promise<number> {
     return reordered;
   };
 
-  const taskIdOrderForReorder = (orderedActiveTaskIds: readonly string[]): readonly string[] => {
-    const ordered = orderedTaskRecords();
-    const completedTaskIds = ordered
-      .filter((task) => task.status === 'completed')
-      .map((task) => task.taskId);
-    return [...orderedActiveTaskIds, ...completedTaskIds];
-  };
-
   const queueTaskReorderByIds = (orderedActiveTaskIds: readonly string[], label: string): void => {
     queueControlPlaneOp(async () => {
       const result = await streamClient.sendCommand({
@@ -2749,7 +2742,13 @@ async function main(): Promise<number> {
         tenantId: options.scope.tenantId,
         userId: options.scope.userId,
         workspaceId: options.scope.workspaceId,
-        orderedTaskIds: [...taskIdOrderForReorder(orderedActiveTaskIds)],
+        orderedTaskIds: [
+          ...taskManager.taskReorderPayloadIds({
+            orderedActiveTaskIds,
+            sortTasks: sortTasksByOrder,
+            isCompleted: (task) => task.status === 'completed',
+          }),
+        ],
       });
       applyTaskListFromCommandResult(result);
     }, label);
@@ -2848,19 +2847,17 @@ async function main(): Promise<number> {
   };
 
   const reorderTaskByDrop = (draggedTaskId: string, targetTaskId: string): void => {
-    const orderedActiveTasks = orderedTaskRecords().filter((task) => task.status !== 'completed');
-    const orderedActiveTaskIds = orderedActiveTasks.map((task) => task.taskId);
-    const draggedTask = taskManager.getTask(draggedTaskId);
-    const targetTask = taskManager.getTask(targetTaskId);
-    if (draggedTask === undefined || targetTask === undefined) {
-      return;
-    }
-    if (draggedTask.status === 'completed' || targetTask.status === 'completed') {
+    const reordered = taskManager.reorderedActiveTaskIdsForDrop({
+      draggedTaskId,
+      targetTaskId,
+      sortTasks: sortTasksByOrder,
+      isCompleted: (task) => task.status === 'completed',
+    });
+    if (reordered === 'cannot-reorder-completed') {
       workspace.taskPaneNotice = 'cannot reorder completed tasks';
       markDirty();
       return;
     }
-    const reordered = reorderIdsByMove(orderedActiveTaskIds, draggedTaskId, targetTaskId);
     if (reordered === null) {
       return;
     }

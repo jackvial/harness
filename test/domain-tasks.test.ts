@@ -6,6 +6,8 @@ interface TestTaskRecord {
   readonly taskId: string;
   readonly title: string;
   readonly status: 'draft' | 'ready' | 'completed';
+  readonly repositoryId: string | null;
+  readonly order: number;
 }
 
 interface TestComposerBuffer {
@@ -30,11 +32,15 @@ void test('task manager owns task-map lifecycle helpers', () => {
     taskId: 'task-a',
     title: 'Task A',
     status: 'draft',
+    repositoryId: 'repo-a',
+    order: 1,
   });
   manager.setTask({
     taskId: 'task-b',
     title: 'Task B',
     status: 'ready',
+    repositoryId: 'repo-b',
+    order: 2,
   });
 
   assert.equal(manager.hasTask('task-a'), true);
@@ -48,6 +54,8 @@ void test('task manager owns task-map lifecycle helpers', () => {
     taskId: 'task-a',
     title: 'Task A edited',
     status: 'completed',
+    repositoryId: 'repo-a',
+    order: 1,
   });
   assert.equal(manager.getTask('task-a')?.title, 'Task A edited');
   assert.equal(manager.getTask('task-a')?.status, 'completed');
@@ -79,4 +87,106 @@ void test('task manager owns task-map lifecycle helpers', () => {
   assert.equal(composers.size, 0);
   assert.deepEqual([...manager.autosaveTaskIds()], []);
   assert.deepEqual([...manager.values()], []);
+});
+
+void test('task manager owns ordering, repository filtering, and reorder payload semantics', () => {
+  const manager = new TaskManager<TestTaskRecord, TestComposerBuffer, TestAutosaveTimer>();
+  const sortByOrder = (tasks: readonly TestTaskRecord[]): readonly TestTaskRecord[] =>
+    [...tasks].sort((left, right) => left.order - right.order);
+
+  manager.setTask({
+    taskId: 'task-1',
+    title: 'One',
+    status: 'ready',
+    repositoryId: 'repo-a',
+    order: 2,
+  });
+  manager.setTask({
+    taskId: 'task-2',
+    title: 'Two',
+    status: 'draft',
+    repositoryId: 'repo-a',
+    order: 1,
+  });
+  manager.setTask({
+    taskId: 'task-3',
+    title: 'Three',
+    status: 'completed',
+    repositoryId: 'repo-a',
+    order: 3,
+  });
+  manager.setTask({
+    taskId: 'task-4',
+    title: 'Four',
+    status: 'ready',
+    repositoryId: 'repo-b',
+    order: 4,
+  });
+
+  assert.deepEqual(
+    manager.orderedTasks(sortByOrder).map((task) => task.taskId),
+    ['task-2', 'task-1', 'task-3', 'task-4'],
+  );
+  assert.deepEqual(
+    manager.tasksForRepository({
+      repositoryId: 'repo-a',
+      sortTasks: sortByOrder,
+      taskRepositoryId: (task) => task.repositoryId,
+    }).map((task) => task.taskId),
+    ['task-2', 'task-1', 'task-3'],
+  );
+  assert.deepEqual(
+    manager.tasksForRepository({
+      repositoryId: null,
+      sortTasks: sortByOrder,
+      taskRepositoryId: (task) => task.repositoryId,
+    }),
+    [],
+  );
+
+  assert.deepEqual(
+    manager.taskReorderPayloadIds({
+      orderedActiveTaskIds: ['task-1', 'task-2', 'task-4'],
+      sortTasks: sortByOrder,
+      isCompleted: (task) => task.status === 'completed',
+    }),
+    ['task-1', 'task-2', 'task-4', 'task-3'],
+  );
+
+  assert.equal(
+    manager.reorderedActiveTaskIdsForDrop({
+      draggedTaskId: 'task-3',
+      targetTaskId: 'task-2',
+      sortTasks: sortByOrder,
+      isCompleted: (task) => task.status === 'completed',
+    }),
+    'cannot-reorder-completed',
+  );
+  assert.deepEqual(
+    manager.reorderedActiveTaskIdsForDrop({
+      draggedTaskId: 'task-1',
+      targetTaskId: 'task-2',
+      sortTasks: sortByOrder,
+      isCompleted: (task) => task.status === 'completed',
+    }),
+    ['task-1', 'task-2', 'task-4'],
+  );
+  assert.equal(
+    manager.reorderedActiveTaskIdsForDrop({
+      draggedTaskId: 'task-1',
+      targetTaskId: 'task-1',
+      sortTasks: sortByOrder,
+      isCompleted: (task) => task.status === 'completed',
+    }),
+    null,
+  );
+  assert.equal(
+    manager.reorderedActiveTaskIdsForDrop({
+      draggedTaskId: 'task-1',
+      targetTaskId: 'task-missing',
+      sortTasks: sortByOrder,
+      isCompleted: (task) => task.status === 'completed',
+    }),
+    null,
+  );
 });
