@@ -185,6 +185,7 @@ import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { RecordingService } from '../src/services/recording.ts';
 import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
+import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { StartupVisibility } from '../src/services/startup-visibility.ts';
@@ -1412,6 +1413,14 @@ async function main(): Promise<number> {
     waitForSettled: () => startupSequencer.waitForSettled(),
     settledObserved: () => startupSequencer.snapshot().settledObserved,
     refreshProcessUsage: (reason) => void refreshProcessUsage(reason),
+    recordPerfEvent,
+  });
+  const startupBackgroundResumeService = new StartupBackgroundResumeService({
+    enabled: backgroundResumePersisted,
+    maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
+    waitForSettled: () => startupSequencer.waitForSettled(),
+    settledObserved: () => startupSequencer.snapshot().settledObserved,
+    queuePersistedConversationsInBackground,
     recordPerfEvent,
   });
   if (configuredMuxGit.enabled) {
@@ -3349,40 +3358,7 @@ async function main(): Promise<number> {
   recordPerfEvent('mux.startup.ready', {
     conversations: conversationManager.size(),
   });
-  void (async () => {
-    let timedOut = false;
-    recordPerfEvent('mux.startup.background-start.wait', {
-      sessionId: initialActiveId ?? 'none',
-      maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
-      enabled: backgroundResumePersisted ? 1 : 0,
-    });
-    if (!backgroundResumePersisted) {
-      recordPerfEvent('mux.startup.background-start.skipped', {
-        sessionId: initialActiveId ?? 'none',
-        reason: 'disabled',
-      });
-      return;
-    }
-    await Promise.race([
-      startupSequencer.waitForSettled(),
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          timedOut = true;
-          resolve();
-        }, DEFAULT_BACKGROUND_START_MAX_WAIT_MS);
-      }),
-    ]);
-    recordPerfEvent('mux.startup.background-start.begin', {
-      sessionId: initialActiveId ?? 'none',
-      timedOut,
-      settledObserved: startupSequencer.snapshot().settledObserved,
-    });
-    const queued = queuePersistedConversationsInBackground(initialActiveId);
-    recordPerfEvent('mux.startup.background-start.queued', {
-      sessionId: initialActiveId ?? 'none',
-      queued,
-    });
-  })();
+  void startupBackgroundResumeService.run(initialActiveId);
 
   const inputRouter = new InputRouter({
     isModalDismissShortcut: (rawInput) =>

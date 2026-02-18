@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3845 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3821 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -967,3 +967,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3845 non-empty LOC
+
+### Checkpoint AX (2026-02-18): Service extraction continues with class-based startup background-resume orchestration
+
+- Added `src/services/startup-background-resume.ts` with a class-based `StartupBackgroundResumeService` that owns:
+  - startup background-resume wait/skip event emission
+  - settled-or-timeout wait gating before background queueing begins
+  - queued-count event emission after persisted conversation background queue scheduling
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate startup background-resume wait/race/queue orchestration to `StartupBackgroundResumeService`, removing inline runtime Promise race + event emission wiring.
+- Added `test/services-startup-background-resume.test.ts` with coverage for disabled skip behavior, settled completion path, timeout path, and queue/session-id event payload integrity.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3821 non-empty LOC
