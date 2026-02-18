@@ -1142,3 +1142,20 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3420 non-empty LOC
+
+### Checkpoint BH (2026-02-18): Service extraction continues with process/signal listener orchestration
+
+- Added `src/services/runtime-process-wiring.ts` with a class-based `RuntimeProcessWiring` that owns:
+  - attach/detach of runtime process listeners (`stdin data`, `stdout resize`, `SIGINT`, `SIGTERM`, `uncaughtException`, `unhandledRejection`)
+  - guarded wrapper routing for `onInput` and `onResize` that funnels thrown errors into fatal runtime handling
+  - uncaught/unhandled error origin tagging (`uncaught-exception`, `unhandled-rejection`)
+- Updated `scripts/codex-live-mux-runtime.ts` to:
+  - delegate process listener lifecycle to `RuntimeProcessWiring.attach()/detach()`
+  - remove inline safe-handler wrappers and direct process listener wiring
+- Added `test/services-runtime-process-wiring.test.ts` covering:
+  - attach + detach lifecycle behavior
+  - fatal-origin routing for protected handlers and uncaught/unhandled paths
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3397 non-empty LOC

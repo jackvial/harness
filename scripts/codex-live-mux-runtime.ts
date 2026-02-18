@@ -185,6 +185,7 @@ import { StartupBackgroundProbeService } from '../src/services/startup-backgroun
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
 import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
 import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
+import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
@@ -3446,35 +3447,16 @@ async function main(): Promise<number> {
     const nextSize = terminalSize();
     queueResize(nextSize);
   };
-  const onInputSafe = (chunk: Buffer): void => {
-    try {
-      onInput(chunk);
-    } catch (error: unknown) {
-      handleRuntimeFatal('stdin-data', error);
-    }
-  };
-  const onResizeSafe = (): void => {
-    try {
-      onResize();
-    } catch (error: unknown) {
-      handleRuntimeFatal('stdout-resize', error);
-    }
-  };
-  const onUncaughtException = (error: Error): void => {
-    handleRuntimeFatal('uncaught-exception', error);
-  };
-  const onUnhandledRejection = (reason: unknown): void => {
-    handleRuntimeFatal('unhandled-rejection', reason);
-  };
+  const runtimeProcessWiring = new RuntimeProcessWiring({
+    onInput,
+    onResize,
+    requestStop,
+    handleRuntimeFatal,
+  });
 
   await hydrateStartupState();
 
-  process.stdin.on('data', onInputSafe);
-  process.stdout.on('resize', onResizeSafe);
-  process.once('SIGINT', requestStop);
-  process.once('SIGTERM', requestStop);
-  process.once('uncaughtException', onUncaughtException);
-  process.once('unhandledRejection', onUnhandledRejection);
+  runtimeProcessWiring.attach();
 
   inputModeManager.enable();
   applyLayout(size, true);
@@ -3516,12 +3498,7 @@ async function main(): Promise<number> {
       renderScheduled = false;
     },
     detachProcessListeners: () => {
-      process.stdin.off('data', onInputSafe);
-      process.stdout.off('resize', onResizeSafe);
-      process.off('SIGINT', requestStop);
-      process.off('SIGTERM', requestStop);
-      process.off('uncaughtException', onUncaughtException);
-      process.off('unhandledRejection', onUnhandledRejection);
+      runtimeProcessWiring.detach();
     },
     removeEnvelopeListener,
     unsubscribeTaskPlanningEvents,
