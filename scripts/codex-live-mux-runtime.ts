@@ -189,6 +189,7 @@ import { RuntimeConversationStarter } from '../src/services/runtime-conversation
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
 import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
+import { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.ts';
 import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
@@ -2509,6 +2510,32 @@ async function main(): Promise<number> {
       selectedRepositoryId: null,
     }),
   });
+  const runtimeLeftRailRender = new RuntimeLeftRailRender<
+    ControlPlaneDirectoryRecord,
+    ConversationState,
+    ControlPlaneRepositoryRecord,
+    GitRepositorySnapshot,
+    GitSummary,
+    ProcessUsageSample,
+    ReturnType<typeof resolveMuxShortcutBindings>,
+    ReturnType<typeof buildWorkspaceRailViewRows>
+  >({
+    leftRailPane,
+    sessionProjectionInstrumentation,
+    workspace,
+    repositoryManager,
+    repositories,
+    repositoryAssociationByDirectoryId,
+    directoryRepositorySnapshotByDirectoryId,
+    directories: _unsafeDirectoryMap,
+    conversations: _unsafeConversationMap,
+    gitSummaryByDirectoryId: _unsafeDirectoryGitSummaryMap,
+    processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
+    shortcutBindings,
+    loadingGitSummary: GIT_SUMMARY_LOADING,
+    activeConversationId: () => conversationManager.activeConversationId,
+    orderedConversationIds: () => conversationManager.orderedIds(),
+  });
 
   const render = (): void => {
     if (shuttingDown || !screen.isDirty()) {
@@ -2545,35 +2572,7 @@ async function main(): Promise<number> {
           : null;
     const selectionRows =
       rightFrame === null ? [] : selectionVisibleRows(rightFrame, renderSelection);
-    const orderedIds = conversationManager.orderedIds();
-    sessionProjectionInstrumentation.refreshSelectorSnapshot(
-      'render',
-      _unsafeDirectoryMap,
-      _unsafeConversationMap,
-      orderedIds,
-    );
-    const rail = leftRailPane.render({
-      layout,
-      repositories,
-      repositoryAssociationByDirectoryId,
-      directoryRepositorySnapshotByDirectoryId,
-      directories: _unsafeDirectoryMap,
-      conversations: _unsafeConversationMap,
-      orderedIds,
-      activeProjectId: workspace.activeDirectoryId,
-      activeRepositoryId: workspace.activeRepositorySelectionId,
-      activeConversationId: conversationManager.activeConversationId,
-      projectSelectionEnabled: workspace.leftNavSelection.kind === 'project',
-      repositorySelectionEnabled: workspace.leftNavSelection.kind === 'repository',
-      homeSelectionEnabled: workspace.leftNavSelection.kind === 'home',
-      repositoriesCollapsed: workspace.repositoriesCollapsed,
-      collapsedRepositoryGroupIds: repositoryManager.readonlyCollapsedRepositoryGroupIds(),
-      shortcutsCollapsed: workspace.shortcutsCollapsed,
-      gitSummaryByDirectoryId: _unsafeDirectoryGitSummaryMap,
-      processUsageBySessionId: processUsageRefreshService.readonlyUsage(),
-      shortcutBindings,
-      loadingGitSummary: GIT_SUMMARY_LOADING,
-    });
+    const rail = runtimeLeftRailRender.render(layout);
     latestRailViewRows = rail.viewRows;
     const rightRows = runtimeRightPaneRender.renderRightRows({
       layout,
