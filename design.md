@@ -143,6 +143,7 @@ Control-plane boundaries:
 - Modal prompt input dispatch is moving behind a class-based `InputRouter` (`src/ui/input.ts`) so runtime delegates per-modal prompt routing order and handler wiring instead of maintaining inline prompt-dispatch trees.
 - Repository fold keyboard routing is moving behind a class-based `RepositoryFoldInput` (`src/ui/repository-fold-input.ts`) so runtime delegates repository tree arrow/chord reducers instead of keeping fold-transition branches inline.
 - Left-nav target activation and cycle routing is moving behind a class-based `LeftNavInput` (`src/ui/left-nav-input.ts`) so runtime delegates visible-target/activation/cycle behavior instead of maintaining inline left-nav reducer logic.
+- Left-rail pointer action/conversation routing is moving behind a class-based `LeftRailPointerInput` (`src/ui/left-rail-pointer-input.ts`) so runtime delegates left-rail click orchestration instead of embedding action/conversation callback trees inline.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

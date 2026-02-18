@@ -166,12 +166,6 @@ import {
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
 import { routeInputTokensForConversation as routeInputTokensForConversationFn } from '../src/mux/live-mux/input-forwarding.ts';
 import { handleProjectPaneActionClick as handleProjectPaneActionClickFn } from '../src/mux/live-mux/project-pane-pointer.ts';
-import { handleLeftRailActionClick as handleLeftRailActionClickFn } from '../src/mux/live-mux/left-rail-actions.ts';
-import { handleLeftRailConversationClick as handleLeftRailConversationClickFn } from '../src/mux/live-mux/left-rail-conversation-click.ts';
-import {
-  handleLeftRailPointerClick as handleLeftRailPointerClickFn,
-  type LeftRailPointerContext,
-} from '../src/mux/live-mux/left-rail-pointer.ts';
 import {
   handleHomePaneDragMove as handleHomePaneDragMoveFn,
   handleMainPaneWheelInput as handleMainPaneWheelInputFn,
@@ -221,6 +215,7 @@ import { ModalManager } from '../src/ui/modals/manager.ts';
 import { InputRouter } from '../src/ui/input.ts';
 import { RepositoryFoldInput } from '../src/ui/repository-fold-input.ts';
 import { LeftNavInput } from '../src/ui/left-nav-input.ts';
+import { LeftRailPointerInput } from '../src/ui/left-rail-pointer-input.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3681,6 +3676,92 @@ async function main(): Promise<number> {
     collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
     nowMs: () => Date.now(),
   });
+  const leftRailPointerInput = new LeftRailPointerInput({
+    getLatestRailRows: () => latestRailViewRows,
+    hasConversationTitleEdit: () => conversationTitleEdit !== null,
+    conversationTitleEditConversationId: () => conversationTitleEdit?.conversationId ?? null,
+    stopConversationTitleEdit: () => {
+      stopConversationTitleEdit(true);
+    },
+    hasSelection: () => selection !== null || selectionDrag !== null,
+    clearSelection: () => {
+      selection = null;
+      selectionDrag = null;
+      releaseViewportPinForSelection();
+    },
+    activeConversationId: () => conversationManager.activeConversationId,
+    repositoriesCollapsed: () => workspace.repositoriesCollapsed,
+    clearConversationTitleEditClickState: () => {
+      conversationTitleEditClickState = null;
+    },
+    resolveDirectoryForAction,
+    openNewThreadPrompt,
+    queueArchiveConversation: (conversationId) => {
+      queueControlPlaneOp(async () => {
+        await archiveConversation(conversationId);
+      }, 'mouse-archive-conversation');
+    },
+    openAddDirectoryPrompt: () => {
+      repositoryPrompt = null;
+      addDirectoryPrompt = {
+        value: '',
+        error: null,
+      };
+    },
+    openRepositoryPromptForCreate,
+    repositoryExists: (repositoryId) => repositories.has(repositoryId),
+    openRepositoryPromptForEdit,
+    queueArchiveRepository: (repositoryId) => {
+      queueControlPlaneOp(async () => {
+        await archiveRepositoryById(repositoryId);
+      }, 'mouse-archive-repository');
+    },
+    toggleRepositoryGroup,
+    selectLeftNavRepository: (repositoryGroupId) => {
+      workspace.selectLeftNavRepository(repositoryGroupId);
+    },
+    expandAllRepositoryGroups,
+    collapseAllRepositoryGroups,
+    enterHomePane,
+    queueCloseDirectory: (directoryId) => {
+      queueControlPlaneOp(async () => {
+        await closeDirectory(directoryId);
+      }, 'mouse-close-directory');
+    },
+    toggleShortcutsCollapsed: () => {
+      workspace.shortcutsCollapsed = !workspace.shortcutsCollapsed;
+      queuePersistMuxUiState();
+    },
+    previousConversationClickState: () => conversationTitleEditClickState,
+    setConversationClickState: (next) => {
+      conversationTitleEditClickState = next;
+    },
+    nowMs: () => Date.now(),
+    conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
+    isConversationPaneActive: () => workspace.mainPaneMode === 'conversation',
+    ensureConversationPaneActive: (conversationId) => {
+      workspace.mainPaneMode = 'conversation';
+      workspace.selectLeftNavConversation(conversationId);
+      workspace.projectPaneSnapshot = null;
+      workspace.projectPaneScrollTop = 0;
+      screen.resetFrameCache();
+    },
+    beginConversationTitleEdit,
+    queueActivateConversation: (conversationId) => {
+      queueControlPlaneOp(async () => {
+        await activateConversation(conversationId);
+      }, 'mouse-activate-conversation');
+    },
+    queueActivateConversationAndEdit: (conversationId) => {
+      queueControlPlaneOp(async () => {
+        await activateConversation(conversationId);
+        beginConversationTitleEdit(conversationId);
+      }, 'mouse-activate-edit-conversation');
+    },
+    directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
+    enterProjectPane,
+    markDirty,
+  });
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
@@ -3958,115 +4039,12 @@ async function main(): Promise<number> {
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
       if (
-        handleLeftRailPointerClickFn({
+        leftRailPointerInput.handlePointerClick({
           clickEligible: leftPaneConversationSelect,
-          rows: latestRailViewRows,
           paneRows: layout.paneRows,
           leftCols: layout.leftCols,
           pointerRow: token.event.row,
           pointerCol: token.event.col,
-          hasConversationTitleEdit: conversationTitleEdit !== null,
-          conversationTitleEditConversationId: conversationTitleEdit?.conversationId ?? null,
-          stopConversationTitleEdit: () => {
-            stopConversationTitleEdit(true);
-          },
-          hasSelection: selection !== null || selectionDrag !== null,
-          clearSelection: () => {
-            selection = null;
-            selectionDrag = null;
-            releaseViewportPinForSelection();
-          },
-          handleAction: ({ selectedAction, selectedProjectId, selectedRepositoryId }: LeftRailPointerContext) =>
-            handleLeftRailActionClickFn({
-              action: selectedAction,
-              selectedProjectId,
-              selectedRepositoryId,
-              activeConversationId: conversationManager.activeConversationId,
-              repositoriesCollapsed: workspace.repositoriesCollapsed,
-              clearConversationTitleEditClickState: () => {
-                conversationTitleEditClickState = null;
-              },
-              resolveDirectoryForAction,
-              openNewThreadPrompt,
-              queueArchiveConversation: (conversationId) => {
-                queueControlPlaneOp(async () => {
-                  await archiveConversation(conversationId);
-                }, 'mouse-archive-conversation');
-              },
-              openAddDirectoryPrompt: () => {
-                repositoryPrompt = null;
-                addDirectoryPrompt = {
-                  value: '',
-                  error: null,
-                };
-              },
-              openRepositoryPromptForCreate,
-              repositoryExists: (repositoryId) => repositories.has(repositoryId),
-              openRepositoryPromptForEdit,
-              queueArchiveRepository: (repositoryId) => {
-                queueControlPlaneOp(async () => {
-                  await archiveRepositoryById(repositoryId);
-                }, 'mouse-archive-repository');
-              },
-              toggleRepositoryGroup,
-              selectLeftNavRepository: (repositoryGroupId) => {
-                workspace.selectLeftNavRepository(repositoryGroupId);
-              },
-              expandAllRepositoryGroups,
-              collapseAllRepositoryGroups,
-              enterHomePane,
-              queueCloseDirectory: (directoryId) => {
-                queueControlPlaneOp(async () => {
-                  await closeDirectory(directoryId);
-                }, 'mouse-close-directory');
-              },
-              toggleShortcutsCollapsed: () => {
-                workspace.shortcutsCollapsed = !workspace.shortcutsCollapsed;
-                queuePersistMuxUiState();
-              },
-              markDirty,
-            }),
-          handleConversation: ({
-            selectedConversationId,
-            selectedProjectId,
-            supportsConversationTitleEditClick,
-          }: LeftRailPointerContext) => {
-            handleLeftRailConversationClickFn({
-              selectedConversationId,
-              selectedProjectId,
-              supportsConversationTitleEditClick,
-              previousClickState: conversationTitleEditClickState,
-              nowMs: Date.now(),
-              conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-              activeConversationId: conversationManager.activeConversationId,
-              isConversationPaneActive: workspace.mainPaneMode === 'conversation',
-              setConversationClickState: (next) => {
-                conversationTitleEditClickState = next;
-              },
-              ensureConversationPaneActive: (conversationId) => {
-                workspace.mainPaneMode = 'conversation';
-                workspace.selectLeftNavConversation(conversationId);
-                workspace.projectPaneSnapshot = null;
-                workspace.projectPaneScrollTop = 0;
-                screen.resetFrameCache();
-              },
-              beginConversationTitleEdit,
-              queueActivateConversation: (conversationId) => {
-                queueControlPlaneOp(async () => {
-                  await activateConversation(conversationId);
-                }, 'mouse-activate-conversation');
-              },
-              queueActivateConversationAndEdit: (conversationId) => {
-                queueControlPlaneOp(async () => {
-                  await activateConversation(conversationId);
-                  beginConversationTitleEdit(conversationId);
-                }, 'mouse-activate-edit-conversation');
-              },
-              directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
-              enterProjectPane,
-              markDirty,
-            });
-          },
         })
       ) {
           continue;

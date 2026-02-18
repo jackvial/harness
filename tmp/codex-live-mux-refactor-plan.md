@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4120 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4098 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -794,3 +794,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4120 non-empty LOC
+
+### Checkpoint AK (2026-02-18): Phase 8 continues with class-based left-rail pointer input routing
+
+- Added `src/ui/left-rail-pointer-input.ts` with a class-based `LeftRailPointerInput` that owns:
+  - left-rail pointer hit routing to action vs conversation handlers
+  - action-handler wiring through `handleLeftRailActionClick`
+  - conversation-handler wiring through `handleLeftRailConversationClick`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate left-rail pointer click orchestration to `LeftRailPointerInput`, removing inline action/conversation callback trees from the `onInput` mouse branch.
+- Added `test/ui-left-rail-pointer-input.test.ts` to cover injected dependency routing and default dependency fallback behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4098 non-empty LOC
