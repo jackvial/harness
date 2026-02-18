@@ -734,7 +734,7 @@ async function main(): Promise<number> {
       if (startupFirstPaintTargetSessionId !== event.sessionId) {
         return;
       }
-      const conversation = conversations.get(event.sessionId);
+      const conversation = conversationManager.get(event.sessionId);
       const glyphCells = conversation === undefined ? 0 : visibleGlyphCellCount(conversation);
       recordPerfEvent('mux.startup.active-settled', {
         sessionId: event.sessionId,
@@ -1858,8 +1858,8 @@ async function main(): Promise<number> {
     ptySize: { cols: number; rows: number },
     force = false,
   ): void => {
-    const conversation = conversations.get(sessionId);
-    if (conversation === undefined || !conversation.live) {
+    const conversation = conversationManager.get(sessionId);
+    if (conversation === undefined || !conversationManager.isLive(sessionId)) {
       return;
     }
     const currentPtySize = ptySizeByConversationId.get(sessionId);
@@ -2106,7 +2106,7 @@ async function main(): Promise<number> {
         });
         const parsed = parseConversationRecord(result['conversation']);
         const persistedTitle = parsed?.title ?? titleToPersist;
-        const latestConversation = conversations.get(edit.conversationId);
+        const latestConversation = conversationManager.get(edit.conversationId);
         const latestEdit = conversationTitleEdit;
         const shouldApplyToConversation =
           latestEdit === null ||
@@ -2172,7 +2172,7 @@ async function main(): Promise<number> {
   };
 
   const beginConversationTitleEdit = (conversationId: string): void => {
-    const target = conversations.get(conversationId);
+    const target = conversationManager.get(conversationId);
     if (target === undefined) {
       return;
     }

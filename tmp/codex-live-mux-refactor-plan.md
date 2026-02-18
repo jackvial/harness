@@ -346,3 +346,14 @@ bun run loc:verify:enforce
   - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4597 non-empty LOC
+
+### Checkpoint M (2026-02-18): Runtime direct map access removal
+
+- Updated `scripts/codex-live-mux-runtime.ts` to remove direct `conversations.get/has` access; runtime now uses `ConversationManager` APIs for conversation reads/guards.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4597 non-empty LOC
