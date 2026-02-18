@@ -1,0 +1,162 @@
+import assert from 'node:assert/strict';
+import { test } from 'bun:test';
+import { RuntimeControlActions } from '../src/services/runtime-control-actions.ts';
+
+interface TestConversationState {
+  live: boolean;
+  status: string;
+  attentionReason: string | null;
+  lastEventAt: string;
+}
+
+void test('runtime control actions interrupt is a no-op for missing conversation', async () => {
+  let interruptedCalls = 0;
+  let dirtyCalls = 0;
+  const actions = new RuntimeControlActions<TestConversationState>({
+    conversationById: () => undefined,
+    interruptSession: async () => {
+      interruptedCalls += 1;
+      return { interrupted: true };
+    },
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    markDirty: () => {
+      dirtyCalls += 1;
+    },
+    toggleGatewayProfiler: async () => ({ message: 'ignored' }),
+    invocationDirectory: '/tmp/work',
+    sessionName: null,
+    setTaskPaneNotice: () => {},
+    setDebugFooterNotice: () => {},
+  });
+
+  await actions.interruptConversation('session-1');
+
+  assert.equal(interruptedCalls, 0);
+  assert.equal(dirtyCalls, 0);
+});
+
+void test('runtime control actions interrupt updates live conversation when interrupt succeeds', async () => {
+  let dirtyCalls = 0;
+  const conversation: TestConversationState = {
+    live: true,
+    status: 'running',
+    attentionReason: 'waiting',
+    lastEventAt: 'old',
+  };
+  const actions = new RuntimeControlActions<TestConversationState>({
+    conversationById: () => conversation,
+    interruptSession: async () => ({ interrupted: true }),
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    markDirty: () => {
+      dirtyCalls += 1;
+    },
+    toggleGatewayProfiler: async () => ({ message: 'ignored' }),
+    invocationDirectory: '/tmp/work',
+    sessionName: null,
+    setTaskPaneNotice: () => {},
+    setDebugFooterNotice: () => {},
+  });
+
+  await actions.interruptConversation('session-2');
+
+  assert.equal(conversation.status, 'completed');
+  assert.equal(conversation.attentionReason, null);
+  assert.equal(conversation.lastEventAt, '2026-02-18T00:00:00.000Z');
+  assert.equal(dirtyCalls, 1);
+});
+
+void test('runtime control actions interrupt keeps state unchanged when interrupt not applied', async () => {
+  let dirtyCalls = 0;
+  const conversation: TestConversationState = {
+    live: true,
+    status: 'running',
+    attentionReason: 'waiting',
+    lastEventAt: 'old',
+  };
+  const actions = new RuntimeControlActions<TestConversationState>({
+    conversationById: () => conversation,
+    interruptSession: async () => ({ interrupted: false }),
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    markDirty: () => {
+      dirtyCalls += 1;
+    },
+    toggleGatewayProfiler: async () => ({ message: 'ignored' }),
+    invocationDirectory: '/tmp/work',
+    sessionName: null,
+    setTaskPaneNotice: () => {},
+    setDebugFooterNotice: () => {},
+  });
+
+  await actions.interruptConversation('session-3');
+
+  assert.equal(conversation.status, 'running');
+  assert.equal(conversation.attentionReason, 'waiting');
+  assert.equal(conversation.lastEventAt, 'old');
+  assert.equal(dirtyCalls, 0);
+});
+
+void test('runtime control actions toggle gateway profiler writes success notice with session scope', async () => {
+  const notices: string[] = [];
+  let dirtyCalls = 0;
+  const actions = new RuntimeControlActions<TestConversationState>({
+    conversationById: () => undefined,
+    interruptSession: async () => ({ interrupted: false }),
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    markDirty: () => {
+      dirtyCalls += 1;
+    },
+    toggleGatewayProfiler: async (input) => {
+      assert.equal(input.invocationDirectory, '/tmp/work');
+      assert.equal(input.sessionName, 'mux-main');
+      return { message: 'profile started' };
+    },
+    invocationDirectory: '/tmp/work',
+    sessionName: 'mux-main',
+    setTaskPaneNotice: (message) => {
+      notices.push(`task:${message}`);
+    },
+    setDebugFooterNotice: (message) => {
+      notices.push(`debug:${message}`);
+    },
+  });
+
+  await actions.toggleGatewayProfiler();
+
+  assert.deepEqual(notices, [
+    'task:[profile:mux-main] profile started',
+    'debug:[profile:mux-main] profile started',
+  ]);
+  assert.equal(dirtyCalls, 1);
+});
+
+void test('runtime control actions toggle gateway profiler writes failure notice with default scope', async () => {
+  const notices: string[] = [];
+  let dirtyCalls = 0;
+  const actions = new RuntimeControlActions<TestConversationState>({
+    conversationById: () => undefined,
+    interruptSession: async () => ({ interrupted: false }),
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    markDirty: () => {
+      dirtyCalls += 1;
+    },
+    toggleGatewayProfiler: async () => {
+      throw new Error('profile start failed');
+    },
+    invocationDirectory: '/tmp/work',
+    sessionName: null,
+    setTaskPaneNotice: (message) => {
+      notices.push(`task:${message}`);
+    },
+    setDebugFooterNotice: (message) => {
+      notices.push(`debug:${message}`);
+    },
+  });
+
+  await actions.toggleGatewayProfiler();
+
+  assert.deepEqual(notices, [
+    'task:[profile] profile start failed',
+    'debug:[profile] profile start failed',
+  ]);
+  assert.equal(dirtyCalls, 1);
+});

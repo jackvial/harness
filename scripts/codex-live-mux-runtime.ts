@@ -153,6 +153,7 @@ import { RuntimeConversationActions } from '../src/services/runtime-conversation
 import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
 import { RuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
 import { RuntimeControlPlaneOps } from '../src/services/runtime-control-plane-ops.ts';
+import { RuntimeControlActions } from '../src/services/runtime-control-actions.ts';
 import { RuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
@@ -1892,6 +1893,25 @@ async function main(): Promise<number> {
     activeDirectoryId: () => workspace.activeDirectoryId,
     firstDirectoryId: () => directoryManager.firstDirectoryId(),
   });
+  const runtimeControlActions = new RuntimeControlActions({
+    conversationById: (sessionId) => conversationManager.get(sessionId),
+    interruptSession: async (sessionId) => {
+      return await controlPlaneService.interruptSession(sessionId);
+    },
+    nowIso: () => new Date().toISOString(),
+    markDirty,
+    toggleGatewayProfiler: async (input) => {
+      return await toggleGatewayProfilerFn(input);
+    },
+    invocationDirectory: options.invocationDirectory,
+    sessionName: muxSessionName,
+    setTaskPaneNotice: (message) => {
+      workspace.taskPaneNotice = message;
+    },
+    setDebugFooterNotice: (message) => {
+      debugFooterNotice.set(message);
+    },
+  });
   const createAndActivateConversationInDirectory = async (
     directoryId: string,
     agentType: ThreadAgentType,
@@ -1917,17 +1937,7 @@ async function main(): Promise<number> {
   };
 
   const interruptConversation = async (sessionId: string): Promise<void> => {
-    const conversation = conversationManager.get(sessionId);
-    if (conversation === undefined || !conversation.live) {
-      return;
-    }
-    const result = await controlPlaneService.interruptSession(sessionId);
-    if (result.interrupted) {
-      conversation.status = 'completed';
-      conversation.attentionReason = null;
-      conversation.lastEventAt = new Date().toISOString();
-      markDirty();
-    }
+    await runtimeControlActions.interruptConversation(sessionId);
   };
 
   const addDirectoryByPath = async (rawPath: string): Promise<void> => {
@@ -1939,26 +1949,7 @@ async function main(): Promise<number> {
   };
 
   const toggleGatewayProfiler = async (): Promise<void> => {
-    try {
-      const result = await toggleGatewayProfilerFn({
-        invocationDirectory: options.invocationDirectory,
-        sessionName: muxSessionName,
-      });
-      const scopedMessage =
-        muxSessionName === null
-          ? `[profile] ${result.message}`
-          : `[profile:${muxSessionName}] ${result.message}`;
-      workspace.taskPaneNotice = scopedMessage;
-      debugFooterNotice.set(scopedMessage);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      const scopedMessage =
-        muxSessionName === null ? `[profile] ${message}` : `[profile:${muxSessionName}] ${message}`;
-      workspace.taskPaneNotice = scopedMessage;
-      debugFooterNotice.set(scopedMessage);
-    } finally {
-      markDirty();
-    }
+    await runtimeControlActions.toggleGatewayProfiler();
   };
 
   const pinViewportForSelection = (): void => {

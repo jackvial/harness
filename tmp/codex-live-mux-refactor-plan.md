@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2638 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2629 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2173 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1732,6 +1732,23 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2638 non-empty LOC
+
+### Checkpoint CP (2026-02-18): Runtime control actions extracted into class service
+
+- Added `src/services/runtime-control-actions.ts` with class-based `RuntimeControlActions` to own:
+  - interrupt-session orchestration and in-memory conversation status transition
+  - gateway profiler toggle notice scoping (`[profile]` / `[profile:<session>]`) and UI notice updates
+- Updated `scripts/codex-live-mux-runtime.ts` to remove inline:
+  - `interruptConversation(...)` state transition logic
+  - `toggleGatewayProfiler(...)` scoped notice/error handling logic
+  - and delegate both through `RuntimeControlActions`
+- Added `test/services-runtime-control-actions.test.ts` with branch coverage for:
+  - interrupt no-op/mutation/no-mutation branches
+  - gateway profiler success and error notice-scope branches
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1001` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2629 non-empty LOC
 
 ### Next focus (yield-first)
 
