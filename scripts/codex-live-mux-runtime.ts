@@ -11,7 +11,6 @@ import { startControlPlaneStreamServer } from '../src/control-plane/stream-serve
 import type { StreamObservedEvent, StreamServerEnvelope } from '../src/control-plane/stream-protocol.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
-import { type NormalizedEventEnvelope } from '../src/events/normalized-events.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import {
   computeDualPaneLayout,
@@ -183,6 +182,7 @@ import { RepositoryManager } from '../src/domain/repositories.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
+import { EventPersistence } from '../src/services/event-persistence.ts';
 import { RecordingService } from '../src/services/recording.ts';
 import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
@@ -1455,62 +1455,11 @@ async function main(): Promise<number> {
   startupBackgroundProbeService.recordWaitPhase();
   void startupBackgroundProbeService.startWhenSettled();
 
-  const PERSISTED_EVENT_FLUSH_DELAY_MS = 12;
-  const PERSISTED_EVENT_FLUSH_MAX_BATCH = 64;
-  let pendingPersistedEvents: NormalizedEventEnvelope[] = [];
-  let persistedEventFlushTimer: NodeJS.Timeout | null = null;
-
-  const flushPendingPersistedEvents = (reason: 'timer' | 'immediate' | 'shutdown'): void => {
-    if (persistedEventFlushTimer !== null) {
-      clearTimeout(persistedEventFlushTimer);
-      persistedEventFlushTimer = null;
-    }
-    if (pendingPersistedEvents.length === 0) {
-      return;
-    }
-    const batch = pendingPersistedEvents;
-    pendingPersistedEvents = [];
-    const flushSpan = startPerfSpan('mux.events.flush', {
-      reason,
-      count: batch.length,
-    });
-    try {
-      store.appendEvents(batch);
-      flushSpan.end({
-        reason,
-        status: 'ok',
-        count: batch.length,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      flushSpan.end({
-        reason,
-        status: 'error',
-        count: batch.length,
-        message,
-      });
-      process.stderr.write(`[mux] event-store error ${message}\n`);
-    }
-  };
-
-  const schedulePersistedEventFlush = (): void => {
-    if (persistedEventFlushTimer !== null) {
-      return;
-    }
-    persistedEventFlushTimer = setTimeout(() => {
-      persistedEventFlushTimer = null;
-      flushPendingPersistedEvents('timer');
-    }, PERSISTED_EVENT_FLUSH_DELAY_MS);
-  };
-
-  const enqueuePersistedEvent = (event: NormalizedEventEnvelope): void => {
-    pendingPersistedEvents.push(event);
-    if (pendingPersistedEvents.length >= PERSISTED_EVENT_FLUSH_MAX_BATCH) {
-      flushPendingPersistedEvents('immediate');
-      return;
-    }
-    schedulePersistedEventFlush();
-  };
+  const eventPersistence = new EventPersistence({
+    appendEvents: (events) => store.appendEvents(events),
+    startPerfSpan,
+    writeStderr: (text) => process.stderr.write(text),
+  });
 
   const eventLoopDelayMonitor = monitorEventLoopDelay({
     resolution: 20,
@@ -1593,7 +1542,7 @@ async function main(): Promise<number> {
         eventLoopMaxMs: Number(eventLoopMaxMs.toFixed(3)),
         activeConversationId: conversationManager.activeConversationId ?? 'none',
         sessionsWithOutput: outputSampleSessionIds.size,
-        pendingPersistedEvents: pendingPersistedEvents.length,
+        pendingPersistedEvents: eventPersistence.pendingCount(),
         interactiveQueued: controlPlaneQueueMetrics.interactiveQueued,
         backgroundQueued: controlPlaneQueueMetrics.backgroundQueued,
         controlPlaneOpRunning: controlPlaneQueueMetrics.running ? 1 : 0,
@@ -3196,7 +3145,7 @@ async function main(): Promise<number> {
       }
 
       const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
-      enqueuePersistedEvent(normalized);
+      eventPersistence.enqueue(normalized);
       conversation.lastEventAt = normalized.ts;
       if (conversationManager.activeConversationId === envelope.sessionId) {
         markDirty();
@@ -3232,7 +3181,7 @@ async function main(): Promise<number> {
         idFactory,
       );
       if (normalized !== null) {
-        enqueuePersistedEvent(normalized);
+        eventPersistence.enqueue(normalized);
       }
       if (envelope.event.type === 'session-exit') {
         exit = envelope.event.exit;
@@ -3892,7 +3841,7 @@ async function main(): Promise<number> {
     } catch {
       // Best-effort shutdown only.
     }
-    flushPendingPersistedEvents('shutdown');
+    eventPersistence.flush('shutdown');
     recordingCloseError = await recordingService.closeWriter();
     store.close();
     restoreTerminalState(true, inputModeManager.restore);

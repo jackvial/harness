@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3745 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3697 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1026,3 +1026,26 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3745 non-empty LOC
+
+### Checkpoint BB (2026-02-18): Service extraction continues with class-based event persistence batching
+
+- Added `src/services/event-persistence.ts` with a class-based `EventPersistence` that owns:
+  - pending normalized-event queue state
+  - timer-based flush scheduling and dedupe
+  - immediate flush on batch threshold
+  - perf span emission for flush success/error
+  - stderr error reporting for append failures
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate event batching and flush behavior to `EventPersistence`, removing inline queue/timer/flush functions and replacing:
+  - `enqueuePersistedEvent(...)` calls with `eventPersistence.enqueue(...)`
+  - shutdown flush with `eventPersistence.flush('shutdown')`
+  - perf sample pending count with `eventPersistence.pendingCount()`
+- Added `test/services-event-persistence.test.ts` with coverage for:
+  - timer flush success path
+  - immediate flush threshold behavior with scheduled timer clearing
+  - timer dedupe across repeated under-threshold enqueues
+  - append error reporting for both `Error` and non-error throw values
+  - empty flush no-op behavior
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3697 non-empty LOC
