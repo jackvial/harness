@@ -871,10 +871,6 @@ async function main(): Promise<number> {
     });
   };
 
-  const activeConversation = (): ConversationState => {
-    return conversationManager.requireActiveConversation();
-  };
-
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
     const existing = conversationManager.get(event.sessionId);
     const beforeProjection =
@@ -1881,10 +1877,11 @@ async function main(): Promise<number> {
   };
 
   const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
-    if (conversationManager.activeConversationId === null) {
+    const activeConversationId = conversationManager.activeConversationId;
+    if (activeConversationId === null) {
       return;
     }
-    applyPtyResizeToSession(conversationManager.activeConversationId, ptySize, false);
+    applyPtyResizeToSession(activeConversationId, ptySize, false);
   };
 
   const flushPendingPtyResize = (): void => {
@@ -3316,13 +3313,14 @@ async function main(): Promise<number> {
     if (selectionPinnedFollowOutput !== null) {
       return;
     }
-    if (conversationManager.activeConversationId === null) {
+    const active = conversationManager.getActiveConversation();
+    if (active === null) {
       return;
     }
-    const follow = activeConversation().oracle.snapshotWithoutHash().viewport.followOutput;
+    const follow = active.oracle.snapshotWithoutHash().viewport.followOutput;
     selectionPinnedFollowOutput = follow;
     if (follow) {
-      activeConversation().oracle.setFollowOutput(false);
+      active.oracle.setFollowOutput(false);
     }
   };
 
@@ -3333,10 +3331,11 @@ async function main(): Promise<number> {
     const shouldRepin = selectionPinnedFollowOutput;
     selectionPinnedFollowOutput = null;
     if (shouldRepin) {
-      if (conversationManager.activeConversationId === null) {
+      const active = conversationManager.getActiveConversation();
+      if (active === null) {
         return;
       }
-      activeConversation().oracle.setFollowOutput(true);
+      active.oracle.setFollowOutput(true);
     }
   };
 
@@ -4274,10 +4273,11 @@ async function main(): Promise<number> {
       selection !== null &&
       isCopyShortcutInput(focusExtraction.sanitized)
     ) {
-      if (conversationManager.activeConversationId === null) {
+      const active = conversationManager.getActiveConversation();
+      if (active === null) {
         return;
       }
-      const selectedFrame = activeConversation().oracle.snapshotWithoutHash();
+      const selectedFrame = active.oracle.snapshotWithoutHash();
       const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
       if (copied) {
         markDirty();

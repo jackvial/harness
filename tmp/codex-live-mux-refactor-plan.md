@@ -135,7 +135,7 @@ bun run loc:verify:enforce
 
 ## Current State Snapshot
 
-- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4597 LOC).
+- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4598 LOC).
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
@@ -357,3 +357,14 @@ bun run loc:verify:enforce
   - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4597 non-empty LOC
+
+### Checkpoint N (2026-02-18): Active conversation access cleanup
+
+- Updated `scripts/codex-live-mux-runtime.ts` to use `conversationManager.getActiveConversation()` for pin/copy/escape flows and removed dead `activeConversation()` wrapper.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4598 non-empty LOC
