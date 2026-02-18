@@ -150,7 +150,6 @@ import { StartupOrchestrator } from '../src/services/startup-orchestrator.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 import { RuntimeControlPlaneOps } from '../src/services/runtime-control-plane-ops.ts';
 import { RuntimeControlActions } from '../src/services/runtime-control-actions.ts';
-import { RuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
 import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
@@ -967,6 +966,20 @@ async function main(): Promise<number> {
         markDirty();
       },
     },
+    titleEdit: {
+      workspace,
+      updateConversationTitle: async (input) => {
+        return await controlPlaneService.updateConversationTitle(input);
+      },
+      conversationById: (conversationId) => conversationManager.get(conversationId),
+      markDirty: () => {
+        markDirty();
+      },
+      queueControlPlaneOp: (task, label) => {
+        queueControlPlaneOp(task, label);
+      },
+      debounceMs: DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS,
+    },
   });
 
   const subscribeConversationEvents = async (sessionId: string): Promise<void> => {
@@ -1322,27 +1335,16 @@ async function main(): Promise<number> {
     runtimeLayoutResize.applyPaneDividerAtCol(col);
   };
 
-  const runtimeConversationTitleEdit = new RuntimeConversationTitleEditService<ConversationState>({
-    workspace,
-    updateConversationTitle: async (input) => {
-      return await controlPlaneService.updateConversationTitle(input);
-    },
-    conversationById: (conversationId) => conversationManager.get(conversationId),
-    markDirty,
-    queueControlPlaneOp,
-    debounceMs: DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS,
-  });
-
   const scheduleConversationTitlePersist = (): void => {
-    runtimeConversationTitleEdit.schedulePersist();
+    conversationLifecycle.scheduleConversationTitlePersist();
   };
 
   const stopConversationTitleEdit = (persistPending: boolean): void => {
-    runtimeConversationTitleEdit.stop(persistPending);
+    conversationLifecycle.stopConversationTitleEdit(persistPending);
   };
 
   const beginConversationTitleEdit = (conversationId: string): void => {
-    runtimeConversationTitleEdit.begin(conversationId);
+    conversationLifecycle.beginConversationTitleEdit(conversationId);
   };
 
   const buildNewThreadModalOverlay = (viewportRows: number) => {
@@ -2675,7 +2677,7 @@ async function main(): Promise<number> {
     },
     persistMuxUiStateNow,
     clearConversationTitleEditTimer: () => {
-      runtimeConversationTitleEdit.clearCurrentTimer();
+      conversationLifecycle.clearConversationTitleEditTimer();
     },
     flushTaskComposerPersist: () => {
       if (

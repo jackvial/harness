@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
+import type { WorkspaceModel } from '../src/domain/workspace.ts';
 import { ConversationLifecycle } from '../src/services/conversation-lifecycle.ts';
 
 interface TestConversation {
@@ -9,6 +10,7 @@ interface TestConversation {
   adapterState: Record<string, unknown>;
   live: boolean;
   status: string;
+  title: string;
   lastOutputCursor: number;
   launchCommand: string | null;
 }
@@ -21,6 +23,9 @@ interface TestSessionSummary {
 void test('conversation lifecycle composes subscriptions starter hydration and background queue', async () => {
   const calls: string[] = [];
   const queuedTasks: Array<() => Promise<void>> = [];
+  const workspace = {
+    conversationTitleEdit: null,
+  } as unknown as WorkspaceModel;
   const conversations = new Map<string, TestConversation>();
   const primaryConversation: TestConversation = {
     sessionId: 'session-1',
@@ -29,6 +34,7 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
     adapterState: {},
     live: false,
     status: 'running',
+    title: '',
     lastOutputCursor: 0,
     launchCommand: null,
   };
@@ -40,6 +46,7 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
     adapterState: {},
     live: false,
     status: 'running',
+    title: '',
     lastOutputCursor: 0,
     launchCommand: null,
   });
@@ -81,6 +88,7 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
           adapterState: {},
           live: false,
           status: 'running',
+          title: '',
           lastOutputCursor: 0,
           launchCommand: null,
         };
@@ -197,6 +205,14 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
       muxControllerLabel: 'mux-controller',
       markDirty: () => {},
     },
+    titleEdit: {
+      workspace,
+      updateConversationTitle: async (input) => ({ title: input.title }),
+      conversationById: (conversationId) => conversations.get(conversationId),
+      markDirty: () => {},
+      queueControlPlaneOp: () => {},
+      debounceMs: 5,
+    },
   });
 
   await lifecycle.subscribeConversationEvents('session-1');
@@ -239,6 +255,13 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
 
 void test('conversation lifecycle delegates activation and conversation actions through subsystem surface', async () => {
   const calls: string[] = [];
+  const workspace = {
+    conversationTitleEdit: null,
+  } as unknown as WorkspaceModel;
+  const titleEditTimerCallbacks: Array<() => void> = [];
+  const fakeTimer = {
+    unref: () => {},
+  } as unknown as NodeJS.Timeout;
   const conversations = new Map<string, TestConversation>([
     [
       'session-1',
@@ -249,6 +272,7 @@ void test('conversation lifecycle delegates activation and conversation actions 
         adapterState: {},
         live: true,
         status: 'running',
+        title: '',
         lastOutputCursor: 0,
         launchCommand: null,
       },
@@ -262,6 +286,7 @@ void test('conversation lifecycle delegates activation and conversation actions 
         adapterState: {},
         live: false,
         status: 'running',
+        title: '',
         lastOutputCursor: 0,
         launchCommand: null,
       },
@@ -299,6 +324,7 @@ void test('conversation lifecycle delegates activation and conversation actions 
           adapterState: {},
           live: false,
           status: 'running',
+          title: '',
           lastOutputCursor: 0,
           launchCommand: null,
         };
@@ -413,6 +439,7 @@ void test('conversation lifecycle delegates activation and conversation actions 
           adapterState: seed.adapterState,
           live: false,
           status: 'running',
+          title: seed.title,
           lastOutputCursor: 0,
           launchCommand: null,
         });
@@ -444,6 +471,28 @@ void test('conversation lifecycle delegates activation and conversation actions 
         calls.push('mark-dirty');
       },
     },
+    titleEdit: {
+      workspace,
+      updateConversationTitle: async (input) => {
+        calls.push(`update-conversation-title:${input.conversationId}:${input.title}`);
+        return { title: input.title };
+      },
+      conversationById: (conversationId) => conversations.get(conversationId),
+      markDirty: () => {
+        calls.push('mark-dirty');
+      },
+      queueControlPlaneOp: (_task, label) => {
+        calls.push(`queue-title-op:${label}`);
+      },
+      debounceMs: 5,
+      setDebounceTimer: (callback) => {
+        titleEditTimerCallbacks.push(callback);
+        return fakeTimer;
+      },
+      clearDebounceTimer: () => {
+        calls.push('clear-title-timer');
+      },
+    },
   });
 
   await lifecycle.activateConversation('session-cold');
@@ -451,6 +500,11 @@ void test('conversation lifecycle delegates activation and conversation actions 
   await lifecycle.createAndActivateConversationInDirectory('directory-2', 'critique');
   await lifecycle.openOrCreateCritiqueConversationInDirectory('directory-2');
   await lifecycle.takeoverConversation('session-1');
+  lifecycle.beginConversationTitleEdit('session-1');
+  lifecycle.scheduleConversationTitlePersist();
+  assert.equal(titleEditTimerCallbacks.length, 1);
+  lifecycle.clearConversationTitleEditTimer();
+  lifecycle.stopConversationTitleEdit(false);
 
   assert.ok(calls.includes('set-active:session-1'));
   assert.ok(calls.includes('start-pty:session-cold'));
@@ -459,4 +513,5 @@ void test('conversation lifecycle delegates activation and conversation actions 
   assert.ok(calls.includes('set-active:conversation-new'));
   assert.ok(calls.includes('apply-controller:session-1:controller-1'));
   assert.ok(calls.includes('set-last-event-now:session-1'));
+  assert.ok(calls.includes('clear-title-timer'));
 });

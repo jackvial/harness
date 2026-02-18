@@ -17,6 +17,10 @@ import {
   type RuntimeConversationActionsOptions,
 } from './runtime-conversation-actions.ts';
 import {
+  RuntimeConversationTitleEditService,
+  type RuntimeConversationTitleEditServiceOptions,
+} from './runtime-conversation-title-edit.ts';
+import {
   RuntimeStreamSubscriptions,
   type RuntimeStreamSubscriptionsOptions,
 } from './runtime-stream-subscriptions.ts';
@@ -28,7 +32,7 @@ import {
 
 interface ConversationLifecycleOptions<
   TConversation extends RuntimeConversationStarterConversationRecord &
-    StartupQueueConversationRecord,
+    StartupQueueConversationRecord & { title: string },
   TSessionSummary extends SessionSummaryLike,
   TControllerRecord,
 > {
@@ -50,11 +54,12 @@ interface ConversationLifecycleOptions<
     RuntimeConversationActionsOptions<TControllerRecord>,
     'startConversation' | 'activateConversation'
   >;
+  readonly titleEdit: RuntimeConversationTitleEditServiceOptions<TConversation>;
 }
 
 export class ConversationLifecycle<
   TConversation extends RuntimeConversationStarterConversationRecord &
-    StartupQueueConversationRecord,
+    StartupQueueConversationRecord & { title: string },
   TSessionSummary extends SessionSummaryLike,
   TControllerRecord,
 > {
@@ -64,6 +69,7 @@ export class ConversationLifecycle<
   private readonly startupQueue: StartupPersistedConversationQueueService<TConversation>;
   private readonly activation: RuntimeConversationActivation;
   private readonly actions: RuntimeConversationActions<TControllerRecord>;
+  private readonly titleEdit: RuntimeConversationTitleEditService<TConversation>;
 
   constructor(options: ConversationLifecycleOptions<TConversation, TSessionSummary, TControllerRecord>) {
     this.streamSubscriptions = new RuntimeStreamSubscriptions(options.streamSubscriptions);
@@ -100,6 +106,7 @@ export class ConversationLifecycle<
         await this.activateConversation(sessionId);
       },
     });
+    this.titleEdit = new RuntimeConversationTitleEditService(options.titleEdit);
   }
 
   async subscribeConversationEvents(sessionId: string): Promise<void> {
@@ -139,6 +146,22 @@ export class ConversationLifecycle<
 
   async takeoverConversation(sessionId: string): Promise<void> {
     await this.actions.takeoverConversation(sessionId);
+  }
+
+  scheduleConversationTitlePersist(): void {
+    this.titleEdit.schedulePersist();
+  }
+
+  stopConversationTitleEdit(persistPending: boolean): void {
+    this.titleEdit.stop(persistPending);
+  }
+
+  beginConversationTitleEdit(conversationId: string): void {
+    this.titleEdit.begin(conversationId);
+  }
+
+  clearConversationTitleEditTimer(): void {
+    this.titleEdit.clearCurrentTimer();
   }
 
   async hydrateConversationList(): Promise<void> {

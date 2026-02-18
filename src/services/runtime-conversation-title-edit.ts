@@ -7,7 +7,7 @@ interface ConversationTitleRecordLike {
   title: string;
 }
 
-interface RuntimeConversationTitleEditServiceOptions<
+export interface RuntimeConversationTitleEditServiceOptions<
   TConversation extends ConversationTitleRecordLike,
 > {
   readonly workspace: WorkspaceModel;
