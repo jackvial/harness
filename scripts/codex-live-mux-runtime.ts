@@ -9,10 +9,6 @@ import {
 } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import type { StreamObservedEvent, StreamServerEnvelope } from '../src/control-plane/stream-protocol.ts';
-import {
-  parseSessionSummaryRecord,
-  parseSessionSummaryList,
-} from '../src/control-plane/session-summary.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import { TerminalSnapshotOracle, renderSnapshotAnsiRow } from '../src/terminal/snapshot-oracle.ts';
 import { type NormalizedEventEnvelope } from '../src/events/normalized-events.ts';
@@ -94,7 +90,6 @@ import {
 } from '../src/perf/perf-core.ts';
 import { isUiModalOverlayHit } from '../src/ui/kit.ts';
 import {
-  parseDirectoryGitStatusRecord,
   parseRepositoryRecord,
   parseTaskRecord,
 } from '../src/mux/live-mux/control-plane-records.ts';
@@ -869,19 +864,9 @@ async function main(): Promise<number> {
   };
 
   const hydrateRepositoryList = async (): Promise<void> => {
-    const listed = await streamClient.sendCommand({
-      type: 'repository.list',
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-    });
-    const rows = Array.isArray(listed['repositories']) ? listed['repositories'] : [];
+    const rows = await controlPlaneService.listRepositories();
     repositories.clear();
-    for (const row of rows) {
-      const record = parseRepositoryRecord(row);
-      if (record === null) {
-        continue;
-      }
+    for (const record of rows) {
       repositories.set(record.repositoryId, record);
     }
     syncRepositoryAssociationsWithDirectorySnapshots();
@@ -891,18 +876,8 @@ async function main(): Promise<number> {
     if (!configuredMuxGit.enabled) {
       return;
     }
-    const listed = await streamClient.sendCommand({
-      type: 'directory.git-status',
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-    });
-    const rows = Array.isArray(listed['gitStatuses']) ? listed['gitStatuses'] : [];
-    for (const row of rows) {
-      const record = parseDirectoryGitStatusRecord(row);
-      if (record === null) {
-        continue;
-      }
+    const rows = await controlPlaneService.listDirectoryGitStatuses();
+    for (const record of rows) {
       _unsafeDirectoryGitSummaryMap.set(record.directoryId, record.summary);
       repositoryManager.setDirectoryRepositorySnapshot(record.directoryId, record.repositorySnapshot);
       repositoryManager.setDirectoryRepositoryAssociation(record.directoryId, record.repositoryId);
@@ -997,28 +972,24 @@ async function main(): Promise<number> {
         sessionId,
       });
       targetConversation.lastOutputCursor = 0;
-      const ptyStartCommand: Parameters<typeof streamClient.sendCommand>[0] = {
-        type: 'pty.start',
+      const ptyStartInput: Parameters<ControlPlaneService['startPtySession']>[0] = {
         sessionId,
         args: launchArgs,
         env: sessionEnv,
         cwd: sessionCwd,
         initialCols: layout.rightCols,
         initialRows: layout.paneRows,
-        tenantId: options.scope.tenantId,
-        userId: options.scope.userId,
-        workspaceId: options.scope.workspaceId,
         worktreeId: options.scope.worktreeId,
       };
       const terminalForegroundHex = process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex;
       const terminalBackgroundHex = process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex;
       if (terminalForegroundHex !== undefined) {
-        ptyStartCommand.terminalForegroundHex = terminalForegroundHex;
+        ptyStartInput.terminalForegroundHex = terminalForegroundHex;
       }
       if (terminalBackgroundHex !== undefined) {
-        ptyStartCommand.terminalBackgroundHex = terminalBackgroundHex;
+        ptyStartInput.terminalBackgroundHex = terminalBackgroundHex;
       }
-      await streamClient.sendCommand(ptyStartCommand);
+      await controlPlaneService.startPtySession(ptyStartInput);
       ptySizeByConversationId.set(sessionId, {
         cols: layout.rightCols,
         rows: layout.paneRows,
@@ -1037,11 +1008,7 @@ async function main(): Promise<number> {
         argCount: launchArgs.length,
         resumed: launchArgs[0] === 'resume',
       });
-      const statusRecord = await streamClient.sendCommand({
-        type: 'session.status',
-        sessionId,
-      });
-      const statusSummary = parseSessionSummaryRecord(statusRecord);
+      const statusSummary = await controlPlaneService.getSessionStatus(sessionId);
       if (statusSummary !== null) {
         conversationManager.upsertFromSessionSummary({
           summary: statusSummary,
@@ -1088,15 +1055,10 @@ async function main(): Promise<number> {
       persistedCount += await hydratePersistedConversationsForDirectory(directoryId);
     }
 
-    const listedLive = await streamClient.sendCommand({
-      type: 'session.list',
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
+    const summaries = await controlPlaneService.listSessions({
       worktreeId: options.scope.worktreeId,
       sort: 'started-asc',
     });
-    const summaries = parseSessionSummaryList(listedLive['sessions']);
     for (const summary of summaries) {
       conversationManager.upsertFromSessionSummary({
         summary,
@@ -2723,16 +2685,10 @@ async function main(): Promise<number> {
       repositories,
       queueControlPlaneOp,
       updateRepositoryMetadata: async (repositoryId, metadata) => {
-        const result = await streamClient.sendCommand({
-          type: 'repository.update',
+        return await controlPlaneService.updateRepository({
           repositoryId,
           metadata,
         });
-        const parsed = parseRepositoryRecord(result['repository']);
-        if (parsed === null) {
-          throw new Error('control-plane repository.update returned malformed repository record');
-        }
-        return parsed;
       },
       upsertRepository: (repository) => {
         repositories.set(repository.repositoryId, repository);
@@ -2919,16 +2875,12 @@ async function main(): Promise<number> {
       repositoryNameFromGitHubRemoteUrl,
       createRepositoryId: () => `repository-${randomUUID()}`,
       scope: options.scope,
-      createRepository: (payload) =>
-        streamClient.sendCommand({
-          type: 'repository.upsert',
-          ...payload,
-        }),
-      updateRepository: (payload) =>
-        streamClient.sendCommand({
-          type: 'repository.update',
-          ...payload,
-        }),
+      createRepository: async (payload) => ({
+        repository: await controlPlaneService.upsertRepository(payload),
+      }),
+      updateRepository: async (payload) => ({
+        repository: await controlPlaneService.updateRepository(payload),
+      }),
       parseRepositoryRecord,
       upsertRepository: (repository) => {
         repositories.set(repository.repositoryId, repository);
@@ -2942,11 +2894,7 @@ async function main(): Promise<number> {
   const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
     await archiveRepositoryByIdFn({
       repositoryId,
-      archiveRepository: (targetRepositoryId) =>
-        streamClient.sendCommand({
-          type: 'repository.archive',
-          repositoryId: targetRepositoryId,
-        }),
+      archiveRepository: (targetRepositoryId) => controlPlaneService.archiveRepository(targetRepositoryId),
       deleteRepository: (targetRepositoryId) => {
         repositories.delete(targetRepositoryId);
       },

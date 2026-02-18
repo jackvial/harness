@@ -59,12 +59,60 @@ function conversationRecord(conversationId = 'conversation-1', directoryId = 'di
   };
 }
 
+function directoryGitStatusRecord(directoryId = 'dir-1', repositoryId = 'repo-1'): Record<string, unknown> {
+  return {
+    directoryId,
+    summary: {
+      branch: 'main',
+      changedFiles: 2,
+      additions: 10,
+      deletions: 4,
+    },
+    repositorySnapshot: {
+      normalizedRemoteUrl: 'https://github.com/acme/harness.git',
+      commitCount: 12,
+      lastCommitAt: '2026-02-18T00:00:00.000Z',
+      shortCommitHash: 'abc1234',
+      inferredName: 'harness',
+      defaultBranch: 'main',
+    },
+    repositoryId,
+    repository: repositoryRecord(repositoryId),
+    observedAt: '2026-02-18T00:01:00.000Z',
+  };
+}
+
 function sessionControllerRecord(controllerId = 'controller-1'): Record<string, unknown> {
   return {
     controllerId,
     controllerType: 'human',
     controllerLabel: 'Human',
     claimedAt: '2026-02-18T00:00:00.000Z',
+  };
+}
+
+function sessionSummaryRecord(sessionId = 'session-1'): Record<string, unknown> {
+  return {
+    sessionId,
+    directoryId: 'dir-1',
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+    worktreeId: 'worktree-1',
+    status: 'running',
+    attentionReason: null,
+    latestCursor: 12,
+    processId: 51000,
+    attachedClients: 1,
+    eventSubscribers: 1,
+    startedAt: '2026-02-18T00:00:00.000Z',
+    lastEventAt: '2026-02-18T00:01:00.000Z',
+    lastExit: null,
+    exitedAt: null,
+    live: true,
+    launchCommand: 'codex resume session-1 --yolo',
+    controller: null,
+    telemetry: null,
   };
 }
 
@@ -252,6 +300,78 @@ void test('control-plane service wraps pty/session lifecycle commands', async ()
   assert.equal(client.commands[7]?.type, 'session.claim');
 });
 
+void test('control-plane service wraps startup/session hydration commands', async () => {
+  const client = new MockCommandClient();
+  const service = new ControlPlaneService(client, {
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+  });
+
+  client.results.push(
+    { gitStatuses: [directoryGitStatusRecord('dir-1'), {}] },
+    {},
+    sessionSummaryRecord('session-status'),
+    { sessions: [sessionSummaryRecord('session-list'), {}] },
+  );
+
+  const statuses = await service.listDirectoryGitStatuses();
+  assert.equal(statuses.length, 1);
+  assert.equal(statuses[0]?.directoryId, 'dir-1');
+
+  await service.startPtySession({
+    sessionId: 'session-status',
+    args: ['resume', 'session-status'],
+    env: { TERM: 'xterm-256color' },
+    cwd: '/tmp/project',
+    initialCols: 120,
+    initialRows: 36,
+    terminalForegroundHex: '#ffffff',
+    terminalBackgroundHex: '#000000',
+    worktreeId: 'worktree-1',
+  });
+  assert.equal((await service.getSessionStatus('session-status'))?.sessionId, 'session-status');
+  assert.equal((await service.listSessions({ sort: 'started-asc', worktreeId: 'worktree-1' }))[0]?.sessionId, 'session-list');
+
+  assert.equal(client.commands[0]?.type, 'directory.git-status');
+  assert.equal(client.commands[1]?.type, 'pty.start');
+  assert.equal(client.commands[2]?.type, 'session.status');
+  assert.equal(client.commands[3]?.type, 'session.list');
+});
+
+void test('control-plane service wraps repository mutation commands', async () => {
+  const client = new MockCommandClient();
+  const service = new ControlPlaneService(client, {
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+  });
+
+  client.results.push({ repository: repositoryRecord('repo-upsert') }, { repository: repositoryRecord('repo-update') }, {});
+
+  assert.equal(
+    (
+      await service.upsertRepository({
+        repositoryId: 'repo-upsert',
+        name: 'Harness',
+        remoteUrl: 'https://github.com/acme/harness.git',
+        defaultBranch: 'main',
+        metadata: { source: 'mux-manual' },
+      })
+    ).repositoryId,
+    'repo-upsert',
+  );
+  assert.equal(
+    (await service.updateRepository({ repositoryId: 'repo-update', metadata: { homePriority: 1 } })).repositoryId,
+    'repo-update',
+  );
+  await service.archiveRepository('repo-archive');
+
+  assert.equal(client.commands[0]?.type, 'repository.upsert');
+  assert.equal(client.commands[1]?.type, 'repository.update');
+  assert.equal(client.commands[2]?.type, 'repository.archive');
+});
+
 void test('control-plane service directory/conversation parse helpers handle malformed payloads', async () => {
   const client = new MockCommandClient();
   const service = new ControlPlaneService(client, {
@@ -306,6 +426,23 @@ void test('control-plane service rejects malformed repository and task list payl
   await assert.rejects(
     () => service.listRepositories(),
     /control-plane repository\.list returned malformed repository record/,
+  );
+
+  client.results.push({ repository: {} });
+  await assert.rejects(
+    () =>
+      service.upsertRepository({
+        repositoryId: 'repo-upsert',
+        name: 'Harness',
+        remoteUrl: 'https://github.com/acme/harness.git',
+      }),
+    /control-plane repository\.upsert returned malformed repository record/,
+  );
+
+  client.results.push({ repository: {} });
+  await assert.rejects(
+    () => service.updateRepository({ repositoryId: 'repo-update', metadata: { homePriority: 1 } }),
+    /control-plane repository\.update returned malformed repository record/,
   );
 
   client.results.push({ tasks: {} });

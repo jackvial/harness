@@ -1,6 +1,15 @@
-import type { StreamCommand, StreamSessionControllerType } from '../control-plane/stream-protocol.ts';
+import type {
+  StreamCommand,
+  StreamSessionControllerType,
+  StreamSessionListSort,
+} from '../control-plane/stream-protocol.ts';
+import {
+  parseSessionSummaryList,
+  parseSessionSummaryRecord,
+} from '../control-plane/session-summary.ts';
 import {
   parseConversationRecord,
+  parseDirectoryGitStatusRecord,
   parseDirectoryRecord,
   parseRepositoryRecord,
   parseSessionControllerRecord,
@@ -21,7 +30,11 @@ type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositor
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
 type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
+type ControlPlaneDirectoryGitStatusRecord = NonNullable<
+  ReturnType<typeof parseDirectoryGitStatusRecord>
+>;
 type ControlPlaneSessionControllerRecord = NonNullable<ReturnType<typeof parseSessionControllerRecord>>;
+type ControlPlaneSessionSummary = NonNullable<ReturnType<typeof parseSessionSummaryRecord>>;
 
 export class ControlPlaneService {
   constructor(
@@ -49,6 +62,76 @@ export class ControlPlaneService {
       repositories.push(parsed);
     }
     return repositories;
+  }
+
+  async upsertRepository(input: {
+    repositoryId?: string;
+    name: string;
+    remoteUrl: string;
+    defaultBranch?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ControlPlaneRepositoryRecord> {
+    const command: StreamCommand = {
+      type: 'repository.upsert',
+      tenantId: this.scope.tenantId,
+      userId: this.scope.userId,
+      workspaceId: this.scope.workspaceId,
+      name: input.name,
+      remoteUrl: input.remoteUrl,
+    };
+    if (input.repositoryId !== undefined) {
+      command.repositoryId = input.repositoryId;
+    }
+    if (input.defaultBranch !== undefined) {
+      command.defaultBranch = input.defaultBranch;
+    }
+    if (input.metadata !== undefined) {
+      command.metadata = input.metadata;
+    }
+    const result = await this.client.sendCommand(command);
+    const parsed = parseRepositoryRecord(result['repository']);
+    if (parsed === null) {
+      throw new Error('control-plane repository.upsert returned malformed repository record');
+    }
+    return parsed;
+  }
+
+  async updateRepository(input: {
+    repositoryId: string;
+    name?: string;
+    remoteUrl?: string;
+    defaultBranch?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ControlPlaneRepositoryRecord> {
+    const command: StreamCommand = {
+      type: 'repository.update',
+      repositoryId: input.repositoryId,
+    };
+    if (input.name !== undefined) {
+      command.name = input.name;
+    }
+    if (input.remoteUrl !== undefined) {
+      command.remoteUrl = input.remoteUrl;
+    }
+    if (input.defaultBranch !== undefined) {
+      command.defaultBranch = input.defaultBranch;
+    }
+    if (input.metadata !== undefined) {
+      command.metadata = input.metadata;
+    }
+    const result = await this.client.sendCommand(command);
+    const parsed = parseRepositoryRecord(result['repository']);
+    if (parsed === null) {
+      throw new Error('control-plane repository.update returned malformed repository record');
+    }
+    return parsed;
+  }
+
+  async archiveRepository(repositoryId: string): Promise<void> {
+    await this.client.sendCommand({
+      type: 'repository.archive',
+      repositoryId,
+    });
   }
 
   async upsertDirectory(input: {
@@ -86,6 +169,30 @@ export class ControlPlaneService {
       }
     }
     return directories;
+  }
+
+  async listDirectoryGitStatuses(input?: {
+    directoryId?: string;
+  }): Promise<readonly ControlPlaneDirectoryGitStatusRecord[]> {
+    const command: StreamCommand = {
+      type: 'directory.git-status',
+      tenantId: this.scope.tenantId,
+      userId: this.scope.userId,
+      workspaceId: this.scope.workspaceId,
+    };
+    if (input?.directoryId !== undefined) {
+      command.directoryId = input.directoryId;
+    }
+    const result = await this.client.sendCommand(command);
+    const rows = Array.isArray(result['gitStatuses']) ? result['gitStatuses'] : [];
+    const statuses: ControlPlaneDirectoryGitStatusRecord[] = [];
+    for (const row of rows) {
+      const parsed = parseDirectoryGitStatusRecord(row);
+      if (parsed !== null) {
+        statuses.push(parsed);
+      }
+    }
+    return statuses;
   }
 
   async listConversations(directoryId: string): Promise<readonly ControlPlaneConversationRecord[]> {
@@ -182,11 +289,78 @@ export class ControlPlaneService {
     });
   }
 
+  async startPtySession(input: {
+    sessionId: string;
+    args: readonly string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    initialCols: number;
+    initialRows: number;
+    terminalForegroundHex?: string;
+    terminalBackgroundHex?: string;
+    worktreeId?: string;
+  }): Promise<void> {
+    const command: StreamCommand = {
+      type: 'pty.start',
+      sessionId: input.sessionId,
+      args: [...input.args],
+      initialCols: input.initialCols,
+      initialRows: input.initialRows,
+      tenantId: this.scope.tenantId,
+      userId: this.scope.userId,
+      workspaceId: this.scope.workspaceId,
+    };
+    if (input.env !== undefined) {
+      command.env = input.env;
+    }
+    if (input.cwd !== undefined) {
+      command.cwd = input.cwd;
+    }
+    if (input.terminalForegroundHex !== undefined) {
+      command.terminalForegroundHex = input.terminalForegroundHex;
+    }
+    if (input.terminalBackgroundHex !== undefined) {
+      command.terminalBackgroundHex = input.terminalBackgroundHex;
+    }
+    if (input.worktreeId !== undefined) {
+      command.worktreeId = input.worktreeId;
+    }
+    await this.client.sendCommand(command);
+  }
+
   async closePtySession(sessionId: string): Promise<void> {
     await this.client.sendCommand({
       type: 'pty.close',
       sessionId,
     });
+  }
+
+  async getSessionStatus(sessionId: string): Promise<ControlPlaneSessionSummary | null> {
+    const result = await this.client.sendCommand({
+      type: 'session.status',
+      sessionId,
+    });
+    return parseSessionSummaryRecord(result);
+  }
+
+  async listSessions(input?: {
+    sort?: StreamSessionListSort;
+    worktreeId?: string;
+  }): Promise<readonly ControlPlaneSessionSummary[]> {
+    const command: StreamCommand = {
+      type: 'session.list',
+      tenantId: this.scope.tenantId,
+      userId: this.scope.userId,
+      workspaceId: this.scope.workspaceId,
+    };
+    if (input?.sort !== undefined) {
+      command.sort = input.sort;
+    }
+    if (input?.worktreeId !== undefined) {
+      command.worktreeId = input.worktreeId;
+    }
+    const result = await this.client.sendCommand(command);
+    return parseSessionSummaryList(result['sessions']);
   }
 
   async removeSession(sessionId: string): Promise<void> {
