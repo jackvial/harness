@@ -337,6 +337,35 @@ void test('split module coverage: session runtime notify mapping covers fallback
   );
   assert.equal(cursorCompletedFromStop?.statusHint, 'completed');
   assert.equal(cursorCompletedFromStop?.summary, 'turn complete (aborted)');
+
+  const cursorBeforeTool = notifyKeyEventFromPayload(
+    'cursor',
+    {
+      event: 'beforeShellExecution',
+    },
+    FIXED_TS,
+  );
+  assert.equal(cursorBeforeTool?.statusHint, 'running');
+  assert.equal(cursorBeforeTool?.summary, 'tool started (hook)');
+
+  const cursorAfterTool = notifyKeyEventFromPayload(
+    'cursor',
+    {
+      event: 'afterMCPTool',
+    },
+    FIXED_TS,
+  );
+  assert.equal(cursorAfterTool?.statusHint, null);
+  assert.equal(cursorAfterTool?.summary, 'tool finished (hook)');
+
+  const cursorFallbackSummary = notifyKeyEventFromPayload(
+    'cursor',
+    {
+      event: 'custom_cursor_event',
+    },
+    FIXED_TS,
+  );
+  assert.equal(cursorFallbackSummary?.summary, 'custom_cursor_event');
 });
 
 void test('split module coverage: session runtime handles notify key events without status hints', () => {

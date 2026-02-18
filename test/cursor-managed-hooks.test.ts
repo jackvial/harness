@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'bun:test';
 import {
+  buildCursorManagedHookRelayCommand,
   CURSOR_MANAGED_HOOK_ID_PREFIX,
   ensureManagedCursorHooksInstalled,
   uninstallManagedCursorHooks,
@@ -164,5 +165,146 @@ void test('cursor managed hooks refuses malformed hooks schema without rewriting
     assert.equal(readFileSync(hooksFilePath, 'utf8'), before);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('cursor managed hooks install handles missing files and empty managed event overrides', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'cursor-managed-hooks-missing-'));
+  const hooksFilePath = join(workspace, 'hooks.json');
+  try {
+    const result = ensureManagedCursorHooksInstalled({
+      hooksFilePath: `  ${hooksFilePath}  `,
+      relayCommand: '/usr/bin/env node /new/cursor-hook-relay.ts',
+      managedEvents: ['   ', ''],
+    });
+    assert.equal(result.changed, true);
+    assert.equal(result.removedCount, 0);
+    assert.equal(result.addedCount > 0, true);
+    const parsed = readJson(hooksFilePath);
+    assert.equal(parsed['version'], 1);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('cursor managed hooks install supports explicit hooks path and root without hooks key', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'cursor-managed-hooks-root-no-hooks-'));
+  const hooksFilePath = join(workspace, 'hooks.json');
+  writeFileSync(
+    hooksFilePath,
+    JSON.stringify({
+      version: 7,
+    }),
+    'utf8',
+  );
+  try {
+    const result = ensureManagedCursorHooksInstalled({
+      hooksFilePath,
+      relayCommand: '/usr/bin/env node /new/cursor-hook-relay.ts',
+    });
+    assert.equal(result.filePath, hooksFilePath);
+    assert.equal(result.changed, true);
+    const parsed = readJson(hooksFilePath);
+    assert.equal(parsed['version'], 7);
+    const hooks = parsed['hooks'] as Record<string, Array<Record<string, unknown>>>;
+    assert.equal(Array.isArray(hooks['beforeSubmitPrompt']), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('cursor managed hooks parser rejects non-object roots and invalid hook entry shapes', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'cursor-managed-hooks-parse-'));
+  const hooksFilePath = join(workspace, 'hooks.json');
+  try {
+    writeFileSync(hooksFilePath, JSON.stringify([]), 'utf8');
+    assert.throws(
+      () =>
+        ensureManagedCursorHooksInstalled({
+          hooksFilePath,
+          relayCommand: '/usr/bin/env node /new/cursor-hook-relay.ts',
+        }),
+      /must contain a JSON object/,
+    );
+
+    writeFileSync(
+      hooksFilePath,
+      JSON.stringify({
+        hooks: [],
+      }),
+      'utf8',
+    );
+    assert.throws(
+      () =>
+        ensureManagedCursorHooksInstalled({
+          hooksFilePath,
+          relayCommand: '/usr/bin/env node /new/cursor-hook-relay.ts',
+        }),
+      /invalid hooks shape/,
+    );
+
+    writeFileSync(
+      hooksFilePath,
+      JSON.stringify({
+        hooks: {
+          beforeSubmitPrompt: [123],
+        },
+      }),
+      'utf8',
+    );
+    assert.throws(
+      () =>
+        ensureManagedCursorHooksInstalled({
+          hooksFilePath,
+          relayCommand: '/usr/bin/env node /new/cursor-hook-relay.ts',
+        }),
+      /must be an object/,
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('cursor managed hooks preserves entries without string commands while removing managed commands', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'cursor-managed-hooks-non-string-'));
+  const hooksFilePath = join(workspace, 'hooks.json');
+  writeFileSync(
+    hooksFilePath,
+    JSON.stringify({
+      version: 1,
+      hooks: {
+        beforeSubmitPrompt: [
+          { command: 123 },
+          {
+            command: `/usr/bin/env node /old/cursor-hook-relay.ts --managed-hook-id '${CURSOR_MANAGED_HOOK_ID_PREFIX}:beforeSubmitPrompt'`,
+          },
+        ],
+      },
+    }),
+    'utf8',
+  );
+  try {
+    const result = uninstallManagedCursorHooks({
+      hooksFilePath,
+    });
+    assert.equal(result.changed, true);
+    assert.equal(result.removedCount, 1);
+    const parsed = readJson(hooksFilePath);
+    const hooks = parsed['hooks'] as Record<string, Array<Record<string, unknown>>>;
+    assert.equal(hooks['beforeSubmitPrompt']?.[0]?.['command'], 123);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('cursor managed hooks relay command escapes empty process exec path and resolves script path', () => {
+  const originalExecPath = process.execPath;
+  try {
+    Object.defineProperty(process, 'execPath', { value: '', configurable: true });
+    const command = buildCursorManagedHookRelayCommand('cursor-hook-relay.ts');
+    assert.equal(command.includes("/usr/bin/env ''"), true);
+    assert.equal(command.includes('cursor-hook-relay.ts'), true);
+  } finally {
+    Object.defineProperty(process, 'execPath', { value: originalExecPath, configurable: true });
   }
 });

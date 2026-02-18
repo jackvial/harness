@@ -188,9 +188,7 @@ function resolveManagedEvents(events: readonly string[] | undefined): readonly s
 
 function resolveCursorHooksFilePath(filePath?: string): string {
   const trimmed = filePath?.trim() ?? '';
-  if (trimmed.length > 0) {
-    return resolve(trimmed);
-  }
+  if (trimmed.length > 0) return resolve(trimmed);
   return resolve(homedir(), '.cursor', 'hooks.json');
 }
 

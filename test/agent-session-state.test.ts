@@ -269,6 +269,23 @@ void test('mergeAdapterStateFromSessionEvent ignores unsupported agents and malf
     ),
     null
   );
+  assert.equal(
+    mergeAdapterStateFromSessionEvent(
+      'cursor',
+      {},
+      {
+        type: 'notify',
+        record: {
+          ts: '2026-02-14T00:00:00.000Z',
+          payload: {
+            event: 'beforeSubmitPrompt'
+          }
+        }
+      },
+      '2026-02-14T00:00:01.000Z'
+    ),
+    null
+  );
 });
 
 void test('buildAgentStartArgs injects codex resume and preserves explicit subcommands', () => {

@@ -103,6 +103,8 @@ export class ConversationManager {
 
   activeConversationId: string | null = null;
 
+  constructor() {}
+
   get(sessionId: string): ConversationState | undefined {
     return this.conversationsBySessionId.get(sessionId);
   }
