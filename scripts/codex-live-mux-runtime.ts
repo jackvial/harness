@@ -1,6 +1,5 @@
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -177,6 +176,7 @@ import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { EventPersistence } from '../src/services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../src/services/mux-ui-state-persistence.ts';
+import { OutputLoadSampler } from '../src/services/output-load-sampler.ts';
 import { ProcessUsageRefreshService } from '../src/services/process-usage-refresh.ts';
 import { RecordingService } from '../src/services/recording.ts';
 import { SessionProjectionInstrumentation } from '../src/services/session-projection-instrumentation.ts';
@@ -213,16 +213,6 @@ type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositor
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
 
 type ProcessUsageSample = Awaited<ReturnType<typeof readProcessUsageSample>>;
-
-interface MuxPerfStatusRow {
-  readonly fps: number;
-  readonly kbPerSecond: number;
-  readonly renderAvgMs: number;
-  readonly renderMaxMs: number;
-  readonly outputHandleAvgMs: number;
-  readonly outputHandleMaxMs: number;
-  readonly eventLoopP95Ms: number;
-}
 
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
@@ -1279,109 +1269,14 @@ async function main(): Promise<number> {
     startPerfSpan,
     writeStderr: (text) => process.stderr.write(text),
   });
-
-  const eventLoopDelayMonitor = monitorEventLoopDelay({
-    resolution: 20,
+  const outputLoadSampler = new OutputLoadSampler({
+    recordPerfEvent,
+    getControlPlaneQueueMetrics: () => controlPlaneQueue.metrics(),
+    getActiveConversationId: () => conversationManager.activeConversationId,
+    getPendingPersistedEvents: () => eventPersistence.pendingCount(),
+    onStatusRowChanged: markDirty,
   });
-  eventLoopDelayMonitor.enable();
-
-  let outputSampleWindowStartedAtMs = Date.now();
-  let outputSampleActiveBytes = 0;
-  let outputSampleInactiveBytes = 0;
-  let outputSampleActiveChunks = 0;
-  let outputSampleInactiveChunks = 0;
-  let outputHandleSampleCount = 0;
-  let outputHandleSampleTotalMs = 0;
-  let outputHandleSampleMaxMs = 0;
-  let renderSampleCount = 0;
-  let renderSampleTotalMs = 0;
-  let renderSampleMaxMs = 0;
-  let renderSampleChangedRows = 0;
-  let perfStatusRow: MuxPerfStatusRow = {
-    fps: 0,
-    kbPerSecond: 0,
-    renderAvgMs: 0,
-    renderMaxMs: 0,
-    outputHandleAvgMs: 0,
-    outputHandleMaxMs: 0,
-    eventLoopP95Ms: 0,
-  };
-  const outputSampleSessionIds = new Set<string>();
-  const outputLoadSampleTimer = setInterval(() => {
-    const totalChunks = outputSampleActiveChunks + outputSampleInactiveChunks;
-    const hasRenderSamples = renderSampleCount > 0;
-    const nowMs = Date.now();
-    const windowMs = Math.max(1, nowMs - outputSampleWindowStartedAtMs);
-    const eventLoopP95Ms = Number(eventLoopDelayMonitor.percentile(95)) / 1e6;
-    const eventLoopMaxMs = Number(eventLoopDelayMonitor.max) / 1e6;
-    const outputHandleAvgMs =
-      outputHandleSampleCount === 0 ? 0 : outputHandleSampleTotalMs / outputHandleSampleCount;
-    const renderAvgMs = renderSampleCount === 0 ? 0 : renderSampleTotalMs / renderSampleCount;
-    const nextPerfStatusRow: MuxPerfStatusRow = {
-      fps: Number(((renderSampleCount * 1000) / windowMs).toFixed(1)),
-      kbPerSecond: Number(
-        (((outputSampleActiveBytes + outputSampleInactiveBytes) * 1000) / windowMs / 1024).toFixed(
-          1,
-        ),
-      ),
-      renderAvgMs: Number(renderAvgMs.toFixed(2)),
-      renderMaxMs: Number(renderSampleMaxMs.toFixed(2)),
-      outputHandleAvgMs: Number(outputHandleAvgMs.toFixed(2)),
-      outputHandleMaxMs: Number(outputHandleSampleMaxMs.toFixed(2)),
-      eventLoopP95Ms: Number(eventLoopP95Ms.toFixed(1)),
-    };
-    if (
-      nextPerfStatusRow.fps !== perfStatusRow.fps ||
-      nextPerfStatusRow.kbPerSecond !== perfStatusRow.kbPerSecond ||
-      nextPerfStatusRow.renderAvgMs !== perfStatusRow.renderAvgMs ||
-      nextPerfStatusRow.renderMaxMs !== perfStatusRow.renderMaxMs ||
-      nextPerfStatusRow.outputHandleAvgMs !== perfStatusRow.outputHandleAvgMs ||
-      nextPerfStatusRow.outputHandleMaxMs !== perfStatusRow.outputHandleMaxMs ||
-      nextPerfStatusRow.eventLoopP95Ms !== perfStatusRow.eventLoopP95Ms
-    ) {
-      perfStatusRow = nextPerfStatusRow;
-      markDirty();
-    }
-    if (totalChunks > 0 || hasRenderSamples) {
-      const controlPlaneQueueMetrics = controlPlaneQueue.metrics();
-      recordPerfEvent('mux.output-load.sample', {
-        windowMs,
-        activeChunks: outputSampleActiveChunks,
-        inactiveChunks: outputSampleInactiveChunks,
-        activeBytes: outputSampleActiveBytes,
-        inactiveBytes: outputSampleInactiveBytes,
-        outputHandleCount: outputHandleSampleCount,
-        outputHandleAvgMs: Number(outputHandleAvgMs.toFixed(3)),
-        outputHandleMaxMs: Number(outputHandleSampleMaxMs.toFixed(3)),
-        renderCount: renderSampleCount,
-        renderAvgMs: Number(renderAvgMs.toFixed(3)),
-        renderMaxMs: Number(renderSampleMaxMs.toFixed(3)),
-        renderChangedRows: renderSampleChangedRows,
-        eventLoopP95Ms: Number(eventLoopP95Ms.toFixed(3)),
-        eventLoopMaxMs: Number(eventLoopMaxMs.toFixed(3)),
-        activeConversationId: conversationManager.activeConversationId ?? 'none',
-        sessionsWithOutput: outputSampleSessionIds.size,
-        pendingPersistedEvents: eventPersistence.pendingCount(),
-        interactiveQueued: controlPlaneQueueMetrics.interactiveQueued,
-        backgroundQueued: controlPlaneQueueMetrics.backgroundQueued,
-        controlPlaneOpRunning: controlPlaneQueueMetrics.running ? 1 : 0,
-      });
-    }
-    outputSampleWindowStartedAtMs = nowMs;
-    outputSampleActiveBytes = 0;
-    outputSampleInactiveBytes = 0;
-    outputSampleActiveChunks = 0;
-    outputSampleInactiveChunks = 0;
-    outputHandleSampleCount = 0;
-    outputHandleSampleTotalMs = 0;
-    outputHandleSampleMaxMs = 0;
-    renderSampleCount = 0;
-    renderSampleTotalMs = 0;
-    renderSampleMaxMs = 0;
-    renderSampleChangedRows = 0;
-    outputSampleSessionIds.clear();
-    eventLoopDelayMonitor.reset();
-  }, 1000);
+  outputLoadSampler.start();
 
   const applyPtyResizeToSession = (
     sessionId: string,
@@ -2879,7 +2774,13 @@ async function main(): Promise<number> {
       statusNotice === null || statusNotice.length === 0
         ? baseStatusFooter
         : `${baseStatusFooter.length > 0 ? `${baseStatusFooter}  ` : ''}${statusNotice}`;
-    const rows = buildRenderRows(layout, rail.ansiRows, rightRows, perfStatusRow, statusFooter);
+    const rows = buildRenderRows(
+      layout,
+      rail.ansiRows,
+      rightRows,
+      outputLoadSampler.currentStatusRow(),
+      statusFooter,
+    );
     const modalOverlay = buildCurrentModalOverlay();
     if (modalOverlay !== null) {
       applyModalOverlay(rows, modalOverlay);
@@ -2927,12 +2828,7 @@ async function main(): Promise<number> {
       }
     }
     const renderDurationMs = Number(perfNowNs() - renderStartedAtNs) / 1e6;
-    renderSampleCount += 1;
-    renderSampleTotalMs += renderDurationMs;
-    if (renderDurationMs > renderSampleMaxMs) {
-      renderSampleMaxMs = renderDurationMs;
-    }
-    renderSampleChangedRows += changedRowCount;
+    outputLoadSampler.recordRenderSample(renderDurationMs, changedRowCount);
   };
 
   const handleEnvelope = (envelope: StreamServerEnvelope): void => {
@@ -2950,14 +2846,11 @@ async function main(): Promise<number> {
       });
       const conversation = outputIngest.conversation;
       noteGitActivity(conversation.directoryId);
-      outputSampleSessionIds.add(envelope.sessionId);
-      if (conversationManager.activeConversationId === envelope.sessionId) {
-        outputSampleActiveBytes += chunk.length;
-        outputSampleActiveChunks += 1;
-      } else {
-        outputSampleInactiveBytes += chunk.length;
-        outputSampleInactiveChunks += 1;
-      }
+      outputLoadSampler.recordOutputChunk(
+        envelope.sessionId,
+        chunk.length,
+        conversationManager.activeConversationId === envelope.sessionId,
+      );
       startupOutputTracker.onOutputChunk(envelope.sessionId, chunk.length);
       startupPaintTracker.onOutputChunk(envelope.sessionId);
       if (outputIngest.cursorRegressed) {
@@ -2975,11 +2868,7 @@ async function main(): Promise<number> {
         markDirty();
       }
       const outputHandledDurationMs = Number(perfNowNs() - outputHandledStartedAtNs) / 1e6;
-      outputHandleSampleCount += 1;
-      outputHandleSampleTotalMs += outputHandledDurationMs;
-      if (outputHandledDurationMs > outputHandleSampleMaxMs) {
-        outputHandleSampleMaxMs = outputHandledDurationMs;
-      }
+      outputLoadSampler.recordOutputHandled(outputHandledDurationMs);
       return;
     }
 
@@ -3617,8 +3506,7 @@ async function main(): Promise<number> {
   } finally {
     shuttingDown = true;
     screen.clearDirty();
-    clearInterval(outputLoadSampleTimer);
-    eventLoopDelayMonitor.disable();
+    outputLoadSampler.stop();
     startupBackgroundProbeService.stop();
     if (resizeTimer !== null) {
       clearTimeout(resizeTimer);

@@ -1106,3 +1106,21 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3530 non-empty LOC
+
+### Checkpoint BF (2026-02-18): Service extraction continues with class-based output/render load sampling
+
+- Added `src/services/output-load-sampler.ts` with a class-based `OutputLoadSampler` that owns:
+  - output chunk byte/chunk/session sampling (active vs inactive)
+  - output-handler and render duration aggregate windows
+  - event-loop delay monitor lifecycle (`enable`/`reset`/`disable`)
+  - perf status row state for render footer metrics
+  - periodic `mux.output-load.sample` emission with queue/persistence counters
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate all inline output-load sampling concerns to `OutputLoadSampler`, removing runtime-owned sample counters/timer/monitor teardown.
+- Added `test/services-output-load-sampler.test.ts` with coverage for:
+  - sample aggregation + status row updates + perf payload emission
+  - start/stop idempotency and monitor lifecycle wiring
+  - default event-loop monitor factory fallback path
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3421 non-empty LOC
