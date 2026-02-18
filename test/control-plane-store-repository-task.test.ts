@@ -1160,3 +1160,151 @@ void test('control-plane store repository and task rollback guards cover impossi
     store.close();
   }
 });
+
+void test('control-plane store migrates legacy tasks schema before creating scope index', () => {
+  const storePath = tempStorePath();
+  const legacy = new DatabaseSync(storePath);
+  try {
+    legacy.exec(`
+      CREATE TABLE directories (
+        directory_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        archived_at TEXT
+      );
+    `);
+    legacy.exec(`
+      CREATE TABLE repositories (
+        repository_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        remote_url TEXT NOT NULL,
+        default_branch TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        archived_at TEXT
+      );
+    `);
+    legacy.exec(`
+      CREATE TABLE tasks (
+        task_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        repository_id TEXT REFERENCES repositories(repository_id),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL,
+        order_index INTEGER NOT NULL,
+        claimed_by_controller_id TEXT,
+        claimed_by_directory_id TEXT REFERENCES directories(directory_id),
+        branch_name TEXT,
+        base_branch TEXT,
+        claimed_at TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    legacy.exec(`
+      INSERT INTO repositories (
+        repository_id,
+        tenant_id,
+        user_id,
+        workspace_id,
+        name,
+        remote_url,
+        default_branch,
+        metadata_json,
+        created_at,
+        archived_at
+      ) VALUES (
+        'repo-legacy',
+        'tenant-legacy',
+        'user-legacy',
+        'workspace-legacy',
+        'legacy repo',
+        'https://example.com/legacy.git',
+        'main',
+        '{}',
+        '2026-02-18T00:00:00.000Z',
+        NULL
+      );
+    `);
+    legacy.exec(`
+      INSERT INTO tasks (
+        task_id,
+        tenant_id,
+        user_id,
+        workspace_id,
+        repository_id,
+        title,
+        description,
+        status,
+        order_index,
+        claimed_by_controller_id,
+        claimed_by_directory_id,
+        branch_name,
+        base_branch,
+        claimed_at,
+        completed_at,
+        created_at,
+        updated_at
+      ) VALUES (
+        'task-legacy',
+        'tenant-legacy',
+        'user-legacy',
+        'workspace-legacy',
+        'repo-legacy',
+        'legacy task',
+        '',
+        'draft',
+        0,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        '2026-02-18T00:00:00.000Z',
+        '2026-02-18T00:00:00.000Z'
+      );
+    `);
+  } finally {
+    legacy.close();
+  }
+
+  const store = new SqliteControlPlaneStore(storePath);
+  try {
+    const migratedTask = store.getTask('task-legacy');
+    assert.equal(migratedTask?.scopeKind, 'repository');
+  } finally {
+    store.close();
+  }
+
+  const migrated = new DatabaseSync(storePath);
+  try {
+    const columns = migrated.prepare('PRAGMA table_info(tasks);').all() as ReadonlyArray<
+      Record<string, unknown>
+    >;
+    const columnNames = columns.map((row) => String(row['name']));
+    assert.equal(columnNames.includes('scope_kind'), true);
+    assert.equal(columnNames.includes('project_id'), true);
+    const indexes = migrated.prepare('PRAGMA index_list(tasks);').all() as ReadonlyArray<
+      Record<string, unknown>
+    >;
+    assert.equal(
+      indexes.some((row) => row['name'] === 'idx_tasks_scope_kind'),
+      true,
+    );
+  } finally {
+    migrated.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});

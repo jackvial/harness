@@ -2126,6 +2126,9 @@ export class SqliteControlPlaneStore {
       CREATE INDEX IF NOT EXISTS idx_tasks_scope
       ON tasks (tenant_id, user_id, workspace_id, order_index, created_at, task_id);
     `);
+    this.ensureColumnExists('tasks', 'linear_json', `linear_json TEXT NOT NULL DEFAULT '{}'`);
+    this.ensureColumnExists('tasks', 'scope_kind', `scope_kind TEXT NOT NULL DEFAULT 'global'`);
+    this.ensureColumnExists('tasks', 'project_id', `project_id TEXT REFERENCES directories(directory_id)`);
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_tasks_scope_kind
       ON tasks (tenant_id, user_id, workspace_id, scope_kind, repository_id, project_id, order_index);
@@ -2134,9 +2137,6 @@ export class SqliteControlPlaneStore {
       CREATE INDEX IF NOT EXISTS idx_tasks_status
       ON tasks (status, updated_at, task_id);
     `);
-    this.ensureColumnExists('tasks', 'linear_json', `linear_json TEXT NOT NULL DEFAULT '{}'`);
-    this.ensureColumnExists('tasks', 'scope_kind', `scope_kind TEXT NOT NULL DEFAULT 'global'`);
-    this.ensureColumnExists('tasks', 'project_id', `project_id TEXT REFERENCES directories(directory_id)`);
     this.db.exec(`
       UPDATE tasks
       SET scope_kind = CASE
