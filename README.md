@@ -176,6 +176,7 @@ Harness is built to expose operational truth, not hide it.
 - Codex telemetry ingestion (logs, metrics, traces, history) for deep diagnostics when verbose capture is enabled.
 - `perf-core` uses batched writes plus deterministic sampling for hot high-frequency events (`pty.stdout.chunk`) to keep instrumentation overhead low under sustained output.
 - Shared mux runtime helpers are factored into `src/mux/live-mux/*` (args parsing, control-plane record parsing, startup env/terminal helpers, git/palette parsing, git/process snapshot probes, event mapping, pane layout math, selection/copy helpers).
+- Mux state ownership is being migrated into a class-based workspace model (`src/domain/workspace.ts`) to enforce responsibility-first boundaries (domain/service/ui).
 - Mux regression checks are behavior-first; tests validate runtime behavior directly instead of asserting source-code string fragments.
 
 ## Performance and Quality Principles

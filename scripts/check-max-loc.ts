@@ -240,6 +240,13 @@ function renderAdvisory(report: VerifyReport): string {
     lines.push(`- ${violation.path} (loc=${violation.loc}, lines=${violation.lines}, limit=${report.maxLoc})`);
   }
   lines.push('');
+  lines.push('Refactor guidance for agent-authored changes:');
+  lines.push('- Split by responsibility, not by existing file boundaries.');
+  lines.push('- Prefer clear module seams: domain vs service vs UI.');
+  lines.push('- Favor class-based design where it improves ownership and lifecycle clarity.');
+  lines.push('- DRY repeated logic before adding new branches or duplicate handlers.');
+  lines.push('- Keep code human-friendly: clear names, short functions, readable control flow.');
+  lines.push('');
   lines.push('No failure because --enforce was not set.');
   lines.push('Use: bun scripts/check-max-loc.ts --max-loc <number> --enforce');
   lines.push('');
@@ -258,6 +265,9 @@ function renderFailure(report: VerifyReport): string {
   }
   lines.push('');
   lines.push('Refactor guidance for agent-authored changes:');
+  lines.push('- Split by responsibility, not by existing file boundaries.');
+  lines.push('- Prefer clear module seams: domain vs service vs UI.');
+  lines.push('- Favor class-based design where it improves ownership and lifecycle clarity.');
   lines.push('- DRY repeated logic before adding new branches or duplicate handlers.');
   lines.push('- Extract core functionality into focused modules with explicit interfaces.');
   lines.push('- Build better abstractions around stable domain seams instead of adding flags.');

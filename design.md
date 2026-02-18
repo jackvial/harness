@@ -131,6 +131,7 @@ Control-plane boundaries:
 - Command parsing is a standalone module (`src/control-plane/stream-command-parser.ts`) with a registry-based API. `stream-protocol` delegates command payload decoding to this module so command grammar can evolve and be tested without touching envelope parsing.
 - Mux "new thread" modal behavior is a standalone pure state module (`src/mux/new-thread-prompt.ts`) that owns input reduction, row hit-testing, and deterministic text rendering inputs.
 - Protocol envelope parsing (`src/control-plane/stream-protocol.ts`) is kept focused on envelope shape validation and event normalization; it no longer embeds the full command parser implementation.
+- Mux runtime state ownership is being centralized behind a class-based `WorkspaceModel` (`src/domain/workspace.ts`) so mutable UI/session state is grouped by responsibility rather than threaded as free locals.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

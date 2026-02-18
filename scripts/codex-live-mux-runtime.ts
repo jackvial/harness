@@ -51,7 +51,6 @@ import {
   projectPaneActionAtRow,
   sortedRepositoryList,
   sortTasksByOrder,
-  type ProjectPaneSnapshot,
   type TaskPaneAction,
 } from '../src/mux/harness-core-ui.ts';
 import {
@@ -60,7 +59,6 @@ import {
   taskFocusedPaneActionAtRow,
   taskFocusedPaneRepositoryIdAtRow,
   taskFocusedPaneTaskIdAtRow,
-  type TaskFocusedPaneView,
 } from '../src/mux/task-focused-pane.ts';
 import {
   createTaskComposerBuffer,
@@ -256,6 +254,12 @@ import {
   openNewThreadPrompt as openNewThreadPromptFn,
   takeoverConversation as takeoverConversationFn,
 } from '../src/mux/live-mux/actions-conversation.ts';
+import {
+  WorkspaceModel,
+  type ConversationTitleEditState,
+  type RepositoryPromptState,
+  type TaskEditorPromptState,
+} from '../src/domain/workspace.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -278,22 +282,6 @@ interface MuxPerfStatusRow {
   readonly outputHandleAvgMs: number;
   readonly outputHandleMaxMs: number;
   readonly eventLoopP95Ms: number;
-}
-
-interface ConversationTitleEditState {
-  conversationId: string;
-  value: string;
-  lastSavedValue: string;
-  error: string | null;
-  persistInFlight: boolean;
-  debounceTimer: NodeJS.Timeout | null;
-}
-
-interface RepositoryPromptState {
-  readonly mode: 'add' | 'edit';
-  readonly repositoryId: string | null;
-  readonly value: string;
-  readonly error: string | null;
 }
 
 interface ConversationProjectionSnapshot {
@@ -333,24 +321,6 @@ const GIT_REPOSITORY_NONE: GitRepositorySnapshot = {
   defaultBranch: null,
 };
 
-interface TaskEditorPromptState {
-  mode: 'create' | 'edit';
-  taskId: string | null;
-  title: string;
-  description: string;
-  repositoryIds: readonly string[];
-  repositoryIndex: number;
-  fieldIndex: 0 | 1 | 2;
-  error: string | null;
-}
-
-interface HomePaneDragState {
-  readonly kind: 'task' | 'repository';
-  readonly itemId: string;
-  readonly startedRowIndex: number;
-  readonly latestRowIndex: number;
-  readonly hasDragged: boolean;
-}
 const MUX_MODAL_THEME = {
   frameStyle: {
     fg: { kind: 'indexed', index: 252 },
@@ -609,42 +579,44 @@ async function main(): Promise<number> {
     throw new Error('control-plane directory.upsert returned malformed directory record');
   }
   directoryUpsertSpan.end();
-  let activeDirectoryId: string | null = persistedDirectory.directoryId;
-  let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';
-  let leftNavSelection: LeftNavSelection = {
-    kind: 'project',
-    directoryId: persistedDirectory.directoryId,
-  };
-  let activeRepositorySelectionId: string | null = null;
+  const workspace = new WorkspaceModel({
+    activeDirectoryId: persistedDirectory.directoryId,
+    leftNavSelection: {
+      kind: 'project',
+      directoryId: persistedDirectory.directoryId,
+    },
+    latestTaskPaneView: {
+      rows: [],
+      taskIds: [],
+      repositoryIds: [],
+      actions: [],
+      actionCells: [],
+      top: 0,
+      selectedRepositoryId: null,
+    },
+    taskDraftComposer: createTaskComposerBuffer(''),
+    repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
+    shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
+  });
   const collapsedRepositoryGroupIds = new Set<string>();
   const expandedRepositoryGroupIds = new Set<string>();
-  let repositoryToggleChordPrefixAtMs: number | null = null;
-  let projectPaneSnapshot: ProjectPaneSnapshot | null = null;
-  let projectPaneScrollTop = 0;
-  let taskPaneScrollTop = 0;
-  let latestTaskPaneView: TaskFocusedPaneView = {
-    rows: [],
-    taskIds: [],
-    repositoryIds: [],
-    actions: [],
-    actionCells: [],
-    top: 0,
-    selectedRepositoryId: null,
-  };
-  let taskPaneSelectedTaskId: string | null = null;
-  let taskPaneSelectedRepositoryId: string | null = null;
-  let taskRepositoryDropdownOpen = false;
-  let taskEditorTarget: { kind: 'draft' } | { kind: 'task'; taskId: string } = {
+  workspace.repositoryToggleChordPrefixAtMs = null;
+  workspace.projectPaneSnapshot = null;
+  workspace.projectPaneScrollTop = 0;
+  workspace.taskPaneScrollTop = 0;
+  workspace.taskPaneSelectedTaskId = null;
+  workspace.taskPaneSelectedRepositoryId = null;
+  workspace.taskRepositoryDropdownOpen = false;
+  workspace.taskEditorTarget = {
     kind: 'draft',
   };
-  let taskDraftComposer = createTaskComposerBuffer('');
   const taskComposerByTaskId = new Map<string, TaskComposerBuffer>();
   const taskAutosaveTimerByTaskId = new Map<string, NodeJS.Timeout>();
-  let taskPaneSelectionFocus: 'task' | 'repository' = 'task';
-  let taskPaneNotice: string | null = null;
-  let taskPaneTaskEditClickState: { entityId: string; atMs: number } | null = null;
-  let taskPaneRepositoryEditClickState: { entityId: string; atMs: number } | null = null;
-  let homePaneDragState: HomePaneDragState | null = null;
+  workspace.taskPaneSelectionFocus = 'task';
+  workspace.taskPaneNotice = null;
+  workspace.taskPaneTaskEditClickState = null;
+  workspace.taskPaneRepositoryEditClickState = null;
+  workspace.homePaneDragState = null;
 
   const sessionEnv = {
     ...sanitizeProcessEnv(),
@@ -781,14 +753,14 @@ async function main(): Promise<number> {
   };
 
   const resolveActiveDirectoryId = (): string | null => {
-    activeDirectoryId = resolveActiveDirectoryIdFn(activeDirectoryId, directories);
-    return activeDirectoryId;
+    workspace.activeDirectoryId = resolveActiveDirectoryIdFn(workspace.activeDirectoryId, directories);
+    return workspace.activeDirectoryId;
   };
 
   const resolveDirectoryForAction = (): string | null => {
     return resolveDirectoryForActionFn({
-      mainPaneMode,
-      activeDirectoryId,
+      mainPaneMode: workspace.mainPaneMode,
+      activeDirectoryId: workspace.activeDirectoryId,
       activeConversationId,
       conversations,
       directoriesHas: (directoryId) => directories.has(directoryId),
@@ -803,24 +775,45 @@ async function main(): Promise<number> {
     );
 
   const collapseRepositoryGroup = (repositoryGroupId: string): void => {
-    collapseRepositoryGroupFn(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
+    collapseRepositoryGroupFn(
+      repositoryGroupId,
+      workspace.repositoriesCollapsed,
+      expandedRepositoryGroupIds,
+      collapsedRepositoryGroupIds,
+    );
   };
 
   const expandRepositoryGroup = (repositoryGroupId: string): void => {
-    expandRepositoryGroupFn(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
+    expandRepositoryGroupFn(
+      repositoryGroupId,
+      workspace.repositoriesCollapsed,
+      expandedRepositoryGroupIds,
+      collapsedRepositoryGroupIds,
+    );
   };
 
   const toggleRepositoryGroup = (repositoryGroupId: string): void => {
-    toggleRepositoryGroupFn(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
+    toggleRepositoryGroupFn(
+      repositoryGroupId,
+      workspace.repositoriesCollapsed,
+      expandedRepositoryGroupIds,
+      collapsedRepositoryGroupIds,
+    );
   };
 
   const collapseAllRepositoryGroups = (): void => {
-    repositoriesCollapsed = collapseAllRepositoryGroupsFn(collapsedRepositoryGroupIds, expandedRepositoryGroupIds);
+    workspace.repositoriesCollapsed = collapseAllRepositoryGroupsFn(
+      collapsedRepositoryGroupIds,
+      expandedRepositoryGroupIds,
+    );
     queuePersistMuxUiState();
   };
 
   const expandAllRepositoryGroups = (): void => {
-    repositoriesCollapsed = expandAllRepositoryGroupsFn(collapsedRepositoryGroupIds, expandedRepositoryGroupIds);
+    workspace.repositoriesCollapsed = expandAllRepositoryGroupsFn(
+      collapsedRepositoryGroupIds,
+      expandedRepositoryGroupIds,
+    );
     queuePersistMuxUiState();
   };
 
@@ -829,29 +822,29 @@ async function main(): Promise<number> {
   };
 
   const selectLeftNavHome = (): void => {
-    leftNavSelection = {
+    workspace.leftNavSelection = {
       kind: 'home',
     };
   };
 
   const selectLeftNavRepository = (repositoryGroupId: string): void => {
-    activeRepositorySelectionId = repositoryGroupId;
-    leftNavSelection = {
+    workspace.activeRepositorySelectionId = repositoryGroupId;
+    workspace.leftNavSelection = {
       kind: 'repository',
       repositoryId: repositoryGroupId,
     };
   };
 
   const selectLeftNavProject = (directoryId: string): void => {
-    activeRepositorySelectionId = repositoryGroupIdForDirectory(directoryId);
-    leftNavSelection = {
+    workspace.activeRepositorySelectionId = repositoryGroupIdForDirectory(directoryId);
+    workspace.leftNavSelection = {
       kind: 'project',
       directoryId,
     };
   };
 
   const selectLeftNavConversation = (sessionId: string): void => {
-    leftNavSelection = {
+    workspace.leftNavSelection = {
       kind: 'conversation',
       sessionId,
     };
@@ -1277,7 +1270,7 @@ async function main(): Promise<number> {
       selectLeftNavConversation(activeConversationId);
     }
     if (activeConversationId === null && resolveActiveDirectoryId() !== null) {
-      mainPaneMode = 'project';
+      workspace.mainPaneMode = 'project';
       selectLeftNavProject(resolveActiveDirectoryId()!);
     }
   }
@@ -1526,8 +1519,6 @@ async function main(): Promise<number> {
   let renderedBracketedPaste: boolean | null = null;
   let previousSelectionRows: readonly number[] = [];
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
-  let repositoriesCollapsed = configuredMuxUi.repositoriesCollapsed;
-  let shortcutsCollapsed = configuredMuxUi.shortcutsCollapsed;
   let persistedMuxUiState = {
     paneWidthPercent: paneWidthPercentFromLayout(layout),
     repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
@@ -1567,8 +1558,8 @@ async function main(): Promise<number> {
       hasConversationTitleEdit: conversationTitleEdit !== null,
       stopConversationTitleEdit: () => stopConversationTitleEdit(true),
       activeTaskEditorTaskId:
-        'taskId' in taskEditorTarget && typeof taskEditorTarget.taskId === 'string'
-          ? taskEditorTarget.taskId
+        'taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string'
+          ? workspace.taskEditorTarget.taskId
           : null,
       autosaveTaskIds: [...taskAutosaveTimerByTaskId.keys()],
       flushTaskComposerPersist,
@@ -1684,6 +1675,8 @@ async function main(): Promise<number> {
         repositoriesCollapsed: updated.mux.ui.repositoriesCollapsed,
         shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed,
       };
+      workspace.repositoriesCollapsed = updated.mux.ui.repositoriesCollapsed;
+      workspace.shortcutsCollapsed = updated.mux.ui.shortcutsCollapsed;
     } catch (error: unknown) {
       process.stderr.write(
         `[config] unable to persist mux ui state: ${error instanceof Error ? error.message : String(error)}\n`,
@@ -1696,8 +1689,8 @@ async function main(): Promise<number> {
     }
     pendingMuxUiStatePersist = {
       paneWidthPercent: paneWidthPercentFromLayout(layout),
-      repositoriesCollapsed,
-      shortcutsCollapsed,
+      repositoriesCollapsed: workspace.repositoriesCollapsed,
+      shortcutsCollapsed: workspace.shortcutsCollapsed,
     };
     if (muxUiStatePersistTimer !== null) {
       clearTimeout(muxUiStatePersistTimer);
@@ -1724,8 +1717,8 @@ async function main(): Promise<number> {
   };
   if (configuredMuxGit.enabled) {
     syncGitStateWithDirectories();
-    if (activeDirectoryId !== null) {
-      noteGitActivity(activeDirectoryId);
+    if (workspace.activeDirectoryId !== null) {
+      noteGitActivity(workspace.activeDirectoryId);
     }
   } else {
     recordPerfEvent('mux.background.git-summary.skipped', {
@@ -2385,24 +2378,24 @@ async function main(): Promise<number> {
   const refreshProjectPaneSnapshot = (directoryId: string): void => {
     const directory = directories.get(directoryId);
     if (directory === undefined) {
-      projectPaneSnapshot = null;
+      workspace.projectPaneSnapshot = null;
       return;
     }
-    projectPaneSnapshot = buildProjectPaneSnapshot(directory.directoryId, directory.path);
+    workspace.projectPaneSnapshot = buildProjectPaneSnapshot(directory.directoryId, directory.path);
   };
 
   const enterProjectPane = (directoryId: string): void => {
     if (!directories.has(directoryId)) {
       return;
     }
-    activeDirectoryId = directoryId;
+    workspace.activeDirectoryId = directoryId;
     selectLeftNavProject(directoryId);
     noteGitActivity(directoryId);
-    mainPaneMode = 'project';
-    homePaneDragState = null;
-    taskPaneTaskEditClickState = null;
-    taskPaneRepositoryEditClickState = null;
-    projectPaneScrollTop = 0;
+    workspace.mainPaneMode = 'project';
+    workspace.homePaneDragState = null;
+    workspace.taskPaneTaskEditClickState = null;
+    workspace.taskPaneRepositoryEditClickState = null;
+    workspace.projectPaneScrollTop = 0;
     refreshProjectPaneSnapshot(directoryId);
     forceFullClear = true;
     previousRows = [];
@@ -2443,7 +2436,7 @@ async function main(): Promise<number> {
   };
 
   const taskBelongsToSelectedRepository = (task: ControlPlaneTaskRecord): boolean =>
-    taskPaneSelectedRepositoryId !== null && task.repositoryId === taskPaneSelectedRepositoryId;
+    workspace.taskPaneSelectedRepositoryId !== null && task.repositoryId === workspace.taskPaneSelectedRepositoryId;
 
   const selectedRepositoryTaskRecords = (): readonly ControlPlaneTaskRecord[] => {
     return orderedTaskRecords().filter(taskBelongsToSelectedRepository);
@@ -2457,7 +2450,7 @@ async function main(): Promise<number> {
     }
     const fields = taskFieldsFromComposerText(buffer.text);
     if (fields.title.length === 0) {
-      taskPaneNotice = 'first line is required';
+      workspace.taskPaneNotice = 'first line is required';
       markDirty();
       return;
     }
@@ -2501,13 +2494,13 @@ async function main(): Promise<number> {
   };
 
   const focusDraftComposer = (): void => {
-    if ('taskId' in taskEditorTarget && typeof taskEditorTarget.taskId === 'string') {
-      flushTaskComposerPersist(taskEditorTarget.taskId);
+    if ('taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string') {
+      flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
     }
-    taskEditorTarget = {
+    workspace.taskEditorTarget = {
       kind: 'draft',
     };
-    taskPaneSelectionFocus = 'task';
+    workspace.taskPaneSelectionFocus = 'task';
     markDirty();
   };
 
@@ -2515,75 +2508,75 @@ async function main(): Promise<number> {
     if (!tasks.has(taskId)) {
       return;
     }
-    if (taskEditorTarget.kind === 'task' && taskEditorTarget.taskId !== taskId) {
-      flushTaskComposerPersist(taskEditorTarget.taskId);
+    if (workspace.taskEditorTarget.kind === 'task' && workspace.taskEditorTarget.taskId !== taskId) {
+      flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
     }
-    taskEditorTarget = {
+    workspace.taskEditorTarget = {
       kind: 'task',
       taskId,
     };
-    taskPaneSelectedTaskId = taskId;
-    taskPaneSelectionFocus = 'task';
-    taskPaneNotice = null;
+    workspace.taskPaneSelectedTaskId = taskId;
+    workspace.taskPaneSelectionFocus = 'task';
+    workspace.taskPaneNotice = null;
     markDirty();
   };
 
   function syncTaskPaneSelectionFocus(): void {
-    const hasTaskSelection = taskPaneSelectedTaskId !== null && tasks.has(taskPaneSelectedTaskId);
+    const hasTaskSelection = workspace.taskPaneSelectedTaskId !== null && tasks.has(workspace.taskPaneSelectedTaskId);
     const hasRepositorySelection =
-      taskPaneSelectedRepositoryId !== null && repositories.has(taskPaneSelectedRepositoryId);
-    if (taskPaneSelectionFocus === 'task' && hasTaskSelection) {
+      workspace.taskPaneSelectedRepositoryId !== null && repositories.has(workspace.taskPaneSelectedRepositoryId);
+    if (workspace.taskPaneSelectionFocus === 'task' && hasTaskSelection) {
       return;
     }
-    if (taskPaneSelectionFocus === 'repository' && hasRepositorySelection) {
+    if (workspace.taskPaneSelectionFocus === 'repository' && hasRepositorySelection) {
       return;
     }
     if (hasTaskSelection) {
-      taskPaneSelectionFocus = 'task';
+      workspace.taskPaneSelectionFocus = 'task';
       return;
     }
     if (hasRepositorySelection) {
-      taskPaneSelectionFocus = 'repository';
+      workspace.taskPaneSelectionFocus = 'repository';
       return;
     }
-    taskPaneSelectionFocus = 'task';
+    workspace.taskPaneSelectionFocus = 'task';
   }
 
   function syncTaskPaneSelection(): void {
     const scopedTaskIds = new Set(selectedRepositoryTaskRecords().map((task) => task.taskId));
-    if (taskPaneSelectedTaskId !== null && !scopedTaskIds.has(taskPaneSelectedTaskId)) {
-      taskPaneSelectedTaskId = null;
+    if (workspace.taskPaneSelectedTaskId !== null && !scopedTaskIds.has(workspace.taskPaneSelectedTaskId)) {
+      workspace.taskPaneSelectedTaskId = null;
     }
-    if (taskPaneSelectedTaskId === null) {
+    if (workspace.taskPaneSelectedTaskId === null) {
       const scopedTasks = selectedRepositoryTaskRecords();
-      taskPaneSelectedTaskId = scopedTasks[0]?.taskId ?? null;
+      workspace.taskPaneSelectedTaskId = scopedTasks[0]?.taskId ?? null;
     }
     syncTaskPaneSelectionFocus();
-    if (taskEditorTarget.kind === 'task' && !scopedTaskIds.has(taskEditorTarget.taskId)) {
+    if (workspace.taskEditorTarget.kind === 'task' && !scopedTaskIds.has(workspace.taskEditorTarget.taskId)) {
       focusDraftComposer();
     }
   }
 
   function syncTaskPaneRepositorySelection(): void {
-    if (taskPaneSelectedRepositoryId !== null) {
-      const selectedRepository = repositories.get(taskPaneSelectedRepositoryId);
+    if (workspace.taskPaneSelectedRepositoryId !== null) {
+      const selectedRepository = repositories.get(workspace.taskPaneSelectedRepositoryId);
       if (selectedRepository === undefined || selectedRepository.archivedAt !== null) {
-        taskPaneSelectedRepositoryId = null;
+        workspace.taskPaneSelectedRepositoryId = null;
       }
     }
-    if (taskPaneSelectedRepositoryId === null) {
-      taskPaneSelectedRepositoryId = activeRepositoryIds()[0] ?? null;
+    if (workspace.taskPaneSelectedRepositoryId === null) {
+      workspace.taskPaneSelectedRepositoryId = activeRepositoryIds()[0] ?? null;
     }
-    taskRepositoryDropdownOpen = false;
+    workspace.taskRepositoryDropdownOpen = false;
     syncTaskPaneSelectionFocus();
     syncTaskPaneSelection();
   }
 
   const selectedTaskRecord = (): ControlPlaneTaskRecord | null => {
-    if (taskPaneSelectedTaskId === null) {
+    if (workspace.taskPaneSelectedTaskId === null) {
       return null;
     }
-    return tasks.get(taskPaneSelectedTaskId) ?? null;
+    return tasks.get(workspace.taskPaneSelectedTaskId) ?? null;
   };
 
   const selectTaskById = (taskId: string): void => {
@@ -2591,10 +2584,10 @@ async function main(): Promise<number> {
     if (taskRecord === undefined) {
       return;
     }
-    taskPaneSelectedTaskId = taskId;
-    taskPaneSelectionFocus = 'task';
+    workspace.taskPaneSelectedTaskId = taskId;
+    workspace.taskPaneSelectionFocus = 'task';
     if (taskRecord.repositoryId !== null && repositories.has(taskRecord.repositoryId)) {
-      taskPaneSelectedRepositoryId = taskRecord.repositoryId;
+      workspace.taskPaneSelectedRepositoryId = taskRecord.repositoryId;
     }
     focusTaskComposer(taskId);
   };
@@ -2603,17 +2596,17 @@ async function main(): Promise<number> {
     if (!repositories.has(repositoryId)) {
       return;
     }
-    if ('taskId' in taskEditorTarget && typeof taskEditorTarget.taskId === 'string') {
-      flushTaskComposerPersist(taskEditorTarget.taskId);
+    if ('taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string') {
+      flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
     }
-    taskPaneSelectedRepositoryId = repositoryId;
-    taskRepositoryDropdownOpen = false;
-    taskPaneSelectionFocus = 'repository';
-    taskEditorTarget = {
+    workspace.taskPaneSelectedRepositoryId = repositoryId;
+    workspace.taskRepositoryDropdownOpen = false;
+    workspace.taskPaneSelectionFocus = 'repository';
+    workspace.taskEditorTarget = {
       kind: 'draft',
     };
     syncTaskPaneSelection();
-    taskPaneNotice = null;
+    workspace.taskPaneNotice = null;
     markDirty();
   };
 
@@ -2622,19 +2615,19 @@ async function main(): Promise<number> {
   };
 
   const enterHomePane = (): void => {
-    mainPaneMode = 'home';
+    workspace.mainPaneMode = 'home';
     selectLeftNavHome();
-    projectPaneSnapshot = null;
-    projectPaneScrollTop = 0;
+    workspace.projectPaneSnapshot = null;
+    workspace.projectPaneScrollTop = 0;
     selection = null;
     selectionDrag = null;
     releaseViewportPinForSelection();
-    taskPaneScrollTop = 0;
-    taskPaneNotice = null;
-    taskRepositoryDropdownOpen = false;
-    taskPaneTaskEditClickState = null;
-    taskPaneRepositoryEditClickState = null;
-    homePaneDragState = null;
+    workspace.taskPaneScrollTop = 0;
+    workspace.taskPaneNotice = null;
+    workspace.taskRepositoryDropdownOpen = false;
+    workspace.taskPaneTaskEditClickState = null;
+    workspace.taskPaneRepositoryEditClickState = null;
+    workspace.homePaneDragState = null;
     syncTaskPaneSelection();
     syncTaskPaneRepositorySelection();
     forceFullClear = true;
@@ -2764,8 +2757,8 @@ async function main(): Promise<number> {
 
   const activateConversation = async (sessionId: string): Promise<void> => {
     if (activeConversationId === sessionId) {
-      if (mainPaneMode !== 'conversation') {
-        mainPaneMode = 'conversation';
+      if (workspace.mainPaneMode !== 'conversation') {
+        workspace.mainPaneMode = 'conversation';
         selectLeftNavConversation(sessionId);
         forceFullClear = true;
         previousRows = [];
@@ -2784,13 +2777,13 @@ async function main(): Promise<number> {
       await detachConversation(previousActiveId);
     }
     activeConversationId = sessionId;
-    mainPaneMode = 'conversation';
+    workspace.mainPaneMode = 'conversation';
     selectLeftNavConversation(sessionId);
-    homePaneDragState = null;
-    taskPaneTaskEditClickState = null;
-    taskPaneRepositoryEditClickState = null;
-    projectPaneSnapshot = null;
-    projectPaneScrollTop = 0;
+    workspace.homePaneDragState = null;
+    workspace.taskPaneTaskEditClickState = null;
+    workspace.taskPaneRepositoryEditClickState = null;
+    workspace.projectPaneSnapshot = null;
+    workspace.projectPaneScrollTop = 0;
     forceFullClear = true;
     previousRows = [];
     const targetConversation = conversations.get(sessionId);
@@ -2888,13 +2881,13 @@ async function main(): Promise<number> {
   };
 
   const openTaskCreatePrompt = (): void => {
-    if (taskPaneSelectedRepositoryId === null || !repositories.has(taskPaneSelectedRepositoryId)) {
-      taskPaneNotice = 'select a repository first';
+    if (workspace.taskPaneSelectedRepositoryId === null || !repositories.has(workspace.taskPaneSelectedRepositoryId)) {
+      workspace.taskPaneNotice = 'select a repository first';
       markDirty();
       return;
     }
     focusDraftComposer();
-    taskPaneNotice = null;
+    workspace.taskPaneNotice = null;
     markDirty();
   };
 
@@ -2904,10 +2897,10 @@ async function main(): Promise<number> {
       return;
     }
     if (task.repositoryId !== null) {
-      taskPaneSelectedRepositoryId = task.repositoryId;
+      workspace.taskPaneSelectedRepositoryId = task.repositoryId;
     }
     focusTaskComposer(task.taskId);
-    taskPaneNotice = null;
+    workspace.taskPaneNotice = null;
     markDirty();
   };
 
@@ -2919,11 +2912,11 @@ async function main(): Promise<number> {
       return null;
     }
     tasks.set(parsed.taskId, parsed);
-    taskPaneSelectedTaskId = parsed.taskId;
+    workspace.taskPaneSelectedTaskId = parsed.taskId;
     if (parsed.repositoryId !== null && repositories.has(parsed.repositoryId)) {
-      taskPaneSelectedRepositoryId = parsed.repositoryId;
+      workspace.taskPaneSelectedRepositoryId = parsed.repositoryId;
     }
-    taskPaneSelectionFocus = 'task';
+    workspace.taskPaneSelectionFocus = 'task';
     syncTaskPaneSelection();
     markDirty();
     return parsed;
@@ -2988,7 +2981,7 @@ async function main(): Promise<number> {
       return;
     }
     if (draggedTask.status === 'completed' || targetTask.status === 'completed') {
-      taskPaneNotice = 'cannot reorder completed tasks';
+      workspace.taskPaneNotice = 'cannot reorder completed tasks';
       markDirty();
       return;
     }
@@ -3019,14 +3012,14 @@ async function main(): Promise<number> {
       action,
       openTaskCreatePrompt,
       openRepositoryPromptForCreate,
-      selectedRepositoryId: taskPaneSelectedRepositoryId,
+      selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
       repositoryExists: (repositoryId) => repositories.has(repositoryId),
       setTaskPaneNotice: (notice) => {
-        taskPaneNotice = notice;
+        workspace.taskPaneNotice = notice;
       },
       markDirty,
       setTaskPaneSelectionFocus: (focus) => {
-        taskPaneSelectionFocus = focus;
+        workspace.taskPaneSelectionFocus = focus;
       },
       openRepositoryPromptForEdit,
       queueArchiveRepository: (repositoryId) => {
@@ -3046,8 +3039,8 @@ async function main(): Promise<number> {
           });
           tasks.delete(taskId);
           taskComposerByTaskId.delete(taskId);
-          if (taskEditorTarget.kind === 'task' && taskEditorTarget.taskId === taskId) {
-            taskEditorTarget = {
+          if (workspace.taskEditorTarget.kind === 'task' && workspace.taskEditorTarget.taskId === taskId) {
+            workspace.taskEditorTarget = {
               kind: 'draft',
             };
           }
@@ -3155,7 +3148,7 @@ async function main(): Promise<number> {
         repositoryPrompt = prompt;
       },
       setTaskPaneSelectionFocusRepository: () => {
-        taskPaneSelectionFocus = 'repository';
+        workspace.taskPaneSelectionFocus = 'repository';
       },
       markDirty,
     });
@@ -3329,7 +3322,7 @@ async function main(): Promise<number> {
       },
       directoryIdOf: (directory) => directory.directoryId,
       setActiveDirectoryId: (directoryId) => {
-        activeDirectoryId = directoryId;
+        workspace.activeDirectoryId = directoryId;
       },
       syncGitStateWithDirectories,
       noteGitActivity,
@@ -3380,17 +3373,17 @@ async function main(): Promise<number> {
         directories.delete(targetDirectoryId);
       },
       deleteDirectoryGitState,
-      projectPaneSnapshotDirectoryId: projectPaneSnapshot?.directoryId ?? null,
+      projectPaneSnapshotDirectoryId: workspace.projectPaneSnapshot?.directoryId ?? null,
       clearProjectPaneSnapshot: () => {
-        projectPaneSnapshot = null;
-        projectPaneScrollTop = 0;
+        workspace.projectPaneSnapshot = null;
+        workspace.projectPaneScrollTop = 0;
       },
       directoriesSize: () => directories.size,
       addDirectoryByPath,
       invocationDirectory: options.invocationDirectory,
-      activeDirectoryId,
+      activeDirectoryId: workspace.activeDirectoryId,
       setActiveDirectoryId: (targetDirectoryId) => {
-        activeDirectoryId = targetDirectoryId;
+        workspace.activeDirectoryId = targetDirectoryId;
       },
       firstDirectoryId: () => firstDirectoryIdFn(directories),
       noteGitActivity,
@@ -3434,10 +3427,10 @@ async function main(): Promise<number> {
       return;
     }
     const projectPaneActive =
-      mainPaneMode === 'project' &&
-      activeDirectoryId !== null &&
-      directories.has(activeDirectoryId);
-    const homePaneActive = mainPaneMode === 'home';
+      workspace.mainPaneMode === 'project' &&
+      workspace.activeDirectoryId !== null &&
+      directories.has(workspace.activeDirectoryId);
+    const homePaneActive = workspace.mainPaneMode === 'home';
     if (!projectPaneActive && !homePaneActive && activeConversationId === null) {
       dirty = false;
       return;
@@ -3476,15 +3469,15 @@ async function main(): Promise<number> {
       directories,
       conversations,
       orderedIds,
-      activeProjectId: activeDirectoryId,
-      activeRepositoryId: activeRepositorySelectionId,
+      activeProjectId: workspace.activeDirectoryId,
+      activeRepositoryId: workspace.activeRepositorySelectionId,
       activeConversationId,
-      projectSelectionEnabled: leftNavSelection.kind === 'project',
-      repositorySelectionEnabled: leftNavSelection.kind === 'repository',
-      homeSelectionEnabled: leftNavSelection.kind === 'home',
-      repositoriesCollapsed,
+      projectSelectionEnabled: workspace.leftNavSelection.kind === 'project',
+      repositorySelectionEnabled: workspace.leftNavSelection.kind === 'repository',
+      homeSelectionEnabled: workspace.leftNavSelection.kind === 'home',
+      repositoriesCollapsed: workspace.repositoriesCollapsed,
       collapsedRepositoryGroupIds,
-      shortcutsCollapsed,
+      shortcutsCollapsed: workspace.shortcutsCollapsed,
       gitSummaryByDirectoryId,
       processUsageBySessionId,
       shortcutBindings,
@@ -3492,7 +3485,7 @@ async function main(): Promise<number> {
     });
     latestRailViewRows = rail.viewRows;
     let rightRows: readonly string[] = [];
-    latestTaskPaneView = {
+    workspace.latestTaskPaneView = {
       rows: [],
       taskIds: [],
       repositoryIds: [],
@@ -3509,34 +3502,34 @@ async function main(): Promise<number> {
       const view = buildTaskFocusedPaneView({
         repositories,
         tasks,
-        selectedRepositoryId: taskPaneSelectedRepositoryId,
-        repositoryDropdownOpen: taskRepositoryDropdownOpen,
-        editorTarget: taskEditorTarget,
-        draftBuffer: taskDraftComposer,
+        selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
+        repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
+        editorTarget: workspace.taskEditorTarget,
+        draftBuffer: workspace.taskDraftComposer,
         taskBufferById: taskComposerByTaskId,
-        notice: taskPaneNotice,
+        notice: workspace.taskPaneNotice,
         cols: layout.rightCols,
         rows: layout.paneRows,
-        scrollTop: taskPaneScrollTop,
+        scrollTop: workspace.taskPaneScrollTop,
       });
-      taskPaneSelectedRepositoryId = view.selectedRepositoryId;
-      taskPaneScrollTop = view.top;
-      latestTaskPaneView = view;
+      workspace.taskPaneSelectedRepositoryId = view.selectedRepositoryId;
+      workspace.taskPaneScrollTop = view.top;
+      workspace.latestTaskPaneView = view;
       rightRows = view.rows;
-    } else if (projectPaneActive && activeDirectoryId !== null) {
-      if (projectPaneSnapshot === null || projectPaneSnapshot.directoryId !== activeDirectoryId) {
-        refreshProjectPaneSnapshot(activeDirectoryId);
+    } else if (projectPaneActive && workspace.activeDirectoryId !== null) {
+      if (workspace.projectPaneSnapshot === null || workspace.projectPaneSnapshot.directoryId !== workspace.activeDirectoryId) {
+        refreshProjectPaneSnapshot(workspace.activeDirectoryId);
       }
-      if (projectPaneSnapshot === null) {
+      if (workspace.projectPaneSnapshot === null) {
         rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
       } else {
         const view = buildProjectPaneRows(
-          projectPaneSnapshot,
+          workspace.projectPaneSnapshot,
           layout.rightCols,
           layout.paneRows,
-          projectPaneScrollTop,
+          workspace.projectPaneScrollTop,
         );
-        projectPaneScrollTop = view.top;
+        workspace.projectPaneScrollTop = view.top;
         rightRows = view.rows;
       }
     } else {
@@ -3982,12 +3975,12 @@ async function main(): Promise<number> {
           }
         }
         taskEditorPrompt = null;
-        taskPaneNotice = null;
+        workspace.taskPaneNotice = null;
       } catch (error: unknown) {
         if (taskEditorPrompt !== null) {
           taskEditorPrompt.error = error instanceof Error ? error.message : String(error);
         } else {
-          taskPaneNotice = error instanceof Error ? error.message : String(error);
+          workspace.taskPaneNotice = error instanceof Error ? error.message : String(error);
         }
       } finally {
         markDirty();
@@ -4072,18 +4065,18 @@ async function main(): Promise<number> {
   };
 
   const homeEditorBuffer = (): TaskComposerBuffer => {
-    if (taskEditorTarget.kind === 'task') {
-      return taskComposerForTask(taskEditorTarget.taskId) ?? createTaskComposerBuffer('');
+    if (workspace.taskEditorTarget.kind === 'task') {
+      return taskComposerForTask(workspace.taskEditorTarget.taskId) ?? createTaskComposerBuffer('');
     }
-    return taskDraftComposer;
+    return workspace.taskDraftComposer;
   };
 
   const updateHomeEditorBuffer = (next: TaskComposerBuffer): void => {
-    if (taskEditorTarget.kind === 'task') {
-      setTaskComposerForTask(taskEditorTarget.taskId, next);
-      scheduleTaskComposerPersist(taskEditorTarget.taskId);
+    if (workspace.taskEditorTarget.kind === 'task') {
+      setTaskComposerForTask(workspace.taskEditorTarget.taskId, next);
+      scheduleTaskComposerPersist(workspace.taskEditorTarget.taskId);
     } else {
-      taskDraftComposer = normalizeTaskComposerBuffer(next);
+      workspace.taskDraftComposer = normalizeTaskComposerBuffer(next);
     }
     markDirty();
   };
@@ -4093,21 +4086,21 @@ async function main(): Promise<number> {
     if (orderedIds.length === 0) {
       return;
     }
-    const currentIndex = Math.max(0, orderedIds.indexOf(taskPaneSelectedRepositoryId ?? ''));
+    const currentIndex = Math.max(0, orderedIds.indexOf(workspace.taskPaneSelectedRepositoryId ?? ''));
     const nextIndex = Math.max(0, Math.min(orderedIds.length - 1, currentIndex + direction));
     selectRepositoryById(orderedIds[nextIndex]!);
   };
 
   const submitDraftTaskFromComposer = (): void => {
-    const repositoryId = taskPaneSelectedRepositoryId;
+    const repositoryId = workspace.taskPaneSelectedRepositoryId;
     if (repositoryId === null || !repositories.has(repositoryId)) {
-      taskPaneNotice = 'select a repository first';
+      workspace.taskPaneNotice = 'select a repository first';
       markDirty();
       return;
     }
-    const fields = taskFieldsFromComposerText(taskDraftComposer.text);
+    const fields = taskFieldsFromComposerText(workspace.taskDraftComposer.text);
     if (fields.title.length === 0) {
-      taskPaneNotice = 'first line is required';
+      workspace.taskPaneNotice = 'first line is required';
       markDirty();
       return;
     }
@@ -4125,15 +4118,15 @@ async function main(): Promise<number> {
       if (parsed === null) {
         throw new Error('control-plane task.create returned malformed task record');
       }
-      taskDraftComposer = createTaskComposerBuffer('');
-      taskPaneNotice = null;
+      workspace.taskDraftComposer = createTaskComposerBuffer('');
+      workspace.taskPaneNotice = null;
       syncTaskPaneSelection();
       markDirty();
     }, 'task-composer-create');
   };
 
   const moveTaskEditorFocusUp = (): void => {
-    if (taskEditorTarget.kind === 'draft') {
+    if (workspace.taskEditorTarget.kind === 'draft') {
       const scopedTasks = selectedRepositoryTaskRecords();
       const fallback = scopedTasks[scopedTasks.length - 1];
       if (fallback !== undefined) {
@@ -4141,7 +4134,7 @@ async function main(): Promise<number> {
       }
       return;
     }
-    const focusedTaskId = taskEditorTarget.taskId;
+    const focusedTaskId = workspace.taskEditorTarget.taskId;
     const scopedTasks = selectedRepositoryTaskRecords();
     const index = scopedTasks.findIndex((task) => task.taskId === focusedTaskId);
     if (index <= 0) {
@@ -4156,9 +4149,9 @@ async function main(): Promise<number> {
   const handleTaskPaneShortcutInput = (input: Buffer): boolean => {
     return handleTaskPaneShortcutInputFn({
       input,
-      mainPaneMode,
+      mainPaneMode: workspace.mainPaneMode,
       taskScreenKeybindings,
-      taskEditorTarget,
+      taskEditorTarget: workspace.taskEditorTarget,
       homeEditorBuffer,
       updateHomeEditorBuffer,
       moveTaskEditorFocusUp,
@@ -4168,9 +4161,9 @@ async function main(): Promise<number> {
         runTaskPaneAction(action);
       },
       selectRepositoryByDirection,
-      getTaskRepositoryDropdownOpen: () => taskRepositoryDropdownOpen,
+      getTaskRepositoryDropdownOpen: () => workspace.taskRepositoryDropdownOpen,
       setTaskRepositoryDropdownOpen: (open) => {
-        taskRepositoryDropdownOpen = open;
+        workspace.taskRepositoryDropdownOpen = open;
       },
       markDirty,
     });
@@ -4181,7 +4174,7 @@ async function main(): Promise<number> {
 
   const selectedRepositoryGroupId = (): string | null => {
     return selectedRepositoryGroupIdForLeftNav(
-      leftNavSelection,
+      workspace.leftNavSelection,
       conversations,
       repositoryGroupIdForDirectory,
     );
@@ -4198,7 +4191,7 @@ async function main(): Promise<number> {
       firstDirectoryForRepositoryGroup,
       enterProjectPane,
       setMainPaneProjectMode: () => {
-        mainPaneMode = 'project';
+        workspace.mainPaneMode = 'project';
       },
       selectLeftNavRepository,
       markDirty,
@@ -4214,7 +4207,7 @@ async function main(): Promise<number> {
   const cycleLeftNavSelection = (direction: 'next' | 'previous'): boolean => {
     return cycleLeftNavSelectionFn({
       visibleTargets: visibleLeftNavTargetsForState(),
-      currentSelection: leftNavSelection,
+      currentSelection: workspace.leftNavSelection,
       direction,
       activateTarget: activateLeftNavTarget,
     });
@@ -4222,7 +4215,7 @@ async function main(): Promise<number> {
 
   const handleRepositoryTreeArrow = (input: Buffer): boolean => {
     const repositoryId = selectedRepositoryGroupId();
-    const action = repositoryTreeArrowAction(input, leftNavSelection, repositoryId);
+    const action = repositoryTreeArrowAction(input, workspace.leftNavSelection, repositoryId);
     if (repositoryId === null || action === null) {
       return false;
     }
@@ -4244,13 +4237,13 @@ async function main(): Promise<number> {
   const handleRepositoryFoldChords = (input: Buffer): boolean => {
     const reduced = reduceRepositoryFoldChordInput({
       input,
-      leftNavSelection,
+      leftNavSelection: workspace.leftNavSelection,
       nowMs: Date.now(),
-      prefixAtMs: repositoryToggleChordPrefixAtMs,
+      prefixAtMs: workspace.repositoryToggleChordPrefixAtMs,
       chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
       collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
     });
-    repositoryToggleChordPrefixAtMs = reduced.nextPrefixAtMs;
+    workspace.repositoryToggleChordPrefixAtMs = reduced.nextPrefixAtMs;
     if (reduced.action === 'expand-all') {
       expandAllRepositoryGroups();
       markDirty();
@@ -4291,7 +4284,7 @@ async function main(): Promise<number> {
         releaseViewportPinForSelection();
         markDirty();
       }
-      if (mainPaneMode === 'conversation' && activeConversationId !== null) {
+      if (workspace.mainPaneMode === 'conversation' && activeConversationId !== null) {
         const escapeTarget = conversations.get(activeConversationId);
         if (escapeTarget !== undefined) {
           streamClient.sendInput(escapeTarget.sessionId, chunk);
@@ -4327,7 +4320,7 @@ async function main(): Promise<number> {
         resolveDirectoryForAction,
         openNewThreadPrompt,
         resolveConversationForAction: () =>
-          mainPaneMode === 'conversation' ? activeConversationId : null,
+          workspace.mainPaneMode === 'conversation' ? activeConversationId : null,
         conversationsHas: (sessionId) => conversations.has(sessionId),
         queueControlPlaneOp,
         archiveConversation,
@@ -4341,10 +4334,10 @@ async function main(): Promise<number> {
           markDirty();
         },
         resolveClosableDirectoryId: () =>
-          mainPaneMode === 'project' &&
-          activeDirectoryId !== null &&
-          directories.has(activeDirectoryId)
-            ? activeDirectoryId
+          workspace.mainPaneMode === 'project' &&
+          workspace.activeDirectoryId !== null &&
+          directories.has(workspace.activeDirectoryId)
+            ? workspace.activeDirectoryId
             : null,
         closeDirectory,
         cycleLeftNavSelection: (direction) => {
@@ -4359,7 +4352,7 @@ async function main(): Promise<number> {
     }
 
     if (
-      mainPaneMode === 'conversation' &&
+      workspace.mainPaneMode === 'conversation' &&
       selection !== null &&
       isCopyShortcutInput(focusExtraction.sanitized)
     ) {
@@ -4411,16 +4404,16 @@ async function main(): Promise<number> {
       const target = classifyPaneAt(layout, token.event.col, token.event.row);
       if (
         handleHomePaneDragReleaseFn({
-          homePaneDragState,
+          homePaneDragState: workspace.homePaneDragState,
           isMouseRelease: isMouseRelease(token.event.final),
-          mainPaneMode,
+          mainPaneMode: workspace.mainPaneMode,
           target,
           rowIndex: Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1)),
-          taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(latestTaskPaneView, index),
-          repositoryIdAtRow: (index) => taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, index),
+          taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, index),
+          repositoryIdAtRow: (index) => taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, index),
           reorderTaskByDrop,
           reorderRepositoryByDrop,
-          setHomePaneDragState: (next) => { homePaneDragState = next; },
+          setHomePaneDragState: (next) => { workspace.homePaneDragState = next; },
           markDirty,
         })
       ) {
@@ -4444,12 +4437,12 @@ async function main(): Promise<number> {
         handleMainPaneWheelInputFn({
           target,
           wheelDelta,
-          mainPaneMode,
+          mainPaneMode: workspace.mainPaneMode,
           onProjectWheel: (delta) => {
-            projectPaneScrollTop = Math.max(0, projectPaneScrollTop + delta);
+            workspace.projectPaneScrollTop = Math.max(0, workspace.projectPaneScrollTop + delta);
           },
           onHomeWheel: (delta) => {
-            taskPaneScrollTop = Math.max(0, taskPaneScrollTop + delta);
+            workspace.taskPaneScrollTop = Math.max(0, workspace.taskPaneScrollTop + delta);
           },
           onConversationWheel: (delta) => {
             if (inputConversation !== null) {
@@ -4464,13 +4457,13 @@ async function main(): Promise<number> {
       }
       if (
         handleHomePaneDragMoveFn({
-          homePaneDragState,
-          mainPaneMode,
+          homePaneDragState: workspace.homePaneDragState,
+          mainPaneMode: workspace.mainPaneMode,
           target,
           isSelectionDrag: isSelectionDrag(token.event.code, token.event.final),
           hasAltModifier: hasAltModifier(token.event.code),
           rowIndex: Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1)),
-          setHomePaneDragState: (next) => { homePaneDragState = next; },
+          setHomePaneDragState: (next) => { workspace.homePaneDragState = next; },
           markDirty,
         })
       ) {
@@ -4478,17 +4471,17 @@ async function main(): Promise<number> {
       }
       const projectPaneActionClick =
         target === 'right' &&
-        mainPaneMode === 'project' &&
+        workspace.mainPaneMode === 'project' &&
         isLeftButtonPress(token.event.code, token.event.final) &&
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
       if (
         handleProjectPaneActionClickFn({
           clickEligible: projectPaneActionClick,
-          snapshot: projectPaneSnapshot,
+          snapshot: workspace.projectPaneSnapshot,
           rightCols: layout.rightCols,
           paneRows: layout.paneRows,
-          projectPaneScrollTop,
+          projectPaneScrollTop: workspace.projectPaneScrollTop,
           rowIndex: Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1)),
           projectPaneActionAtRow,
           openNewThreadPrompt,
@@ -4504,7 +4497,7 @@ async function main(): Promise<number> {
       }
       const taskPaneActionClick =
         target === 'right' &&
-        mainPaneMode === 'home' &&
+        workspace.mainPaneMode === 'home' &&
         isLeftButtonPress(token.event.code, token.event.final) &&
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
@@ -4517,27 +4510,27 @@ async function main(): Promise<number> {
           pointerRow: token.event.row,
           pointerCol: token.event.col,
           actionAtCell: (rowIndex, colIndex) =>
-            taskFocusedPaneActionAtCell(latestTaskPaneView, rowIndex, colIndex),
-          actionAtRow: (rowIndex) => taskFocusedPaneActionAtRow(latestTaskPaneView, rowIndex),
-          clearTaskEditClickState: () => { taskPaneTaskEditClickState = null; },
-          clearRepositoryEditClickState: () => { taskPaneRepositoryEditClickState = null; },
-          clearHomePaneDragState: () => { homePaneDragState = null; },
-          getTaskRepositoryDropdownOpen: () => taskRepositoryDropdownOpen,
-          setTaskRepositoryDropdownOpen: (open) => { taskRepositoryDropdownOpen = open; },
-          taskIdAtRow: (rowIndex) => taskFocusedPaneTaskIdAtRow(latestTaskPaneView, rowIndex),
+            taskFocusedPaneActionAtCell(workspace.latestTaskPaneView, rowIndex, colIndex),
+          actionAtRow: (rowIndex) => taskFocusedPaneActionAtRow(workspace.latestTaskPaneView, rowIndex),
+          clearTaskEditClickState: () => { workspace.taskPaneTaskEditClickState = null; },
+          clearRepositoryEditClickState: () => { workspace.taskPaneRepositoryEditClickState = null; },
+          clearHomePaneDragState: () => { workspace.homePaneDragState = null; },
+          getTaskRepositoryDropdownOpen: () => workspace.taskRepositoryDropdownOpen,
+          setTaskRepositoryDropdownOpen: (open) => { workspace.taskRepositoryDropdownOpen = open; },
+          taskIdAtRow: (rowIndex) => taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, rowIndex),
           repositoryIdAtRow: (rowIndex) =>
-            taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, rowIndex),
+            taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, rowIndex),
           selectTaskById,
           selectRepositoryById,
           runTaskPaneAction,
           nowMs: Date.now(),
           homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-          taskEditClickState: taskPaneTaskEditClickState,
-          repositoryEditClickState: taskPaneRepositoryEditClickState,
-          clearTaskPaneNotice: () => { taskPaneNotice = null; },
-          setTaskEditClickState: (next) => { taskPaneTaskEditClickState = next; },
-          setRepositoryEditClickState: (next) => { taskPaneRepositoryEditClickState = next; },
-          setHomePaneDragState: (next) => { homePaneDragState = next; },
+          taskEditClickState: workspace.taskPaneTaskEditClickState,
+          repositoryEditClickState: workspace.taskPaneRepositoryEditClickState,
+          clearTaskPaneNotice: () => { workspace.taskPaneNotice = null; },
+          setTaskEditClickState: (next) => { workspace.taskPaneTaskEditClickState = next; },
+          setRepositoryEditClickState: (next) => { workspace.taskPaneRepositoryEditClickState = next; },
+          setHomePaneDragState: (next) => { workspace.homePaneDragState = next; },
           openTaskEditPrompt,
           openRepositoryPromptForEdit,
           markDirty,
@@ -4575,7 +4568,7 @@ async function main(): Promise<number> {
               selectedProjectId,
               selectedRepositoryId,
               activeConversationId,
-              repositoriesCollapsed,
+              repositoriesCollapsed: workspace.repositoriesCollapsed,
               clearConversationTitleEditClickState: () => {
                 conversationTitleEditClickState = null;
               },
@@ -4612,7 +4605,7 @@ async function main(): Promise<number> {
                 }, 'mouse-close-directory');
               },
               toggleShortcutsCollapsed: () => {
-                shortcutsCollapsed = !shortcutsCollapsed;
+                workspace.shortcutsCollapsed = !workspace.shortcutsCollapsed;
                 queuePersistMuxUiState();
               },
               markDirty,
@@ -4630,15 +4623,15 @@ async function main(): Promise<number> {
               nowMs: Date.now(),
               conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
               activeConversationId,
-              isConversationPaneActive: mainPaneMode === 'conversation',
+              isConversationPaneActive: workspace.mainPaneMode === 'conversation',
               setConversationClickState: (next) => {
                 conversationTitleEditClickState = next;
               },
               ensureConversationPaneActive: (conversationId) => {
-                mainPaneMode = 'conversation';
+                workspace.mainPaneMode = 'conversation';
                 selectLeftNavConversation(conversationId);
-                projectPaneSnapshot = null;
-                projectPaneScrollTop = 0;
+                workspace.projectPaneSnapshot = null;
+                workspace.projectPaneScrollTop = 0;
                 forceFullClear = true;
                 previousRows = [];
               },
@@ -4663,7 +4656,7 @@ async function main(): Promise<number> {
       ) {
           continue;
       }
-      if (snapshotForInput === null || mainPaneMode !== 'conversation') {
+      if (snapshotForInput === null || workspace.mainPaneMode !== 'conversation') {
         routedTokens.push(token);
         continue;
       }
@@ -4701,7 +4694,7 @@ async function main(): Promise<number> {
 
     const { mainPaneScrollRows, forwardToSession } = routeInputTokensForConversationFn({
       tokens: routedTokens,
-      mainPaneMode,
+      mainPaneMode: workspace.mainPaneMode,
       normalizeMuxKeyboardInputForPty,
       classifyPaneAt: (col, row) => classifyPaneAt(layout, col, row),
       wheelDeltaRowsFromCode,
@@ -4795,8 +4788,8 @@ async function main(): Promise<number> {
     if (conversationTitleEdit !== null) {
       clearConversationTitleEditTimer(conversationTitleEdit);
     }
-    if ('taskId' in taskEditorTarget && typeof taskEditorTarget.taskId === 'string') {
-      flushTaskComposerPersist(taskEditorTarget.taskId);
+    if ('taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string') {
+      flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
     }
     for (const taskId of taskAutosaveTimerByTaskId.keys()) {
       flushTaskComposerPersist(taskId);

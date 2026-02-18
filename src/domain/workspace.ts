@@ -1,0 +1,102 @@
+import type { ProjectPaneSnapshot } from '../mux/harness-core-ui.ts';
+import type { LeftNavSelection } from '../mux/live-mux/left-nav.ts';
+import type { PaneSelection, PaneSelectionDrag } from '../mux/live-mux/selection.ts';
+import type { createNewThreadPromptState } from '../mux/new-thread-prompt.ts';
+import type { TaskComposerBuffer } from '../mux/task-composer.ts';
+import type { TaskFocusedPaneView } from '../mux/task-focused-pane.ts';
+import type { buildWorkspaceRailViewRows } from '../mux/workspace-rail-model.ts';
+
+export type MainPaneMode = 'conversation' | 'project' | 'home';
+
+export interface ConversationTitleEditState {
+  conversationId: string;
+  value: string;
+  lastSavedValue: string;
+  error: string | null;
+  persistInFlight: boolean;
+  debounceTimer: NodeJS.Timeout | null;
+}
+
+export interface RepositoryPromptState {
+  readonly mode: 'add' | 'edit';
+  readonly repositoryId: string | null;
+  readonly value: string;
+  readonly error: string | null;
+}
+
+export interface TaskEditorPromptState {
+  mode: 'create' | 'edit';
+  taskId: string | null;
+  title: string;
+  description: string;
+  repositoryIds: readonly string[];
+  repositoryIndex: number;
+  fieldIndex: 0 | 1 | 2;
+  error: string | null;
+}
+
+export interface HomePaneDragState {
+  readonly kind: 'task' | 'repository';
+  readonly itemId: string;
+  readonly startedRowIndex: number;
+  readonly latestRowIndex: number;
+  readonly hasDragged: boolean;
+}
+
+export type TaskEditorTarget = { kind: 'draft' } | { kind: 'task'; taskId: string };
+
+interface WorkspaceModelInit {
+  activeDirectoryId: string | null;
+  leftNavSelection: LeftNavSelection;
+  latestTaskPaneView: TaskFocusedPaneView;
+  taskDraftComposer: TaskComposerBuffer;
+  repositoriesCollapsed: boolean;
+  shortcutsCollapsed: boolean;
+}
+
+export class WorkspaceModel {
+  activeDirectoryId: string | null;
+  mainPaneMode: MainPaneMode = 'conversation';
+  leftNavSelection: LeftNavSelection;
+  activeRepositorySelectionId: string | null = null;
+  repositoryToggleChordPrefixAtMs: number | null = null;
+  projectPaneSnapshot: ProjectPaneSnapshot | null = null;
+  projectPaneScrollTop = 0;
+  taskPaneScrollTop = 0;
+  latestTaskPaneView: TaskFocusedPaneView;
+  taskPaneSelectedTaskId: string | null = null;
+  taskPaneSelectedRepositoryId: string | null = null;
+  taskRepositoryDropdownOpen = false;
+  taskEditorTarget: TaskEditorTarget = { kind: 'draft' };
+  taskDraftComposer: TaskComposerBuffer;
+  taskPaneSelectionFocus: 'task' | 'repository' = 'task';
+  taskPaneNotice: string | null = null;
+  taskPaneTaskEditClickState: { entityId: string; atMs: number } | null = null;
+  taskPaneRepositoryEditClickState: { entityId: string; atMs: number } | null = null;
+  homePaneDragState: HomePaneDragState | null = null;
+
+  selection: PaneSelection | null = null;
+  selectionDrag: PaneSelectionDrag | null = null;
+  selectionPinnedFollowOutput: boolean | null = null;
+  repositoryPrompt: RepositoryPromptState | null = null;
+  newThreadPrompt: ReturnType<typeof createNewThreadPromptState> | null = null;
+  addDirectoryPrompt: { value: string; error: string | null } | null = null;
+  taskEditorPrompt: TaskEditorPromptState | null = null;
+  conversationTitleEdit: ConversationTitleEditState | null = null;
+  conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
+  paneDividerDragActive = false;
+  previousSelectionRows: readonly number[] = [];
+  latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
+
+  repositoriesCollapsed: boolean;
+  shortcutsCollapsed: boolean;
+
+  constructor(init: WorkspaceModelInit) {
+    this.activeDirectoryId = init.activeDirectoryId;
+    this.leftNavSelection = init.leftNavSelection;
+    this.latestTaskPaneView = init.latestTaskPaneView;
+    this.taskDraftComposer = init.taskDraftComposer;
+    this.repositoriesCollapsed = init.repositoriesCollapsed;
+    this.shortcutsCollapsed = init.shortcutsCollapsed;
+  }
+}
