@@ -45,6 +45,20 @@ function firstNonEmptyLine(text: string): string | null {
   return lines[0] ?? null;
 }
 
+function lineValueForPrefix(text: string, prefix: string): string | null {
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line.startsWith(prefix)) {
+      continue;
+    }
+    const value = line.slice(prefix.length).trim();
+    if (value.length > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+
 export function resolveHarnessStatusTimelineCommandArgs(
   action: GatewayStatusTimelineAction,
   sessionName: string | null,
@@ -56,6 +70,12 @@ export function resolveHarnessStatusTimelineCommandArgs(
 }
 
 function summarizeStatusTimelineSuccess(action: GatewayStatusTimelineAction, stdout: string): string {
+  if (action === 'start') {
+    const timelinePath = lineValueForPrefix(stdout, 'status-timeline-target:');
+    if (timelinePath !== null) {
+      return `status: timeline=${timelinePath}`;
+    }
+  }
   const firstLine = firstNonEmptyLine(stdout);
   if (firstLine !== null) {
     return firstLine;

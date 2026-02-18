@@ -59,7 +59,10 @@ void test('gateway status timeline toggles start when no active state file exist
   });
 
   assert.equal(result.action, 'start');
-  assert.equal(result.message, 'status timeline started');
+  assert.equal(
+    result.message,
+    'status: timeline=/tmp/harness/.harness/status-timelines/perf-a/status-timeline.log',
+  );
   assert.deepEqual(calls, [
     {
       action: 'start',
@@ -122,7 +125,7 @@ void test('gateway status timeline default runner executes harness script and re
     statusTimelineStateExists: () => false,
   });
   assert.equal(result.action, 'start');
-  assert.equal(result.message, 'status timeline started');
+  assert.equal(result.message, 'status: timeline=/tmp/status-timeline.log');
 });
 
 void test('gateway status timeline default runner propagates non-zero exits and stderr', async () => {
@@ -172,4 +175,20 @@ void test('gateway status timeline uses fallback status text when command stdout
   });
   assert.equal(stopResult.action, 'stop');
   assert.equal(stopResult.message, 'status timeline stopped');
+});
+
+void test('gateway status timeline start falls back when status target line is empty', async () => {
+  const result = await toggleGatewayStatusTimeline({
+    invocationDirectory: '/tmp/harness',
+    sessionName: null,
+    statusTimelineStateExists: () => false,
+    runHarnessStatusTimelineCommand: async () => {
+      return {
+        stdout: 'status timeline started\nstatus-timeline-target:\n',
+        stderr: '',
+      };
+    },
+  });
+  assert.equal(result.action, 'start');
+  assert.equal(result.message, 'status timeline started');
 });
