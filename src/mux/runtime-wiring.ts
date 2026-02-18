@@ -163,6 +163,19 @@ function shouldApplyTelemetryStatusHint(keyEvent: StreamSessionKeyEventRecord): 
   return RUNNING_STATUS_HINT_EVENT_NAMES.has(eventName);
 }
 
+function applyCompletedStatusToConversation<TConversation extends MuxRuntimeConversationState>(
+  target: TConversation,
+  observedAt: string
+): void {
+  const observedAtMs = parseIsoMs(observedAt);
+  const currentAtMs = parseIsoMs(target.lastKnownWorkAt);
+  if (Number.isFinite(currentAtMs) && Number.isFinite(observedAtMs) && observedAtMs < currentAtMs) {
+    return;
+  }
+  target.lastKnownWork = 'inactive';
+  target.lastKnownWorkAt = observedAt;
+}
+
 export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeConversationState>(
   event: ControlPlaneKeyEvent,
   options: ApplyMuxControlPlaneKeyEventOptions<TConversation>
@@ -184,6 +197,9 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
     conversation.controller = event.controller;
     conversation.lastEventAt = event.ts;
     applyTelemetrySummaryToConversation(conversation, event.telemetry);
+    if (event.status === 'completed') {
+      applyCompletedStatusToConversation(conversation, event.ts);
+    }
     return conversation;
   }
 

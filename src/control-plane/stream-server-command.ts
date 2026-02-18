@@ -1321,7 +1321,7 @@ if (command.type === 'session.interrupt') {
   const state = ctx.requireLiveSession(command.sessionId);
   ctx.assertConnectionCanMutateSession(connection.id, state);
   state.session.write('\u0003');
-  ctx.setSessionStatus(state, 'running', null, new Date().toISOString());
+  ctx.setSessionStatus(state, 'completed', null, new Date().toISOString());
   return {
     interrupted: true,
   };

@@ -109,7 +109,7 @@ function normalizeEventToken(value: string): string {
 
 function claudeStatusHintFromNotificationType(
   notificationType: string,
-): 'running' | 'needs-input' | null {
+): 'running' | 'needs-input' | 'completed' | null {
   const token = normalizeEventToken(notificationType);
   if (token.length === 0) {
     return null;
@@ -119,6 +119,17 @@ function claudeStatusHintFromNotificationType(
   }
   if (CLAUDE_RUNNING_NOTIFICATION_TYPES.has(token)) {
     return 'running';
+  }
+  if (
+    token.includes('abort') ||
+    token.includes('interrupt') ||
+    token.includes('cancel') ||
+    token === 'stop' ||
+    token === 'completed' ||
+    token === 'complete' ||
+    token.includes('turncomplete')
+  ) {
+    return 'completed';
   }
   return null;
 }
@@ -257,6 +268,7 @@ export function handleSignal(
 
   if (signal === 'interrupt') {
     state.session.write('\u0003');
+    setSessionStatus(ctx, state, 'completed', null, new Date().toISOString());
     return;
   }
 

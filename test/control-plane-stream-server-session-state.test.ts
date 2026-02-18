@@ -417,6 +417,12 @@ void test('stream server exposes attention list and respond/interrupt wrappers',
       sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'),
       true,
     );
+    const statusAfterInterrupt = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-attention',
+    });
+    assert.equal(statusAfterInterrupt['status'], 'completed');
+    assert.equal(statusAfterInterrupt['live'], true);
   } finally {
     client.close();
     await server.close();

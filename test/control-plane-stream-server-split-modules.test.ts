@@ -297,6 +297,17 @@ void test('split module coverage: session runtime notify mapping covers fallback
   assert.equal(unknownNotification?.statusHint, null);
   assert.equal(unknownNotification?.summary, 'unknown-state');
 
+  const interruptedNotification = notifyKeyEventFromPayload(
+    'claude',
+    {
+      hook_event_name: 'notification',
+      notification_type: 'user_interrupted',
+    },
+    FIXED_TS,
+  );
+  assert.equal(interruptedNotification?.statusHint, 'completed');
+  assert.equal(interruptedNotification?.summary, 'user_interrupted');
+
   const blankNotification = notifyKeyEventFromPayload(
     'claude',
     {

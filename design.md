@@ -348,7 +348,7 @@ Control-plane runtime statuses:
 - `running`
 - `needs-input`
 - `exited`
-- `completed` (legacy/persisted compatibility only; telemetry ingestion no longer promotes live sessions to `completed`)
+- `completed` (turn-level terminal state for explicit interrupts and provider turn-complete signals)
 
 Workspace rail display statuses:
 
@@ -364,6 +364,7 @@ Display transition contract:
 session start -> active (or starting fallback when no fresh work signal is available)
 user prompt / stream progress -> active
 turn e2e metric -> inactive
+explicit interrupt / abort-complete status -> inactive
 needs-input -> needs-action
 session exit -> exited
 ```
@@ -371,7 +372,7 @@ session exit -> exited
 High-signal classification rules:
 
 - Start-work signal: `codex.user_prompt`, `codex.sse_event` progress kinds (`response.created`, `response.in_progress`, `response.output_text.delta`, `response.output_item.added`, `response.function_call_arguments.delta`), Claude hook `claude.userpromptsubmit`, and Cursor hook `cursor.beforesubmitprompt` (plus Cursor tool-start hooks).
-- Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms`, Claude hook `claude.stop`, and Cursor hooks `cursor.stop` / `cursor.sessionend` (including aborted/cancelled terminal states normalized to completed).
+- Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms`, explicit `session.interrupt` / `pty.signal interrupt`, Claude hook `claude.stop`, Claude notification abort/cancel/interrupt token variants, and Cursor hooks `cursor.stop` / `cursor.sessionend` (including aborted/cancelled terminal states normalized to completed).
 - Attention signal: explicit `needs-input`/approval-required values from structured payload fields only (severity/error-like and summary-text fallbacks are intentionally disabled).
 - Notify signal transport: provider hook records are surfaced as `session-event notify` on the same stream (for example Codex payload type `agent-turn-complete` and Claude hook payloads).
 - Status-neutral noise: tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
@@ -379,7 +380,7 @@ High-signal classification rules:
 Invariant:
 
 - No foreground/background or controller-specific status heuristics are used for telemetry classification.
-- Fallback completion formats are intentionally disabled; only explicit provider lifecycle signals (Codex turn-e2e telemetry or Claude stop hook) complete a turn.
+- Fallback completion formats are intentionally disabled; only explicit provider lifecycle signals and explicit interrupt commands complete a turn.
 - Session ownership is orthogonal to status mapping; controller metadata never overrides rail status text.
 
 Notification policy:

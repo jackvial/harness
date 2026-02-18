@@ -1123,6 +1123,38 @@ void test('runtime wiring applies delayed turn metric text as inactive', () => {
   assert.equal(conversation.lastTelemetrySource, 'otlp-metric');
 });
 
+void test('runtime wiring marks completed session-status updates inactive even after active telemetry', () => {
+  const conversation = createConversationState('conversation-aborted-status', {
+    status: 'running',
+    lastKnownWork: 'active',
+    lastKnownWorkAt: '2026-02-15T00:00:01.000Z',
+    lastTelemetrySource: 'otlp-log'
+  });
+  const updated = applyMuxControlPlaneKeyEvent(
+    {
+      type: 'session-status',
+      sessionId: 'conversation-aborted-status',
+      status: 'completed',
+      attentionReason: null,
+      live: true,
+      ts: '2026-02-15T00:00:02.000Z',
+      directoryId: 'directory-aborted-status',
+      conversationId: 'conversation-aborted-status',
+      telemetry: null,
+      controller: null,
+      cursor: 88
+    },
+    {
+      removedConversationIds: new Set(),
+      ensureConversation: () => conversation
+    }
+  );
+  assert.notEqual(updated, null);
+  assert.equal(conversation.status, 'completed');
+  assert.equal(conversation.lastKnownWork, 'inactive');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:02.000Z');
+});
+
 void test('runtime wiring applies turn metric completion summaries regardless of active controller', () => {
   const conversation = createConversationState('conversation-active-agent-idle-guard', {
     status: 'running',

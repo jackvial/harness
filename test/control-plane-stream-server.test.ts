@@ -849,6 +849,11 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
       created[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0004'),
       true,
     );
+    const statusAfterInterruptSignal = await clientA.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-1',
+    });
+    assert.equal(statusAfterInterruptSignal['status'], 'completed');
 
     created[0]!.emitEvent({
       type: 'notify',
