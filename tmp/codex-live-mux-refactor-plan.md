@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3182 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3177 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1343,8 +1343,24 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3182 non-empty LOC
 
+### Checkpoint BT (2026-02-18): Background persisted-conversation queue extracted into class service
+
+- Added `src/services/startup-persisted-conversation-queue.ts` with class-based `StartupPersistedConversationQueueService` to own:
+  - background queue selection for non-live persisted conversations
+  - active-session skip behavior
+  - recheck-before-start guard for stale queued work
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate `queuePersistedConversationsInBackground(...)` through `StartupPersistedConversationQueueService`.
+- Added `test/services-startup-persisted-conversation-queue.test.ts` with coverage for:
+  - non-live/non-active queueing behavior
+  - stale-live recheck skip behavior
+  - empty/no-queue branch
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3177 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue startup/runtime orchestration extraction before callback-bag cleanup:
-  - extract background persisted-conversation queue orchestration + adjacent startup glue into class services
-  - then extract render orchestration seam to start next large runtime LOC drop
+  - extract render orchestration seam (frame assembly + modal/recording compose flow) into a class service
+  - then extract input token-loop orchestration seam to keep runtime trending down

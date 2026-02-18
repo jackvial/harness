@@ -181,6 +181,7 @@ import { StartupBackgroundProbeService } from '../src/services/startup-backgroun
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
 import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
 import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
+import { StartupPersistedConversationQueueService } from '../src/services/startup-persisted-conversation-queue.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
 import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
@@ -864,28 +865,22 @@ async function main(): Promise<number> {
     return await runtimeConversationStarter.startConversation(sessionId);
   };
 
-  const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
-    const ordered = conversationManager.orderedIds();
-    let queued = 0;
-    for (const sessionId of ordered) {
-      if (activeSessionId !== null && sessionId === activeSessionId) {
-        continue;
-      }
-      const conversation = conversationManager.get(sessionId);
-      if (conversation === undefined || conversation.live) {
-        continue;
-      }
-      queueBackgroundControlPlaneOp(async () => {
-        const latest = conversationManager.get(sessionId);
-        if (latest === undefined || latest.live) {
-          return;
-        }
-        await startConversation(sessionId);
+  const startupPersistedConversationQueueService =
+    new StartupPersistedConversationQueueService<ConversationState>({
+      orderedConversationIds: () => conversationManager.orderedIds(),
+      conversationById: (sessionId) => conversationManager.get(sessionId),
+      queueBackgroundOp: (task, label) => {
+        queueBackgroundControlPlaneOp(task, label);
+      },
+      startConversation,
+      markDirty: () => {
         markDirty();
-      }, `background-start:${sessionId}`);
-      queued += 1;
-    }
-    return queued;
+      },
+    });
+  const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
+    return startupPersistedConversationQueueService.queuePersistedConversationsInBackground(
+      activeSessionId,
+    );
   };
 
   const conversationStartupHydrationService = new ConversationStartupHydrationService({
