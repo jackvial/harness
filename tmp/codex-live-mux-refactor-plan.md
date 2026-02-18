@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4364 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4281 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -149,7 +149,7 @@ bun run loc:verify:enforce
 - [~] Phase 3: RepositoryManager + DirectoryManager extraction in progress.
 - [x] Phase 4: TaskManager extraction.
 - [~] Phase 5: ControlPlaneService extraction.
-- [ ] Phase 6: Screen extraction.
+- [~] Phase 6: Screen extraction in progress.
 - [ ] Phase 7: Pane extraction.
 - [ ] Phase 8: ModalManager + InputRouter extraction.
 - [ ] Phase 9: Thin runtime + cleanup + strict gates.
@@ -711,3 +711,18 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4364 non-empty LOC
+
+### Checkpoint AE (2026-02-18): Phase 6 start with `Screen` abstraction for dirty/render flush state
+
+- Started Phase 6 by introducing `src/ui/screen.ts` with a class-based `Screen` abstraction that owns:
+  - dirty state + render scheduling signal (`isDirty`, `markDirty`, `clearDirty`)
+  - frame cache/full-clear lifecycle (`resetFrameCache`)
+  - terminal flush internals (row diffing, overlay reset writes, cursor style/visibility control, bracketed-paste mode control)
+  - ANSI integrity validation/reporting seam
+- Updated `scripts/codex-live-mux-runtime.ts` render loop to delegate flush/output responsibilities through `Screen.flush(...)` while keeping pane composition in runtime for now.
+- Replaced direct runtime frame-cache mutations (`previousRows`/`forceFullClear`) with `screen.resetFrameCache()` at pane/layout transition points.
+- Added `test/ui-screen.test.ts` and drove it to full function/line/branch coverage, including default dependency fallback paths and selection-row merge behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4281 non-empty LOC

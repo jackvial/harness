@@ -16,7 +16,6 @@ import type { PtyExit } from '../src/pty/pty_host.ts';
 import {
   classifyPaneAt,
   computeDualPaneLayout,
-  diffRenderedRows,
   parseMuxInputChunk,
   wheelDeltaRowsFromCode,
 } from '../src/mux/dual-pane-core.ts';
@@ -28,7 +27,6 @@ import {
   resolveMuxShortcutBindings,
 } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
-import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
 import {
   projectWorkspaceRailConversation,
@@ -70,8 +68,6 @@ import { StartupSequencer } from '../src/mux/startup-sequencer.ts';
 import {
   applyModalOverlay,
   buildRenderRows,
-  cursorStyleEqual,
-  cursorStyleToDecscusr,
   renderCanonicalFrameAnsi,
 } from '../src/mux/render-frame.ts';
 import { createTerminalRecordingWriter } from '../src/recording/terminal-recording.ts';
@@ -169,7 +165,6 @@ import {
   isMouseRelease,
   isSelectionDrag,
   isWheelMouseCode,
-  mergeUniqueRows,
   pointFromMouseEvent,
   reduceConversationMouseSelection,
   renderSelectionOverlay,
@@ -249,6 +244,7 @@ import { RepositoryManager } from '../src/domain/repositories.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
+import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -257,11 +253,6 @@ type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositor
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
 
 type ProcessUsageSample = Awaited<ReturnType<typeof readProcessUsageSample>>;
-
-interface RenderCursorStyle {
-  readonly shape: 'block' | 'underline' | 'bar';
-  readonly blinking: boolean;
-}
 
 interface MuxPerfStatusRow {
   readonly fps: number;
@@ -1320,15 +1311,9 @@ async function main(): Promise<number> {
 
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
-  let dirty = true;
+  const screen = new Screen();
   let stop = false;
   let inputRemainder = '';
-  let previousRows: readonly string[] = [];
-  let forceFullClear = true;
-  let renderedCursorVisible: boolean | null = null;
-  let renderedCursorStyle: RenderCursorStyle | null = null;
-  let renderedBracketedPaste: boolean | null = null;
-  let previousSelectionRows: readonly number[] = [];
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
   let persistedMuxUiState = {
     paneWidthPercent: paneWidthPercentFromLayout(layout),
@@ -1355,7 +1340,6 @@ async function main(): Promise<number> {
   let conversationTitleEdit: ConversationTitleEditState | null = null;
   let conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
   let paneDividerDragActive = false;
-  let ansiValidationReported = false;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -1399,7 +1383,7 @@ async function main(): Promise<number> {
     };
     shuttingDown = true;
     stop = true;
-    dirty = false;
+    screen.clearDirty();
     process.stderr.write(`[mux] fatal runtime error (${origin}): ${formatErrorMessage(error)}\n`);
     restoreTerminalState(true, inputModeManager.restore);
     runtimeFatalExitTimer = setTimeout(() => {
@@ -1418,7 +1402,7 @@ async function main(): Promise<number> {
       renderScheduled = false;
       try {
         render();
-        if (dirty) {
+        if (screen.isDirty()) {
           scheduleRender();
         }
       } catch (error: unknown) {
@@ -1431,7 +1415,7 @@ async function main(): Promise<number> {
     if (shuttingDown) {
       return;
     }
-    dirty = true;
+    screen.markDirty();
     scheduleRender();
   };
 
@@ -1823,8 +1807,7 @@ async function main(): Promise<number> {
       muxRecordingOracle.resize(nextLayout.cols, nextLayout.rows);
     }
     // Force a full clear on actual layout changes to avoid stale diagonal artifacts during drag.
-    previousRows = [];
-    forceFullClear = true;
+    screen.resetFrameCache();
     markDirty();
   };
 
@@ -2195,8 +2178,7 @@ async function main(): Promise<number> {
     workspace.taskPaneRepositoryEditClickState = null;
     workspace.projectPaneScrollTop = 0;
     refreshProjectPaneSnapshot(directoryId);
-    forceFullClear = true;
-    previousRows = [];
+    screen.resetFrameCache();
   };
 
   function orderedTaskRecords(): readonly ControlPlaneTaskRecord[] {
@@ -2426,8 +2408,7 @@ async function main(): Promise<number> {
     workspace.homePaneDragState = null;
     syncTaskPaneSelection();
     syncTaskPaneRepositorySelection();
-    forceFullClear = true;
-    previousRows = [];
+    screen.resetFrameCache();
     markDirty();
   };
 
@@ -2527,8 +2508,7 @@ async function main(): Promise<number> {
       if (workspace.mainPaneMode !== 'conversation') {
         workspace.mainPaneMode = 'conversation';
         workspace.selectLeftNavConversation(sessionId);
-        forceFullClear = true;
-        previousRows = [];
+        screen.resetFrameCache();
         markDirty();
       }
       return;
@@ -2551,8 +2531,7 @@ async function main(): Promise<number> {
     workspace.taskPaneRepositoryEditClickState = null;
     workspace.projectPaneSnapshot = null;
     workspace.projectPaneScrollTop = 0;
-    forceFullClear = true;
-    previousRows = [];
+    screen.resetFrameCache();
     const targetConversation = conversationManager.get(sessionId);
     if (targetConversation?.directoryId !== undefined) {
       noteGitActivity(targetConversation.directoryId);
@@ -3117,7 +3096,7 @@ async function main(): Promise<number> {
   };
 
   const render = (): void => {
-    if (shuttingDown || !dirty) {
+    if (shuttingDown || !screen.isDirty()) {
       return;
     }
     const projectPaneActive =
@@ -3126,14 +3105,14 @@ async function main(): Promise<number> {
       directoryManager.hasDirectory(workspace.activeDirectoryId);
     const homePaneActive = workspace.mainPaneMode === 'home';
     if (!projectPaneActive && !homePaneActive && conversationManager.activeConversationId === null) {
-      dirty = false;
+      screen.clearDirty();
       return;
     }
     const renderStartedAtNs = perfNowNs();
 
     const active = conversationManager.getActiveConversation();
     if (!projectPaneActive && !homePaneActive && active === null) {
-      dirty = false;
+      screen.clearDirty();
       return;
     }
     const rightFrame =
@@ -3237,85 +3216,19 @@ async function main(): Promise<number> {
     if (modalOverlay !== null) {
       applyModalOverlay(rows, modalOverlay);
     }
-    if (validateAnsi) {
-      const issues = findAnsiIntegrityIssues(rows);
-      if (issues.length > 0 && !ansiValidationReported) {
-        ansiValidationReported = true;
-        process.stderr.write(`[mux] ansi-integrity-failed ${issues.join(' | ')}\n`);
-      }
-    }
-    const diff = forceFullClear ? diffRenderedRows(rows, []) : diffRenderedRows(rows, previousRows);
-    const overlayResetRows = mergeUniqueRows(previousSelectionRows, selectionRows);
+    const selectionOverlay =
+      rightFrame === null ? '' : renderSelectionOverlay(layout, rightFrame, renderSelection);
+    const flushResult = screen.flush({
+      layout,
+      rows,
+      rightFrame,
+      selectionRows,
+      selectionOverlay,
+      validateAnsi,
+    });
+    const changedRowCount = flushResult.changedRowCount;
 
-    let output = '';
-    if (forceFullClear) {
-      output += '\u001b[?25l\u001b[H\u001b[2J';
-      forceFullClear = false;
-      renderedCursorVisible = false;
-      renderedCursorStyle = null;
-      renderedBracketedPaste = null;
-    }
-    output += diff.output;
-
-    if (overlayResetRows.length > 0) {
-      const changedRows = new Set<number>(diff.changedRows);
-      for (const row of overlayResetRows) {
-        if (row < 0 || row >= layout.paneRows || changedRows.has(row)) {
-          continue;
-        }
-        const rowContent = rows[row] ?? '';
-        output += `\u001b[${String(row + 1)};1H\u001b[2K${rowContent}`;
-      }
-    }
-
-    let shouldShowCursor = false;
-    if (rightFrame !== null) {
-      const shouldEnableBracketedPaste = rightFrame.modes.bracketedPaste;
-      if (renderedBracketedPaste !== shouldEnableBracketedPaste) {
-        output += shouldEnableBracketedPaste ? '\u001b[?2004h' : '\u001b[?2004l';
-        renderedBracketedPaste = shouldEnableBracketedPaste;
-      }
-
-      if (!cursorStyleEqual(renderedCursorStyle, rightFrame.cursor.style)) {
-        output += cursorStyleToDecscusr(rightFrame.cursor.style);
-        renderedCursorStyle = rightFrame.cursor.style;
-      }
-
-      output += renderSelectionOverlay(layout, rightFrame, renderSelection);
-
-      shouldShowCursor =
-        rightFrame.viewport.followOutput &&
-        rightFrame.cursor.visible &&
-        rightFrame.cursor.row >= 0 &&
-        rightFrame.cursor.row < layout.paneRows &&
-        rightFrame.cursor.col >= 0 &&
-        rightFrame.cursor.col < layout.rightCols;
-
-      if (shouldShowCursor) {
-        if (renderedCursorVisible !== true) {
-          output += '\u001b[?25h';
-          renderedCursorVisible = true;
-        }
-        output += `\u001b[${String(rightFrame.cursor.row + 1)};${String(layout.rightStartCol + rightFrame.cursor.col)}H`;
-      } else {
-        if (renderedCursorVisible !== false) {
-          output += '\u001b[?25l';
-          renderedCursorVisible = false;
-        }
-      }
-    } else {
-      if (renderedBracketedPaste !== false) {
-        output += '\u001b[?2004l';
-        renderedBracketedPaste = false;
-      }
-      if (renderedCursorVisible !== false) {
-        output += '\u001b[?25l';
-        renderedCursorVisible = false;
-      }
-    }
-
-    if (output.length > 0) {
-      process.stdout.write(output);
+    if (flushResult.wroteOutput) {
       if (
         active !== null &&
         rightFrame !== null &&
@@ -3328,12 +3241,12 @@ async function main(): Promise<number> {
         if (startupSequencer.markFirstPaintVisible(startupFirstPaintTargetSessionId, glyphCells)) {
           recordPerfEvent('mux.startup.active-first-visible-paint', {
             sessionId: startupFirstPaintTargetSessionId,
-            changedRows: diff.changedRows.length,
+            changedRows: changedRowCount,
             glyphCells,
           });
           endStartupActiveFirstPaintSpan({
             observed: true,
-            changedRows: diff.changedRows.length,
+            changedRows: changedRowCount,
             glyphCells,
           });
         }
@@ -3371,7 +3284,7 @@ async function main(): Promise<number> {
         scheduleStartupSettledProbe(startupFirstPaintTargetSessionId);
       }
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
-        const recordingCursorStyle: RenderCursorStyle =
+        const recordingCursorStyle: ScreenCursorStyle =
           rightFrame === null ? { shape: 'block', blinking: false } : rightFrame.cursor.style;
         const recordingCursorRow = rightFrame === null ? 0 : rightFrame.cursor.row;
         const recordingCursorCol =
@@ -3381,7 +3294,7 @@ async function main(): Promise<number> {
         const canonicalFrame = renderCanonicalFrameAnsi(
           rows,
           recordingCursorStyle,
-          shouldShowCursor,
+          flushResult.shouldShowCursor,
           recordingCursorRow,
           recordingCursorCol,
         );
@@ -3393,16 +3306,13 @@ async function main(): Promise<number> {
         }
       }
     }
-    previousRows = diff.nextRows;
-    previousSelectionRows = selectionRows;
-    dirty = false;
     const renderDurationMs = Number(perfNowNs() - renderStartedAtNs) / 1e6;
     renderSampleCount += 1;
     renderSampleTotalMs += renderDurationMs;
     if (renderDurationMs > renderSampleMaxMs) {
       renderSampleMaxMs = renderDurationMs;
     }
-    renderSampleChangedRows += diff.changedRows.length;
+    renderSampleChangedRows += changedRowCount;
   };
 
   const handleEnvelope = (envelope: StreamServerEnvelope): void => {
@@ -4311,8 +4221,7 @@ async function main(): Promise<number> {
                 workspace.selectLeftNavConversation(conversationId);
                 workspace.projectPaneSnapshot = null;
                 workspace.projectPaneScrollTop = 0;
-                forceFullClear = true;
-                previousRows = [];
+                screen.resetFrameCache();
               },
               beginConversationTitleEdit,
               queueActivateConversation: (conversationId) => {
@@ -4451,7 +4360,7 @@ async function main(): Promise<number> {
     }
   } finally {
     shuttingDown = true;
-    dirty = false;
+    screen.clearDirty();
     clearInterval(outputLoadSampleTimer);
     eventLoopDelayMonitor.disable();
     if (processUsageTimer !== null) {
