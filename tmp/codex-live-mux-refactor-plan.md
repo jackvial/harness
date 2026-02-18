@@ -136,8 +136,8 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2956 non-empty LOC)
-  - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2967 non-empty LOC)
+  - `src/control-plane/stream-server.ts` (~2172 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
@@ -1645,7 +1645,7 @@ bun run loc:verify:enforce
 - Validation at checkpoint:
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
-  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2780 non-empty LOC
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2967 non-empty LOC (post-rebase onto upstream `main`)
 
 ### Next focus (yield-first)
 
