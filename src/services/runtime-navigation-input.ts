@@ -14,6 +14,7 @@ interface RuntimeNavigationWorkspaceActions {
   activateConversation(sessionId: string): Promise<void>;
   openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
   toggleGatewayProfiler(): Promise<void>;
+  toggleGatewayStatusTimeline(): Promise<void>;
   archiveConversation(sessionId: string): Promise<void>;
   interruptConversation(sessionId: string): Promise<void>;
   takeoverConversation(sessionId: string): Promise<void>;
@@ -137,6 +138,9 @@ export class RuntimeNavigationInput {
       },
       toggleGatewayProfile: async () => {
         await options.workspaceActions.toggleGatewayProfiler();
+      },
+      toggleGatewayStatusTimeline: async () => {
+        await options.workspaceActions.toggleGatewayStatusTimeline();
       },
       getMainPaneMode: options.getMainPaneMode,
       getActiveConversationId: options.getActiveConversationId,

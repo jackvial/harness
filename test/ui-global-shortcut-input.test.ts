@@ -23,6 +23,9 @@ void test('global shortcut input delegates detection and handler wiring', () => 
       toggleGatewayProfile: async () => {
         calls.push('toggle-gateway-profile');
       },
+      toggleGatewayStatusTimeline: async () => {
+        calls.push('toggle-gateway-status-timeline');
+      },
       getMainPaneMode: () => mode,
       getActiveConversationId: () => 'session-a',
       conversationsHas: (sessionId) => {
@@ -95,6 +98,7 @@ void test('global shortcut input default dependencies return false when no short
     openNewThreadPrompt: () => {},
     openOrCreateCritiqueConversationInDirectory: async () => {},
     toggleGatewayProfile: async () => {},
+    toggleGatewayStatusTimeline: async () => {},
     getMainPaneMode: () => 'home',
     getActiveConversationId: () => null,
     conversationsHas: () => false,

@@ -10,6 +10,7 @@ interface CapturedNavigationOptions {
     activateConversation(sessionId: string): Promise<void>;
     openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
     toggleGatewayProfiler(): Promise<void>;
+    toggleGatewayStatusTimeline(): Promise<void>;
     archiveConversation(sessionId: string): Promise<void>;
     interruptConversation(sessionId: string): Promise<void>;
     takeoverConversation(sessionId: string): Promise<void>;
@@ -88,6 +89,9 @@ function createOptions(
       },
       toggleGatewayProfiler: async () => {
         calls.push('toggleGatewayProfiler');
+      },
+      toggleGatewayStatusTimeline: async () => {
+        calls.push('toggleGatewayStatusTimeline');
       },
       archiveConversation: async (sessionId) => {
         calls.push(`archiveConversation:${sessionId}`);
@@ -346,6 +350,10 @@ void test('runtime rail input preserves runtime workspace action method context'
       this.sink.push('toggleGatewayProfiler');
     }
 
+    async toggleGatewayStatusTimeline(): Promise<void> {
+      this.sink.push('toggleGatewayStatusTimeline');
+    }
+
     async archiveConversation(sessionId: string): Promise<void> {
       this.sink.push(`archiveConversation:${sessionId}`);
     }
@@ -415,6 +423,7 @@ void test('runtime rail input preserves runtime workspace action method context'
     'dir-ctx',
   );
   await navigationOptions.workspaceActions.toggleGatewayProfiler();
+  await navigationOptions.workspaceActions.toggleGatewayStatusTimeline();
   await navigationOptions.workspaceActions.archiveConversation('session-ctx');
   await navigationOptions.workspaceActions.interruptConversation('session-ctx');
   await navigationOptions.workspaceActions.takeoverConversation('session-ctx');
@@ -424,6 +433,7 @@ void test('runtime rail input preserves runtime workspace action method context'
     'activateConversation:session-ctx',
     'openOrCreateCritiqueConversationInDirectory:dir-ctx',
     'toggleGatewayProfiler',
+    'toggleGatewayStatusTimeline',
     'archiveConversation:session-ctx',
     'interruptConversation:session-ctx',
     'takeoverConversation:session-ctx',

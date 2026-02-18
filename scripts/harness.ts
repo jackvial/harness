@@ -49,6 +49,13 @@ import {
   type InspectorProfileState,
   readInspectorProfileState,
 } from './harness-inspector.ts';
+import {
+  parseActiveStatusTimelineState,
+  resolveDefaultStatusTimelineOutputPath,
+  resolveStatusTimelineStatePath,
+  STATUS_TIMELINE_MODE,
+  STATUS_TIMELINE_STATE_VERSION,
+} from '../src/mux/live-mux/status-timeline-state.ts';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DAEMON_SCRIPT_PATH = resolve(SCRIPT_DIR, 'control-plane-daemon.ts');
@@ -112,6 +119,19 @@ type ParsedProfileCommand =
   | ParsedProfileStartCommand
   | ParsedProfileStopCommand;
 
+interface ParsedStatusTimelineStartCommand {
+  type: 'start';
+  outputPath: string | null;
+}
+
+interface ParsedStatusTimelineStopCommand {
+  type: 'stop';
+}
+
+type ParsedStatusTimelineCommand =
+  | ParsedStatusTimelineStartCommand
+  | ParsedStatusTimelineStopCommand;
+
 interface ParsedCursorHooksCommand {
   type: 'install' | 'uninstall';
   hooksFilePath: string | null;
@@ -133,6 +153,8 @@ interface SessionPaths {
   defaultStateDbPath: string;
   profileDir: string;
   profileStatePath: string;
+  statusTimelineStatePath: string;
+  defaultStatusTimelineOutputPath: string;
 }
 
 interface ParsedGlobalCliOptions {
@@ -182,6 +204,14 @@ interface ActiveProfileState {
   profileDir: string;
   gatewayProfilePath: string;
   inspectWebSocketUrl: string;
+  startedAt: string;
+}
+
+interface ActiveStatusTimelineState {
+  version: number;
+  mode: typeof STATUS_TIMELINE_MODE;
+  outputPath: string;
+  sessionName: string | null;
   startedAt: string;
 }
 
@@ -256,6 +286,11 @@ function resolveSessionPaths(
   invocationDirectory: string,
   sessionName: string | null,
 ): SessionPaths {
+  const statusTimelineStatePath = resolveStatusTimelineStatePath(invocationDirectory, sessionName);
+  const defaultStatusTimelineOutputPath = resolveDefaultStatusTimelineOutputPath(
+    invocationDirectory,
+    sessionName,
+  );
   if (sessionName === null) {
     return {
       recordPath: resolveGatewayRecordPath(invocationDirectory),
@@ -263,6 +298,8 @@ function resolveSessionPaths(
       defaultStateDbPath: resolve(invocationDirectory, DEFAULT_GATEWAY_DB_PATH),
       profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH),
       profileStatePath: resolve(invocationDirectory, '.harness', PROFILE_STATE_FILE_NAME),
+      statusTimelineStatePath,
+      defaultStatusTimelineOutputPath,
     };
   }
   const sessionRoot = resolve(invocationDirectory, DEFAULT_SESSION_ROOT_PATH, sessionName);
@@ -272,6 +309,8 @@ function resolveSessionPaths(
     defaultStateDbPath: resolve(sessionRoot, 'control-plane.sqlite'),
     profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH, sessionName),
     profileStatePath: resolve(sessionRoot, PROFILE_STATE_FILE_NAME),
+    statusTimelineStatePath,
+    defaultStatusTimelineOutputPath,
   };
 }
 
@@ -356,6 +395,54 @@ function parseProfileCommand(argv: readonly string[]): ParsedProfileCommand {
     return parseProfileRunCommand(argv);
   }
   return parseProfileRunCommand(argv);
+}
+
+function parseStatusTimelineStartCommand(
+  argv: readonly string[],
+): ParsedStatusTimelineStartCommand {
+  let outputPath: string | null = null;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === '--output-path') {
+      outputPath = readCliValue(argv, index, '--output-path');
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown status-timeline option: ${arg}`);
+  }
+  return {
+    type: 'start',
+    outputPath,
+  };
+}
+
+function parseStatusTimelineStopCommand(
+  argv: readonly string[],
+): ParsedStatusTimelineStopCommand {
+  if (argv.length > 0) {
+    throw new Error(`unknown status-timeline option: ${argv[0]}`);
+  }
+  return {
+    type: 'stop',
+  };
+}
+
+function parseStatusTimelineCommand(argv: readonly string[]): ParsedStatusTimelineCommand {
+  if (argv.length === 0) {
+    return parseStatusTimelineStartCommand(argv);
+  }
+  const subcommand = argv[0]!;
+  const rest = argv.slice(1);
+  if (subcommand === 'start') {
+    return parseStatusTimelineStartCommand(rest);
+  }
+  if (subcommand === 'stop') {
+    return parseStatusTimelineStopCommand(rest);
+  }
+  if (subcommand.startsWith('-')) {
+    return parseStatusTimelineStartCommand(argv);
+  }
+  throw new Error(`unknown status-timeline subcommand: ${subcommand}`);
 }
 
 function parseCursorHooksOptions(argv: readonly string[]): { hooksFilePath: string | null } {
@@ -608,6 +695,9 @@ function printUsage(): void {
       '  harness [--session <name>] profile stop [--timeout-ms <ms>]',
       '  harness [--session <name>] profile run [--profile-dir <path>] [mux-args...]',
       '  harness [--session <name>] profile [--profile-dir <path>] [mux-args...]',
+      '  harness [--session <name>] status-timeline start [--output-path <path>]',
+      '  harness [--session <name>] status-timeline stop',
+      '  harness [--session <name>] status-timeline [--output-path <path>]',
       '  harness cursor-hooks install [--hooks-file <path>]',
       '  harness cursor-hooks uninstall [--hooks-file <path>]',
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
@@ -737,6 +827,40 @@ function writeActiveProfileState(profileStatePath: string, state: ActiveProfileS
 
 function removeActiveProfileState(profileStatePath: string): void {
   removeFileIfExists(profileStatePath);
+}
+
+function readActiveStatusTimelineState(statePath: string): ActiveStatusTimelineState | null {
+  if (!existsSync(statePath)) {
+    return null;
+  }
+  try {
+    const raw = JSON.parse(readFileSync(statePath, 'utf8')) as unknown;
+    const parsed = parseActiveStatusTimelineState(raw);
+    if (parsed === null) {
+      return null;
+    }
+    return {
+      version: parsed.version,
+      mode: parsed.mode,
+      outputPath: parsed.outputPath,
+      sessionName: parsed.sessionName,
+      startedAt: parsed.startedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveStatusTimelineState(
+  statePath: string,
+  state: ActiveStatusTimelineState,
+): void {
+  mkdirSync(dirname(statePath), { recursive: true });
+  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function removeActiveStatusTimelineState(statePath: string): void {
+  removeFileIfExists(statePath);
 }
 
 function isPidRunning(pid: number): boolean {
@@ -1988,6 +2112,67 @@ async function runProfileCommandEntry(
   );
 }
 
+async function runStatusTimelineStart(
+  invocationDirectory: string,
+  sessionPaths: SessionPaths,
+  sessionName: string | null,
+  command: ParsedStatusTimelineStartCommand,
+): Promise<number> {
+  const outputPath =
+    command.outputPath === null
+      ? sessionPaths.defaultStatusTimelineOutputPath
+      : resolve(invocationDirectory, command.outputPath);
+  const existingState = readActiveStatusTimelineState(sessionPaths.statusTimelineStatePath);
+  if (existingState !== null) {
+    throw new Error(
+      'status timeline already running; stop it first with `harness status-timeline stop`',
+    );
+  }
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, '', 'utf8');
+  writeActiveStatusTimelineState(sessionPaths.statusTimelineStatePath, {
+    version: STATUS_TIMELINE_STATE_VERSION,
+    mode: STATUS_TIMELINE_MODE,
+    outputPath,
+    sessionName,
+    startedAt: new Date().toISOString(),
+  });
+  process.stdout.write('status timeline started\n');
+  process.stdout.write(`status-timeline-state: ${sessionPaths.statusTimelineStatePath}\n`);
+  process.stdout.write(`status-timeline-target: ${outputPath}\n`);
+  process.stdout.write('stop with: harness status-timeline stop\n');
+  return 0;
+}
+
+async function runStatusTimelineStop(sessionPaths: SessionPaths): Promise<number> {
+  const state = readActiveStatusTimelineState(sessionPaths.statusTimelineStatePath);
+  if (state === null) {
+    throw new Error(
+      'no active status timeline run for this session; start one with `harness status-timeline start`',
+    );
+  }
+  removeActiveStatusTimelineState(sessionPaths.statusTimelineStatePath);
+  process.stdout.write(`status timeline stopped: ${state.outputPath}\n`);
+  return 0;
+}
+
+async function runStatusTimelineCommandEntry(
+  invocationDirectory: string,
+  sessionPaths: SessionPaths,
+  args: readonly string[],
+  sessionName: string | null,
+): Promise<number> {
+  if (args.length > 0 && (args[0] === '--help' || args[0] === '-h')) {
+    printUsage();
+    return 0;
+  }
+  const command = parseStatusTimelineCommand(args);
+  if (command.type === 'stop') {
+    return await runStatusTimelineStop(sessionPaths);
+  }
+  return await runStatusTimelineStart(invocationDirectory, sessionPaths, sessionName, command);
+}
+
 async function runCursorHooksCommandEntry(
   invocationDirectory: string,
   command: ParsedCursorHooksCommand,
@@ -2067,6 +2252,15 @@ async function main(): Promise<number> {
       argv.slice(1),
       parsedGlobals.sessionName,
       runtimeOptions,
+    );
+  }
+
+  if (argv.length > 0 && argv[0] === 'status-timeline') {
+    return await runStatusTimelineCommandEntry(
+      invocationDirectory,
+      sessionPaths,
+      argv.slice(1),
+      parsedGlobals.sessionName,
     );
   }
 

@@ -904,6 +904,133 @@ void test('harness profile stop fails when there is no active profile state', as
   }
 });
 
+void test('harness status-timeline start/stop writes and clears active state for the target session', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'status-timeline-start-stop-a';
+  const statusTimelineStatePath = join(
+    workspace,
+    `.harness/sessions/${sessionName}/active-status-timeline.json`,
+  );
+  const statusTimelineOutputPath = join(
+    workspace,
+    `.harness/status-timelines/${sessionName}/status-timeline.log`,
+  );
+  try {
+    const startResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'status-timeline',
+    ]);
+    assert.equal(startResult.code, 0);
+    assert.equal(startResult.stdout.includes('status timeline started'), true);
+    assert.equal(startResult.stdout.includes(`status-timeline-target: ${statusTimelineOutputPath}`), true);
+    assert.equal(existsSync(statusTimelineStatePath), true);
+    assert.equal(existsSync(statusTimelineOutputPath), true);
+    assert.equal(readFileSync(statusTimelineOutputPath, 'utf8'), '');
+
+    const stopResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'status-timeline',
+      'stop',
+    ]);
+    assert.equal(stopResult.code, 0);
+    assert.equal(
+      stopResult.stdout.includes(`status timeline stopped: ${statusTimelineOutputPath}`),
+      true,
+    );
+    assert.equal(existsSync(statusTimelineStatePath), false);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness status-timeline start supports custom output path and rejects duplicate active runs', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'status-timeline-custom-output-a';
+  const customOutputPath = join(workspace, 'custom', 'status.log');
+  try {
+    const startResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'status-timeline',
+      'start',
+      '--output-path',
+      './custom/status.log',
+    ]);
+    assert.equal(startResult.code, 0);
+    assert.equal(startResult.stdout.includes(`status-timeline-target: ${customOutputPath}`), true);
+    assert.equal(existsSync(customOutputPath), true);
+
+    const duplicateStartResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'status-timeline',
+      'start',
+    ]);
+    assert.equal(duplicateStartResult.code, 1);
+    assert.equal(
+      duplicateStartResult.stderr.includes('status timeline already running; stop it first'),
+      true,
+    );
+  } finally {
+    void runHarness(workspace, ['--session', sessionName, 'status-timeline', 'stop']).catch(
+      () => undefined,
+    );
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness status-timeline stop fails when there is no active status timeline state', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'status-timeline-stop-missing';
+  try {
+    const stopResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'status-timeline',
+      'stop',
+    ]);
+    assert.equal(stopResult.code, 1);
+    assert.equal(stopResult.stderr.includes('no active status timeline run for this session'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness status-timeline rejects unknown subcommands', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['status-timeline', 'bogus']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('unknown status-timeline subcommand: bogus'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness status-timeline stop rejects unknown options', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['status-timeline', 'stop', '--bad']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('unknown status-timeline option: --bad'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness status-timeline start rejects unknown options', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['status-timeline', 'start', '--bad']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('unknown status-timeline option: --bad'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test(
   'named session can run two terminal threads that execute harness animate for throughput load',
   async () => {

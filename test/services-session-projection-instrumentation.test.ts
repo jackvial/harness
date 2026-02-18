@@ -54,9 +54,13 @@ void test('session projection instrumentation snapshots selector state only when
 
 void test('session projection instrumentation records transition metadata for telemetry events', () => {
   const events: string[] = [];
+  const transitions: string[] = [];
   const service = new SessionProjectionInstrumentation({
     getProcessUsageSample: () => ({ cpuPercent: 15.5, memoryMb: 128 }),
     recordPerfEvent: (name, attrs) => events.push(`${name}:${JSON.stringify(attrs)}`),
+    onTransition: (transition) => {
+      transitions.push(JSON.stringify(transition));
+    },
     nowMs: () => Date.parse('2026-02-18T00:00:00.000Z'),
   });
   const conversation = createConversation('session-a', 'Alpha');
@@ -94,6 +98,8 @@ void test('session projection instrumentation records transition metadata for te
   assert.equal(transition?.includes('"source":"otlp-log"'), true);
   assert.equal(transition?.includes('"eventName":"turn.completed"'), true);
   assert.equal(transition?.includes('"selectorIndex":1'), true);
+  assert.equal(transitions.length, 1);
+  assert.equal(transitions[0]?.includes('"summary":"done"'), true);
 });
 
 void test('session projection instrumentation skips unchanged transitions and handles non-telemetry branch', () => {

@@ -16,6 +16,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Gate automation globally/per-repository/per-project (enable/disable + freeze), with optional project branch pinning and project-local task focus mode.
 - See project/thread lifecycle updates from other connected clients in real time (no client restart rehydration loop).
 - Get gateway-canonical thread status icons/text for structured agent threads (single server projection, no client-side status interpretation).
+- Capture interleaved status debugging timelines (incoming status sources + outgoing status line/notice outputs) with a toggle and CLI commands.
 
 ## Demo
 
@@ -128,6 +129,8 @@ Example (critique defaults + hotkey override + OpenCode theme selection):
 harness gateway status
 harness gateway start
 harness gateway stop
+harness status-timeline start
+harness status-timeline stop
 ```
 
 Run the core quality gate:

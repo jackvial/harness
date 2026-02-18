@@ -15,6 +15,7 @@ interface GlobalShortcutInputOptions {
   readonly openNewThreadPrompt: (directoryId: string) => void;
   readonly openOrCreateCritiqueConversationInDirectory: (directoryId: string) => Promise<void>;
   readonly toggleGatewayProfile: () => Promise<void>;
+  readonly toggleGatewayStatusTimeline: () => Promise<void>;
   readonly getMainPaneMode: () => MainPaneMode;
   readonly getActiveConversationId: () => string | null;
   readonly conversationsHas: (sessionId: string) => boolean;
@@ -57,6 +58,7 @@ export class GlobalShortcutInput {
       openOrCreateCritiqueConversationInDirectory:
         this.options.openOrCreateCritiqueConversationInDirectory,
       toggleGatewayProfile: this.options.toggleGatewayProfile,
+      toggleGatewayStatusTimeline: this.options.toggleGatewayStatusTimeline,
       resolveConversationForAction: () =>
         this.options.getMainPaneMode() === 'conversation'
           ? this.options.getActiveConversationId()

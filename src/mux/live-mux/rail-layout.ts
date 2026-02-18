@@ -100,10 +100,12 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const interruptConversation = firstShortcutText(bindings, 'mux.conversation.interrupt');
   const quit = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const profile = firstShortcutText(bindings, 'mux.gateway.profile.toggle') || 'ctrl+p';
+  const statusTimeline =
+    firstShortcutText(bindings, 'mux.gateway.status-timeline.toggle') || 'alt+r';
   const switchHint = next === previous ? next : `${next}/${previous}`;
   const interruptHint =
     interruptConversation.length === 0 ? '' : `  ${interruptConversation} interrupt`;
-  return `${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${profile} profile${interruptHint}  ←/→ collapse/expand  ${quit} quit`;
+  return `${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${profile} profile  ${statusTimeline} status${interruptHint}  ←/→ collapse/expand  ${quit} quit`;
 }
 
 function conversationSummary(

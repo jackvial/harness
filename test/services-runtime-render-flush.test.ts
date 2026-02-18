@@ -49,6 +49,11 @@ void test('runtime render flush composes status footer, applies modal overlay, a
       builtStatusRow = 'status-row';
       return builtStatusRow;
     },
+    onStatusLineComposed: (input) => {
+      calls.push(
+        `onStatusLineComposed:${input.activeConversation?.id ?? 'none'}:${input.statusFooter}:${input.statusRow}`,
+      );
+    },
     buildRenderRows: (_layout, _railRows, _rightRows, statusRow, statusFooter) => {
       builtStatusFooter = statusFooter;
       calls.push(`buildRenderRows:${statusRow}:${statusFooter}`);
@@ -100,6 +105,7 @@ void test('runtime render flush composes status footer, applies modal overlay, a
   assert.deepEqual(flushedRows, ['row-1:overlay-1', 'row-2']);
   assert.deepEqual(calls, [
     'statusFooterFor:conversation-1',
+    'onStatusLineComposed:conversation-1:base-footer  notice:status-row',
     'buildRenderRows:status-row:base-footer  notice',
     'applyModalOverlay:overlay-1',
     'flush:frame-1:selection-1',

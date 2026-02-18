@@ -2,6 +2,7 @@ type MuxGlobalShortcutAction =
   | 'mux.app.quit'
   | 'mux.app.interrupt-all'
   | 'mux.gateway.profile.toggle'
+  | 'mux.gateway.status-timeline.toggle'
   | 'mux.conversation.new'
   | 'mux.conversation.critique.open-or-create'
   | 'mux.conversation.next'
@@ -37,6 +38,7 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.app.quit',
   'mux.app.interrupt-all',
   'mux.gateway.profile.toggle',
+  'mux.gateway.status-timeline.toggle',
   'mux.conversation.new',
   'mux.conversation.critique.open-or-create',
   'mux.conversation.next',
@@ -55,6 +57,7 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<
   'mux.app.quit': [],
   'mux.app.interrupt-all': ['ctrl+c'],
   'mux.gateway.profile.toggle': ['ctrl+p'],
+  'mux.gateway.status-timeline.toggle': ['alt+r'],
   'mux.conversation.new': ['ctrl+t'],
   'mux.conversation.critique.open-or-create': ['ctrl+g'],
   'mux.conversation.next': ['ctrl+j'],
@@ -550,6 +553,9 @@ function withDefaultBindings(
     'mux.gateway.profile.toggle':
       overrides?.['mux.gateway.profile.toggle'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.profile.toggle'],
+    'mux.gateway.status-timeline.toggle':
+      overrides?.['mux.gateway.status-timeline.toggle'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.status-timeline.toggle'],
     'mux.conversation.new':
       overrides?.['mux.conversation.new'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.new'],
@@ -593,6 +599,9 @@ export function resolveMuxShortcutBindings(
       'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
       'mux.gateway.profile.toggle': parseBindingsForAction(
         rawByAction['mux.gateway.profile.toggle'],
+      ),
+      'mux.gateway.status-timeline.toggle': parseBindingsForAction(
+        rawByAction['mux.gateway.status-timeline.toggle'],
       ),
       'mux.conversation.new': parseBindingsForAction(rawByAction['mux.conversation.new']),
       'mux.conversation.critique.open-or-create': parseBindingsForAction(

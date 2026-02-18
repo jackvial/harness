@@ -22,6 +22,14 @@ void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () =
     detectMuxGlobalShortcut(Buffer.from([0x10]), bindings),
     'mux.gateway.profile.toggle',
   );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from([0x12]), bindings),
+    null,
+  );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001br', 'utf8'), bindings),
+    'mux.gateway.status-timeline.toggle',
+  );
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x18]), bindings), 'mux.conversation.delete');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0f]), bindings), 'mux.directory.add');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x17]), bindings), 'mux.directory.close');
@@ -56,6 +64,10 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
     detectMuxGlobalShortcut(Buffer.from('\u001b[112;5u', 'utf8'), bindings),
     'mux.gateway.profile.toggle',
   );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[114;3u', 'utf8'), bindings),
+    'mux.gateway.status-timeline.toggle',
+  );
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[93;5u', 'utf8'), bindings), null);
   assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;116~', 'utf8'), bindings),
@@ -80,6 +92,10 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;112~', 'utf8'), bindings),
     'mux.gateway.profile.toggle',
+  );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[27;3;114~', 'utf8'), bindings),
+    'mux.gateway.status-timeline.toggle',
   );
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;93~', 'utf8'), bindings), null);
 });

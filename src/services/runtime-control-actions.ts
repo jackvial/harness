@@ -13,6 +13,10 @@ interface RuntimeGatewayProfilerResult {
   readonly message: string;
 }
 
+interface RuntimeGatewayStatusTimelineResult {
+  readonly message: string;
+}
+
 interface RuntimeControlActionsOptions<TConversation extends RuntimeConversationControlState> {
   readonly conversationById: (sessionId: string) => TConversation | undefined;
   readonly interruptSession: (sessionId: string) => Promise<RuntimeInterruptResult>;
@@ -22,6 +26,10 @@ interface RuntimeControlActionsOptions<TConversation extends RuntimeConversation
     invocationDirectory: string;
     sessionName: string | null;
   }) => Promise<RuntimeGatewayProfilerResult>;
+  readonly toggleGatewayStatusTimeline: (input: {
+    invocationDirectory: string;
+    sessionName: string | null;
+  }) => Promise<RuntimeGatewayStatusTimelineResult>;
   readonly invocationDirectory: string;
   readonly sessionName: string | null;
   readonly setTaskPaneNotice: (message: string) => void;
@@ -52,20 +60,35 @@ export class RuntimeControlActions<TConversation extends RuntimeConversationCont
         invocationDirectory: this.options.invocationDirectory,
         sessionName: this.options.sessionName,
       });
-      this.setNotices(this.scopeProfileMessage(result.message));
+      this.setNotices(this.scopeMessage('profile', result.message));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setNotices(this.scopeProfileMessage(message));
+      this.setNotices(this.scopeMessage('profile', message));
     } finally {
       this.options.markDirty();
     }
   }
 
-  private scopeProfileMessage(message: string): string {
-    if (this.options.sessionName === null) {
-      return `[profile] ${message}`;
+  async toggleGatewayStatusTimeline(): Promise<void> {
+    try {
+      const result = await this.options.toggleGatewayStatusTimeline({
+        invocationDirectory: this.options.invocationDirectory,
+        sessionName: this.options.sessionName,
+      });
+      this.setNotices(this.scopeMessage('status-trace', result.message));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setNotices(this.scopeMessage('status-trace', message));
+    } finally {
+      this.options.markDirty();
     }
-    return `[profile:${this.options.sessionName}] ${message}`;
+  }
+
+  private scopeMessage(prefix: string, message: string): string {
+    if (this.options.sessionName === null) {
+      return `[${prefix}] ${message}`;
+    }
+    return `[${prefix}:${this.options.sessionName}] ${message}`;
   }
 
   private setNotices(message: string): void {

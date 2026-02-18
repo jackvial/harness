@@ -28,6 +28,13 @@ interface RuntimeRenderFlushOptions<
   readonly statusFooterForConversation: (conversation: TConversation) => string;
   readonly currentStatusNotice: () => string | null;
   readonly currentStatusRow: () => TStatusRow;
+  readonly onStatusLineComposed?: (input: {
+    activeConversation: TConversation | null;
+    statusFooter: string;
+    statusRow: TStatusRow;
+    projectPaneActive: boolean;
+    homePaneActive: boolean;
+  }) => void;
   readonly buildRenderRows: (
     layout: TLayout,
     railRows: readonly string[],
@@ -89,11 +96,19 @@ export class RuntimeRenderFlush<
       statusNotice === null || statusNotice.length === 0
         ? baseStatusFooter
         : `${baseStatusFooter.length > 0 ? `${baseStatusFooter}  ` : ''}${statusNotice}`;
+    const statusRow = this.options.currentStatusRow();
+    this.options.onStatusLineComposed?.({
+      activeConversation: input.activeConversation,
+      statusFooter,
+      statusRow,
+      projectPaneActive: input.projectPaneActive,
+      homePaneActive: input.homePaneActive,
+    });
     const rows = this.options.buildRenderRows(
       input.layout,
       input.railAnsiRows,
       input.rightRows,
-      this.options.currentStatusRow(),
+      statusRow,
       statusFooter,
     );
     const modalOverlay = this.options.buildModalOverlay();

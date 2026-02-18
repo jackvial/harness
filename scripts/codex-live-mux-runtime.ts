@@ -130,6 +130,8 @@ import { resolveDirectoryForAction as resolveDirectoryForActionFn } from '../src
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
 import { openNewThreadPrompt as openNewThreadPromptFn } from '../src/mux/live-mux/actions-conversation.ts';
 import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
+import { toggleGatewayStatusTimeline as toggleGatewayStatusTimelineFn } from '../src/mux/live-mux/gateway-status-timeline.ts';
+import { resolveStatusTimelineStatePath } from '../src/mux/live-mux/status-timeline-state.ts';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import { ConversationManager, type ConversationSeed } from '../src/domain/conversations.ts';
 import { RepositoryManager } from '../src/domain/repositories.ts';
@@ -168,6 +170,7 @@ import { RuntimeWorkspaceActions } from '../src/services/runtime-workspace-actio
 import { WorkspaceObservedEvents } from '../src/services/workspace-observed-events.ts';
 import { RuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
 import { StartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
+import { StatusTimelineRecorder, type StatusTimelineLabels } from '../src/services/status-timeline-recorder.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { DebugFooterNotice } from '../src/ui/debug-footer-notice.ts';
@@ -281,6 +284,7 @@ async function main(): Promise<number> {
     'mux.app.quit': ['escape'],
     'mux.app.interrupt-all': [],
     'mux.gateway.profile.toggle': [],
+    'mux.gateway.status-timeline.toggle': [],
     'mux.conversation.new': [],
     'mux.conversation.critique.open-or-create': [],
     'mux.conversation.next': [],
@@ -557,6 +561,64 @@ async function main(): Promise<number> {
   const conversationManager = new ConversationManager();
   const conversationRecords = conversationManager.readonlyConversations();
   const taskManager = new TaskManager<ControlPlaneTaskRecord, TaskComposerBuffer, NodeJS.Timeout>();
+  const statusTimelineRecorder = new StatusTimelineRecorder({
+    statePath: resolveStatusTimelineStatePath(options.invocationDirectory, muxSessionName),
+  });
+  const resolveStatusTimelineLabels = (input: {
+    sessionId: string | null;
+    directoryId: string | null;
+    conversationId: string | null;
+  }): StatusTimelineLabels => {
+    const conversation =
+      input.sessionId === null
+        ? input.conversationId === null
+          ? null
+          : (conversationManager.get(input.conversationId) ?? null)
+        : (conversationManager.get(input.sessionId) ?? null);
+    const resolvedDirectoryId = input.directoryId ?? conversation?.directoryId ?? null;
+    const directory = resolvedDirectoryId === null ? null : directoryManager.getDirectory(resolvedDirectoryId);
+    const repositoryId =
+      resolvedDirectoryId === null
+        ? null
+        : (repositoryAssociationByDirectoryId.get(resolvedDirectoryId) ?? null);
+    const repository = repositoryId === null ? null : (repositories.get(repositoryId) ?? null);
+    return {
+      repositoryId,
+      repositoryName: repository?.name ?? null,
+      projectId: resolvedDirectoryId,
+      projectPath: directory?.path ?? null,
+      threadId: input.sessionId ?? conversation?.sessionId ?? null,
+      threadTitle: conversation?.title ?? null,
+      agentType: conversation?.agentType ?? null,
+      conversationId: input.conversationId ?? conversation?.sessionId ?? null,
+    };
+  };
+  const recordStatusTimeline = (input: {
+    direction: 'incoming' | 'outgoing';
+    source: string;
+    eventType: string;
+    labels: StatusTimelineLabels;
+    payload: unknown;
+    dedupeKey?: string;
+    dedupeValue?: string;
+  }): void => {
+    const baseRecordInput = {
+      direction: input.direction,
+      source: input.source,
+      eventType: input.eventType,
+      labels: input.labels,
+      payload: input.payload,
+    };
+    const recordInput: Parameters<StatusTimelineRecorder['record']>[0] =
+      input.dedupeKey !== undefined && input.dedupeValue !== undefined
+        ? {
+            ...baseRecordInput,
+            dedupeKey: input.dedupeKey,
+            dedupeValue: input.dedupeValue,
+          }
+        : baseRecordInput;
+    statusTimelineRecorder.record(recordInput);
+  };
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
   let hydrateStartupStateForStartupOrchestrator = async (
@@ -1164,6 +1226,19 @@ async function main(): Promise<number> {
   const sessionProjectionInstrumentation = new SessionProjectionInstrumentation({
     getProcessUsageSample: (sessionId) => processUsageRefreshService.getSample(sessionId),
     recordPerfEvent,
+    onTransition: (transition) => {
+      recordStatusTimeline({
+        direction: 'outgoing',
+        source: 'session-projection',
+        eventType: 'projection-transition',
+        labels: resolveStatusTimelineLabels({
+          sessionId: transition.sessionId,
+          directoryId: null,
+          conversationId: transition.sessionId,
+        }),
+        payload: transition,
+      });
+    },
   });
   sessionProjectionInstrumentation.refreshSelectorSnapshot(
     'startup',
@@ -1182,6 +1257,17 @@ async function main(): Promise<number> {
           afterCursor: startupObservedCursor,
         }),
     onEvent: (event) => {
+      recordStatusTimeline({
+        direction: 'incoming',
+        source: 'control-plane-key-events',
+        eventType: event.type,
+        labels: resolveStatusTimelineLabels({
+          sessionId: event.sessionId,
+          directoryId: event.directoryId,
+          conversationId: event.conversationId,
+        }),
+        payload: event,
+      });
       applyControlPlaneKeyEvent(event);
       markDirty();
     },
@@ -1861,13 +1947,42 @@ async function main(): Promise<number> {
     toggleGatewayProfiler: async (input) => {
       return await toggleGatewayProfilerFn(input);
     },
+    toggleGatewayStatusTimeline: async (input) => {
+      return await toggleGatewayStatusTimelineFn(input);
+    },
     invocationDirectory: options.invocationDirectory,
     sessionName: muxSessionName,
     setTaskPaneNotice: (message) => {
       workspace.taskPaneNotice = message;
+      recordStatusTimeline({
+        direction: 'outgoing',
+        source: 'task-pane-notice',
+        eventType: 'status-notice',
+        labels: resolveStatusTimelineLabels({
+          sessionId: conversationManager.activeConversationId,
+          directoryId: workspace.activeDirectoryId,
+          conversationId: conversationManager.activeConversationId,
+        }),
+        payload: {
+          message,
+        },
+      });
     },
     setDebugFooterNotice: (message) => {
       debugFooterNotice.set(message);
+      recordStatusTimeline({
+        direction: 'outgoing',
+        source: 'debug-footer-notice',
+        eventType: 'status-notice',
+        labels: resolveStatusTimelineLabels({
+          sessionId: conversationManager.activeConversationId,
+          directoryId: workspace.activeDirectoryId,
+          conversationId: conversationManager.activeConversationId,
+        }),
+        payload: {
+          message,
+        },
+      });
     },
   });
   const runtimeWorkspaceActions = new RuntimeWorkspaceActions({
@@ -1929,6 +2044,30 @@ async function main(): Promise<number> {
       statusFooterForConversation: (conversation) => debugFooterForConversation(conversation),
       currentStatusNotice: () => debugFooterNotice.current(),
       currentStatusRow: () => outputLoadSampler.currentStatusRow(),
+      onStatusLineComposed: (input) => {
+        const activeConversationId =
+          input.activeConversation === null ? null : input.activeConversation.sessionId;
+        const payload = {
+          statusFooter: input.statusFooter,
+          statusRow: input.statusRow,
+          projectPaneActive: input.projectPaneActive,
+          homePaneActive: input.homePaneActive,
+          activeConversationId,
+        };
+        recordStatusTimeline({
+          direction: 'outgoing',
+          source: 'render-status-line',
+          eventType: 'status-line',
+          labels: resolveStatusTimelineLabels({
+            sessionId: activeConversationId,
+            directoryId: workspace.activeDirectoryId,
+            conversationId: activeConversationId,
+          }),
+          payload,
+          dedupeKey: 'render-status-line',
+          dedupeValue: JSON.stringify(payload),
+        });
+      },
       buildRenderRows: (renderLayout, railRows, rightRows, statusRow, statusFooter) =>
         buildRenderRows(renderLayout, railRows, rightRows, statusRow, statusFooter),
       buildModalOverlay: () => buildCurrentModalOverlay(),
@@ -2110,6 +2249,34 @@ async function main(): Promise<number> {
     idFactory,
   });
   const handleEnvelope = (envelope: StreamServerEnvelope): void => {
+    if (envelope.kind !== 'pty.output') {
+      let eventType: string = envelope.kind;
+      let directoryId: string | null = null;
+      let conversationId: string | null = null;
+      if (envelope.kind === 'pty.event') {
+        eventType = `pty.event.${envelope.event.type}`;
+      } else if (envelope.kind === 'stream.event') {
+        eventType = `stream.event.${envelope.event.type}`;
+        const observedRecord = envelope.event as Record<string, unknown>;
+        directoryId =
+          typeof observedRecord['directoryId'] === 'string' ? observedRecord['directoryId'] : null;
+        conversationId =
+          typeof observedRecord['conversationId'] === 'string'
+            ? observedRecord['conversationId']
+            : null;
+      }
+      recordStatusTimeline({
+        direction: 'incoming',
+        source: 'stream-envelope',
+        eventType,
+        labels: resolveStatusTimelineLabels({
+          sessionId: 'sessionId' in envelope ? envelope.sessionId : null,
+          directoryId,
+          conversationId,
+        }),
+        payload: envelope,
+      });
+    }
     runtimeEnvelopeHandler.handleEnvelope(envelope);
   };
 
@@ -2347,6 +2514,7 @@ async function main(): Promise<number> {
     }
   } finally {
     shuttingDown = true;
+    statusTimelineRecorder.close();
     await runtimeShutdownService.finalize();
   }
 

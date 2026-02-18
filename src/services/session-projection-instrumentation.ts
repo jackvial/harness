@@ -24,9 +24,25 @@ interface ConversationProjectionSnapshot {
   readonly detailText: string;
 }
 
+interface SessionProjectionTransition {
+  readonly sessionId: string;
+  readonly eventType: ControlPlaneKeyEvent['type'];
+  readonly cursor: number;
+  readonly statusFrom: string;
+  readonly statusTo: string;
+  readonly glyphFrom: string;
+  readonly glyphTo: string;
+  readonly detailFrom: string;
+  readonly detailTo: string;
+  readonly source: string;
+  readonly eventName: string;
+  readonly summary: string;
+}
+
 interface SessionProjectionInstrumentationOptions {
   readonly getProcessUsageSample: (sessionId: string) => ProcessUsageSample | undefined;
   readonly recordPerfEvent: (name: string, attrs: PerfAttrs) => void;
+  readonly onTransition?: (transition: SessionProjectionTransition) => void;
   readonly nowMs?: () => number;
 }
 
@@ -136,12 +152,10 @@ export class SessionProjectionInstrumentation {
       eventName = event.telemetry?.eventName ?? '';
       summary = event.telemetry?.summary ?? null;
     }
-    this.options.recordPerfEvent('mux.session-projection.transition', {
+    const transition: SessionProjectionTransition = {
       sessionId: conversation.sessionId,
       eventType: event.type,
       cursor: event.cursor,
-      selectorIndex: selectorEntry?.selectorIndex ?? 0,
-      directoryIndex: selectorEntry?.directoryIndex ?? 0,
       statusFrom: before?.status ?? '',
       statusTo: after.status,
       glyphFrom: before?.glyph ?? '',
@@ -151,7 +165,13 @@ export class SessionProjectionInstrumentation {
       source,
       eventName,
       summary: compactDebugText(summary),
+    };
+    this.options.recordPerfEvent('mux.session-projection.transition', {
+      ...transition,
+      selectorIndex: selectorEntry?.selectorIndex ?? 0,
+      directoryIndex: selectorEntry?.directoryIndex ?? 0,
     });
+    this.options.onTransition?.(transition);
   }
 
   private projectionSnapshotEqual(

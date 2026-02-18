@@ -23,6 +23,7 @@ interface CapturedGlobalShortcutOptions {
   cycleLeftNavSelection(direction: 'next' | 'previous'): void;
   openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
   toggleGatewayProfile(): Promise<void>;
+  toggleGatewayStatusTimeline(): Promise<void>;
   archiveConversation(sessionId: string): Promise<void>;
   interruptConversation(sessionId: string): Promise<void>;
   takeoverConversation(sessionId: string): Promise<void>;
@@ -128,6 +129,9 @@ function createNavigationOptions(
       },
       toggleGatewayProfiler: async () => {
         calls.push('toggleGatewayProfiler');
+      },
+      toggleGatewayStatusTimeline: async () => {
+        calls.push('toggleGatewayStatusTimeline');
       },
       archiveConversation: async (sessionId) => {
         calls.push(`archiveConversation:${sessionId}`);
@@ -261,6 +265,10 @@ void test('runtime navigation input preserves workspace action method context', 
       this.sink.push('toggleGatewayProfiler');
     }
 
+    async toggleGatewayStatusTimeline(): Promise<void> {
+      this.sink.push('toggleGatewayStatusTimeline');
+    }
+
     async archiveConversation(sessionId: string): Promise<void> {
       this.sink.push(`archiveConversation:${sessionId}`);
     }
@@ -325,6 +333,7 @@ void test('runtime navigation input preserves workspace action method context', 
   await leftNavOptions.activateConversation('session-ctx');
   await globalShortcutOptions.openOrCreateCritiqueConversationInDirectory('dir-ctx');
   await globalShortcutOptions.toggleGatewayProfile();
+  await globalShortcutOptions.toggleGatewayStatusTimeline();
   await globalShortcutOptions.archiveConversation('session-ctx');
   await globalShortcutOptions.interruptConversation('session-ctx');
   await globalShortcutOptions.takeoverConversation('session-ctx');
@@ -334,6 +343,7 @@ void test('runtime navigation input preserves workspace action method context', 
     'activateConversation:session-ctx',
     'openOrCreateCritiqueConversationInDirectory:dir-ctx',
     'toggleGatewayProfiler',
+    'toggleGatewayStatusTimeline',
     'archiveConversation:session-ctx',
     'interruptConversation:session-ctx',
     'takeoverConversation:session-ctx',
