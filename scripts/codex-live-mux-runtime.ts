@@ -139,11 +139,6 @@ import {
   isCopyShortcutInput,
   isLeftButtonPress,
   isMotionMouseCode,
-  isMouseRelease,
-  isSelectionDrag,
-  isWheelMouseCode,
-  pointFromMouseEvent,
-  reduceConversationMouseSelection,
   renderSelectionOverlay,
   selectionText,
   selectionVisibleRows,
@@ -210,6 +205,7 @@ import { LeftNavInput } from '../src/ui/left-nav-input.ts';
 import { LeftRailPointerInput } from '../src/ui/left-rail-pointer-input.ts';
 import { MainPanePointerInput } from '../src/ui/main-pane-pointer-input.ts';
 import { PointerRoutingInput } from '../src/ui/pointer-routing-input.ts';
+import { ConversationSelectionInput } from '../src/ui/conversation-selection-input.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3890,6 +3886,19 @@ async function main(): Promise<number> {
     },
     markDirty,
   });
+  const conversationSelectionInput = new ConversationSelectionInput({
+    getSelection: () => selection,
+    setSelection: (next) => {
+      selection = next;
+    },
+    getSelectionDrag: () => selectionDrag,
+    setSelectionDrag: (next) => {
+      selectionDrag = next;
+    },
+    pinViewportForSelection,
+    releaseViewportPinForSelection,
+    markDirty,
+  });
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
@@ -4003,12 +4012,7 @@ async function main(): Promise<number> {
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
     for (const token of parsed.tokens) {
       if (token.kind !== 'mouse') {
-        if (selection !== null && token.text.length > 0) {
-          selection = null;
-          selectionDrag = null;
-          releaseViewportPinForSelection();
-          markDirty();
-        }
+        conversationSelectionInput.clearSelectionOnTextToken(token.text.length);
         routedTokens.push(token);
         continue;
       }
@@ -4119,32 +4123,14 @@ async function main(): Promise<number> {
         routedTokens.push(token);
         continue;
       }
-      const selectionFrame = snapshotForInput;
-      const selectionReduced = reduceConversationMouseSelection({
-        selection,
-        selectionDrag,
-        point: pointFromMouseEvent(layout, selectionFrame, token.event),
-        isMainPaneTarget,
-        isLeftButtonPress:
-          isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code),
-        isSelectionDrag:
-          isSelectionDrag(token.event.code, token.event.final) && !hasAltModifier(token.event.code),
-        isMouseRelease: isMouseRelease(token.event.final),
-        isWheelMouseCode: isWheelMouseCode(token.event.code),
-        selectionTextForPane: (nextSelection) => selectionText(selectionFrame, nextSelection),
-      });
-      selection = selectionReduced.selection;
-      selectionDrag = selectionReduced.selectionDrag;
-      if (selectionReduced.pinViewport) {
-        pinViewportForSelection();
-      }
-      if (selectionReduced.releaseViewportPin) {
-        releaseViewportPinForSelection();
-      }
-      if (selectionReduced.markDirty) {
-        markDirty();
-      }
-      if (selectionReduced.consumed) {
+      if (
+        conversationSelectionInput.handleMouseSelection({
+          layout,
+          frame: snapshotForInput,
+          isMainPaneTarget,
+          event: token.event,
+        })
+      ) {
         continue;
       }
 

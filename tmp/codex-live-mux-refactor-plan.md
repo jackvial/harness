@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4161 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4147 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -834,3 +834,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4161 non-empty LOC
+
+### Checkpoint AN (2026-02-18): Phase 8 continues with class-based conversation selection routing
+
+- Added `src/ui/conversation-selection-input.ts` with a class-based `ConversationSelectionInput` that owns:
+  - selection clear on text-input transitions
+  - conversation mouse-selection reduce routing (start/drag/release/clear)
+  - viewport pin/release + dirty signaling from reducer outcomes
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate inline selection clear/reduce logic in the `onInput` mouse loop to `ConversationSelectionInput`.
+- Added `test/ui-conversation-selection-input.test.ts` for injected reducer wiring coverage and default dependency no-op behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4147 non-empty LOC
