@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4002 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3995 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -889,3 +889,17 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4002 non-empty LOC
+
+### Checkpoint AR (2026-02-18): Phase 8 continues with class-based input preflight gating
+
+- Added `src/ui/input-preflight.ts` with a class-based `InputPreflight` that owns:
+  - early `onInput` gating for shutdown + modal short-circuit
+  - escape-input short-circuit dispatch
+  - focus-event extraction/notification gating
+  - repository fold / global shortcut / task shortcut / copy shortcut pre-routing gates
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate the `onInput` preflight branch tree to `InputPreflight`, leaving runtime with a thin sanitized-input handoff into `ConversationInputForwarder`.
+- Added `test/ui-input-preflight.test.ts` for shutdown, modal, escape, shortcut-gate ordering, custom extraction, and default focus-marker extraction coverage.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3995 non-empty LOC

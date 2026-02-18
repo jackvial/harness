@@ -109,7 +109,6 @@ import {
   type ConversationState,
 } from '../src/mux/live-mux/conversation-state.ts';
 import {
-  extractFocusEvents,
   formatErrorMessage,
   parseBooleanEnv,
   parsePositiveInt,
@@ -200,6 +199,7 @@ import { ConversationSelectionInput } from '../src/ui/conversation-selection-inp
 import { GlobalShortcutInput } from '../src/ui/global-shortcut-input.ts';
 import { InputTokenRouter } from '../src/ui/input-token-router.ts';
 import { ConversationInputForwarder } from '../src/ui/conversation-input-forwarder.ts';
+import { InputPreflight } from '../src/ui/input-preflight.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3947,16 +3947,10 @@ async function main(): Promise<number> {
     },
     noteGitActivity,
   });
-
-  const onInput = (chunk: Buffer): void => {
-    if (shuttingDown) {
-      return;
-    }
-    if (inputRouter.routeModalInput(chunk)) {
-      return;
-    }
-
-    if (chunk.length === 1 && chunk[0] === 0x1b) {
+  const inputPreflight = new InputPreflight({
+    isShuttingDown: () => shuttingDown,
+    routeModalInput: (input) => inputRouter.routeModalInput(input),
+    handleEscapeInput: (input) => {
       if (selection !== null || selectionDrag !== null) {
         selection = null;
         selectionDrag = null;
@@ -3966,56 +3960,49 @@ async function main(): Promise<number> {
       if (workspace.mainPaneMode === 'conversation') {
         const escapeTarget = conversationManager.getActiveConversation();
         if (escapeTarget !== null) {
-          streamClient.sendInput(escapeTarget.sessionId, chunk);
+          streamClient.sendInput(escapeTarget.sessionId, input);
         }
       }
-      return;
-    }
-
-    const focusExtraction = extractFocusEvents(chunk);
-    if (focusExtraction.focusInCount > 0) {
+    },
+    onFocusIn: () => {
       inputModeManager.enable();
       markDirty();
-    }
-    if (focusExtraction.focusOutCount > 0) {
+    },
+    onFocusOut: () => {
       markDirty();
-    }
-
-    if (focusExtraction.sanitized.length === 0) {
-      return;
-    }
-    if (repositoryFoldInput.handleRepositoryFoldChords(focusExtraction.sanitized)) {
-      return;
-    }
-    if (repositoryFoldInput.handleRepositoryTreeArrow(focusExtraction.sanitized)) {
-      return;
-    }
-
-    if (globalShortcutInput.handleInput(focusExtraction.sanitized)) {
-      return;
-    }
-    if (handleTaskPaneShortcutInput(focusExtraction.sanitized)) {
-      return;
-    }
-
-    if (
-      workspace.mainPaneMode === 'conversation' &&
-      selection !== null &&
-      isCopyShortcutInput(focusExtraction.sanitized)
-    ) {
+    },
+    handleRepositoryFoldInput: (input) =>
+      repositoryFoldInput.handleRepositoryFoldChords(input) ||
+      repositoryFoldInput.handleRepositoryTreeArrow(input),
+    handleGlobalShortcutInput: (input) => globalShortcutInput.handleInput(input),
+    handleTaskPaneShortcutInput: (input) => handleTaskPaneShortcutInput(input),
+    handleCopyShortcutInput: (input) => {
+      if (
+        workspace.mainPaneMode !== 'conversation' ||
+        selection === null ||
+        !isCopyShortcutInput(input)
+      ) {
+        return false;
+      }
       const active = conversationManager.getActiveConversation();
       if (active === null) {
-        return;
+        return true;
       }
       const selectedFrame = active.oracle.snapshotWithoutHash();
       const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
       if (copied) {
         markDirty();
       }
+      return true;
+    },
+  });
+
+  const onInput = (chunk: Buffer): void => {
+    const sanitized = inputPreflight.nextInput(chunk);
+    if (sanitized === null) {
       return;
     }
-
-    conversationInputForwarder.handleInput(focusExtraction.sanitized);
+    conversationInputForwarder.handleInput(sanitized);
   };
 
   const onResize = (): void => {
