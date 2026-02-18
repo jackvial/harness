@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3971 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3926 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -916,3 +916,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3971 non-empty LOC
+
+### Checkpoint AT (2026-02-18): Service extraction continues with class-based startup span lifecycle tracking
+
+- Added `src/services/startup-span-tracker.ts` with a class-based `StartupSpanTracker` that owns:
+  - startup active-session span lifecycle for start-command, first-output, first-visible-paint, and settled checkpoints
+  - target startup session tracking for first-paint/settled gate correlation
+  - idempotent per-span `end(...)` behavior so duplicate runtime paths stay safe
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate startup span lifecycle handling to `StartupSpanTracker` and remove inline startup-span locals/helper closures.
+- Added `test/services-startup-span-tracker.test.ts` covering startup span begin lifecycle, idempotent span end behavior, and target-session clear behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3926 non-empty LOC

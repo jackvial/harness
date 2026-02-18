@@ -184,6 +184,7 @@ import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { RecordingService } from '../src/services/recording.ts';
+import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { HomePane } from '../src/ui/panes/home.ts';
@@ -600,54 +601,12 @@ async function main(): Promise<number> {
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
-  let startupFirstPaintTargetSessionId: string | null = null;
-  let startupActiveStartCommandSpan: ReturnType<typeof startPerfSpan> | null = null;
-  let startupActiveFirstOutputSpan: ReturnType<typeof startPerfSpan> | null = null;
-  let startupActiveFirstPaintSpan: ReturnType<typeof startPerfSpan> | null = null;
-  let startupActiveSettledSpan: ReturnType<typeof startPerfSpan> | null = null;
   const startupSequencer = new StartupSequencer({
     quietMs: startupSettleQuietMs,
     nonemptyFallbackMs: DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS,
   });
+  const startupSpanTracker = new StartupSpanTracker(startPerfSpan, startupSettleQuietMs);
   const startupSessionFirstOutputObserved = new Set<string>();
-
-  const endStartupActiveStartCommandSpan = (
-    attrs: Record<string, boolean | number | string>,
-  ): void => {
-    if (startupActiveStartCommandSpan === null) {
-      return;
-    }
-    startupActiveStartCommandSpan.end(attrs);
-    startupActiveStartCommandSpan = null;
-  };
-
-  const endStartupActiveFirstOutputSpan = (
-    attrs: Record<string, boolean | number | string>,
-  ): void => {
-    if (startupActiveFirstOutputSpan === null) {
-      return;
-    }
-    startupActiveFirstOutputSpan.end(attrs);
-    startupActiveFirstOutputSpan = null;
-  };
-
-  const endStartupActiveFirstPaintSpan = (
-    attrs: Record<string, boolean | number | string>,
-  ): void => {
-    if (startupActiveFirstPaintSpan === null) {
-      return;
-    }
-    startupActiveFirstPaintSpan.end(attrs);
-    startupActiveFirstPaintSpan = null;
-  };
-
-  const endStartupActiveSettledSpan = (attrs: Record<string, boolean | number | string>): void => {
-    if (startupActiveSettledSpan === null) {
-      return;
-    }
-    startupActiveSettledSpan.end(attrs);
-    startupActiveSettledSpan = null;
-  };
 
   const clearStartupSettledTimer = (): void => {
     startupSequencer.clearSettledTimer();
@@ -693,7 +652,7 @@ async function main(): Promise<number> {
 
   const scheduleStartupSettledProbe = (sessionId: string): void => {
     startupSequencer.scheduleSettledProbe(sessionId, (event) => {
-      if (startupFirstPaintTargetSessionId !== event.sessionId) {
+      if (startupSpanTracker.firstPaintTargetSessionId !== event.sessionId) {
         return;
       }
       const conversation = conversationManager.get(event.sessionId);
@@ -704,7 +663,7 @@ async function main(): Promise<number> {
         quietMs: event.quietMs,
         glyphCells,
       });
-      endStartupActiveSettledSpan({
+      startupSpanTracker.endSettledSpan({
         observed: true,
         gate: event.gate,
         quietMs: event.quietMs,
@@ -923,8 +882,8 @@ async function main(): Promise<number> {
       );
 
       if (existing?.live === true) {
-        if (startupFirstPaintTargetSessionId === sessionId) {
-          endStartupActiveStartCommandSpan({
+        if (startupSpanTracker.firstPaintTargetSessionId === sessionId) {
+          startupSpanTracker.endStartCommandSpan({
             alreadyLive: true,
           });
         }
@@ -958,8 +917,8 @@ async function main(): Promise<number> {
         rows: layout.paneRows,
       });
       streamClient.sendResize(sessionId, layout.rightCols, layout.paneRows);
-      if (startupFirstPaintTargetSessionId === sessionId) {
-        endStartupActiveStartCommandSpan({
+      if (startupSpanTracker.firstPaintTargetSessionId === sessionId) {
+        startupSpanTracker.endStartCommandSpan({
           alreadyLive: false,
           argCount: launchArgs.length,
           resumed: launchArgs[0] === 'resume',
@@ -3224,19 +3183,24 @@ async function main(): Promise<number> {
       if (
         active !== null &&
         rightFrame !== null &&
-        startupFirstPaintTargetSessionId !== null &&
-        conversationManager.activeConversationId === startupFirstPaintTargetSessionId &&
+        startupSpanTracker.firstPaintTargetSessionId !== null &&
+        conversationManager.activeConversationId === startupSpanTracker.firstPaintTargetSessionId &&
         startupSequencer.snapshot().firstOutputObserved &&
         !startupSequencer.snapshot().firstPaintObserved
       ) {
         const glyphCells = visibleGlyphCellCount(active);
-        if (startupSequencer.markFirstPaintVisible(startupFirstPaintTargetSessionId, glyphCells)) {
+        if (
+          startupSequencer.markFirstPaintVisible(
+            startupSpanTracker.firstPaintTargetSessionId,
+            glyphCells,
+          )
+        ) {
           recordPerfEvent('mux.startup.active-first-visible-paint', {
-            sessionId: startupFirstPaintTargetSessionId,
+            sessionId: startupSpanTracker.firstPaintTargetSessionId,
             changedRows: changedRowCount,
             glyphCells,
           });
-          endStartupActiveFirstPaintSpan({
+          startupSpanTracker.endFirstPaintSpan({
             observed: true,
             changedRows: changedRowCount,
             glyphCells,
@@ -3246,34 +3210,34 @@ async function main(): Promise<number> {
       if (
         active !== null &&
         rightFrame !== null &&
-        startupFirstPaintTargetSessionId !== null &&
-        conversationManager.activeConversationId === startupFirstPaintTargetSessionId &&
+        startupSpanTracker.firstPaintTargetSessionId !== null &&
+        conversationManager.activeConversationId === startupSpanTracker.firstPaintTargetSessionId &&
         startupSequencer.snapshot().firstOutputObserved
       ) {
         const glyphCells = visibleGlyphCellCount(active);
         if (
           startupSequencer.markHeaderVisible(
-            startupFirstPaintTargetSessionId,
+            startupSpanTracker.firstPaintTargetSessionId,
             codexHeaderVisible(active),
           )
         ) {
           recordPerfEvent('mux.startup.active-header-visible', {
-            sessionId: startupFirstPaintTargetSessionId,
+            sessionId: startupSpanTracker.firstPaintTargetSessionId,
             glyphCells,
           });
         }
         const selectedGate = startupSequencer.maybeSelectSettleGate(
-          startupFirstPaintTargetSessionId,
+          startupSpanTracker.firstPaintTargetSessionId,
           glyphCells,
         );
         if (selectedGate !== null) {
           recordPerfEvent('mux.startup.active-settle-gate', {
-            sessionId: startupFirstPaintTargetSessionId,
+            sessionId: startupSpanTracker.firstPaintTargetSessionId,
             gate: selectedGate,
             glyphCells,
           });
         }
-        scheduleStartupSettledProbe(startupFirstPaintTargetSessionId);
+        scheduleStartupSettledProbe(startupSpanTracker.firstPaintTargetSessionId);
       }
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
         const recordingCursorStyle: ScreenCursorStyle =
@@ -3338,8 +3302,8 @@ async function main(): Promise<number> {
         });
       }
       if (
-        startupFirstPaintTargetSessionId !== null &&
-        envelope.sessionId === startupFirstPaintTargetSessionId &&
+        startupSpanTracker.firstPaintTargetSessionId !== null &&
+        envelope.sessionId === startupSpanTracker.firstPaintTargetSessionId &&
         !startupSequencer.snapshot().firstOutputObserved
       ) {
         if (startupSequencer.markFirstOutput(envelope.sessionId)) {
@@ -3347,7 +3311,7 @@ async function main(): Promise<number> {
             sessionId: envelope.sessionId,
             bytes: chunk.length,
           });
-          endStartupActiveFirstOutputSpan({
+          startupSpanTracker.endFirstOutputSpan({
             observed: true,
             bytes: chunk.length,
           });
@@ -3361,8 +3325,8 @@ async function main(): Promise<number> {
         });
       }
       if (
-        startupFirstPaintTargetSessionId !== null &&
-        envelope.sessionId === startupFirstPaintTargetSessionId
+        startupSpanTracker.firstPaintTargetSessionId !== null &&
+        envelope.sessionId === startupSpanTracker.firstPaintTargetSessionId
       ) {
         scheduleStartupSettledProbe(envelope.sessionId);
       }
@@ -3456,20 +3420,7 @@ async function main(): Promise<number> {
   conversationManager.setActiveConversationId(null);
   startupSequencer.setTargetSession(initialActiveId);
   if (initialActiveId !== null) {
-    startupFirstPaintTargetSessionId = initialActiveId;
-    startupActiveStartCommandSpan = startPerfSpan('mux.startup.active-start-command', {
-      sessionId: initialActiveId,
-    });
-    startupActiveFirstOutputSpan = startPerfSpan('mux.startup.active-first-output', {
-      sessionId: initialActiveId,
-    });
-    startupActiveFirstPaintSpan = startPerfSpan('mux.startup.active-first-visible-paint', {
-      sessionId: initialActiveId,
-    });
-    startupActiveSettledSpan = startPerfSpan('mux.startup.active-settled', {
-      sessionId: initialActiveId,
-      quietMs: startupSettleQuietMs,
-    });
+    startupSpanTracker.beginForSession(initialActiveId);
     const initialActivateSpan = startPerfSpan('mux.startup.activate-initial', {
       initialActiveId,
     });
@@ -4118,18 +4069,18 @@ async function main(): Promise<number> {
     store.close();
     restoreTerminalState(true, inputModeManager.restore);
     await recordingService.finalizeAfterShutdown(recordingCloseError);
-    endStartupActiveStartCommandSpan({
+    startupSpanTracker.endStartCommandSpan({
       observed: false,
     });
     const startupSnapshot = startupSequencer.snapshot();
-    endStartupActiveFirstOutputSpan({
+    startupSpanTracker.endFirstOutputSpan({
       observed: startupSnapshot.firstOutputObserved,
     });
-    endStartupActiveFirstPaintSpan({
+    startupSpanTracker.endFirstPaintSpan({
       observed: startupSnapshot.firstPaintObserved,
     });
     clearStartupSettledTimer();
-    endStartupActiveSettledSpan({
+    startupSpanTracker.endSettledSpan({
       observed: startupSnapshot.settledObserved,
       gate: startupSnapshot.settleGate ?? 'none',
     });
