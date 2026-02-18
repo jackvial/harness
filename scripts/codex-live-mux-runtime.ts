@@ -184,6 +184,7 @@ import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { RecordingService } from '../src/services/recording.ts';
+import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { StartupVisibility } from '../src/services/startup-visibility.ts';
@@ -1404,22 +1405,15 @@ async function main(): Promise<number> {
     muxUiStatePersistTimer.unref?.();
   };
 
-  let processUsageTimer: NodeJS.Timeout | null = null;
-  let backgroundProbesStarted = false;
-  const startBackgroundProbes = (timedOut: boolean): void => {
-    if (shuttingDown || backgroundProbesStarted || !backgroundProbesEnabled) {
-      return;
-    }
-    backgroundProbesStarted = true;
-    recordPerfEvent('mux.startup.background-probes.begin', {
-      timedOut,
-      settledObserved: startupSequencer.snapshot().settledObserved,
-    });
-    void refreshProcessUsage('startup');
-    processUsageTimer = setInterval(() => {
-      void refreshProcessUsage('interval');
-    }, 1000);
-  };
+  const startupBackgroundProbeService = new StartupBackgroundProbeService({
+    enabled: backgroundProbesEnabled,
+    maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
+    isShuttingDown: () => shuttingDown,
+    waitForSettled: () => startupSequencer.waitForSettled(),
+    settledObserved: () => startupSequencer.snapshot().settledObserved,
+    refreshProcessUsage: (reason) => void refreshProcessUsage(reason),
+    recordPerfEvent,
+  });
   if (configuredMuxGit.enabled) {
     syncGitStateWithDirectories();
     if (workspace.activeDirectoryId !== null) {
@@ -1430,31 +1424,8 @@ async function main(): Promise<number> {
       reason: 'disabled',
     });
   }
-  recordPerfEvent('mux.startup.background-probes.wait', {
-    maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
-    enabled: backgroundProbesEnabled ? 1 : 0,
-  });
-  if (!backgroundProbesEnabled) {
-    recordPerfEvent('mux.startup.background-probes.skipped', {
-      reason: 'disabled',
-    });
-  }
-  void (async () => {
-    if (!backgroundProbesEnabled) {
-      return;
-    }
-    let timedOut = false;
-    await Promise.race([
-      startupSequencer.waitForSettled(),
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          timedOut = true;
-          resolve();
-        }, DEFAULT_BACKGROUND_START_MAX_WAIT_MS);
-      }),
-    ]);
-    startBackgroundProbes(timedOut);
-  })();
+  startupBackgroundProbeService.recordWaitPhase();
+  void startupBackgroundProbeService.startWhenSettled();
 
   const PERSISTED_EVENT_FLUSH_DELAY_MS = 12;
   const PERSISTED_EVENT_FLUSH_MAX_BATCH = 64;
@@ -3960,10 +3931,7 @@ async function main(): Promise<number> {
     screen.clearDirty();
     clearInterval(outputLoadSampleTimer);
     eventLoopDelayMonitor.disable();
-    if (processUsageTimer !== null) {
-      clearInterval(processUsageTimer);
-      processUsageTimer = null;
-    }
+    startupBackgroundProbeService.stop();
     if (resizeTimer !== null) {
       clearTimeout(resizeTimer);
       resizeTimer = null;

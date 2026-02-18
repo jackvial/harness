@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3877 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3845 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -954,3 +954,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3877 non-empty LOC
+
+### Checkpoint AW (2026-02-18): Service extraction continues with class-based startup background-probe orchestration
+
+- Added `src/services/startup-background-probe.ts` with a class-based `StartupBackgroundProbeService` that owns:
+  - startup background-probe wait/skip event emission
+  - settled-or-timeout gating before starting background probe loops
+  - idempotent startup probe-loop start semantics and interval lifecycle stop behavior
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate startup background-probe wait/start/stop behavior to `StartupBackgroundProbeService`, removing inline settled-wait Promise race and interval lifecycle locals.
+- Added `test/services-startup-background-probe.test.ts` covering disabled wait/skip flow, settled-start idempotency, timeout-driven start, and shutdown gating behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3845 non-empty LOC
