@@ -2085,7 +2085,9 @@ void test('workspace rail conversation projection falls back to status label whe
   assert.equal(projected.detailText, 'inactive');
 });
 
-void test('workspace rail model suppresses status icon and detail rows for terminal and critique conversations', () => {
+void test(
+  'workspace rail model renders fixed terminal and critique glyphs while suppressing status detail rows',
+  () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -2156,10 +2158,10 @@ void test('workspace rail model suppresses status icon and detail rows for termi
   );
   assert.notEqual(terminalTitle, undefined);
   assert.notEqual(critiqueTitle, undefined);
-  assert.equal(terminalTitle?.text.includes('terminal - shell'), true);
-  assert.equal(critiqueTitle?.text.includes('critique - review'), true);
-  assert.equal(terminalTitle?.text.includes('◆'), false);
-  assert.equal(critiqueTitle?.text.includes('◆'), false);
+  assert.equal(terminalTitle?.text.includes('⌨ terminal - shell'), true);
+  assert.equal(critiqueTitle?.text.includes('✎ critique - review'), true);
+  assert.equal(terminalTitle?.text.includes('◆ terminal - shell'), false);
+  assert.equal(critiqueTitle?.text.includes('◆ critique - review'), false);
 
   assert.equal(
     rows.some(
@@ -2173,7 +2175,8 @@ void test('workspace rail model suppresses status icon and detail rows for termi
     ),
     false,
   );
-});
+},
+);
 
 void test('workspace rail projection maps runtime status when status model is null', () => {
   const baseConversation: StrictWorkspaceConversation = {
@@ -2225,4 +2228,54 @@ void test('workspace rail projection maps runtime status when status model is nu
     }).statusVisible,
     false,
   );
+});
+
+void test('workspace rail model omits title glyph when non-terminal conversation has null status model', () => {
+  const rows = buildWorkspaceRailViewRowsRaw(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-null-status-model',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0,
+          memoryMb: 0,
+          status: 'running',
+          statusModel: null,
+          lastKnownWork: null,
+          lastKnownWorkAt: null,
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: null,
+          controller: null,
+        },
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-null-status-model',
+    },
+    20,
+  );
+  const titleRow = rows.find(
+    (row) =>
+      row.kind === 'conversation-title' &&
+      row.conversationSessionId === 'conversation-null-status-model',
+  );
+  assert.notEqual(titleRow, undefined);
+  assert.equal(titleRow?.text.includes('codex - task'), true);
+  assert.equal(/[▲◔◆○■⌨✎]/u.test(titleRow?.text ?? ''), false);
 });

@@ -127,6 +127,17 @@ interface WorkspaceRailConversationProjection {
   readonly statusVisible: boolean;
 }
 
+function fixedThreadGlyphForAgent(agentLabel: string): string {
+  const normalized = agentLabel.trim().toLowerCase();
+  if (normalized === 'terminal') {
+    return '⌨';
+  }
+  if (normalized === 'critique') {
+    return '✎';
+  }
+  return '';
+}
+
 function processStatusText(status: WorkspaceRailProcessSummary['status']): string {
   return status === 'running' ? 'running' : 'exited';
 }
@@ -208,9 +219,10 @@ export function projectWorkspaceRailConversation(
   const statusModel = conversation.statusModel;
   const normalizedStatus = statusModel?.phase ?? statusFromRuntimeStatus(conversation.status);
   const statusVisible = statusModel !== null && statusVisibleForAgent(conversation.agentLabel);
+  const fixedGlyph = fixedThreadGlyphForAgent(conversation.agentLabel);
   return {
     status: normalizedStatus,
-    glyph: statusVisible ? (statusModel?.glyph ?? '') : '',
+    glyph: statusVisible ? (statusModel?.glyph ?? fixedGlyph) : fixedGlyph,
     detailText: statusVisible ? conversationDetailText(conversation, normalizedStatus) : '',
     statusVisible,
   };
@@ -427,7 +439,8 @@ function buildContentRows(
         const projection = projectWorkspaceRailConversation(conversation, {
           nowMs,
         });
-        const titleText = projection.statusVisible
+        const hasTitleGlyph = projection.glyph.trim().length > 0;
+        const titleText = hasTitleGlyph
           ? `${projectChildPrefix}${conversationIsLast ? '└' : '├'}─ ${projection.glyph} ${conversationDisplayTitle(
               conversation,
             )}`
