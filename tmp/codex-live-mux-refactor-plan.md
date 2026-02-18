@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4107 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4161 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -819,3 +819,18 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4107 non-empty LOC
+
+### Checkpoint AM (2026-02-18): Phase 8 continues with class-based pointer routing helpers
+
+- Added `src/ui/pointer-routing-input.ts` with a class-based `PointerRoutingInput` that owns wrapper routing for:
+  - pane-divider drag release/move handling
+  - home-pane drag-release reorder dispatch
+  - separator press drag-start handling
+  - main-pane wheel routing delegation
+  - home-pane drag-move updates
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate these pointer-routing helper invocations to `PointerRoutingInput`, reducing inline callback option assembly in the `onInput` mouse loop.
+- Added `test/ui-pointer-routing-input.test.ts` for injected handler wiring coverage and default dependency ineligible-event behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4161 non-empty LOC

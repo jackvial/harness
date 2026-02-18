@@ -145,6 +145,7 @@ Control-plane boundaries:
 - Left-nav target activation and cycle routing is moving behind a class-based `LeftNavInput` (`src/ui/left-nav-input.ts`) so runtime delegates visible-target/activation/cycle behavior instead of maintaining inline left-nav reducer logic.
 - Left-rail pointer action/conversation routing is moving behind a class-based `LeftRailPointerInput` (`src/ui/left-rail-pointer-input.ts`) so runtime delegates left-rail click orchestration instead of embedding action/conversation callback trees inline.
 - Main-pane pointer click routing is moving behind a class-based `MainPanePointerInput` (`src/ui/main-pane-pointer-input.ts`) so runtime delegates project/home click eligibility and dispatch instead of keeping inline right-pane click orchestration branches.
+- Pointer helper routing for divider/home-drag/wheel paths is moving behind a class-based `PointerRoutingInput` (`src/ui/pointer-routing-input.ts`) so runtime delegates pointer-reducer wiring instead of assembling per-branch callback option objects inline.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

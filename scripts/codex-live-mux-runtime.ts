@@ -165,13 +165,6 @@ import {
 } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
 import { routeInputTokensForConversation as routeInputTokensForConversationFn } from '../src/mux/live-mux/input-forwarding.ts';
-import {
-  handleHomePaneDragMove as handleHomePaneDragMoveFn,
-  handleMainPaneWheelInput as handleMainPaneWheelInputFn,
-  handlePaneDividerDragInput as handlePaneDividerDragInputFn,
-  handleSeparatorPointerPress as handleSeparatorPointerPressFn,
-} from '../src/mux/live-mux/pointer-routing.ts';
-import { handleHomePaneDragRelease as handleHomePaneDragReleaseFn } from '../src/mux/live-mux/home-pane-drop.ts';
 import { runTaskPaneAction as runTaskPaneActionFn } from '../src/mux/live-mux/actions-task.ts';
 import {
   archiveRepositoryById as archiveRepositoryByIdFn,
@@ -216,6 +209,7 @@ import { RepositoryFoldInput } from '../src/ui/repository-fold-input.ts';
 import { LeftNavInput } from '../src/ui/left-nav-input.ts';
 import { LeftRailPointerInput } from '../src/ui/left-rail-pointer-input.ts';
 import { MainPanePointerInput } from '../src/ui/main-pane-pointer-input.ts';
+import { PointerRoutingInput } from '../src/ui/pointer-routing-input.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3872,6 +3866,30 @@ async function main(): Promise<number> {
     openRepositoryPromptForEdit,
     markDirty,
   });
+  const pointerRoutingInput = new PointerRoutingInput({
+    getPaneDividerDragActive: () => paneDividerDragActive,
+    setPaneDividerDragActive: (active) => {
+      paneDividerDragActive = active;
+    },
+    applyPaneDividerAtCol,
+    getHomePaneDragState: () => workspace.homePaneDragState,
+    setHomePaneDragState: (next) => {
+      workspace.homePaneDragState = next;
+    },
+    getMainPaneMode: () => workspace.mainPaneMode,
+    taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, index),
+    repositoryIdAtRow: (index) =>
+      taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, index),
+    reorderTaskByDrop,
+    reorderRepositoryByDrop,
+    onProjectWheel: (delta) => {
+      workspace.projectPaneScrollTop = Math.max(0, workspace.projectPaneScrollTop + delta);
+    },
+    onHomeWheel: (delta) => {
+      workspace.taskPaneScrollTop = Math.max(0, workspace.taskPaneScrollTop + delta);
+    },
+    markDirty,
+  });
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
@@ -3996,83 +4014,59 @@ async function main(): Promise<number> {
       }
 
       if (
-        handlePaneDividerDragInputFn({
-          paneDividerDragActive,
-          isMouseRelease: isMouseRelease(token.event.final),
-          isWheelMouseCode: isWheelMouseCode(token.event.code),
-          mouseCol: token.event.col,
-          setPaneDividerDragActive: (active) => { paneDividerDragActive = active; },
-          applyPaneDividerAtCol,
-          markDirty,
+        pointerRoutingInput.handlePaneDividerDrag({
+          code: token.event.code,
+          final: token.event.final,
+          col: token.event.col,
         })
       ) {
         continue;
       }
 
       const target = classifyPaneAt(layout, token.event.col, token.event.row);
+      const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
       if (
-        handleHomePaneDragReleaseFn({
-          homePaneDragState: workspace.homePaneDragState,
-          isMouseRelease: isMouseRelease(token.event.final),
-          mainPaneMode: workspace.mainPaneMode,
+        pointerRoutingInput.handleHomePaneDragRelease({
+          final: token.event.final,
           target,
-          rowIndex: Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1)),
-          taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, index),
-          repositoryIdAtRow: (index) => taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, index),
-          reorderTaskByDrop,
-          reorderRepositoryByDrop,
-          setHomePaneDragState: (next) => { workspace.homePaneDragState = next; },
-          markDirty,
+          rowIndex,
         })
       ) {
         continue;
       }
       if (
-        handleSeparatorPointerPressFn({
+        pointerRoutingInput.handleSeparatorPointerPress({
           target,
-          isLeftButtonPress: isLeftButtonPress(token.event.code, token.event.final),
-          hasAltModifier: hasAltModifier(token.event.code),
-          mouseCol: token.event.col,
-          setPaneDividerDragActive: (active) => { paneDividerDragActive = active; },
-          applyPaneDividerAtCol,
+          code: token.event.code,
+          final: token.event.final,
+          col: token.event.col,
         })
       ) {
         continue;
       }
       const isMainPaneTarget = target === 'right';
-      const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
       if (
-        handleMainPaneWheelInputFn({
-          target,
-          wheelDelta,
-          mainPaneMode: workspace.mainPaneMode,
-          onProjectWheel: (delta) => {
-            workspace.projectPaneScrollTop = Math.max(0, workspace.projectPaneScrollTop + delta);
+        pointerRoutingInput.handleMainPaneWheel(
+          {
+            target,
+            code: token.event.code,
           },
-          onHomeWheel: (delta) => {
-            workspace.taskPaneScrollTop = Math.max(0, workspace.taskPaneScrollTop + delta);
-          },
-          onConversationWheel: (delta) => {
+          (delta) => {
             if (inputConversation !== null) {
               inputConversation.oracle.scrollViewport(delta);
               snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
             }
           },
-          markDirty,
-        })
+        )
       ) {
         continue;
       }
       if (
-        handleHomePaneDragMoveFn({
-          homePaneDragState: workspace.homePaneDragState,
-          mainPaneMode: workspace.mainPaneMode,
+        pointerRoutingInput.handleHomePaneDragMove({
           target,
-          isSelectionDrag: isSelectionDrag(token.event.code, token.event.final),
-          hasAltModifier: hasAltModifier(token.event.code),
-          rowIndex: Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1)),
-          setHomePaneDragState: (next) => { workspace.homePaneDragState = next; },
-          markDirty,
+          code: token.event.code,
+          final: token.event.final,
+          rowIndex,
         })
       ) {
         continue;
