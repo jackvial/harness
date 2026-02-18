@@ -37,8 +37,7 @@ interface StartupStateHydrationServiceOptions<
   readonly ensureActiveConversationId: () => void;
   readonly activeConversationId: () => string | null;
   readonly selectLeftNavConversation: (sessionId: string) => void;
-  readonly resolveActiveDirectoryId: () => string | null;
-  readonly enterProjectPaneForDirectory: (directoryId: string) => void;
+  readonly enterHomePane: () => void;
 }
 
 export class StartupStateHydrationService<
@@ -93,9 +92,6 @@ export class StartupStateHydrationService<
       this.options.selectLeftNavConversation(activeConversationId);
       return;
     }
-    const activeDirectoryId = this.options.resolveActiveDirectoryId();
-    if (activeDirectoryId !== null) {
-      this.options.enterProjectPaneForDirectory(activeDirectoryId);
-    }
+    this.options.enterHomePane();
   }
 }

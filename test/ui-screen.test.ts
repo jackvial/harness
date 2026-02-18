@@ -179,3 +179,17 @@ void test('screen default io dependency fallbacks are exercised', () => {
   assert.equal(stdoutWrites.length > 0, true);
   assert.equal(stderrWrites.length > 0, true);
 });
+
+void test('screen wraps frame writes in synchronized terminal update mode', () => {
+  const outputs: string[] = [];
+  const screen = new Screen({
+    writeOutput: (value) => {
+      outputs.push(value);
+    },
+  });
+
+  screen.flush(createInput());
+  const first = outputs[0] ?? '';
+  assert.equal(first.startsWith('\u001b[?2026h'), true);
+  assert.equal(first.endsWith('\u001b[?2026l'), true);
+});

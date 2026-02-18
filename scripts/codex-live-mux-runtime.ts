@@ -950,13 +950,8 @@ async function main(): Promise<number> {
     selectLeftNavConversation: (sessionId) => {
       workspace.selectLeftNavConversation(sessionId);
     },
-    resolveActiveDirectoryId,
-    enterProjectPaneForDirectory: (directoryId) => {
-      workspace.mainPaneMode = 'project';
-      workspace.selectLeftNavProject(
-        directoryId,
-        repositoryGroupIdForDirectory(directoryId),
-      );
+    enterHomePane: () => {
+      workspace.enterHomePane();
     },
   });
 

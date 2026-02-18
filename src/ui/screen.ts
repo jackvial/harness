@@ -49,6 +49,9 @@ interface ScreenDependencies {
   readonly findAnsiIssues: (rows: readonly string[]) => readonly string[];
 }
 
+const TERMINAL_SYNC_UPDATE_BEGIN = '\u001b[?2026h';
+const TERMINAL_SYNC_UPDATE_END = '\u001b[?2026l';
+
 function mergeUniqueRows(left: readonly number[], right: readonly number[]): readonly number[] {
   if (left.length === 0) {
     return right;
@@ -191,7 +194,7 @@ export class Screen {
     }
 
     if (output.length > 0) {
-      this.deps.writeOutput(output);
+      this.deps.writeOutput(`${TERMINAL_SYNC_UPDATE_BEGIN}${output}${TERMINAL_SYNC_UPDATE_END}`);
     }
 
     this.previousRows = diff.nextRows;

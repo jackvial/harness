@@ -43,7 +43,10 @@ void test('conversation pane renders rows from terminal snapshot frame', () => {
 });
 
 void test('home pane renders task-focused view from repositories and tasks', () => {
-  const pane = new HomePane(undefined, undefined, () => 0);
+  const pane = new HomePane(undefined, undefined, () => 0, {
+    showTaskPlanningUi: true,
+    animateBackground: false,
+  });
   const view = pane.render({
     layout: {
       rightCols: 40,
@@ -105,8 +108,57 @@ void test('home pane renders startup overlay when repositories and tasks are emp
     scrollTop: 0,
   });
   const stripped = view.rows.map((row) => stripAnsi(row));
-  assert.equal(stripped.some((row) => row.includes('GSV Just Read The Instructions')), true);
+  assert.equal(stripped.some((row) => row.includes('GSV Sleeper Service')), true);
   assert.equal(stripped.some((row) => row.includes('- harness v0.1.0 -')), true);
+});
+
+void test('home pane can hide task/repository ui while keeping centered home text', () => {
+  const pane = new HomePane(undefined, undefined, () => 0, {
+    showTaskPlanningUi: false,
+    animateBackground: false,
+  });
+  const view = pane.render({
+    layout: {
+      rightCols: 56,
+      paneRows: 10,
+    },
+    repositories: new Map([
+      [
+        'repo-1',
+        {
+          repositoryId: 'repo-1',
+          name: 'Harness',
+          archivedAt: null,
+        },
+      ],
+    ]),
+    tasks: new Map([
+      [
+        'task-1',
+        {
+          taskId: 'task-1',
+          repositoryId: 'repo-1',
+          title: 'Wire pane',
+          description: 'keep behavior',
+          status: 'ready',
+          orderIndex: 0,
+          createdAt: '2026-02-18T00:00:00.000Z',
+        },
+      ],
+    ]),
+    selectedRepositoryId: 'repo-1',
+    repositoryDropdownOpen: true,
+    editorTarget: { kind: 'task', taskId: 'task-1' },
+    draftBuffer: createTaskComposerBuffer('draft'),
+    taskBufferById: new Map(),
+    notice: 'notice',
+    scrollTop: 3,
+  });
+  const strippedRows = view.rows.map((row) => stripAnsi(row));
+  assert.equal(view.selectedRepositoryId, null);
+  assert.equal(view.actions.some((action) => action !== null), false);
+  assert.equal(strippedRows.some((row) => row.includes('GSV Sleeper Service')), true);
+  assert.equal(strippedRows.some((row) => row.includes('Wire pane')), false);
 });
 
 void test('project pane renders blank fallback and snapshot rows', () => {

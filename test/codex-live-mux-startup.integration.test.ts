@@ -629,7 +629,7 @@ void test(
 );
 
 void test(
-  'codex-live-mux shows home and project controls on the rail',
+  'codex-live-mux shows home-first controls on startup',
   async () => {
     const workspace = createWorkspace();
 
@@ -640,7 +640,8 @@ void test(
       assert.equal(output.includes('repositories [-]'), false);
       assert.equal(output.includes('[ > add repository ]'), false);
       assert.equal(output.includes('[ > add project ]'), true);
-      assert.equal(output.includes('[ + new thread ]'), true);
+      assert.equal(output.includes('[ + new thread ]'), false);
+      assert.equal(output.includes('GSV Sleeper Service'), true);
       assert.equal(output.includes('○ codex'), false);
     } finally {
       rmSync(workspace, { recursive: true, force: true });

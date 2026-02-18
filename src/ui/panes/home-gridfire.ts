@@ -196,11 +196,11 @@ function paintOverlayTextRow(
       break;
     }
     if (glyph !== ' ') {
-      const shimmer = clamp01(0.78 + Math.sin(phase * 0.6 + row * 0.17 + col * 0.08) * 0.12);
+      const shimmer = clamp01(0.56 + Math.sin(phase * 0.4 + row * 0.12 + col * 0.05) * 0.06);
       const fg: RgbTriplet = [
-        Math.round(lerp(160, 245, shimmer)),
-        Math.round(lerp(175, 248, shimmer)),
-        Math.round(lerp(215, 255, shimmer)),
+        Math.round(lerp(120, 160, shimmer)),
+        Math.round(lerp(145, 185, shimmer)),
+        Math.round(lerp(180, 220, shimmer)),
       ];
       const offset = row * surface.cols + col;
       const background = surface.cells[offset]!.style.bg as Extract<UiStyle['bg'], { kind: 'rgb' }>;
@@ -231,17 +231,15 @@ function paintCenteredLabel(
     if (glyphWidth === 0) {
       continue;
     }
-    const shimmer = clamp01(0.78 + Math.sin(phase * 0.6 + index * 0.25) * 0.12);
+    const shimmer = clamp01(0.58 + Math.sin(phase * 0.35 + index * 0.18) * 0.05);
     const fg: RgbTriplet = [
-      Math.round(lerp(160, 245, shimmer)),
-      Math.round(lerp(175, 248, shimmer)),
-      Math.round(lerp(215, 255, shimmer)),
+      Math.round(lerp(125, 165, shimmer)),
+      Math.round(lerp(150, 190, shimmer)),
+      Math.round(lerp(190, 228, shimmer)),
     ];
-    const bg: RgbTriplet = [
-      Math.round(lerp(8, 14, shimmer)),
-      Math.round(lerp(6, 11, shimmer)),
-      Math.round(lerp(18, 28, shimmer)),
-    ];
+    const offset = row * surface.cols + col;
+    const background = surface.cells[offset]!.style.bg as Extract<UiStyle['bg'], { kind: 'rgb' }>;
+    const bg: RgbTriplet = [background.r, background.g, background.b];
     writeGlyph(surface, row, col, glyph, glyphWidth, styleFromColors(fg, bg));
     col += glyphWidth;
     index += 1;

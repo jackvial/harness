@@ -57,7 +57,7 @@ void test('home gridfire paints centered startup labels and clamps subtitle row 
     rows: 1,
     contentRows: [],
     timeMs: 0,
-    overlayTitle: 'GSV Just Read The Instructions',
+    overlayTitle: 'GSV Sleeper Service',
     overlaySubtitle: '- harness v0.1.0 -',
   });
   const stripped = stripAnsi(rows[0] ?? '');

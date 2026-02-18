@@ -26,37 +26,68 @@ interface HomePaneRenderInput {
   readonly scrollTop: number;
 }
 
+interface HomePaneOptions {
+  readonly showTaskPlanningUi?: boolean;
+  readonly animateBackground?: boolean;
+}
+
 export class HomePane {
+  private readonly showTaskPlanningUi: boolean;
+  private readonly animateBackground: boolean;
+  private readonly staticBackgroundTimeMs: number;
+
   constructor(
     private readonly renderTaskFocusedPaneView: typeof buildTaskFocusedPaneView = buildTaskFocusedPaneView,
     private readonly renderBackgroundRows: typeof renderHomeGridfireAnsiRows = renderHomeGridfireAnsiRows,
     private readonly nowMs: () => number = Date.now,
-  ) {}
+    options: HomePaneOptions = {},
+  ) {
+    this.showTaskPlanningUi = options.showTaskPlanningUi ?? false;
+    this.animateBackground = options.animateBackground ?? false;
+    this.staticBackgroundTimeMs = this.nowMs();
+  }
+
+  private hiddenTaskPlanningView(layout: HomePaneLayout): TaskFocusedPaneView {
+    const safeCols = Math.max(1, layout.rightCols);
+    const safeRows = Math.max(1, layout.paneRows);
+    const blankRow = ' '.repeat(safeCols);
+    const rows = Array.from({ length: safeRows }, () => blankRow);
+    return {
+      rows,
+      taskIds: Array.from({ length: safeRows }, () => null),
+      repositoryIds: Array.from({ length: safeRows }, () => null),
+      actions: Array.from({ length: safeRows }, () => null),
+      actionCells: Array.from({ length: safeRows }, () => null),
+      top: 0,
+      selectedRepositoryId: null,
+    };
+  }
 
   render(input: HomePaneRenderInput): TaskFocusedPaneView {
-    const view = this.renderTaskFocusedPaneView({
-      repositories: input.repositories,
-      tasks: input.tasks,
-      selectedRepositoryId: input.selectedRepositoryId,
-      repositoryDropdownOpen: input.repositoryDropdownOpen,
-      editorTarget: input.editorTarget,
-      draftBuffer: input.draftBuffer,
-      taskBufferById: input.taskBufferById,
-      notice: input.notice,
-      cols: input.layout.rightCols,
-      rows: input.layout.paneRows,
-      scrollTop: input.scrollTop,
-    });
-    const startupOverlayEnabled = input.repositories.size === 0 && input.tasks.size === 0;
+    const view = this.showTaskPlanningUi
+      ? this.renderTaskFocusedPaneView({
+          repositories: input.repositories,
+          tasks: input.tasks,
+          selectedRepositoryId: input.selectedRepositoryId,
+          repositoryDropdownOpen: input.repositoryDropdownOpen,
+          editorTarget: input.editorTarget,
+          draftBuffer: input.draftBuffer,
+          taskBufferById: input.taskBufferById,
+          notice: input.notice,
+          cols: input.layout.rightCols,
+          rows: input.layout.paneRows,
+          scrollTop: input.scrollTop,
+        })
+      : this.hiddenTaskPlanningView(input.layout);
     return {
       ...view,
       rows: this.renderBackgroundRows({
         cols: input.layout.rightCols,
         rows: input.layout.paneRows,
         contentRows: view.rows,
-        timeMs: this.nowMs(),
-        overlayTitle: startupOverlayEnabled ? 'GSV Just Read The Instructions' : null,
-        overlaySubtitle: startupOverlayEnabled ? '- harness v0.1.0 -' : null,
+        timeMs: this.animateBackground ? this.nowMs() : this.staticBackgroundTimeMs,
+        overlayTitle: 'GSV Sleeper Service',
+        overlaySubtitle: '- harness v0.1.0 -',
       }),
     };
   }

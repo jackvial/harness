@@ -91,9 +91,8 @@ void test('startup state hydration service hydrates startup state and prefers ac
     selectLeftNavConversation: (sessionId) => {
       calls.push(`selectLeftNavConversation:${sessionId}`);
     },
-    resolveActiveDirectoryId: () => 'dir-fallback',
-    enterProjectPaneForDirectory: (directoryId) => {
-      calls.push(`enterProjectPane:${directoryId}`);
+    enterHomePane: () => {
+      calls.push('enterHomePane');
     },
   });
 
@@ -127,7 +126,7 @@ void test('startup state hydration service hydrates startup state and prefers ac
   ]);
 });
 
-void test('startup state hydration service falls back to project pane when no active conversation exists', async () => {
+void test('startup state hydration service falls back to home pane when no active conversation exists', async () => {
   const calls: string[] = [];
   let activeConversationId: string | null = null;
   const service = new StartupStateHydrationService<
@@ -165,9 +164,8 @@ void test('startup state hydration service falls back to project pane when no ac
     selectLeftNavConversation: () => {
       calls.push('selectLeftNavConversation');
     },
-    resolveActiveDirectoryId: () => 'dir-project',
-    enterProjectPaneForDirectory: (directoryId) => {
-      calls.push(`enterProjectPane:${directoryId}`);
+    enterHomePane: () => {
+      calls.push('enterHomePane');
     },
   });
 
@@ -178,11 +176,11 @@ void test('startup state hydration service falls back to project pane when no ac
     'hydrateTaskPlanningState',
     'subscribeTaskPlanningEvents',
     'ensureActiveConversationId',
-    'enterProjectPane:dir-project',
+    'enterHomePane',
   ]);
 });
 
-void test('startup state hydration service supports no active conversation and no active directory', async () => {
+void test('startup state hydration service supports no active conversation and enters home pane', async () => {
   const calls: string[] = [];
   const service = new StartupStateHydrationService<
     RepositoryRecord,
@@ -209,13 +207,12 @@ void test('startup state hydration service supports no active conversation and n
     selectLeftNavConversation: () => {
       calls.push('selectLeftNavConversation');
     },
-    resolveActiveDirectoryId: () => null,
-    enterProjectPaneForDirectory: () => {
-      calls.push('enterProjectPane');
+    enterHomePane: () => {
+      calls.push('enterHomePane');
     },
   });
 
   await service.hydrateStartupState(7);
 
-  assert.deepEqual(calls, ['subscribeTaskPlanningEvents']);
+  assert.deepEqual(calls, ['subscribeTaskPlanningEvents', 'enterHomePane']);
 });
