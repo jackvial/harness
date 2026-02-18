@@ -69,10 +69,7 @@ interface BackgroundContext {
     filePath: string;
     pollMs: number;
   };
-  openHistoryFile?: (
-    path: string,
-    flags: 'r',
-  ) => Promise<HistoryFileHandle>;
+  openHistoryFile?: (path: string, flags: 'r') => Promise<HistoryFileHandle>;
   readonly sessions: Map<string, BackgroundSessionState>;
   readonly stateStore: {
     findConversationIdByCodexThreadId(threadId: string): string | null;
@@ -124,9 +121,7 @@ interface BackgroundContext {
 function jitterDelayMs(baseMs: number): number {
   const clampedBaseMs = Math.max(25, Math.floor(baseMs));
   const jitterWindowMs = Math.max(1, Math.floor(clampedBaseMs * HISTORY_POLL_JITTER_RATIO));
-  const jitterOffsetMs = Math.floor(
-    Math.random() * (2 * jitterWindowMs + 1) - jitterWindowMs,
-  );
+  const jitterOffsetMs = Math.floor(Math.random() * (2 * jitterWindowMs + 1) - jitterWindowMs);
   return Math.max(25, clampedBaseMs + jitterOffsetMs);
 }
 
@@ -149,7 +144,10 @@ function gitSummaryEqual(left: GitStatusSummary, right: GitStatusSummary): boole
   );
 }
 
-function gitRepositorySnapshotEqual(left: GitRepositorySnapshot, right: GitRepositorySnapshot): boolean {
+function gitRepositorySnapshotEqual(
+  left: GitRepositorySnapshot,
+  right: GitRepositorySnapshot,
+): boolean {
   return (
     left.normalizedRemoteUrl === right.normalizedRemoteUrl &&
     left.commitCount === right.commitCount &&

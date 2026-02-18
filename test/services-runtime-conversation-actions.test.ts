@@ -209,7 +209,12 @@ void test('runtime conversation actions takeover delegates claim/apply/dirty flo
 
   await actions.takeoverConversation('session-1');
   assert.deepEqual(applied, [{ sessionId: 'session-1', controllerId: 'mux-controller-id' }]);
-  assert.deepEqual(calls, ['claim:session-1', 'apply:session-1', 'lastEvent:session-1', 'markDirty']);
+  assert.deepEqual(calls, [
+    'claim:session-1',
+    'apply:session-1',
+    'lastEvent:session-1',
+    'markDirty',
+  ]);
 
   calls.length = 0;
   applied.length = 0;

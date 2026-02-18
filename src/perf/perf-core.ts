@@ -169,7 +169,7 @@ function writeDurationRecord(
   attrs?: PerfAttrs,
   traceId?: string,
   spanId?: string,
-  parentSpanId?: string
+  parentSpanId?: string,
 ): void {
   if (!state.enabled) {
     return;
@@ -184,7 +184,7 @@ function writeDurationRecord(
     'duration-ns': (endedAtNs - startedAtNs).toString(),
     'end-ms': endedAtMs,
     'trace-id': traceId ?? nextTraceId(),
-    'span-id': spanId ?? nextSpanId()
+    'span-id': spanId ?? nextSpanId(),
   };
 
   if (parentSpanId !== undefined) {
@@ -212,7 +212,7 @@ class ActivePerfSpan {
     attrs: PerfAttrs | undefined,
     traceId: string,
     spanId: string,
-    parentSpanId: string | undefined
+    parentSpanId: string | undefined,
   ) {
     this.name = name;
     this.startedAtNs = startedAtNs;
@@ -233,7 +233,7 @@ class ActivePerfSpan {
       mergeAttrs(this.attrs, extraAttrs),
       this.traceId,
       this.spanId,
-      this.parentSpanId
+      this.parentSpanId,
     );
   }
 }
@@ -245,7 +245,7 @@ interface PerfSpan {
 const NOOP_PERF_SPAN: PerfSpan = {
   end(): void {
     return;
-  }
+  },
 };
 
 export function configurePerfCore(config: PerfCoreConfig): void {
@@ -273,23 +273,12 @@ export function perfNowNs(): bigint {
   return process.hrtime.bigint();
 }
 
-export function startPerfSpan(
-  name: string,
-  attrs?: PerfAttrs,
-  parentSpanId?: string
-): PerfSpan {
+export function startPerfSpan(name: string, attrs?: PerfAttrs, parentSpanId?: string): PerfSpan {
   if (!state.enabled) {
     return NOOP_PERF_SPAN;
   }
 
-  return new ActivePerfSpan(
-    name,
-    perfNowNs(),
-    attrs,
-    nextTraceId(),
-    nextSpanId(),
-    parentSpanId
-  );
+  return new ActivePerfSpan(name, perfNowNs(), attrs, nextTraceId(), nextSpanId(), parentSpanId);
 }
 
 export function recordPerfDuration(name: string, startedAtNs: bigint, attrs?: PerfAttrs): void {
@@ -305,7 +294,7 @@ export function recordPerfEvent(name: string, attrs?: PerfAttrs): void {
     type: 'event',
     name,
     'ts-ns': perfNowNs().toString(),
-    'ts-ms': Date.now()
+    'ts-ms': Date.now(),
   };
   if (attrs !== undefined) {
     record.attrs = attrs;

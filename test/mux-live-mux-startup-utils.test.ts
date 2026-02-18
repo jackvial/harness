@@ -14,15 +14,19 @@ import {
   restoreTerminalState,
   sanitizeProcessEnv,
   startupTerminalSizeLooksPlausible,
-  terminalSize
+  terminalSize,
 } from '../src/mux/live-mux/startup-utils.ts';
 
-function patchProperty<T extends object, K extends keyof T>(obj: T, key: K, value: T[K]): () => void {
+function patchProperty<T extends object, K extends keyof T>(
+  obj: T,
+  key: K,
+  value: T[K],
+): () => void {
   const descriptor = Object.getOwnPropertyDescriptor(obj, key);
   Object.defineProperty(obj, key, {
     configurable: true,
     writable: true,
-    value
+    value,
   });
   return () => {
     if (descriptor === undefined) {
@@ -41,7 +45,7 @@ void test('formatErrorMessage prefers stack/message and stringifies unknown valu
   const errWithMessage = new Error('message-only');
   Object.defineProperty(errWithMessage, 'stack', {
     configurable: true,
-    value: undefined
+    value: undefined,
   });
   assert.equal(formatErrorMessage(errWithMessage), 'message-only');
 
@@ -76,7 +80,7 @@ void test('prepareArtifactPath resolves path and handles overwrite modes', () =>
     () => {
       void prepareArtifactPath(tempDir, true);
     },
-    { name: 'Error' }
+    { name: 'Error' },
   );
 });
 
@@ -84,11 +88,11 @@ void test('sanitizeProcessEnv keeps only string values', () => {
   const sanitized = sanitizeProcessEnv({
     A: '1',
     B: undefined,
-    C: 'hello'
+    C: 'hello',
   });
   assert.deepEqual(sanitized, {
     A: '1',
-    C: 'hello'
+    C: 'hello',
   });
 });
 
@@ -120,7 +124,7 @@ void test('startupTerminalSizeLooksPlausible enforces minimum dimensions', () =>
 
 void test('readStartupTerminalSize returns immediate plausible size and probes when needed', async () => {
   const immediate = await readStartupTerminalSize({
-    terminalSizeReader: () => ({ cols: 120, rows: 40 })
+    terminalSizeReader: () => ({ cols: 120, rows: 40 }),
   });
   assert.deepEqual(immediate, { cols: 120, rows: 40 });
 
@@ -140,7 +144,7 @@ void test('readStartupTerminalSize returns immediate plausible size and probes w
       return Promise.resolve();
     },
     timeoutMs: 50,
-    intervalMs: 10
+    intervalMs: 10,
   });
   assert.deepEqual(probed, { cols: 80, rows: 24 });
 
@@ -163,7 +167,7 @@ void test('readStartupTerminalSize returns immediate plausible size and probes w
       return Promise.resolve();
     },
     timeoutMs: 50,
-    intervalMs: 10
+    intervalMs: 10,
   });
   assert.deepEqual(nonGrowingProbe, { cols: 80, rows: 24 });
 
@@ -180,7 +184,7 @@ void test('readStartupTerminalSize returns immediate plausible size and probes w
       return Promise.resolve();
     },
     timeoutMs: 15,
-    intervalMs: 10
+    intervalMs: 10,
   });
   assert.deepEqual(fallback, { cols: 120, rows: 40 });
 
@@ -191,7 +195,7 @@ void test('readStartupTerminalSize returns immediate plausible size and probes w
       return defaultSleepReads === 1 ? { cols: 10, rows: 5 } : { cols: 80, rows: 24 };
     },
     timeoutMs: 20,
-    intervalMs: 1
+    intervalMs: 1,
   });
   assert.deepEqual(viaDefaultSleep, { cols: 80, rows: 24 });
 
@@ -219,9 +223,18 @@ void test('parsePositiveInt and parseBooleanEnv normalize input values', () => {
 });
 
 void test('resolveWorkspacePathForMux resolves invocation-relative and home paths', () => {
-  assert.equal(resolveWorkspacePathForMux('/tmp/work', './repo', '/Users/example'), resolve('/tmp/work/repo'));
-  assert.equal(resolveWorkspacePathForMux('/tmp/work', '~/repo', '/Users/example'), '/Users/example/repo');
-  assert.equal(resolveWorkspacePathForMux('/tmp/work', '~/repo', ''), resolve('/tmp/work/~', 'repo'));
+  assert.equal(
+    resolveWorkspacePathForMux('/tmp/work', './repo', '/Users/example'),
+    resolve('/tmp/work/repo'),
+  );
+  assert.equal(
+    resolveWorkspacePathForMux('/tmp/work', '~/repo', '/Users/example'),
+    '/Users/example/repo',
+  );
+  assert.equal(
+    resolveWorkspacePathForMux('/tmp/work', '~/repo', ''),
+    resolve('/tmp/work/~', 'repo'),
+  );
 });
 
 void test('restoreTerminalState toggles modes and tolerates tty failures', () => {
@@ -245,7 +258,10 @@ void test('restoreTerminalState toggles modes and tolerates tty failures', () =>
   try {
     restoreTerminalState(true, null, 'DISABLE-SEQUENCE');
     assert.equal(writes.includes('DISABLE-SEQUENCE'), true);
-    assert.equal(writes.some((value) => value.endsWith('\n')), true);
+    assert.equal(
+      writes.some((value) => value.endsWith('\n')),
+      true,
+    );
     assert.equal(rawMode, false);
     assert.equal(paused, true);
   } finally {
@@ -268,14 +284,10 @@ void test('restoreTerminalState toggles modes and tolerates tty failures', () =>
     restoreIsTTYFalse();
   }
 
-  const restoreWriteNoop = patchProperty(
-    process.stdout,
-    'write',
-    ((value: string) => {
-      void value;
-      return true;
-    }) as typeof process.stdout.write
-  );
+  const restoreWriteNoop = patchProperty(process.stdout, 'write', ((value: string) => {
+    void value;
+    return true;
+  }) as typeof process.stdout.write);
   const restoreIsTTYTrue = patchProperty(process.stdin, 'isTTY', true);
   const restoreSetRawModeThrows = patchProperty(process.stdin, 'setRawMode', (() => {
     throw new Error('set-raw-failed');

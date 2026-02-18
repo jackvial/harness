@@ -91,9 +91,7 @@ export function runTaskPaneAction(options: RunTaskPaneActionOptions): void {
     return;
   }
   if (options.action === 'task.reorder-up' || options.action === 'task.reorder-down') {
-    const activeTasks = options
-      .orderedTaskRecords()
-      .filter((task) => task.status !== 'completed');
+    const activeTasks = options.orderedTaskRecords().filter((task) => task.status !== 'completed');
     const selectedIndex = activeTasks.findIndex((task) => task.taskId === selected.taskId);
     if (selectedIndex < 0) {
       options.setTaskPaneNotice('cannot reorder completed tasks');

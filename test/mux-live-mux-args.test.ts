@@ -8,14 +8,14 @@ const baseEnv: NodeJS.ProcessEnv = {
   HARNESS_TENANT_ID: 'tenant-1',
   HARNESS_USER_ID: 'user-1',
   HARNESS_WORKSPACE_ID: 'workspace-1',
-  HARNESS_WORKTREE_ID: 'worktree-1'
+  HARNESS_WORKTREE_ID: 'worktree-1',
 };
 
 void test('parseMuxArgs resolves defaults and positional codex args', () => {
   const parsed = parseMuxArgs(['--ask', 'something'], {
     env: baseEnv,
     cwd: '/tmp/cwd',
-    randomId: () => 'id-1'
+    randomId: () => 'id-1',
   });
 
   assert.deepEqual(parsed.codexArgs, ['--ask', 'something']);
@@ -39,19 +39,19 @@ void test('parseMuxArgs reads control-plane flags and maps --record to .harness/
       '7777',
       '--harness-server-token',
       'secret',
-      '--record'
+      '--record',
     ],
     {
       env: {
         ...baseEnv,
         HARNESS_EVENTS_DB_PATH: 'custom-events.sqlite',
         HARNESS_CONVERSATION_ID: 'conversation-fixed',
-        HARNESS_TURN_ID: 'turn-fixed'
+        HARNESS_TURN_ID: 'turn-fixed',
       },
       cwd: '/tmp/cwd',
       randomId: () => 'record-id',
-      nowIso: () => '2026-02-18T12:34:56.789Z'
-    }
+      nowIso: () => '2026-02-18T12:34:56.789Z',
+    },
   );
 
   assert.equal(parsed.controlPlaneHost, '127.0.0.1');
@@ -62,11 +62,11 @@ void test('parseMuxArgs reads control-plane flags and maps --record to .harness/
   assert.equal(parsed.scope.turnId, 'turn-fixed');
   assert.equal(
     parsed.recordingGifOutputPath,
-    resolve('/tmp/work', '.harness/recordings/2026-02-18T12-34-56-789Z-record-id.gif')
+    resolve('/tmp/work', '.harness/recordings/2026-02-18T12-34-56-789Z-record-id.gif'),
   );
   assert.equal(
     parsed.recordingPath,
-    resolve('/tmp/work', '.harness/recordings/2026-02-18T12-34-56-789Z-record-id.jsonl')
+    resolve('/tmp/work', '.harness/recordings/2026-02-18T12-34-56-789Z-record-id.jsonl'),
   );
   assert.equal(parsed.recordingFps, 30);
 });
@@ -76,18 +76,24 @@ void test('parseMuxArgs sanitizes unsafe record tokens and keeps fps capped to 3
     env: baseEnv,
     cwd: '/tmp/cwd',
     randomId: () => '  ',
-    nowIso: () => '::'
+    nowIso: () => '::',
   });
 
-  assert.equal(parsed.recordingGifOutputPath, resolve('/tmp/work', '.harness/recordings/---recording.gif'));
-  assert.equal(parsed.recordingPath, resolve('/tmp/work', '.harness/recordings/---recording.jsonl'));
+  assert.equal(
+    parsed.recordingGifOutputPath,
+    resolve('/tmp/work', '.harness/recordings/---recording.gif'),
+  );
+  assert.equal(
+    parsed.recordingPath,
+    resolve('/tmp/work', '.harness/recordings/---recording.jsonl'),
+  );
   assert.equal(parsed.recordingFps, 30);
 });
 
 void test('parseMuxArgs uses default nowIso clock when --record is enabled without override', () => {
   const parsed = parseMuxArgs(['--record'], {
     env: baseEnv,
-    randomId: () => 'id-8'
+    randomId: () => 'id-8',
   });
   assert.match(parsed.recordingPath ?? '', /\/\.harness\/recordings\/.+-id-8\.jsonl$/);
   assert.match(parsed.recordingGifOutputPath ?? '', /\/\.harness\/recordings\/.+-id-8\.gif$/);
@@ -108,29 +114,23 @@ void test('parseMuxArgs rejects deprecated recording flags', () => {
 });
 
 void test('parseMuxArgs validates host/port requirements and invalid port values', () => {
-  assert.throws(
-    () => {
-      void parseMuxArgs([], {
-        env: {
-          ...baseEnv,
-          HARNESS_CONTROL_PLANE_HOST: '127.0.0.1'
-        }
-      });
-    },
-    /both control-plane host and port must be set together/
-  );
+  assert.throws(() => {
+    void parseMuxArgs([], {
+      env: {
+        ...baseEnv,
+        HARNESS_CONTROL_PLANE_HOST: '127.0.0.1',
+      },
+    });
+  }, /both control-plane host and port must be set together/);
 
-  assert.throws(
-    () => {
-      void parseMuxArgs([], {
-        env: {
-          ...baseEnv,
-          HARNESS_CONTROL_PLANE_PORT: 'abc'
-        }
-      });
-    },
-    /invalid --harness-server-port value/
-  );
+  assert.throws(() => {
+    void parseMuxArgs([], {
+      env: {
+        ...baseEnv,
+        HARNESS_CONTROL_PLANE_PORT: 'abc',
+      },
+    });
+  }, /invalid --harness-server-port value/);
 });
 
 void test('parseMuxArgs enforces required values for each flag', () => {
@@ -150,10 +150,10 @@ void test('parseMuxArgs enforces required values for each flag', () => {
 void test('parseMuxArgs falls back through INIT_CWD and cwd defaults when invoke cwd is absent', () => {
   const fromInitCwd = parseMuxArgs([], {
     env: {
-      INIT_CWD: '/tmp/init-cwd'
+      INIT_CWD: '/tmp/init-cwd',
     },
     cwd: '/tmp/fallback-cwd',
-    randomId: () => 'id-4'
+    randomId: () => 'id-4',
   });
   assert.equal(fromInitCwd.invocationDirectory, '/tmp/init-cwd');
   assert.equal(fromInitCwd.scope.workspaceId, 'fallback-cwd');
@@ -161,7 +161,7 @@ void test('parseMuxArgs falls back through INIT_CWD and cwd defaults when invoke
   const fromCwd = parseMuxArgs([], {
     env: {},
     cwd: '/tmp/from-cwd',
-    randomId: () => 'id-5'
+    randomId: () => 'id-5',
   });
   assert.equal(fromCwd.invocationDirectory, '/tmp/from-cwd');
   assert.equal(fromCwd.scope.workspaceId, 'from-cwd');
@@ -170,9 +170,9 @@ void test('parseMuxArgs falls back through INIT_CWD and cwd defaults when invoke
 void test('parseMuxArgs uses default random id factory when randomId is omitted', () => {
   const parsed = parseMuxArgs([], {
     env: {
-      HARNESS_INVOKE_CWD: '/tmp/work'
+      HARNESS_INVOKE_CWD: '/tmp/work',
     },
-    cwd: '/tmp/work'
+    cwd: '/tmp/work',
   });
   assert.match(parsed.initialConversationId, /^conversation-/);
   assert.match(parsed.scope.turnId ?? '', /^turn-/);
@@ -181,7 +181,10 @@ void test('parseMuxArgs uses default random id factory when randomId is omitted'
 void test('parseMuxArgs falls back to process.env when env option is omitted', () => {
   const parsed = parseMuxArgs([], {
     cwd: '/tmp/work',
-    randomId: () => 'id-7'
+    randomId: () => 'id-7',
   });
-  assert.equal(parsed.initialConversationId, process.env.HARNESS_CONVERSATION_ID ?? 'conversation-id-7');
+  assert.equal(
+    parsed.initialConversationId,
+    process.env.HARNESS_CONVERSATION_ID ?? 'conversation-id-7',
+  );
 });

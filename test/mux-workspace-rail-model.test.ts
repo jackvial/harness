@@ -8,7 +8,7 @@ import {
   projectWorkspaceRailConversation,
   projectIdAtWorkspaceRailRow,
   repositoryIdAtWorkspaceRailRow,
-  kindAtWorkspaceRailRow
+  kindAtWorkspaceRailRow,
 } from '../src/mux/workspace-rail-model.ts';
 
 void test('workspace rail model builds rows with conversation spacing and process metadata', () => {
@@ -23,8 +23,8 @@ void test('workspace rail model builds rows with conversation spacing and proces
             branch: 'main',
             additions: 4,
             deletions: 1,
-            changedFiles: 2
-          }
+            changedFiles: 2,
+          },
         },
         {
           key: 'c:d',
@@ -34,9 +34,9 @@ void test('workspace rail model builds rows with conversation spacing and proces
             branch: 'feature/x',
             additions: 1,
             deletions: 0,
-            changedFiles: 1
-          }
-        }
+            changedFiles: 1,
+          },
+        },
       ],
       conversations: [
         {
@@ -50,7 +50,7 @@ void test('workspace rail model builds rows with conversation spacing and proces
           status: 'needs-input',
           attentionReason: 'approval',
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:09.000Z'
+          lastEventAt: '2026-01-01T00:00:09.000Z',
         },
         {
           sessionId: 's2',
@@ -63,8 +63,8 @@ void test('workspace rail model builds rows with conversation spacing and proces
           status: 'exited',
           attentionReason: null,
           startedAt: 'bad-time',
-          lastEventAt: null
-        }
+          lastEventAt: null,
+        },
       ],
       processes: [
         {
@@ -73,48 +73,74 @@ void test('workspace rail model builds rows with conversation spacing and proces
           label: 'bun run dev',
           cpuPercent: Number.NaN,
           memoryMb: Number.NaN,
-          status: 'exited'
-        }
+          status: 'exited',
+        },
       ],
       activeProjectId: null,
       activeConversationId: 's1',
-      nowMs: Date.parse('2026-01-01T00:00:10.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:10.000Z'),
     },
-    32
+    32,
   );
 
   assert.equal(rows.length, 32);
-  assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.active), true);
   assert.equal(
-    rows.some((row) => row.kind === 'conversation-title' && row.text.includes('▲ codex - untitled task 1')),
-    true
+    rows.some((row) => row.kind === 'conversation-title' && row.active),
+    true,
   );
   assert.equal(
     rows.some(
-      (row) => row.kind === 'conversation-body' && row.text.includes('approval')
+      (row) => row.kind === 'conversation-title' && row.text.includes('▲ codex - untitled task 1'),
     ),
-    true
+    true,
   );
   assert.equal(
-    rows.some((row) => row.kind === 'conversation-title' && row.text.includes('■ codex - untitled task 2')),
-    true
+    rows.some((row) => row.kind === 'conversation-body' && row.text.includes('approval')),
+    true,
   );
-  assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('exited · · · ·')), true);
-  assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.includes('📁 charlie')), true);
-  assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')), true);
-  assert.equal(rows.some((row) => row.text.includes('(no conversations)')), false);
-  assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('untracked')), true);
-  assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.conversationSessionId === 's1'), true);
+  assert.equal(
+    rows.some(
+      (row) => row.kind === 'conversation-title' && row.text.includes('■ codex - untitled task 2'),
+    ),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'process-meta' && row.text.includes('exited · · · ·')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'dir-header' && row.text.includes('📁 charlie')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.text.includes('(no conversations)')),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-header' && row.text.includes('untracked')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'conversation-title' && row.conversationSessionId === 's1'),
+    true,
+  );
   assert.equal(
     rows.some(
       (row) =>
         row.kind === 'shortcut-header' &&
         row.text.includes('shortcuts') &&
-        row.railAction === 'shortcuts.toggle'
+        row.railAction === 'shortcuts.toggle',
     ),
-    true
+    true,
   );
-  assert.equal(rows.some((row) => row.kind === 'shortcut-body' && row.text.includes('ctrl+t')), true);
+  assert.equal(
+    rows.some((row) => row.kind === 'shortcut-body' && row.text.includes('ctrl+t')),
+    true,
+  );
   assert.equal(rows[rows.length - 1]?.kind, 'shortcut-body');
   assert.equal(rows[0]?.railAction, 'home.open');
   const addProjectRowIndex = rows.findIndex((row) => row.railAction === 'project.add');
@@ -131,17 +157,20 @@ void test('workspace rail model handles empty projects and blank workspace name'
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T00:00:00.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:00.000Z'),
     },
-    40
+    40,
   );
-  assert.equal(noDirectoryRows.some((row) => row.text.includes('no projects')), true);
+  assert.equal(
+    noDirectoryRows.some((row) => row.text.includes('no projects')),
+    true,
+  );
   assert.equal(noDirectoryRows[0]?.railAction, 'home.open');
   const noDirectoryAddProjectRowIndex = noDirectoryRows.findIndex(
-    (row) => row.railAction === 'project.add'
+    (row) => row.railAction === 'project.add',
   );
   const noDirectoryShortcutHeaderIndex = noDirectoryRows.findIndex(
-    (row) => row.kind === 'shortcut-header'
+    (row) => row.kind === 'shortcut-header',
   );
   assert.equal(noDirectoryAddProjectRowIndex >= 0, true);
   assert.equal(noDirectoryShortcutHeaderIndex - noDirectoryAddProjectRowIndex >= 2, true);
@@ -157,18 +186,21 @@ void test('workspace rail model handles empty projects and blank workspace name'
             branch: 'topic',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [],
       processes: [],
       activeProjectId: null,
-      activeConversationId: null
+      activeConversationId: null,
     },
-    40
+    40,
   );
-  assert.equal(blankNameRows.some((row) => row.text.includes('(unnamed)')), true);
+  assert.equal(
+    blankNameRows.some((row) => row.text.includes('(unnamed)')),
+    true,
+  );
 });
 
 void test('workspace rail model can hide repository and task controls from the rail', () => {
@@ -183,8 +215,8 @@ void test('workspace rail model can hide repository and task controls from the r
           associatedProjectCount: 1,
           commitCount: 42,
           lastCommitAt: '2026-01-01T00:00:00.000Z',
-          shortCommitHash: 'abc1234'
-        }
+          shortCommitHash: 'abc1234',
+        },
       ],
       repositoriesCollapsed: false,
       directories: [],
@@ -192,16 +224,31 @@ void test('workspace rail model can hide repository and task controls from the r
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T00:00:10.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:10.000Z'),
     },
-    18
+    18,
   );
 
-  assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
-  assert.equal(rows.some((row) => row.kind === 'repository-row'), false);
-  assert.equal(rows.some((row) => row.railAction === 'repository.add'), false);
-  assert.equal(rows.some((row) => row.railAction === 'home.open'), false);
-  assert.equal(rows.some((row) => row.railAction === 'project.add'), true);
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-header'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-row'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'repository.add'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'home.open'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'project.add'),
+    true,
+  );
 });
 
 void test('workspace rail model formats finite process stats without repository rail rows', () => {
@@ -216,9 +263,9 @@ void test('workspace rail model formats finite process stats without repository 
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [],
       processes: [
@@ -228,19 +275,31 @@ void test('workspace rail model formats finite process stats without repository 
           label: 'vite dev',
           cpuPercent: 12.34,
           memoryMb: 42.6,
-          status: 'running'
-        }
+          status: 'running',
+        },
       ],
       activeProjectId: null,
-      activeConversationId: null
+      activeConversationId: null,
     },
-    24
+    24,
   );
 
-  assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('12.3% · 43MB')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-header'), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-row'), false);
-  assert.equal(rows.some((row) => row.text.includes('repositories [-]')), false);
+  assert.equal(
+    rows.some((row) => row.kind === 'process-meta' && row.text.includes('12.3% · 43MB')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-header'),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-row'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.text.includes('repositories [-]')),
+    false,
+  );
 });
 
 void test('workspace rail model ignores repository collapse flags in rail rendering', () => {
@@ -251,13 +310,19 @@ void test('workspace rail model ignores repository collapse flags in rail render
       conversations: [],
       processes: [],
       activeProjectId: null,
-      activeConversationId: null
+      activeConversationId: null,
     },
-    13
+    13,
   );
 
-  assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
-  assert.equal(rows.some((row) => row.railAction === 'repositories.toggle'), false);
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-header'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'repositories.toggle'),
+    false,
+  );
 });
 
 void test('workspace rail model makes project header thread action clickable', () => {
@@ -272,32 +337,38 @@ void test('workspace rail model makes project header thread action clickable', (
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [],
       processes: [],
       activeProjectId: null,
-      activeConversationId: null
+      activeConversationId: null,
     },
-    26
+    26,
   );
 
   const emptyStateActionRowIndex = rows.findIndex(
-    (row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')
+    (row) => row.kind === 'dir-header' && row.text.includes('[+ thread]'),
   );
   assert.equal(emptyStateActionRowIndex >= 0, true);
   const buttonStart = rows[emptyStateActionRowIndex]!.text.indexOf('[+ thread]');
   assert.equal(buttonStart >= 0, true);
-  assert.equal(actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, buttonStart), 'conversation.new');
+  assert.equal(
+    actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, buttonStart),
+    'conversation.new',
+  );
   const paneCols = 48;
   const alignedButtonStart = paneCols - '[+ thread]'.length;
   assert.equal(
     actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, alignedButtonStart, paneCols),
-    'conversation.new'
+    'conversation.new',
   );
-  assert.equal(actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, buttonStart, paneCols), null);
+  assert.equal(
+    actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, buttonStart, paneCols),
+    null,
+  );
   assert.equal(actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, 0), null);
 });
 
@@ -308,9 +379,9 @@ void test('workspace rail model truncates content before pinned shortcuts and su
       conversations: [],
       processes: [],
       activeProjectId: null,
-      activeConversationId: null
+      activeConversationId: null,
     },
-    2
+    2,
   );
   assert.equal(twoRows.length, 2);
   assert.equal(twoRows[0]?.kind, 'shortcut-body');
@@ -329,9 +400,9 @@ void test('workspace rail model truncates content before pinned shortcuts and su
             branch: 'main',
             additions: 1,
             deletions: 2,
-            changedFiles: 3
-          }
-        }
+            changedFiles: 3,
+          },
+        },
       ],
       conversations: [
         {
@@ -345,15 +416,15 @@ void test('workspace rail model truncates content before pinned shortcuts and su
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:59.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:59.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T00:01:00.000Z')
+      nowMs: Date.parse('2026-01-01T00:01:00.000Z'),
     },
-    3
+    3,
   );
   assert.equal(truncated.length, 3);
   assert.equal(truncated[0]?.text.includes('expand all repos'), true);
@@ -373,9 +444,9 @@ void test('workspace rail model supports starting normalization custom shortcuts
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -389,28 +460,46 @@ void test('workspace rail model supports starting normalization custom shortcuts
           status: 'running',
           attentionReason: '   ',
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:00.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:00.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
       shortcutHint: '   ',
-      nowMs: Date.parse('2026-01-01T00:00:20.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:20.000Z'),
     },
-    20
+    20,
   );
 
-  assert.equal(rows.some((row) => row.text.includes('◔ codex - untitled')), true);
-  assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
-  assert.equal(rows.some((row) => row.text.includes('ctrl+j/k switch')), true);
-  assert.equal(rows.some((row) => row.text.includes('x archive thread')), true);
-  assert.equal(rows.some((row) => row.text.includes('🗑 archive thread')), false);
-  assert.equal(rows.some((row) => row.text.includes('add project')), true);
+  assert.equal(
+    rows.some((row) => row.text.includes('◔ codex - untitled')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.text.includes('ctrl+j/k switch')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.text.includes('x archive thread')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.text.includes('🗑 archive thread')),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.text.includes('add project')),
+    true,
+  );
   const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
   assert.equal(shortcutHeaderRowIndex >= 0, true);
   const conversationRowIndex = rows.findIndex(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-a'
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-a',
   );
   assert.equal(conversationRowIndex >= 0, true);
   assert.equal(actionAtWorkspaceRailRow(rows, shortcutHeaderRowIndex), 'shortcuts.toggle');
@@ -445,9 +534,9 @@ void test('workspace rail model omits separator when conversation title is empty
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -461,19 +550,20 @@ void test('workspace rail model omits separator when conversation title is empty
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:01.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-empty-title',
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    20
+    20,
   );
 
   const titleRow = rows.find(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-empty-title'
+    (row) =>
+      row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-empty-title',
   );
   assert.notEqual(titleRow, undefined);
   assert.equal(titleRow?.text.includes('codex - '), false);
@@ -492,23 +582,23 @@ void test('workspace rail model limits active project styling to header and git 
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [],
       processes: [],
       activeProjectId: 'dir-a',
       activeConversationId: null,
-      projectSelectionEnabled: true
+      projectSelectionEnabled: true,
     },
-    18
+    18,
   );
   const header = rows.find((row) => row.kind === 'dir-header' && row.text.includes('📁 alpha'));
   const meta = rows.find((row) => row.kind === 'dir-meta' && row.directoryKey === 'dir-a');
   const divider = rows.find((row) => row.kind === 'muted' && row.text === '│');
   const newThreadAction = rows.find(
-    (row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')
+    (row) => row.kind === 'dir-header' && row.text.includes('[+ thread]'),
   );
   assert.equal(header?.active, true);
   assert.equal(meta, undefined);
@@ -528,9 +618,9 @@ void test('workspace rail model does not mark project active while selection mod
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -544,16 +634,16 @@ void test('workspace rail model does not mark project active while selection mod
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:01.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
       ],
       processes: [],
       activeProjectId: 'dir-a',
       activeConversationId: 'conversation-a',
       projectSelectionEnabled: false,
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    18
+    18,
   );
 
   const header = rows.find((row) => row.kind === 'dir-header' && row.text.includes('📁 alpha'));
@@ -574,9 +664,9 @@ void test('workspace rail model does not mark conversation active while project 
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -590,16 +680,16 @@ void test('workspace rail model does not mark conversation active while project 
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:01.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
       ],
       processes: [],
       activeProjectId: 'dir-a',
       activeConversationId: 'conversation-a',
       projectSelectionEnabled: true,
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    24
+    24,
   );
 
   const header = rows.find((row) => row.kind === 'dir-header' && row.text.includes('📁 alpha'));
@@ -608,7 +698,10 @@ void test('workspace rail model does not mark conversation active while project 
   assert.equal(header?.active, true);
   assert.equal(conversationTitle?.active, false);
   assert.equal(conversationBody?.active, false);
-  assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.conversationStatus === null), false);
+  assert.equal(
+    rows.some((row) => row.kind === 'conversation-title' && row.conversationStatus === null),
+    false,
+  );
 });
 
 void test('workspace rail model renders home as a selectable directory-style block', () => {
@@ -623,9 +716,9 @@ void test('workspace rail model renders home as a selectable directory-style blo
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -639,28 +732,33 @@ void test('workspace rail model renders home as a selectable directory-style blo
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:01.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
       ],
       processes: [],
       activeProjectId: 'dir-a',
       activeConversationId: 'conversation-a',
       projectSelectionEnabled: false,
       homeSelectionEnabled: true,
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    24
+    24,
   );
 
-  const homeHeaderIndex = rows.findIndex((row) => row.kind === 'dir-header' && row.text.includes('🏠 home'));
+  const homeHeaderIndex = rows.findIndex(
+    (row) => row.kind === 'dir-header' && row.text.includes('🏠 home'),
+  );
   assert.equal(homeHeaderIndex >= 0, true);
   assert.equal(rows[homeHeaderIndex]?.active, true);
   assert.equal(rows[homeHeaderIndex]?.railAction, 'home.open');
   assert.equal(rows[homeHeaderIndex + 1]?.kind, 'repository-header');
-  assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.active), false);
+  assert.equal(
+    rows.some((row) => row.kind === 'conversation-title' && row.active),
+    false,
+  );
 
   const firstProjectHeaderIndex = rows.findIndex(
-    (row) => row.kind === 'dir-header' && row.text.includes('📁 alpha')
+    (row) => row.kind === 'dir-header' && row.text.includes('📁 alpha'),
   );
   assert.equal(firstProjectHeaderIndex - homeHeaderIndex > 1, true);
 });
@@ -673,14 +771,20 @@ void test('workspace rail model overrides default shortcut text when custom hint
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+] quit'
+      shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+] quit',
     },
-    8
+    8,
   );
 
   assert.equal(rows.length, 8);
-  assert.equal(rows.some((row) => row.text.includes('ctrl+n/p switch')), true);
-  assert.equal(rows.some((row) => row.text.includes('close project')), false);
+  assert.equal(
+    rows.some((row) => row.text.includes('ctrl+n/p switch')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.text.includes('close project')),
+    false,
+  );
 });
 
 void test('workspace rail model supports newline-delimited shortcut hint rows', () => {
@@ -691,13 +795,19 @@ void test('workspace rail model supports newline-delimited shortcut hint rows', 
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      shortcutHint: 'ctrl+t new\nctrl+n/p switch\nctrl+c quit'
+      shortcutHint: 'ctrl+t new\nctrl+n/p switch\nctrl+c quit',
     },
-    10
+    10,
   );
 
-  assert.equal(rows.some((row) => row.text.includes('ctrl+n/p switch')), true);
-  assert.equal(rows.some((row) => row.text.includes('ctrl+c quit')), true);
+  assert.equal(
+    rows.some((row) => row.text.includes('ctrl+n/p switch')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.text.includes('ctrl+c quit')),
+    true,
+  );
 });
 
 void test('workspace rail model treats running sessions with missing last event as starting', () => {
@@ -712,9 +822,9 @@ void test('workspace rail model treats running sessions with missing last event 
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -728,18 +838,21 @@ void test('workspace rail model treats running sessions with missing last event 
           status: 'running',
           attentionReason: null,
           startedAt: 'bad-time',
-          lastEventAt: null
-        }
+          lastEventAt: null,
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T00:00:20.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:20.000Z'),
     },
-    26
+    26,
   );
 
-  assert.equal(rows.some((row) => row.text.includes('◔ codex - task')), true);
+  assert.equal(
+    rows.some((row) => row.text.includes('◔ codex - task')),
+    true,
+  );
 });
 
 void test('workspace rail model supports collapsed shortcut descriptions with clickable toggle row', () => {
@@ -750,16 +863,25 @@ void test('workspace rail model supports collapsed shortcut descriptions with cl
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      shortcutsCollapsed: true
+      shortcutsCollapsed: true,
     },
-    10
+    10,
   );
 
-  assert.equal(rows.some((row) => row.kind === 'shortcut-header' && row.text.includes('[+]')), true);
-  assert.equal(rows.some((row) => row.kind === 'shortcut-body'), false);
+  assert.equal(
+    rows.some((row) => row.kind === 'shortcut-header' && row.text.includes('[+]')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'shortcut-body'),
+    false,
+  );
   const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
   assert.equal(actionAtWorkspaceRailRow(rows, shortcutHeaderRowIndex), 'shortcuts.toggle');
-  assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('add project')), true);
+  assert.equal(
+    rows.some((row) => row.kind === 'action' && row.text.includes('add project')),
+    true,
+  );
 });
 
 void test('workspace rail model omits repository rows even when repository data is provided', () => {
@@ -773,8 +895,8 @@ void test('workspace rail model omits repository rows even when repository data 
           associatedProjectCount: 2,
           commitCount: 321,
           lastCommitAt: '2026-01-01T00:00:00.000Z',
-          shortCommitHash: 'abc1234'
-        }
+          shortCommitHash: 'abc1234',
+        },
       ],
       repositoriesCollapsed: false,
       directories: [],
@@ -782,16 +904,34 @@ void test('workspace rail model omits repository rows even when repository data 
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T03:00:00.000Z')
+      nowMs: Date.parse('2026-01-01T03:00:00.000Z'),
     },
-    24
+    24,
   );
-  assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
-  assert.equal(rows.some((row) => row.kind === 'repository-row'), false);
-  assert.equal(rows.some((row) => row.railAction === 'repository.add'), false);
-  assert.equal(rows.some((row) => row.railAction === 'repository.edit'), false);
-  assert.equal(rows.some((row) => row.railAction === 'repository.archive'), false);
-  assert.equal(rows.some((row) => row.railAction === 'repositories.toggle'), false);
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-header'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-row'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'repository.add'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'repository.edit'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'repository.archive'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'repositories.toggle'),
+    false,
+  );
 });
 
 void test('workspace rail model groups tracked projects by repository and keeps empty repositories hidden', () => {
@@ -805,7 +945,7 @@ void test('workspace rail model groups tracked projects by repository and keeps 
           associatedProjectCount: 1,
           commitCount: 321,
           lastCommitAt: '2026-01-01T00:00:00.000Z',
-          shortCommitHash: 'abc1234'
+          shortCommitHash: 'abc1234',
         },
         {
           repositoryId: 'repository-empty',
@@ -814,8 +954,8 @@ void test('workspace rail model groups tracked projects by repository and keeps 
           associatedProjectCount: 0,
           commitCount: 1,
           lastCommitAt: '2026-01-01T00:00:00.000Z',
-          shortCommitHash: 'def5678'
-        }
+          shortCommitHash: 'def5678',
+        },
       ],
       directories: [
         {
@@ -827,8 +967,8 @@ void test('workspace rail model groups tracked projects by repository and keeps 
             branch: 'main',
             additions: 3,
             deletions: 1,
-            changedFiles: 1
-          }
+            changedFiles: 1,
+          },
         },
         {
           key: 'untracked-dir',
@@ -838,9 +978,9 @@ void test('workspace rail model groups tracked projects by repository and keeps 
             branch: 'scratch',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -855,15 +995,15 @@ void test('workspace rail model groups tracked projects by repository and keeps 
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:04.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:04.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    32
+    32,
   );
 
   assert.equal(
@@ -871,37 +1011,40 @@ void test('workspace rail model groups tracked projects by repository and keeps 
       (row) =>
         row.kind === 'repository-header' &&
         row.repositoryId === 'repository-1' &&
-        row.text.includes('harness (1 projects, 1 active)')
+        row.text.includes('harness (1 projects, 1 active)'),
     ),
-    true
+    true,
   );
   assert.equal(
     rows.some(
       (row) =>
         row.kind === 'dir-header' &&
         row.repositoryId === 'repository-1' &&
-        row.text.includes('tracked-project (main:+3,-1)')
+        row.text.includes('tracked-project (main:+3,-1)'),
     ),
-    true
+    true,
   );
-  assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('unused')), false);
+  assert.equal(
+    rows.some((row) => row.kind === 'repository-header' && row.text.includes('unused')),
+    false,
+  );
   assert.equal(
     rows.some(
       (row) =>
         row.kind === 'repository-header' &&
         row.repositoryId === 'untracked' &&
-        row.text.includes('untracked (1 projects, 0 active)')
+        row.text.includes('untracked (1 projects, 0 active)'),
     ),
-    true
+    true,
   );
   assert.equal(
     rows.some(
       (row) =>
         row.kind === 'dir-header' &&
         row.repositoryId === 'untracked' &&
-        row.text.includes('📁 scratch  [+ thread]')
+        row.text.includes('📁 scratch  [+ thread]'),
     ),
-    true
+    true,
   );
 });
 
@@ -916,8 +1059,8 @@ void test('workspace rail model hides zero diff counters on tracked project head
           associatedProjectCount: 1,
           commitCount: 321,
           lastCommitAt: '2026-01-01T00:00:00.000Z',
-          shortCommitHash: 'abc1234'
-        }
+          shortCommitHash: 'abc1234',
+        },
       ],
       directories: [
         {
@@ -929,24 +1072,24 @@ void test('workspace rail model hides zero diff counters on tracked project head
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [],
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    24
+    24,
   );
 
   const trackedHeader = rows.find(
     (row) =>
       row.kind === 'dir-header' &&
       row.repositoryId === 'repository-1' &&
-      row.text.includes('tracked-clean')
+      row.text.includes('tracked-clean'),
   );
   if (trackedHeader === undefined) {
     throw new Error('expected tracked project header row');
@@ -968,9 +1111,9 @@ void test('workspace rail model repository id helper returns null and starting f
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -984,17 +1127,20 @@ void test('workspace rail model repository id helper returns null and starting f
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:10.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:10.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-working-fallback',
-      nowMs: Date.parse('2026-01-01T00:00:12.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:12.000Z'),
     },
-    24
+    24,
   );
-  assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
+  assert.equal(
+    rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')),
+    true,
+  );
   assert.equal(repositoryIdAtWorkspaceRailRow(rows, 0), null);
   assert.equal(repositoryIdAtWorkspaceRailRow(rows, -1), null);
   assert.equal(repositoryIdAtWorkspaceRailRow(rows, 10_000), null);
@@ -1007,12 +1153,12 @@ void test('workspace rail model does not expose thread action for headers withou
       conversations: [],
       processes: [],
       activeProjectId: null,
-      activeConversationId: null
+      activeConversationId: null,
     },
-    20
+    20,
   );
   const noProjectsHeaderRowIndex = rows.findIndex(
-    (row) => row.kind === 'dir-header' && row.text.includes('no projects')
+    (row) => row.kind === 'dir-header' && row.text.includes('no projects'),
   );
   assert.equal(noProjectsHeaderRowIndex >= 0, true);
   assert.equal(actionAtWorkspaceRailCell(rows, noProjectsHeaderRowIndex, 7, 40), null);
@@ -1030,9 +1176,9 @@ void test('workspace rail model maps both thread rows to the same conversation i
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1046,22 +1192,22 @@ void test('workspace rail model maps both thread rows to the same conversation i
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:01.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      nowMs: Date.parse('2026-01-01T00:00:02.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:02.000Z'),
     },
-    26
+    26,
   );
 
   const titleRowIndex = rows.findIndex(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-a'
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-a',
   );
   const bodyRowIndex = rows.findIndex(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a',
   );
   assert.equal(titleRowIndex >= 0, true);
   assert.equal(bodyRowIndex >= 0, true);
@@ -1082,9 +1228,9 @@ void test('workspace rail model prefers last-known-work text over cpu or attenti
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1099,18 +1245,20 @@ void test('workspace rail model prefers last-known-work text over cpu or attenti
           status: 'running',
           attentionReason: 'approval',
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:01.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    20
+    20,
   );
 
-  const bodyRow = rows.find((row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a');
+  const bodyRow = rows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a',
+  );
   assert.notEqual(bodyRow, undefined);
   assert.equal(bodyRow?.text.includes('codex.sse_event: response.completed'), true);
   assert.equal(bodyRow?.text.includes('11.1% · 99MB'), false);
@@ -1129,9 +1277,9 @@ void test('workspace rail model keeps status detail independent from controller 
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1150,20 +1298,20 @@ void test('workspace rail model keeps status detail independent from controller 
             controllerId: 'agent-owner',
             controllerType: 'agent',
             controllerLabel: 'openclaw',
-            claimedAt: '2026-01-01T00:00:01.000Z'
-          }
-        }
+            claimedAt: '2026-01-01T00:00:01.000Z',
+          },
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    20
+    20,
   );
 
   const bodyRow = rows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a',
   );
   assert.notEqual(bodyRow, undefined);
   assert.equal(bodyRow?.text.includes('working'), true);
@@ -1179,9 +1327,9 @@ void test('workspace rail model keeps status detail independent from controller 
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1200,20 +1348,20 @@ void test('workspace rail model keeps status detail independent from controller 
             controllerId: 'human-local',
             controllerType: 'human',
             controllerLabel: 'human-local',
-            claimedAt: '2026-01-01T00:00:01.000Z'
-          }
-        }
+            claimedAt: '2026-01-01T00:00:01.000Z',
+          },
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    20
+    20,
   );
 
   const localBodyRow = localRows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a',
   );
   assert.notEqual(localBodyRow, undefined);
   assert.equal(localBodyRow?.text.includes('working'), true);
@@ -1229,9 +1377,9 @@ void test('workspace rail model keeps status detail independent from controller 
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1250,19 +1398,19 @@ void test('workspace rail model keeps status detail independent from controller 
             controllerId: 'robot-7',
             controllerType: 'automation',
             controllerLabel: '   ',
-            claimedAt: '2026-01-01T00:00:01.000Z'
-          }
-        }
+            claimedAt: '2026-01-01T00:00:01.000Z',
+          },
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    20
+    20,
   );
   const unlabeledBodyRow = unlabeledRows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a',
   );
   assert.notEqual(unlabeledBodyRow, undefined);
   assert.equal(unlabeledBodyRow?.text.includes('working'), true);
@@ -1278,9 +1426,9 @@ void test('workspace rail model keeps status detail independent from controller 
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1299,24 +1447,24 @@ void test('workspace rail model keeps status detail independent from controller 
             controllerId: 'agent-raw',
             controllerType: 'agent',
             controllerLabel: undefined,
-            claimedAt: '2026-01-01T00:00:01.000Z'
+            claimedAt: '2026-01-01T00:00:01.000Z',
           } as unknown as {
             controllerId: string;
             controllerType: 'agent';
             controllerLabel: string | null;
             claimedAt: string;
-          }
-        }
+          },
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
     },
-    20
+    20,
   );
   const undefinedLabelBodyRow = undefinedLabelRows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a',
   );
   assert.notEqual(undefinedLabelBodyRow, undefined);
   assert.equal(undefinedLabelBodyRow?.text.includes('working'), true);
@@ -1337,11 +1485,11 @@ void test('workspace rail model keeps running sessions in starting when completi
       attentionReason: null,
       startedAt: '2026-01-01T00:00:00.000Z',
       lastEventAt: '2026-01-01T00:00:03.000Z',
-      controller: null
+      controller: null,
     },
     {
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
-    }
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
+    },
   );
   assert.equal(projection.status, 'starting');
   assert.equal(projection.glyph, '◔');
@@ -1362,11 +1510,11 @@ void test('workspace rail model keeps explicit turn completion text even with ne
       attentionReason: null,
       startedAt: '2026-01-01T00:00:00.000Z',
       lastEventAt: '2026-01-01T00:00:08.000Z',
-      controller: null
+      controller: null,
     },
     {
-      nowMs: Date.parse('2026-01-01T00:00:09.000Z')
-    }
+      nowMs: Date.parse('2026-01-01T00:00:09.000Z'),
+    },
   );
   assert.equal(projection.status, 'idle');
   assert.equal(projection.glyph, '○');
@@ -1388,11 +1536,11 @@ void test('workspace rail model keeps idle projection when last event does not a
       attentionReason: null,
       startedAt: '2026-01-01T00:00:00.000Z',
       lastEventAt: '2026-01-01T00:00:10.000Z',
-      controller: null
+      controller: null,
     },
     {
-      nowMs: Date.parse('2026-01-01T00:00:11.000Z')
-    }
+      nowMs: Date.parse('2026-01-01T00:00:11.000Z'),
+    },
   );
   assert.equal(projection.status, 'idle');
   assert.equal(projection.glyph, '○');
@@ -1412,9 +1560,9 @@ void test('workspace rail model keeps status-line text consistent despite select
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1429,7 +1577,7 @@ void test('workspace rail model keeps status-line text consistent despite select
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:10.450Z'
+          lastEventAt: '2026-01-01T00:00:10.450Z',
         },
         {
           sessionId: 'conversation-unselected-like',
@@ -1443,22 +1591,26 @@ void test('workspace rail model keeps status-line text consistent despite select
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:10.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:10.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-selected-like',
-      nowMs
+      nowMs,
     },
-    24
+    24,
   );
 
   const selectedBody = rows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-selected-like'
+    (row) =>
+      row.kind === 'conversation-body' &&
+      row.conversationSessionId === 'conversation-selected-like',
   );
   const unselectedBody = rows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-unselected-like'
+    (row) =>
+      row.kind === 'conversation-body' &&
+      row.conversationSessionId === 'conversation-unselected-like',
   );
   assert.notEqual(selectedBody, undefined);
   assert.notEqual(unselectedBody, undefined);
@@ -1478,9 +1630,9 @@ void test('workspace rail model includes normalized status in fallback detail te
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1494,18 +1646,19 @@ void test('workspace rail model includes normalized status in fallback detail te
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:00.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:00.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-no-telemetry',
-      nowMs: Date.parse('2026-01-01T00:00:30.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:30.000Z'),
     },
-    24
+    24,
   );
   const bodyRow = rows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-no-telemetry'
+    (row) =>
+      row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-no-telemetry',
   );
   assert.notEqual(bodyRow, undefined);
   assert.equal(bodyRow?.text.includes('starting'), true);
@@ -1523,9 +1676,9 @@ void test('workspace rail model infers needs-action and keeps unknown running te
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1540,7 +1693,7 @@ void test('workspace rail model infers needs-action and keeps unknown running te
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:10.000Z'
+          lastEventAt: '2026-01-01T00:00:10.000Z',
         },
         {
           sessionId: 'conversation-working',
@@ -1554,21 +1707,24 @@ void test('workspace rail model infers needs-action and keeps unknown running te
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:12.000Z'
-        }
+          lastEventAt: '2026-01-01T00:00:12.000Z',
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      nowMs: Date.parse('2026-01-01T00:00:13.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:13.000Z'),
     },
-    26
+    26,
   );
   const needsActionRow = rows.find(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-needs-action'
+    (row) =>
+      row.kind === 'conversation-title' &&
+      row.conversationSessionId === 'conversation-needs-action',
   );
   const workingRow = rows.find(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-working'
+    (row) =>
+      row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-working',
   );
   assert.notEqual(needsActionRow, undefined);
   assert.notEqual(workingRow, undefined);
@@ -1591,11 +1747,11 @@ void test('workspace rail model infers needs-action from approval-denied summary
       attentionReason: null,
       startedAt: '2026-01-01T00:00:00.000Z',
       lastEventAt: '2026-01-01T00:00:10.000Z',
-      controller: null
+      controller: null,
     },
     {
-      nowMs: Date.parse('2026-01-01T00:00:11.000Z')
-    }
+      nowMs: Date.parse('2026-01-01T00:00:11.000Z'),
+    },
   );
   assert.equal(projection.status, 'needs-action');
   assert.equal(projection.glyph, '▲');
@@ -1615,11 +1771,11 @@ void test('workspace rail conversation projection falls back to needs-input stat
       status: 'needs-input',
       attentionReason: null,
       startedAt: '2026-01-01T00:00:00.000Z',
-      lastEventAt: null
+      lastEventAt: null,
     },
     {
-      nowMs: Date.parse('2026-01-01T00:00:30.000Z')
-    }
+      nowMs: Date.parse('2026-01-01T00:00:30.000Z'),
+    },
   );
 
   assert.equal(projection.status, 'needs-action');
@@ -1643,9 +1799,9 @@ void test('workspace rail model covers status inference keyword variants', () =>
         attentionReason: null,
         startedAt: '2026-01-01T00:00:00.000Z',
         lastEventAt: '2026-01-01T00:00:19.000Z',
-        controller: null
+        controller: null,
       },
-      { nowMs }
+      { nowMs },
     );
 
   assert.equal(project('needs input from user').status, 'needs-action');
@@ -1671,9 +1827,9 @@ void test('workspace rail model treats missing lastEventAt as current for last-k
             branch: 'main',
             additions: 0,
             deletions: 0,
-            changedFiles: 0
-          }
-        }
+            changedFiles: 0,
+          },
+        },
       ],
       conversations: [
         {
@@ -1687,21 +1843,25 @@ void test('workspace rail model treats missing lastEventAt as current for last-k
           status: 'running',
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: null
-        }
+          lastEventAt: null,
+        },
       ],
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-no-last-event',
-      nowMs: Date.parse('2026-01-01T00:00:10.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:10.000Z'),
     },
-    24
+    24,
   );
   const titleRow = rows.find(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-no-last-event'
+    (row) =>
+      row.kind === 'conversation-title' &&
+      row.conversationSessionId === 'conversation-no-last-event',
   );
   const bodyRow = rows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-no-last-event'
+    (row) =>
+      row.kind === 'conversation-body' &&
+      row.conversationSessionId === 'conversation-no-last-event',
   );
   assert.notEqual(titleRow, undefined);
   assert.notEqual(bodyRow, undefined);
@@ -1724,11 +1884,11 @@ void test('workspace rail conversation projection exposes glyph and detail text'
       attentionReason: null,
       startedAt: '2026-01-01T00:00:00.000Z',
       lastEventAt: '2026-01-01T00:00:00.000Z',
-      controller: null
+      controller: null,
     },
     {
-      nowMs: Date.parse('2026-01-01T00:00:01.000Z')
-    }
+      nowMs: Date.parse('2026-01-01T00:00:01.000Z'),
+    },
   );
   assert.equal(projected.status, 'starting');
   assert.equal(projected.glyph, '◔');
@@ -1754,12 +1914,12 @@ void test('workspace rail conversation projection keeps detail text independent 
         controllerId: 'agent-1',
         controllerType: 'agent',
         controllerLabel: 'Build Bot',
-        claimedAt: '2026-01-01T00:00:00.000Z'
-      }
+        claimedAt: '2026-01-01T00:00:00.000Z',
+      },
     },
     {
-      nowMs: Date.parse('2026-01-01T00:00:01.000Z')
-    }
+      nowMs: Date.parse('2026-01-01T00:00:01.000Z'),
+    },
   );
   assert.equal(projected.status, 'idle');
   assert.equal(projected.glyph, '○');
@@ -1784,8 +1944,8 @@ void test('workspace rail conversation projection supports default option branch
       controllerId: 'human-local',
       controllerType: 'human',
       controllerLabel: 'Me',
-      claimedAt: '2026-01-01T00:00:00.000Z'
-    }
+      claimedAt: '2026-01-01T00:00:00.000Z',
+    },
   });
   assert.equal(projected.status, 'starting');
   assert.equal(projected.glyph, '◔');

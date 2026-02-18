@@ -400,10 +400,12 @@ void test('requestStop flushes buffers and optionally queues best-effort live se
     }),
     true,
   );
-  await (queuedTask ??
+  await (
+    queuedTask ??
     (async () => {
       assert.fail('expected queued shutdown task');
-    }))();
+    })
+  )();
   assert.deepEqual(calls, [
     'stopConversationTitleEdit',
     'flush:task-active',
@@ -596,7 +598,8 @@ void test('routeInputTokensForConversation forwards keyboard input and accumulat
       },
     ],
     mainPaneMode: 'conversation',
-    normalizeMuxKeyboardInputForPty: (input) => Buffer.from(input.toString('utf8').toUpperCase(), 'utf8'),
+    normalizeMuxKeyboardInputForPty: (input) =>
+      Buffer.from(input.toString('utf8').toUpperCase(), 'utf8'),
     classifyPaneAt: (col) => (col >= 10 ? 'right' : 'left'),
     wheelDeltaRowsFromCode: (code) => (code === 64 ? 2 : null),
   });
@@ -716,9 +719,15 @@ void test('dismissModalOnOutsideClick handles no-escape, null-overlay, and point
 
 void test('left-nav helpers build stable target keys and dedupe visible targets', () => {
   assert.equal(leftNavTargetKey({ kind: 'home' }), 'home');
-  assert.equal(leftNavTargetKey({ kind: 'repository', repositoryId: 'repo-a' }), 'repository:repo-a');
+  assert.equal(
+    leftNavTargetKey({ kind: 'repository', repositoryId: 'repo-a' }),
+    'repository:repo-a',
+  );
   assert.equal(leftNavTargetKey({ kind: 'project', directoryId: 'dir-a' }), 'directory:dir-a');
-  assert.equal(leftNavTargetKey({ kind: 'conversation', sessionId: 'session-a' }), 'conversation:session-a');
+  assert.equal(
+    leftNavTargetKey({ kind: 'conversation', sessionId: 'session-a' }),
+    'conversation:session-a',
+  );
 
   const rows = [
     {
@@ -913,8 +922,5 @@ void test('handleLeftRailPointerClick applies title-edit, selection clear, actio
     }),
     true,
   );
-  assert.deepEqual(conversationCalls, [
-    'handleAction:null',
-    'handleConversation:session-a',
-  ]);
+  assert.deepEqual(conversationCalls, ['handleAction:null', 'handleConversation:session-a']);
 });

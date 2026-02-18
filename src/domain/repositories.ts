@@ -1,7 +1,10 @@
 export class RepositoryManager<TRepositoryRecord, TRepositorySnapshot> {
   private readonly repositories = new Map<string, TRepositoryRecord>();
   private readonly repositoryAssociationByDirectoryId = new Map<string, string>();
-  private readonly directoryRepositorySnapshotByDirectoryId = new Map<string, TRepositorySnapshot>();
+  private readonly directoryRepositorySnapshotByDirectoryId = new Map<
+    string,
+    TRepositorySnapshot
+  >();
   private readonly collapsedRepositoryGroupIds = new Set<string>();
   private readonly expandedRepositoryGroupIds = new Set<string>();
 

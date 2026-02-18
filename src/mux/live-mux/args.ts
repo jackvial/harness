@@ -136,7 +136,7 @@ export function parseMuxArgs(argv: string[], options: ParseMuxArgsOptions = {}):
       workspaceId: env.HARNESS_WORKSPACE_ID ?? basename(cwd),
       worktreeId: env.HARNESS_WORKTREE_ID ?? 'worktree-local',
       conversationId: initialConversationId,
-      turnId
-    }
+      turnId,
+    },
   };
 }

@@ -24,7 +24,9 @@ export class ProjectPane {
   render(input: ProjectPaneRenderInput): ProjectPaneRenderResult {
     if (input.snapshot === null) {
       return {
-        rows: Array.from({ length: input.layout.paneRows }, () => ' '.repeat(input.layout.rightCols)),
+        rows: Array.from({ length: input.layout.paneRows }, () =>
+          ' '.repeat(input.layout.rightCols),
+        ),
         scrollTop: input.scrollTop,
       };
     }

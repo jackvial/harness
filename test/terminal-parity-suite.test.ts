@@ -4,7 +4,7 @@ import {
   TERMINAL_PARITY_SCENES,
   runTerminalParityMatrix,
   runTerminalParityScene,
-  type TerminalParityScene
+  type TerminalParityScene,
 } from '../src/terminal/parity-suite.ts';
 
 void test('terminal parity scenes execute and matrix summarizes pass/fail', () => {
@@ -13,7 +13,10 @@ void test('terminal parity scenes execute and matrix summarizes pass/fail', () =
   assert.equal(matrix.totalScenes, TERMINAL_PARITY_SCENES.length);
   assert.equal(matrix.failedScenes, 0);
   assert.equal(matrix.passedScenes, TERMINAL_PARITY_SCENES.length);
-  assert.equal(matrix.results.every((result) => result.pass), true);
+  assert.equal(
+    matrix.results.every((result) => result.pass),
+    true,
+  );
 });
 
 void test('terminal parity scene supports resize steps and viewport/cursor expectations', () => {
@@ -26,25 +29,25 @@ void test('terminal parity scene supports resize steps and viewport/cursor expec
     steps: [
       { kind: 'output', chunk: '1\n2\n3\n' },
       { kind: 'resize', cols: 5, rows: 2 },
-      { kind: 'output', chunk: '\u001b[?25l' }
+      { kind: 'output', chunk: '\u001b[?25l' },
     ],
     expectations: {
       activeScreen: 'primary',
       cursor: {
-        visible: false
+        visible: false,
       },
       viewport: {
         followOutput: true,
         topMin: 1,
-        topMax: 3
+        topMax: 3,
       },
       lines: [
         {
           row: 0,
-          includes: '3'
-        }
-      ]
-    }
+          includes: '3',
+        },
+      ],
+    },
   };
 
   const result = runTerminalParityScene(scene);
@@ -65,18 +68,18 @@ void test('terminal parity scene surfaces failures across line/cell/style checks
       cursor: {
         row: 1,
         col: 0,
-        visible: false
+        visible: false,
       },
       viewport: {
         followOutput: false,
         topMin: 1,
-        topMax: -1
+        topMax: -1,
       },
       lines: [
         { row: 0, equals: 'zzz' },
         { row: 0, includes: 'x' },
         { row: 0, wrapped: true },
-        { row: 3, equals: '' }
+        { row: 3, equals: '' },
       ],
       cells: [
         {
@@ -92,24 +95,24 @@ void test('terminal parity scene surfaces failures across line/cell/style checks
             underline: true,
             inverse: true,
             fg: { kind: 'default' },
-            bg: { kind: 'rgb', r: 1, g: 2, b: 3 }
-          }
+            bg: { kind: 'rgb', r: 1, g: 2, b: 3 },
+          },
         },
         {
           row: 0,
           col: 1,
           style: {
             fg: { kind: 'indexed', index: 1 },
-            bg: { kind: 'indexed', index: 2 }
-          }
+            bg: { kind: 'indexed', index: 2 },
+          },
         },
         {
           row: 5,
           col: 5,
-          glyph: '?'
-        }
-      ]
-    }
+          glyph: '?',
+        },
+      ],
+    },
   };
 
   const failed = runTerminalParityScene(failingScene);
@@ -154,11 +157,11 @@ void test('terminal parity color expectations cover indexed and rgb matches', ()
           col: 0,
           style: {
             fg: { kind: 'indexed', index: 3 },
-            bg: { kind: 'rgb', r: 9, g: 8, b: 7 }
-          }
-        }
-      ]
-    }
+            bg: { kind: 'rgb', r: 9, g: 8, b: 7 },
+          },
+        },
+      ],
+    },
   };
 
   const result = runTerminalParityScene(scene);
@@ -180,11 +183,11 @@ void test('terminal parity color expectations support default color matches', ()
           col: 0,
           style: {
             fg: { kind: 'default' },
-            bg: { kind: 'default' }
-          }
-        }
-      ]
-    }
+            bg: { kind: 'default' },
+          },
+        },
+      ],
+    },
   };
 
   const result = runTerminalParityScene(scene);

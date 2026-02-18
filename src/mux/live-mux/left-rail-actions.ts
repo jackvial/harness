@@ -54,7 +54,10 @@ export function handleLeftRailActionClick(options: HandleLeftRailActionClickOpti
   }
   if (options.action === 'repository.edit') {
     options.clearConversationTitleEditClickState();
-    if (options.selectedRepositoryId !== null && options.repositoryExists(options.selectedRepositoryId)) {
+    if (
+      options.selectedRepositoryId !== null &&
+      options.repositoryExists(options.selectedRepositoryId)
+    ) {
       options.openRepositoryPromptForEdit(options.selectedRepositoryId);
     }
     options.markDirty();
@@ -62,7 +65,10 @@ export function handleLeftRailActionClick(options: HandleLeftRailActionClickOpti
   }
   if (options.action === 'repository.archive') {
     options.clearConversationTitleEditClickState();
-    if (options.selectedRepositoryId !== null && options.repositoryExists(options.selectedRepositoryId)) {
+    if (
+      options.selectedRepositoryId !== null &&
+      options.repositoryExists(options.selectedRepositoryId)
+    ) {
       options.queueArchiveRepository(options.selectedRepositoryId);
     }
     options.markDirty();

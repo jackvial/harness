@@ -17,7 +17,7 @@ function createCollector() {
     },
     read: (): string => {
       return Buffer.concat(chunks).toString('utf8');
-    }
+    },
   };
 }
 
@@ -25,14 +25,14 @@ function waitForMatch(readOutput: () => string, matcher: RegExp, timeoutMs = 300
   return waitForCondition(
     () => matcher.test(readOutput()),
     `pattern: ${matcher.source}`,
-    timeoutMs
+    timeoutMs,
   );
 }
 
 function waitForCondition(
   predicate: () => boolean,
   description: string,
-  timeoutMs = 3000
+  timeoutMs = 3000,
 ): Promise<void> {
   const startedAt = Date.now();
   return new Promise((resolve, reject) => {
@@ -54,7 +54,10 @@ function waitForCondition(
   });
 }
 
-function waitForExit(session: ReturnType<typeof startPtySession>, timeoutMs = 3000): Promise<PtyExit> {
+function waitForExit(
+  session: ReturnType<typeof startPtySession>,
+  timeoutMs = 3000,
+): Promise<PtyExit> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error('timed out waiting for process exit'));
@@ -130,12 +133,12 @@ function parsePerfRecord(line: string): PerfRecord {
   const durationNs = candidate['duration-ns'];
   const baseRecord = {
     type: candidate.type,
-    name: candidate.name
+    name: candidate.name,
   };
   if (typeof durationNs === 'string') {
     return {
       ...baseRecord,
-      'duration-ns': durationNs
+      'duration-ns': durationNs,
     };
   }
   return baseRecord;
@@ -157,7 +160,7 @@ afterEach(() => {
 void test('pty-host transparently echoes input using cat', async () => {
   const session = startPtySession({
     command: '/bin/cat',
-    commandArgs: []
+    commandArgs: [],
   });
   assert.equal(typeof session.processId(), 'number');
   const collector = createCollector();
@@ -174,7 +177,7 @@ void test('pty-host transparently echoes input using cat', async () => {
 void test('pty-host forwards shell output and exits cleanly', async () => {
   const session = startPtySession({
     command: '/bin/sh',
-    commandArgs: ['-c', 'printf "ready\\n"']
+    commandArgs: ['-c', 'printf "ready\\n"'],
   });
   const collector = createCollector();
   session.on('data', collector.onData);
@@ -189,7 +192,7 @@ void test('pty-host runs command in provided cwd', async () => {
   const session = startPtySession({
     command: '/bin/sh',
     commandArgs: ['-c', 'pwd'],
-    cwd
+    cwd,
   });
   const collector = createCollector();
   session.on('data', collector.onData);
@@ -206,7 +209,7 @@ void test('pty-host runs command in provided cwd', async () => {
 void test('pty-host forwards stderr output through data stream', async () => {
   const session = startPtySession({
     command: '/bin/sh',
-    commandArgs: ['-c', 'printf "stderr-ready\\n" 1>&2']
+    commandArgs: ['-c', 'printf "stderr-ready\\n" 1>&2'],
   });
   const collector = createCollector();
   session.on('data', collector.onData);
@@ -222,8 +225,8 @@ void test('pty-host resize updates terminal size seen by shell', async () => {
     commandArgs: ['-i'],
     env: {
       ...process.env,
-      PS1: ''
-    }
+      PS1: '',
+    },
   });
   const collector = createCollector();
   session.on('data', collector.onData);
@@ -243,10 +246,10 @@ void test('pty-host applies initial terminal size before first command', async (
     commandArgs: ['-i'],
     env: {
       ...process.env,
-      PS1: ''
+      PS1: '',
     },
     initialCols: 67,
-    initialRows: 23
+    initialRows: 23,
   });
   const collector = createCollector();
   session.on('data', collector.onData);
@@ -270,14 +273,14 @@ void test('pty-host resolves helper path from preferred defaults and explicit ov
   const resolvedDefault = resolvePtyHelperPath(
     undefined,
     ['/missing/helper', '/preferred/helper'],
-    (path) => path === '/preferred/helper'
+    (path) => path === '/preferred/helper',
   );
   assert.equal(resolvedDefault, '/preferred/helper');
 
   const resolvedFallback = resolvePtyHelperPath(
     undefined,
     ['/fallback/helper', '/missing/helper'],
-    () => false
+    () => false,
   );
   assert.equal(resolvedFallback, '/fallback/helper');
 
@@ -288,13 +291,13 @@ void test('pty-host resolves helper path from preferred defaults and explicit ov
 void test('pty-host helper path resolver rejects empty candidate lists', () => {
   assert.throws(
     () => resolvePtyHelperPath(undefined, [], () => false),
-    /pty helper path candidates must include at least one path/
+    /pty helper path candidates must include at least one path/,
   );
 });
 
 void test('pty-host emits error when helper executable cannot be launched', async () => {
   const session = startPtySession({
-    helperPath: '/path/that/does/not/exist'
+    helperPath: '/path/that/does/not/exist',
   });
   assert.equal(session.processId(), null);
 
@@ -305,40 +308,44 @@ void test('pty-host emits error when helper executable cannot be launched', asyn
   assert.match(error.message, /ENOENT/);
 });
 
-void test('pty-host supports interactive vim editing flow', async () => {
-  const tempPath = mkdtempSync(join(tmpdir(), 'harness-vim-'));
-  const notePath = join(tempPath, 'note.txt');
+void test(
+  'pty-host supports interactive vim editing flow',
+  async () => {
+    const tempPath = mkdtempSync(join(tmpdir(), 'harness-vim-'));
+    const notePath = join(tempPath, 'note.txt');
 
-  try {
-    const session = startPtySession({
-      command: '/usr/bin/vim',
-      commandArgs: ['-Nu', 'NONE', '-n', notePath],
-      env: {
-        ...process.env,
-        TERM: process.env.TERM ?? 'xterm-256color'
-      }
-    });
-    const collector = createCollector();
-    session.on('data', collector.onData);
+    try {
+      const session = startPtySession({
+        command: '/usr/bin/vim',
+        commandArgs: ['-Nu', 'NONE', '-n', notePath],
+        env: {
+          ...process.env,
+          TERM: process.env.TERM ?? 'xterm-256color',
+        },
+      });
+      const collector = createCollector();
+      session.on('data', collector.onData);
 
-    await waitForCondition(
-      () => collector.read().length > 0,
-      'vim initial terminal output',
-      5000
-    );
-    await delay(100);
+      await waitForCondition(
+        () => collector.read().length > 0,
+        'vim initial terminal output',
+        5000,
+      );
+      await delay(100);
 
-    session.write('iharness-vim-checkpoint');
-    session.write('\u001b');
-    session.write(':wq\r');
+      session.write('iharness-vim-checkpoint');
+      session.write('\u001b');
+      session.write(':wq\r');
 
-    const exit = await waitForExit(session, 10000);
-    assert.equal(exit.code, 0);
-    assert.match(readFileSync(notePath, 'utf8'), /harness-vim-checkpoint/);
-  } finally {
-    rmSync(tempPath, { recursive: true, force: true });
-  }
-}, { timeout: 20000 });
+      const exit = await waitForExit(session, 10000);
+      assert.equal(exit.code, 0);
+      assert.match(readFileSync(notePath, 'utf8'), /harness-vim-checkpoint/);
+    } finally {
+      rmSync(tempPath, { recursive: true, force: true });
+    }
+  },
+  { timeout: 20000 },
+);
 
 void test('pty-host preserves terminal control sequences in output stream', async () => {
   const expectedSequences = [
@@ -351,15 +358,15 @@ void test('pty-host preserves terminal control sequences in output stream', asyn
     '\u001b[?1000l',
     '\u001b[?2004l',
     '\u001b[?25h',
-    '\u001b[?1049l'
+    '\u001b[?1049l',
   ];
 
   const session = startPtySession({
     command: '/bin/sh',
     commandArgs: [
       '-c',
-      'printf "\\033[?1049h\\033[?25l\\033[?2004h\\033[?1000h\\033[38;2;1;2;3mX\\033[0m\\033[?1000l\\033[?2004l\\033[?25h\\033[?1049l\\n"'
-    ]
+      'printf "\\033[?1049h\\033[?25l\\033[?2004h\\033[?1000h\\033[38;2;1;2;3mX\\033[0m\\033[?1000l\\033[?2004l\\033[?25h\\033[?1049l\\n"',
+    ],
   });
   const collector = createCollector();
   session.on('data', collector.onData);
@@ -382,15 +389,15 @@ void test(
     try {
       configurePerfCore({
         enabled: true,
-        filePath: perfFilePath
+        filePath: perfFilePath,
       });
 
       const session = startPtySession({
         command: '/bin/sh',
         commandArgs: [
           '-c',
-          'for i in $(seq 1 12); do printf "stdout-without-probe-$i\\n"; sleep 0.01; done'
-        ]
+          'for i in $(seq 1 12); do printf "stdout-without-probe-$i\\n"; sleep 0.01; done',
+        ],
       });
 
       const exit = await waitForExit(session, 10000);
@@ -398,17 +405,19 @@ void test(
 
       configurePerfCore({
         enabled: false,
-        filePath: perfFilePath
+        filePath: perfFilePath,
       });
       shutdownPerfCore();
 
       const records = readPerfRecords(perfFilePath);
       assert.ok(
-        records.some((record) => record.type === 'event' && record.name === 'pty.stdout.chunk')
+        records.some((record) => record.type === 'event' && record.name === 'pty.stdout.chunk'),
       );
       assert.equal(
-        records.some((record) => record.type === 'span' && record.name === 'pty.keystroke.roundtrip'),
-        false
+        records.some(
+          (record) => record.type === 'span' && record.name === 'pty.keystroke.roundtrip',
+        ),
+        false,
       );
     } finally {
       configurePerfCore({ enabled: false });
@@ -416,7 +425,7 @@ void test(
       rmSync(tempPath, { recursive: true, force: true });
     }
   },
-  { timeout: 10000 }
+  { timeout: 10000 },
 );
 
 void test(
@@ -429,12 +438,12 @@ void test(
     try {
       configurePerfCore({
         enabled: true,
-        filePath: perfFilePath
+        filePath: perfFilePath,
       });
 
       session = startPtySession({
         command: '/bin/cat',
-        commandArgs: []
+        commandArgs: [],
       });
 
       const internals = session as unknown as {
@@ -451,7 +460,7 @@ void test(
         probeId: 1,
         payloadLength: 5,
         matchPayloads: [Buffer.from('never-match-probe', 'utf8')],
-        startedAtNs: process.hrtime.bigint()
+        startedAtNs: process.hrtime.bigint(),
       });
       internals.trackRoundtrip(Buffer.alloc(9000, 0x41));
 
@@ -471,7 +480,7 @@ void test(
       rmSync(tempPath, { recursive: true, force: true });
     }
   },
-  { timeout: 10000 }
+  { timeout: 10000 },
 );
 
 void test(
@@ -483,12 +492,12 @@ void test(
     try {
       configurePerfCore({
         enabled: true,
-        filePath: perfFilePath
+        filePath: perfFilePath,
       });
 
       const session = startPtySession({
         command: '/bin/cat',
-        commandArgs: []
+        commandArgs: [],
       });
       const collector = createCollector();
       session.on('data', collector.onData);
@@ -506,7 +515,7 @@ void test(
 
       configurePerfCore({
         enabled: false,
-        filePath: perfFilePath
+        filePath: perfFilePath,
       });
       shutdownPerfCore();
 
@@ -536,5 +545,5 @@ void test(
       rmSync(tempPath, { recursive: true, force: true });
     }
   },
-  { timeout: 30000 }
+  { timeout: 30000 },
 );

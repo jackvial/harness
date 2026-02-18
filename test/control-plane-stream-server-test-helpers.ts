@@ -43,12 +43,12 @@ export class FakeLiveSession {
     this.backlog = [
       {
         cursor: 1,
-        chunk: Buffer.from('warmup-1', 'utf8')
+        chunk: Buffer.from('warmup-1', 'utf8'),
       },
       {
         cursor: 2,
-        chunk: Buffer.from('warmup-2', 'utf8')
-      }
+        chunk: Buffer.from('warmup-2', 'utf8'),
+      },
     ];
     this.latestCursor = 2;
     for (const entry of this.backlog) {
@@ -67,7 +67,7 @@ export class FakeLiveSession {
       }
       handlers.onData({
         cursor: event.cursor,
-        chunk: Buffer.from(event.chunk)
+        chunk: Buffer.from(event.chunk),
       });
     }
 
@@ -94,7 +94,7 @@ export class FakeLiveSession {
     this.latestCursor += 1;
     const event = {
       cursor: this.latestCursor,
-      chunk
+      chunk,
     };
     for (const handlers of this.attachments.values()) {
       handlers.onData(event);
@@ -141,7 +141,7 @@ export class FakeLiveSession {
     }
     this.emitEvent({
       type: 'session-exit',
-      exit
+      exit,
     });
   }
 }
@@ -154,7 +154,10 @@ export function collectEnvelopes(client: ControlPlaneStreamClient): StreamServer
   return envelopes;
 }
 
-export async function writeRaw(address: { host: string; port: number }, lines: string): Promise<void> {
+export async function writeRaw(
+  address: { host: string; port: number },
+  lines: string,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const socket = connect(address.port, address.host, () => {
       socket.end(lines);
@@ -167,7 +170,7 @@ export async function writeRaw(address: { host: string; port: number }, lines: s
 export async function postJson(
   address: { host: string; port: number },
   path: string,
-  payload: unknown
+  payload: unknown,
 ): Promise<{ statusCode: number; body: string }> {
   return await new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
@@ -179,8 +182,8 @@ export async function postJson(
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'content-length': Buffer.byteLength(body)
-        }
+          'content-length': Buffer.byteLength(body),
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -190,10 +193,10 @@ export async function postJson(
         res.on('end', () => {
           resolve({
             statusCode: res.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString('utf8')
+            body: Buffer.concat(chunks).toString('utf8'),
           });
         });
-      }
+      },
     );
     req.once('error', reject);
     req.write(body);
@@ -205,7 +208,7 @@ export async function postRaw(
   address: { host: string; port: number },
   path: string,
   method: string,
-  body: string
+  body: string,
 ): Promise<{ statusCode: number; body: string }> {
   return await new Promise((resolve, reject) => {
     const req = httpRequest(
@@ -216,8 +219,8 @@ export async function postRaw(
         method,
         headers: {
           'content-type': 'application/json',
-          'content-length': Buffer.byteLength(body)
-        }
+          'content-length': Buffer.byteLength(body),
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -227,10 +230,10 @@ export async function postRaw(
         res.on('end', () => {
           resolve({
             statusCode: res.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString('utf8')
+            body: Buffer.concat(chunks).toString('utf8'),
           });
         });
-      }
+      },
     );
     req.once('error', reject);
     req.write(body);

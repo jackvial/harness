@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { ConversationManager } from '../src/domain/conversations.ts';
-import { createConversationState, type ConversationState } from '../src/mux/live-mux/conversation-state.ts';
+import {
+  createConversationState,
+  type ConversationState,
+} from '../src/mux/live-mux/conversation-state.ts';
 import type { EventScope } from '../src/events/normalized-events.ts';
 
 const BASE_SCOPE: EventScope = {
@@ -86,8 +89,12 @@ void test('conversation manager ensure lifecycle and start-in-flight semantics a
   const manager = new ConversationManager();
   assert.throws(() => manager.ensure('session-a'), /ensure dependencies are not configured/);
 
-  const createdInputs: Array<{ sessionId: string; directoryId: string | null; title: string; agentType: string }> =
-    [];
+  const createdInputs: Array<{
+    sessionId: string;
+    directoryId: string | null;
+    title: string;
+    agentType: string;
+  }> = [];
   manager.configureEnsureDependencies({
     resolveDefaultDirectoryId: () => 'dir-default',
     normalizeAdapterState: (value) => ({
@@ -101,7 +108,13 @@ void test('conversation manager ensure lifecycle and start-in-flight semantics a
         title: input.title,
         agentType: input.agentType,
       });
-      return createState(input.sessionId, input.directoryId, input.title, input.agentType, input.adapterState);
+      return createState(
+        input.sessionId,
+        input.directoryId,
+        input.title,
+        input.agentType,
+        input.adapterState,
+      );
     },
   });
 
@@ -174,7 +187,13 @@ void test('conversation manager persistence, summaries, io updates, and attach/d
     resolveDefaultDirectoryId: () => 'dir-default',
     normalizeAdapterState: (value) => value ?? {},
     createConversation: (input) =>
-      createState(input.sessionId, input.directoryId, input.title, input.agentType, input.adapterState),
+      createState(
+        input.sessionId,
+        input.directoryId,
+        input.title,
+        input.agentType,
+        input.adapterState,
+      ),
   });
 
   const persisted = manager.upsertFromPersistedRecord({
@@ -345,19 +364,23 @@ void test('conversation manager persistence, summaries, io updates, and attach/d
   );
   ioConversation.live = false;
   assert.equal(
-    (await manager.attachIfLive({
-      sessionId: 'session-io',
-      attach: async () => {},
-    })).attached,
+    (
+      await manager.attachIfLive({
+        sessionId: 'session-io',
+        attach: async () => {},
+      })
+    ).attached,
     false,
   );
   ioConversation.live = true;
   ioConversation.attached = true;
   assert.equal(
-    (await manager.attachIfLive({
-      sessionId: 'session-io',
-      attach: async () => {},
-    })).attached,
+    (
+      await manager.attachIfLive({
+        sessionId: 'session-io',
+        attach: async () => {},
+      })
+    ).attached,
     false,
   );
 
@@ -386,10 +409,12 @@ void test('conversation manager persistence, summaries, io updates, and attach/d
   );
   ioConversation.attached = false;
   assert.equal(
-    (await manager.detachIfAttached({
-      sessionId: 'session-io',
-      detach: async () => {},
-    })).detached,
+    (
+      await manager.detachIfAttached({
+        sessionId: 'session-io',
+        detach: async () => {},
+      })
+    ).detached,
     false,
   );
   ioConversation.attached = true;

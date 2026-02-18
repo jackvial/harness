@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
   ControlPlaneOpQueue,
-  type ControlPlaneOpPriority
+  type ControlPlaneOpPriority,
 } from '../src/mux/control-plane-op-queue.ts';
 
 async function flushManualSchedule(queue: Array<() => void>): Promise<void> {
@@ -36,7 +36,7 @@ void test('control-plane op queue prioritizes interactive tasks and deduplicates
     },
     onSuccess: (event) => {
       completed.push(event.label);
-    }
+    },
   });
 
   queue.enqueueBackground(() => {
@@ -54,11 +54,14 @@ void test('control-plane op queue prioritizes interactive tasks and deduplicates
 
   assert.deepEqual(enqueued, [
     { label: 'background-op', priority: 'background' },
-    { label: 'interactive-op', priority: 'interactive' }
+    { label: 'interactive-op', priority: 'interactive' },
   ]);
   assert.deepEqual(ran, ['interactive', 'background']);
   assert.deepEqual(completed, ['interactive-op', 'background-op']);
-  assert.deepEqual(started.map((entry) => entry.priority), ['interactive', 'background']);
+  assert.deepEqual(
+    started.map((entry) => entry.priority),
+    ['interactive', 'background'],
+  );
   assert.equal(started[0]?.waitMs, 8);
   assert.equal(started[1]?.waitMs, 20);
 });
@@ -67,12 +70,12 @@ void test('control-plane op queue waitForDrain resolves immediately when queue i
   const queue = new ControlPlaneOpQueue({
     schedule: () => {
       throw new Error('schedule should not be called for idle wait');
-    }
+    },
   });
   assert.deepEqual(queue.metrics(), {
     interactiveQueued: 0,
     backgroundQueued: 0,
-    running: false
+    running: false,
   });
   await queue.waitForDrain();
   assert.ok(true);
@@ -89,7 +92,7 @@ void test('control-plane op queue metrics reflect enqueued and running operation
   const queue = new ControlPlaneOpQueue({
     schedule: (callback) => {
       scheduled.push(callback);
-    }
+    },
   });
 
   queue.enqueueBackground(async () => {
@@ -98,14 +101,14 @@ void test('control-plane op queue metrics reflect enqueued and running operation
   assert.deepEqual(queue.metrics(), {
     interactiveQueued: 0,
     backgroundQueued: 1,
-    running: false
+    running: false,
   });
 
   await flushManualSchedule(scheduled);
   assert.deepEqual(queue.metrics(), {
     interactiveQueued: 0,
     backgroundQueued: 0,
-    running: true
+    running: true,
   });
 
   releaseTask();
@@ -117,7 +120,7 @@ void test('control-plane op queue metrics reflect enqueued and running operation
   assert.deepEqual(queue.metrics(), {
     interactiveQueued: 0,
     backgroundQueued: 0,
-    running: false
+    running: false,
   });
 });
 
@@ -136,7 +139,7 @@ void test('control-plane op queue reports task errors and continues draining sub
     },
     onSuccess: (event) => {
       completed.push(event.label);
-    }
+    },
   });
 
   queue.enqueueInteractive(() => {
@@ -174,7 +177,7 @@ void test('control-plane op queue surfaces fatal callback errors without blockin
     },
     onFatal: (error) => {
       fatalMessages.push(error instanceof Error ? error.message : String(error));
-    }
+    },
   });
 
   queue.enqueueInteractive(() => Promise.resolve(), 'bad');
@@ -211,7 +214,7 @@ void test('control-plane op queue ignores pump execution while an operation is a
   const queue = new ControlPlaneOpQueue({
     schedule: (callback) => {
       scheduled.push(callback);
-    }
+    },
   });
 
   queue.enqueueInteractive(async () => {

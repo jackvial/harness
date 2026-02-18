@@ -95,7 +95,9 @@ export class PointerRoutingInput {
     });
   }
 
-  handleHomePaneDragRelease(event: Pick<PointerEventInput, 'final' | 'target' | 'rowIndex'>): boolean {
+  handleHomePaneDragRelease(
+    event: Pick<PointerEventInput, 'final' | 'target' | 'rowIndex'>,
+  ): boolean {
     return this.handleHomePaneDragReleaseInput({
       homePaneDragState: this.options.getHomePaneDragState(),
       isMouseRelease: isMouseRelease(event.final),

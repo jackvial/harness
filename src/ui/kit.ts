@@ -7,7 +7,7 @@ import {
   renderUiSurfaceAnsiRows,
   type UiColor,
   type UiStyle,
-  type UiSurface
+  type UiSurface,
 } from './surface.ts';
 
 interface UiRect {
@@ -34,7 +34,7 @@ export const SINGLE_LINE_UI_BOX_GLYPHS: UiBoxGlyphs = {
   bottomLeft: '└',
   bottomRight: '┘',
   horizontal: '─',
-  vertical: '│'
+  vertical: '│',
 };
 
 interface UiModalTheme {
@@ -94,23 +94,23 @@ export const DEFAULT_UI_MODAL_THEME: UiModalTheme = {
   frameStyle: {
     fg: MODAL_FRAME_FG,
     bg: MODAL_BG,
-    bold: true
+    bold: true,
   },
   titleStyle: {
     fg: MODAL_TITLE_FG,
     bg: MODAL_BG,
-    bold: true
+    bold: true,
   },
   bodyStyle: {
     fg: MODAL_BODY_FG,
     bg: MODAL_BG,
-    bold: false
+    bold: false,
   },
   footerStyle: {
     fg: MODAL_FOOTER_FG,
     bg: MODAL_BG,
-    bold: false
-  }
+    bold: false,
+  },
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -137,7 +137,7 @@ function normalizeRect(surface: UiSurface, rect: UiRect): UiRect | null {
     col: colStart,
     row: rowStart,
     width,
-    height
+    height,
   };
 }
 
@@ -149,7 +149,7 @@ function mergeModalTheme(theme: Partial<UiModalTheme> | undefined): UiModalTheme
     frameStyle: theme.frameStyle ?? DEFAULT_UI_MODAL_THEME.frameStyle,
     titleStyle: theme.titleStyle ?? DEFAULT_UI_MODAL_THEME.titleStyle,
     bodyStyle: theme.bodyStyle ?? DEFAULT_UI_MODAL_THEME.bodyStyle,
-    footerStyle: theme.footerStyle ?? DEFAULT_UI_MODAL_THEME.footerStyle
+    footerStyle: theme.footerStyle ?? DEFAULT_UI_MODAL_THEME.footerStyle,
   };
 }
 
@@ -215,7 +215,7 @@ export function drawUiAlignedText(
   width: number,
   text: string,
   style: UiStyle,
-  align: UiTextAlign = 'left'
+  align: UiTextAlign = 'left',
 ): void {
   const safeWidth = Math.max(0, Math.floor(width));
   if (safeWidth === 0) {
@@ -239,7 +239,7 @@ export function paintUiRow(
   text: string,
   textStyle: UiStyle,
   fillStyle: UiStyle = textStyle,
-  col = 0
+  col = 0,
 ): void {
   fillUiRow(surface, row, fillStyle);
   drawUiText(surface, col, row, text, textStyle);
@@ -253,10 +253,10 @@ export function paintUiRowWithTrailingLabel(
   leftStyle: UiStyle,
   trailingStyle: UiStyle,
   fillStyle: UiStyle = leftStyle,
-  options: UiTrailingLabelRowOptions = {}
+  options: UiTrailingLabelRowOptions = {},
 ): void {
   const col = Math.max(0, Math.floor(options.col ?? 0));
-  const width = Math.max(0, Math.floor(options.width ?? (surface.cols - col)));
+  const width = Math.max(0, Math.floor(options.width ?? surface.cols - col));
   const gap = clamp(Math.floor(options.gap ?? 1), 0, width);
   fillUiRow(surface, row, fillStyle);
   if (width === 0) {
@@ -291,7 +291,7 @@ export function strokeUiRect(
   surface: UiSurface,
   rect: UiRect,
   style: UiStyle,
-  glyphs: UiBoxGlyphs = SINGLE_LINE_UI_BOX_GLYPHS
+  glyphs: UiBoxGlyphs = SINGLE_LINE_UI_BOX_GLYPHS,
 ): void {
   const normalized = normalizeRect(surface, rect);
   if (normalized === null) {
@@ -304,7 +304,13 @@ export function strokeUiRect(
   }
 
   if (normalized.height === 1) {
-    drawUiText(surface, normalized.col, normalized.row, glyphs.horizontal.repeat(normalized.width), style);
+    drawUiText(
+      surface,
+      normalized.col,
+      normalized.row,
+      glyphs.horizontal.repeat(normalized.width),
+      style,
+    );
     return;
   }
 
@@ -316,7 +322,13 @@ export function strokeUiRect(
   }
 
   const horizontal = glyphs.horizontal.repeat(Math.max(0, normalized.width - 2));
-  drawUiText(surface, normalized.col, normalized.row, `${glyphs.topLeft}${horizontal}${glyphs.topRight}`, style);
+  drawUiText(
+    surface,
+    normalized.col,
+    normalized.row,
+    `${glyphs.topLeft}${horizontal}${glyphs.topRight}`,
+    style,
+  );
 
   const bottomRow = normalized.row + normalized.height - 1;
   drawUiText(
@@ -324,7 +336,7 @@ export function strokeUiRect(
     normalized.col,
     bottomRow,
     `${glyphs.bottomLeft}${horizontal}${glyphs.bottomRight}`,
-    style
+    style,
   );
 
   for (let row = normalized.row + 1; row < bottomRow; row += 1) {
@@ -339,7 +351,7 @@ export function layoutUiModalRect(
   width: number,
   height: number,
   anchor: UiModalAnchor = 'center',
-  marginRows = 1
+  marginRows = 1,
 ): UiRect {
   const safeViewportCols = Math.max(1, Math.floor(viewportCols));
   const safeViewportRows = Math.max(1, Math.floor(viewportRows));
@@ -356,7 +368,7 @@ export function layoutUiModalRect(
     col: left,
     row: top,
     width: safeWidth,
-    height: safeHeight
+    height: safeHeight,
   };
 }
 
@@ -364,7 +376,7 @@ export function drawUiModal(
   surface: UiSurface,
   rect: UiRect,
   content: UiModalContent,
-  theme: Partial<UiModalTheme> | undefined = undefined
+  theme: Partial<UiModalTheme> | undefined = undefined,
 ): UiRect | null {
   const normalized = normalizeRect(surface, rect);
   if (normalized === null) {
@@ -379,14 +391,18 @@ export function drawUiModal(
     col: normalized.col + 1,
     row: normalized.row + 1,
     width: Math.max(0, normalized.width - 2),
-    height: Math.max(0, normalized.height - 2)
+    height: Math.max(0, normalized.height - 2),
   };
   const normalizedInner = normalizeRect(surface, inner);
   if (normalizedInner === null) {
     return normalized;
   }
 
-  const paddingX = clamp(Math.floor(content.paddingX ?? 1), 0, Math.floor(normalizedInner.width / 2));
+  const paddingX = clamp(
+    Math.floor(content.paddingX ?? 1),
+    0,
+    Math.floor(normalizedInner.width / 2),
+  );
   const textCol = normalizedInner.col + paddingX;
   const textWidth = Math.max(0, normalizedInner.width - paddingX * 2);
   if (textWidth === 0) {
@@ -404,7 +420,7 @@ export function drawUiModal(
       textWidth,
       content.title,
       resolvedTheme.titleStyle,
-      'center'
+      'center',
     );
     nextRow += 1;
   }
@@ -433,7 +449,7 @@ export function drawUiModal(
       textWidth,
       footerText,
       resolvedTheme.footerStyle,
-      'right'
+      'right',
     );
   }
 
@@ -447,7 +463,7 @@ export function buildUiModalOverlay(options: UiModalOverlayOptions): UiModalOver
     options.width,
     options.height,
     options.anchor ?? 'center',
-    options.marginRows ?? 1
+    options.marginRows ?? 1,
   );
 
   const surface = createUiSurface(rect.width, rect.height, DEFAULT_UI_STYLE);
@@ -455,7 +471,7 @@ export function buildUiModalOverlay(options: UiModalOverlayOptions): UiModalOver
     bodyLines: options.bodyLines ?? [],
     ...(options.title !== undefined ? { title: options.title } : {}),
     ...(options.footer !== undefined ? { footer: options.footer } : {}),
-    ...(options.paddingX !== undefined ? { paddingX: options.paddingX } : {})
+    ...(options.paddingX !== undefined ? { paddingX: options.paddingX } : {}),
   };
   drawUiModal(
     surface,
@@ -463,10 +479,10 @@ export function buildUiModalOverlay(options: UiModalOverlayOptions): UiModalOver
       col: 0,
       row: 0,
       width: rect.width,
-      height: rect.height
+      height: rect.height,
     },
     content,
-    options.theme
+    options.theme,
   );
 
   return {
@@ -474,15 +490,11 @@ export function buildUiModalOverlay(options: UiModalOverlayOptions): UiModalOver
     top: rect.row,
     width: rect.width,
     height: rect.height,
-    rows: renderUiSurfaceAnsiRows(surface)
+    rows: renderUiSurfaceAnsiRows(surface),
   };
 }
 
-export function isUiModalOverlayHit(
-  overlay: UiModalOverlay,
-  col: number,
-  row: number
-): boolean {
+export function isUiModalOverlayHit(overlay: UiModalOverlay, col: number, row: number): boolean {
   if (col < 1 || row < 1) {
     return false;
   }

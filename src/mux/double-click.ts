@@ -22,7 +22,7 @@ export function detectEntityDoubleClick(
   previous: EntityDoubleClickState | null,
   entityId: string,
   nowMs: number,
-  windowMs: number
+  windowMs: number,
 ): EntityDoubleClickResult {
   const elapsedMs = previous === null ? Number.POSITIVE_INFINITY : nowMs - previous.atMs;
   if (
@@ -33,15 +33,15 @@ export function detectEntityDoubleClick(
   ) {
     return {
       doubleClick: true,
-      nextState: null
+      nextState: null,
     };
   }
   return {
     doubleClick: false,
     nextState: {
       entityId,
-      atMs: nowMs
-    }
+      atMs: nowMs,
+    },
   };
 }
 
@@ -49,30 +49,30 @@ export function detectConversationDoubleClick(
   previous: ConversationDoubleClickState | null,
   conversationId: string,
   nowMs: number,
-  windowMs: number
+  windowMs: number,
 ): ConversationDoubleClickResult {
   const generic = detectEntityDoubleClick(
     previous === null
       ? null
       : {
           entityId: previous.conversationId,
-          atMs: previous.atMs
+          atMs: previous.atMs,
         },
     conversationId,
     nowMs,
-    windowMs
+    windowMs,
   );
   if (generic.nextState === null) {
     return {
       doubleClick: generic.doubleClick,
-      nextState: null
+      nextState: null,
     };
   }
   return {
     doubleClick: generic.doubleClick,
     nextState: {
       conversationId: generic.nextState.entityId,
-      atMs: generic.nextState.atMs
-    }
+      atMs: generic.nextState.atMs,
+    },
   };
 }

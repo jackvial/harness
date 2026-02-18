@@ -62,15 +62,11 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
   const repositoryManager = new RepositoryManager<RepositoryRecord, RepositorySnapshot>();
   repositoryManager.collapseRepositoryGroup('repo-1', false);
 
-  const directories = new Map<string, DirectoryRecord>([
-    ['dir-1', { directoryId: 'dir-1' }],
-  ]);
+  const directories = new Map<string, DirectoryRecord>([['dir-1', { directoryId: 'dir-1' }]]);
   const conversations = new Map<string, ConversationRecord>([
     ['session-1', { sessionId: 'session-1' }],
   ]);
-  const repositories = new Map<string, RepositoryRecord>([
-    ['repo-1', { repositoryId: 'repo-1' }],
-  ]);
+  const repositories = new Map<string, RepositoryRecord>([['repo-1', { repositoryId: 'repo-1' }]]);
   const repositoryAssociationByDirectoryId = new Map<string, string>([['dir-1', 'repo-1']]);
   const directoryRepositorySnapshotByDirectoryId = new Map<string, RepositorySnapshot>([
     ['dir-1', { kind: 'git' }],
@@ -90,18 +86,20 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     source: 'render' | 'observed';
     orderedConversationIds: readonly string[];
   }> = [];
-  let leftRailRenderInput: Parameters<
-    RuntimeLeftRailRender<
-      DirectoryRecord,
-      ConversationRecord,
-      RepositoryRecord,
-      RepositorySnapshot,
-      GitSummaryRecord,
-      ProcessUsageRecord,
-      ShortcutBindingsRecord,
-      readonly string[]
-    >['render']
-  >[0] | null = null;
+  let leftRailRenderInput:
+    | Parameters<
+        RuntimeLeftRailRender<
+          DirectoryRecord,
+          ConversationRecord,
+          RepositoryRecord,
+          RepositorySnapshot,
+          GitSummaryRecord,
+          ProcessUsageRecord,
+          ShortcutBindingsRecord,
+          readonly string[]
+        >['render']
+      >[0]
+    | null = null;
 
   const service = new RuntimeLeftRailRender<
     DirectoryRecord,

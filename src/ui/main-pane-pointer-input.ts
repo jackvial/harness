@@ -1,8 +1,4 @@
-import {
-  hasAltModifier,
-  isLeftButtonPress,
-  isMotionMouseCode,
-} from '../mux/live-mux/selection.ts';
+import { hasAltModifier, isLeftButtonPress, isMotionMouseCode } from '../mux/live-mux/selection.ts';
 import { handleHomePanePointerClick } from '../mux/live-mux/home-pane-pointer.ts';
 import { handleProjectPaneActionClick } from '../mux/live-mux/project-pane-pointer.ts';
 
@@ -86,7 +82,8 @@ export class MainPanePointerInput<TProjectSnapshot extends { directoryId: string
   ) {
     this.projectPaneActionClick =
       dependencies.handleProjectPaneActionClick ?? handleProjectPaneActionClick;
-    this.homePanePointerClick = dependencies.handleHomePanePointerClick ?? handleHomePanePointerClick;
+    this.homePanePointerClick =
+      dependencies.handleHomePanePointerClick ?? handleHomePanePointerClick;
   }
 
   handleProjectPanePointerClick(input: PointerEventInput): boolean {

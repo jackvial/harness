@@ -2,7 +2,7 @@ import type { ControlPlaneKeyEvent } from '../control-plane/codex-session-stream
 import type {
   StreamSessionKeyEventRecord,
   StreamSessionController,
-  StreamSessionRuntimeStatus
+  StreamSessionRuntimeStatus,
 } from '../control-plane/stream-protocol.ts';
 
 interface MuxTelemetrySummaryInput {
@@ -60,18 +60,20 @@ function normalizeSummary(value: string | null): string {
   return (value ?? '').trim();
 }
 
-function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'observedAt'>): ProjectedTelemetrySummary {
+function projectTelemetrySummary(
+  telemetry: Omit<MuxTelemetrySummaryInput, 'observedAt'>,
+): ProjectedTelemetrySummary {
   const eventName = normalizeEventName(telemetry.eventName);
   const summary = normalizeSummary(telemetry.summary);
   const summaryLower = summary.toLowerCase();
   if (telemetry.source === 'otlp-metric') {
     if (eventName === 'codex.turn.e2e_duration_ms') {
       return {
-        text: 'inactive'
+        text: 'inactive',
       };
     }
     return {
-      text: null
+      text: null,
     };
   }
   if (telemetry.source === 'otlp-log' && eventName === 'codex.sse_event') {
@@ -83,23 +85,27 @@ function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'obse
       summaryLower.includes('response.function_call_arguments.delta')
     ) {
       return {
-        text: 'active'
+        text: 'active',
       };
     }
   }
   if (eventName === 'codex.user_prompt') {
     return {
-      text: 'active'
+      text: 'active',
     };
   }
   if (eventName === 'claude.userpromptsubmit' || eventName === 'claude.pretooluse') {
     return {
-      text: 'active'
+      text: 'active',
     };
   }
-  if (eventName === 'claude.stop' || eventName === 'claude.subagentstop' || eventName === 'claude.sessionend') {
+  if (
+    eventName === 'claude.stop' ||
+    eventName === 'claude.subagentstop' ||
+    eventName === 'claude.sessionend'
+  ) {
     return {
-      text: 'inactive'
+      text: 'inactive',
     };
   }
   if (
@@ -108,28 +114,29 @@ function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'obse
     eventName === 'cursor.beforemcptool'
   ) {
     return {
-      text: 'active'
+      text: 'active',
     };
   }
   if (eventName === 'cursor.stop' || eventName === 'cursor.sessionend') {
     return {
-      text: 'inactive'
+      text: 'inactive',
     };
   }
   return {
-    text: null
+    text: null,
   };
 }
 
-export function telemetrySummaryText(summary: Omit<MuxTelemetrySummaryInput, 'observedAt'>): string | null {
+export function telemetrySummaryText(
+  summary: Omit<MuxTelemetrySummaryInput, 'observedAt'>,
+): string | null {
   const projected = projectTelemetrySummary(summary);
   return projected.text;
 }
 
-export function applyTelemetrySummaryToConversation<TConversation extends MuxRuntimeConversationState>(
-  target: TConversation,
-  telemetry: MuxTelemetrySummaryInput | null
-): void {
+export function applyTelemetrySummaryToConversation<
+  TConversation extends MuxRuntimeConversationState,
+>(target: TConversation, telemetry: MuxTelemetrySummaryInput | null): void {
   if (telemetry === null) {
     return;
   }
@@ -165,7 +172,7 @@ function shouldApplyTelemetryStatusHint(keyEvent: StreamSessionKeyEventRecord): 
 
 function applyCompletedStatusToConversation<TConversation extends MuxRuntimeConversationState>(
   target: TConversation,
-  observedAt: string
+  observedAt: string,
 ): void {
   const observedAtMs = parseIsoMs(observedAt);
   const currentAtMs = parseIsoMs(target.lastKnownWorkAt);
@@ -178,13 +185,13 @@ function applyCompletedStatusToConversation<TConversation extends MuxRuntimeConv
 
 export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeConversationState>(
   event: ControlPlaneKeyEvent,
-  options: ApplyMuxControlPlaneKeyEventOptions<TConversation>
+  options: ApplyMuxControlPlaneKeyEventOptions<TConversation>,
 ): TConversation | null {
   if (options.removedConversationIds.has(event.sessionId)) {
     return null;
   }
   const conversation = options.ensureConversation(event.sessionId, {
-    directoryId: event.directoryId
+    directoryId: event.directoryId,
   });
   if (event.directoryId !== null) {
     conversation.directoryId = event.directoryId;
@@ -192,7 +199,8 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
 
   if (event.type === 'session-status') {
     conversation.status = event.status;
-    conversation.attentionReason = event.attentionReason === 'telemetry' ? null : event.attentionReason;
+    conversation.attentionReason =
+      event.attentionReason === 'telemetry' ? null : event.attentionReason;
     conversation.live = event.live;
     conversation.controller = event.controller;
     conversation.lastEventAt = event.ts;
@@ -213,7 +221,7 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
     source: event.keyEvent.source,
     eventName: event.keyEvent.eventName,
     summary: event.keyEvent.summary,
-    observedAt: event.keyEvent.observedAt
+    observedAt: event.keyEvent.observedAt,
   });
   conversation.lastEventAt = event.keyEvent.observedAt;
   if (!shouldApplyTelemetryStatusHint(event.keyEvent)) {

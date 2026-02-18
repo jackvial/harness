@@ -6,7 +6,7 @@ import {
   DEFAULT_UI_STYLE,
   drawUiText,
   fillUiRow,
-  renderUiSurfaceAnsiRows
+  renderUiSurfaceAnsiRows,
 } from '../src/ui/surface.ts';
 
 function stripAnsi(value: string): string {
@@ -58,12 +58,12 @@ void test('ui surface fill row and draw text apply style transitions', () => {
   fillUiRow(surface, 1, {
     fg: { kind: 'indexed', index: 231 },
     bg: { kind: 'rgb', r: 1, g: 2, b: 3 },
-    bold: true
+    bold: true,
   });
   drawUiText(surface, 0, 1, 'ok', {
     fg: { kind: 'rgb', r: 20, g: 30, b: 40 },
     bg: { kind: 'indexed', index: 24 },
-    bold: false
+    bold: false,
   });
 
   const rows = renderUiSurfaceAnsiRows(surface);
@@ -77,19 +77,19 @@ void test('ui surface draw text handles bounds, combining marks, and wide glyph 
   const surface = createUiSurface(4, 1, {
     fg: { kind: 'indexed', index: 244 },
     bg: { kind: 'default' },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 8, 0, 'x');
   drawUiText(surface, 0, -1, 'x');
   drawUiText(surface, 0, 0, 'a\u0301界b', {
     fg: { kind: 'indexed', index: 33 },
     bg: { kind: 'default' },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 3, 0, '界', {
     fg: { kind: 'indexed', index: 160 },
     bg: { kind: 'default' },
-    bold: true
+    bold: true,
   });
 
   const rows = renderUiSurfaceAnsiRows(surface);
@@ -111,42 +111,42 @@ void test('ui surface style comparison covers indexed and rgb fg/bg delta branch
   drawUiText(surface, 0, 0, 'a', {
     fg: { kind: 'indexed', index: 30 },
     bg: { kind: 'default' },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 1, 0, 'b', {
     fg: { kind: 'indexed', index: 31 },
     bg: { kind: 'default' },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 2, 0, 'c', {
     fg: { kind: 'rgb', r: 1, g: 2, b: 3 },
     bg: { kind: 'default' },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 3, 0, 'd', {
     fg: { kind: 'rgb', r: 1, g: 2, b: 4 },
     bg: { kind: 'default' },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 4, 0, 'e', {
     fg: { kind: 'default' },
     bg: { kind: 'indexed', index: 52 },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 5, 0, 'f', {
     fg: { kind: 'default' },
     bg: { kind: 'indexed', index: 53 },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 6, 0, 'g', {
     fg: { kind: 'default' },
     bg: { kind: 'rgb', r: 9, g: 8, b: 7 },
-    bold: false
+    bold: false,
   });
   drawUiText(surface, 7, 0, 'h', {
     fg: { kind: 'default' },
     bg: { kind: 'rgb', r: 9, g: 8, b: 6 },
-    bold: false
+    bold: false,
   });
 
   const row = renderUiSurfaceAnsiRows(surface)[0] ?? '';

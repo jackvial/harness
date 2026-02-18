@@ -30,10 +30,10 @@ async function main(): Promise<number> {
     baseArgs: [],
     env: {
       ...process.env,
-      TERM: process.env.TERM ?? 'xterm-256color'
+      TERM: process.env.TERM ?? 'xterm-256color',
     },
     initialCols: initialSize.cols,
-    initialRows: initialSize.rows
+    initialRows: initialSize.rows,
   });
 
   let exit: PtyExit | null = null;
@@ -52,7 +52,7 @@ async function main(): Promise<number> {
     },
     onExit: () => {
       // handled via event stream
-    }
+    },
   });
 
   const onInput = (chunk: Buffer): void => {

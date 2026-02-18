@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import type { ControlPlaneKeyEvent } from '../src/control-plane/codex-session-stream.ts';
-import { createConversationState, type ConversationState } from '../src/mux/live-mux/conversation-state.ts';
+import {
+  createConversationState,
+  type ConversationState,
+} from '../src/mux/live-mux/conversation-state.ts';
 import { SessionProjectionInstrumentation } from '../src/services/session-projection-instrumentation.ts';
 
 function createConversation(sessionId: string, title = 'Session'): ConversationState {
@@ -32,7 +35,9 @@ void test('session projection instrumentation snapshots selector state only when
     nowMs: () => Date.parse('2026-02-18T00:00:00.000Z'),
   });
   const conversation = createConversation('session-a', 'Alpha');
-  const directories = new Map<string, { directoryId: string }>([['directory-a', { directoryId: 'directory-a' }]]);
+  const directories = new Map<string, { directoryId: string }>([
+    ['directory-a', { directoryId: 'directory-a' }],
+  ]);
   const conversations = new Map<string, ConversationState>([['session-a', conversation]]);
 
   service.refreshSelectorSnapshot('startup', directories, conversations, ['session-a']);
@@ -54,7 +59,9 @@ void test('session projection instrumentation records transition metadata for te
     nowMs: () => Date.parse('2026-02-18T00:00:00.000Z'),
   });
   const conversation = createConversation('session-a', 'Alpha');
-  const directories = new Map<string, { directoryId: string }>([['directory-a', { directoryId: 'directory-a' }]]);
+  const directories = new Map<string, { directoryId: string }>([
+    ['directory-a', { directoryId: 'directory-a' }],
+  ]);
   const conversations = new Map<string, ConversationState>([['session-a', conversation]]);
   service.refreshSelectorSnapshot('startup', directories, conversations, ['session-a']);
 
@@ -102,7 +109,9 @@ void test('session projection instrumentation skips unchanged transitions and ha
   } as unknown as ControlPlaneKeyEvent;
   service.recordTransition(controlEvent, null, conversation);
 
-  const transitionEvents = events.filter((entry) => entry.startsWith('mux.session-projection.transition:'));
+  const transitionEvents = events.filter((entry) =>
+    entry.startsWith('mux.session-projection.transition:'),
+  );
   assert.equal(transitionEvents.length, 1);
   assert.equal(transitionEvents[0]?.includes('"source":""'), true);
 });

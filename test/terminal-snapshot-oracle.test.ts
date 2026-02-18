@@ -8,7 +8,7 @@ import {
   renderSnapshotText,
   replayTerminalSteps,
   wrapTextForColumns,
-  type TerminalSnapshotFrame
+  type TerminalSnapshotFrame,
 } from '../src/terminal/snapshot-oracle.ts';
 
 void test('snapshot oracle captures SGR styles and renders ANSI rows', () => {
@@ -110,9 +110,9 @@ void test('snapshot row renderer tolerates transient missing cells during resize
       }
       return {
         ...line,
-        cells: line.cells.slice(0, 1)
+        cells: line.cells.slice(0, 1),
       };
-    })
+    }),
   };
   const ansi = renderSnapshotAnsiRow(racedFrame, 0, 4);
   assert.equal(ansi.endsWith('\u001b[0m'), true);
@@ -239,10 +239,10 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
       { kind: 'resize', cols: 5, rows: 2 },
       { kind: 'output', chunk: '\u001b[31mR' },
       { kind: 'resize' },
-      { kind: 'output' }
+      { kind: 'output' },
     ],
     4,
-    2
+    2,
   );
 
   assert.equal(frames.length, 5);
@@ -259,7 +259,7 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
     activeScreen: 'alternate',
     modes: {
       ...last.modes,
-      bracketedPaste: !last.modes.bracketedPaste
+      bracketedPaste: !last.modes.bracketedPaste,
     },
     cursor: {
       ...last.cursor,
@@ -267,11 +267,11 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
       visible: !last.cursor.visible,
       style: {
         shape: last.cursor.style.shape === 'block' ? 'underline' : 'block',
-        blinking: !last.cursor.style.blinking
-      }
+        blinking: !last.cursor.style.blinking,
+      },
     },
     richLines: last.richLines.slice(0, 1),
-    lines: last.lines.slice(0, 1)
+    lines: last.lines.slice(0, 1),
   };
 
   const diff = diffTerminalFrames(last, changed);
@@ -282,7 +282,10 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
   assert.equal(diff.reasons.includes('cursor-position-mismatch'), true);
   assert.equal(diff.reasons.includes('cursor-visibility-mismatch'), true);
   assert.equal(diff.reasons.includes('cursor-style-mismatch'), true);
-  assert.equal(diff.reasons.some((reason) => reason.includes('-missing')), true);
+  assert.equal(
+    diff.reasons.some((reason) => reason.includes('-missing')),
+    true,
+  );
 
   const changedText: TerminalSnapshotFrame = {
     ...last,
@@ -302,16 +305,22 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
             glyph: cell.glyph === ' ' ? 'z' : ' ',
             style: {
               ...cell.style,
-              bold: !cell.style.bold
-            }
+              bold: !cell.style.bold,
+            },
           };
-        })
+        }),
       };
-    })
+    }),
   };
   const diffText = diffTerminalFrames(last, changedText);
-  assert.equal(diffText.reasons.some((reason) => reason.includes('text-mismatch')), true);
-  assert.equal(diffText.reasons.some((reason) => reason.includes('cell-0-0-mismatch')), true);
+  assert.equal(
+    diffText.reasons.some((reason) => reason.includes('text-mismatch')),
+    true,
+  );
+  assert.equal(
+    diffText.reasons.some((reason) => reason.includes('cell-0-0-mismatch')),
+    true,
+  );
 });
 
 void test('snapshot oracle branch coverage on edge cases', () => {
@@ -354,11 +363,11 @@ void test('snapshot oracle branch coverage on edge cases', () => {
             ...cell,
             continued: true,
             width: 0,
-            glyph: ''
+            glyph: '',
           };
-        })
+        }),
       };
-    })
+    }),
   };
   const rendered = renderSnapshotAnsiRow(mutatedContinued, 0, mutatedContinued.cols);
   assert.equal(rendered.endsWith('\u001b[0m'), true);
@@ -371,12 +380,15 @@ void test('snapshot oracle branch coverage on edge cases', () => {
       }
       return {
         ...line,
-        cells: line.cells.slice(0, Math.max(0, line.cells.length - 1))
+        cells: line.cells.slice(0, Math.max(0, line.cells.length - 1)),
       };
-    })
+    }),
   };
   const diff = diffTerminalFrames(frame, changedCells);
-  assert.equal(diff.reasons.some((reason) => reason.includes('-missing')), true);
+  assert.equal(
+    diff.reasons.some((reason) => reason.includes('-missing')),
+    true,
+  );
 });
 
 void test('snapshot oracle supports scroll regions, origin mode, and insert/delete line controls', () => {

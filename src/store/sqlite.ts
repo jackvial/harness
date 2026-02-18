@@ -46,10 +46,13 @@ interface SqliteRuntime {
 
 const defaultRuntime: SqliteRuntime = {
   bunVersion: process.versions.bun,
-  loadModule: (specifier) => require(specifier) as unknown
+  loadModule: (specifier) => require(specifier) as unknown,
 };
 
-export function createDatabaseForRuntime(path: string, runtime: SqliteRuntime = defaultRuntime): SqliteDatabaseLike {
+export function createDatabaseForRuntime(
+  path: string,
+  runtime: SqliteRuntime = defaultRuntime,
+): SqliteDatabaseLike {
   if (runtime.bunVersion === undefined) {
     throw new Error('bun runtime is required for sqlite access');
   }

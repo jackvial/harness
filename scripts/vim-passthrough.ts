@@ -35,8 +35,8 @@ async function main(): Promise<number> {
     commandArgs: vimArgs,
     env: {
       ...process.env,
-      TERM: process.env.TERM ?? 'xterm-256color'
-    }
+      TERM: process.env.TERM ?? 'xterm-256color',
+    },
   });
 
   let restored = false;

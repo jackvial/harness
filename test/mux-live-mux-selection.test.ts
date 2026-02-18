@@ -21,15 +21,19 @@ import {
   selectionVisibleRows,
   writeTextToClipboard,
   type PaneSelection,
-  type SelectionLayout
+  type SelectionLayout,
 } from '../src/mux/live-mux/selection.ts';
 
-function patchProperty<T extends object, K extends keyof T>(obj: T, key: K, value: T[K]): () => void {
+function patchProperty<T extends object, K extends keyof T>(
+  obj: T,
+  key: K,
+  value: T[K],
+): () => void {
   const descriptor = Object.getOwnPropertyDescriptor(obj, key);
   Object.defineProperty(obj, key, {
     configurable: true,
     writable: true,
-    value
+    value,
   });
   return () => {
     if (descriptor === undefined) {
@@ -44,8 +48,8 @@ function frameFromRows(rows: readonly string[], top = 0): TerminalSnapshotFrameC
   const richLines = rows.map((row) => ({
     cells: row.split('').map((glyph) => ({
       glyph,
-      continued: false
-    }))
+      continued: false,
+    })),
   }));
   const cols = rows.length > 0 ? rows[0]!.length : 0;
   return {
@@ -53,9 +57,9 @@ function frameFromRows(rows: readonly string[], top = 0): TerminalSnapshotFrameC
     cols,
     viewport: {
       top,
-      totalRows: top + rows.length
+      totalRows: top + rows.length,
     },
-    richLines
+    richLines,
   } as unknown as TerminalSnapshotFrameCore;
 }
 
@@ -80,20 +84,23 @@ void test('pane point and mouse helpers clamp coordinates and decode button flag
   const layout: SelectionLayout = {
     paneRows: 3,
     rightCols: 4,
-    rightStartCol: 6
+    rightStartCol: 6,
   };
   const frame = {
     viewport: {
       top: 10,
-      totalRows: 12
-    }
+      totalRows: 12,
+    },
   } as Pick<TerminalSnapshotFrameCore, 'viewport'>;
 
   assert.deepEqual(clampPanePoint(layout, frame, -5, -4), { rowAbs: 0, col: 0 });
   assert.deepEqual(clampPanePoint(layout, frame, 20, 10), { rowAbs: 11, col: 3 });
 
   assert.deepEqual(pointFromMouseEvent(layout, frame, { row: 0, col: 2 }), { rowAbs: 10, col: 0 });
-  assert.deepEqual(pointFromMouseEvent(layout, frame, { row: 99, col: 40 }), { rowAbs: 11, col: 3 });
+  assert.deepEqual(pointFromMouseEvent(layout, frame, { row: 99, col: 40 }), {
+    rowAbs: 11,
+    col: 3,
+  });
 
   assert.equal(isWheelMouseCode(0b0100_0000), true);
   assert.equal(isWheelMouseCode(0), false);
@@ -118,7 +125,7 @@ void test('overlay and visible row helpers render only visible cells and skip in
   const layout: SelectionLayout = {
     paneRows: 3,
     rightCols: 4,
-    rightStartCol: 10
+    rightStartCol: 10,
   };
 
   const frameWithSparseCells = {
@@ -126,26 +133,26 @@ void test('overlay and visible row helpers render only visible cells and skip in
     cols: 4,
     viewport: {
       top: 10,
-      totalRows: 20
+      totalRows: 20,
     },
     richLines: [
       {
         cells: [
           { glyph: 'A', continued: false },
           { glyph: '', continued: false },
-          { glyph: 'B', continued: true }
-        ]
+          { glyph: 'B', continued: true },
+        ],
       },
       {
-        cells: []
-      }
-    ]
+        cells: [],
+      },
+    ],
   } as unknown as TerminalSnapshotFrameCore;
 
   const selection: PaneSelection = {
     anchor: { rowAbs: 10, col: 0 },
     focus: { rowAbs: 12, col: 2 },
-    text: ''
+    text: '',
   };
 
   const overlay = renderSelectionOverlay(layout, frameWithSparseCells, selection);
@@ -160,7 +167,7 @@ void test('overlay and visible row helpers render only visible cells and skip in
   const offscreenSelection: PaneSelection = {
     anchor: { rowAbs: 30, col: 0 },
     focus: { rowAbs: 31, col: 1 },
-    text: ''
+    text: '',
   };
   assert.equal(renderSelectionOverlay(layout, frameWithSparseCells, offscreenSelection), '');
   assert.deepEqual(selectionVisibleRows(frameWithSparseCells, offscreenSelection), []);
@@ -170,23 +177,26 @@ void test('overlay and visible row helpers render only visible cells and skip in
     cols: 0,
     viewport: {
       top: 5,
-      totalRows: 7
+      totalRows: 7,
     },
     richLines: [
       {
-        cells: []
+        cells: [],
       },
       {
-        cells: []
-      }
-    ]
+        cells: [],
+      },
+    ],
   } as unknown as TerminalSnapshotFrameCore;
   const zeroWidthSelection: PaneSelection = {
     anchor: { rowAbs: 5, col: 0 },
     focus: { rowAbs: 6, col: 0 },
-    text: ''
+    text: '',
   };
-  assert.equal(renderSelectionOverlay(layout, zeroWidthFrame, zeroWidthSelection), '\u001b[2;10H\u001b[7m \u001b[0m');
+  assert.equal(
+    renderSelectionOverlay(layout, zeroWidthFrame, zeroWidthSelection),
+    '\u001b[2;10H\u001b[7m \u001b[0m',
+  );
 });
 
 void test('selectionText and row merge helpers preserve explicit text and visible extraction', () => {
@@ -194,7 +204,7 @@ void test('selectionText and row merge helpers preserve explicit text and visibl
   const selection: PaneSelection = {
     anchor: { rowAbs: 10, col: 1 },
     focus: { rowAbs: 11, col: 2 },
-    text: ''
+    text: '',
   };
   assert.equal(selectionText(frame, selection), 'bcd\nefg');
 
@@ -202,9 +212,9 @@ void test('selectionText and row merge helpers preserve explicit text and visibl
     selectionText(frame, {
       anchor: { rowAbs: 10, col: 0 },
       focus: { rowAbs: 10, col: 1 },
-      text: 'explicit-copy'
+      text: 'explicit-copy',
     }),
-    'explicit-copy'
+    'explicit-copy',
   );
   assert.equal(selectionText(frame, null), '');
 
@@ -213,24 +223,24 @@ void test('selectionText and row merge helpers preserve explicit text and visibl
     cols: 4,
     viewport: {
       top: 0,
-      totalRows: 1
+      totalRows: 1,
     },
     richLines: [
       {
         cells: [
           { glyph: 'x', continued: false },
-          { glyph: 'y', continued: true }
-        ]
-      }
-    ]
+          { glyph: 'y', continued: true },
+        ],
+      },
+    ],
   } as unknown as TerminalSnapshotFrameCore;
   assert.equal(
     selectionText(sparseFrame, {
       anchor: { rowAbs: 0, col: 0 },
       focus: { rowAbs: 0, col: 3 },
-      text: ''
+      text: '',
     }),
-    'x'
+    'x',
   );
 
   const zeroWidthFrame = {
@@ -238,24 +248,24 @@ void test('selectionText and row merge helpers preserve explicit text and visibl
     cols: 0,
     viewport: {
       top: 0,
-      totalRows: 2
+      totalRows: 2,
     },
     richLines: [
       {
-        cells: []
+        cells: [],
       },
       {
-        cells: []
-      }
-    ]
+        cells: [],
+      },
+    ],
   } as unknown as TerminalSnapshotFrameCore;
   assert.equal(
     selectionText(zeroWidthFrame, {
       anchor: { rowAbs: 0, col: 0 },
       focus: { rowAbs: 1, col: 0 },
-      text: ''
+      text: '',
     }),
-    '\n'
+    '\n',
   );
 
   assert.deepEqual(mergeUniqueRows([], [2, 1]), [2, 1]);
@@ -276,16 +286,19 @@ void test('copy shortcut detection and clipboard writing support positive and ne
       writes.push(payload);
       return true;
     }),
-    true
+    true,
   );
   assert.equal(writes.length, 1);
   assert.equal(writes[0]!.startsWith('\u001b]52;c;'), true);
-  assert.equal(writeTextToClipboard('', () => true), false);
+  assert.equal(
+    writeTextToClipboard('', () => true),
+    false,
+  );
   assert.equal(
     writeTextToClipboard('boom', () => {
       throw new Error('nope');
     }),
-    false
+    false,
   );
 
   const restoreWrite = patchProperty(process.stdout, 'write', ((payload: string) => {
@@ -312,14 +325,14 @@ void test('mouse selection reducer covers start, drag, release, clear, and passt
     isSelectionDrag: false,
     isMouseRelease: false,
     isWheelMouseCode: false,
-    selectionTextForPane: () => ''
+    selectionTextForPane: () => '',
   });
   assert.equal(start.pinViewport, true);
   assert.equal(start.selection, null);
   assert.deepEqual(start.selectionDrag, {
     anchor: pointA,
     focus: pointA,
-    hasDragged: false
+    hasDragged: false,
   });
 
   const drag = reduceConversationMouseSelection({
@@ -331,7 +344,7 @@ void test('mouse selection reducer covers start, drag, release, clear, and passt
     isSelectionDrag: true,
     isMouseRelease: false,
     isWheelMouseCode: false,
-    selectionTextForPane: () => ''
+    selectionTextForPane: () => '',
   });
   assert.equal(drag.selectionDrag?.hasDragged, true);
 
@@ -344,7 +357,7 @@ void test('mouse selection reducer covers start, drag, release, clear, and passt
     isSelectionDrag: false,
     isMouseRelease: true,
     isWheelMouseCode: false,
-    selectionTextForPane: () => 'captured'
+    selectionTextForPane: () => 'captured',
   });
   assert.equal(releaseDragged.selectionDrag, null);
   assert.equal(releaseDragged.selection?.text, 'captured');
@@ -355,7 +368,7 @@ void test('mouse selection reducer covers start, drag, release, clear, and passt
     selectionDrag: {
       anchor: pointA,
       focus: pointA,
-      hasDragged: false
+      hasDragged: false,
     },
     point: pointA,
     isMainPaneTarget: true,
@@ -363,7 +376,7 @@ void test('mouse selection reducer covers start, drag, release, clear, and passt
     isSelectionDrag: false,
     isMouseRelease: true,
     isWheelMouseCode: false,
-    selectionTextForPane: () => ''
+    selectionTextForPane: () => '',
   });
   assert.equal(releaseClickOnly.selection, null);
   assert.equal(releaseClickOnly.releaseViewportPin, true);
@@ -372,7 +385,7 @@ void test('mouse selection reducer covers start, drag, release, clear, and passt
     selection: {
       anchor: pointA,
       focus: pointB,
-      text: 'text'
+      text: 'text',
     },
     selectionDrag: null,
     point: pointA,
@@ -381,7 +394,7 @@ void test('mouse selection reducer covers start, drag, release, clear, and passt
     isSelectionDrag: false,
     isMouseRelease: false,
     isWheelMouseCode: false,
-    selectionTextForPane: () => ''
+    selectionTextForPane: () => '',
   });
   assert.equal(clearOnTyping.selection, null);
   assert.equal(clearOnTyping.consumed, false);
@@ -396,7 +409,7 @@ void test('mouse selection reducer covers start, drag, release, clear, and passt
     isSelectionDrag: false,
     isMouseRelease: false,
     isWheelMouseCode: true,
-    selectionTextForPane: () => ''
+    selectionTextForPane: () => '',
   });
   assert.equal(passthrough.markDirty, false);
   assert.equal(passthrough.consumed, false);

@@ -131,7 +131,8 @@ void test('runtime conversation activation switches session and retries attach o
         throw error;
       }
     },
-    isSessionNotFoundError: (error) => error instanceof Error && error.message === 'session not found',
+    isSessionNotFoundError: (error) =>
+      error instanceof Error && error.message === 'session not found',
     isSessionNotLiveError: () => false,
     markSessionUnavailable: (sessionId) => {
       calls.push(`markUnavailable:${sessionId}`);
@@ -191,10 +192,7 @@ void test('runtime conversation activation rethrows non-recoverable attach error
     markDirty: () => {},
   });
 
-  await assert.rejects(
-    async () => {
-      await activation.activateConversation('session-x');
-    },
-    /boom/,
-  );
+  await assert.rejects(async () => {
+    await activation.activateConversation('session-x');
+  }, /boom/);
 });

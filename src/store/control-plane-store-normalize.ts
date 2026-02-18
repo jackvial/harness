@@ -9,7 +9,7 @@ import type {
   ControlPlaneTaskRecord,
   ControlPlaneTaskStatus,
   ControlPlaneTelemetryRecord,
-  TaskLinearInput
+  TaskLinearInput,
 } from './control-plane-store-types.ts';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -83,7 +83,12 @@ function normalizeAdapterState(value: unknown): Record<string, unknown> {
 
 function normalizeRuntimeStatus(value: unknown): StreamSessionRuntimeStatus {
   const status = asString(value, 'runtime_status');
-  if (status === 'running' || status === 'needs-input' || status === 'completed' || status === 'exited') {
+  if (
+    status === 'running' ||
+    status === 'needs-input' ||
+    status === 'completed' ||
+    status === 'exited'
+  ) {
     return status;
   }
   throw new Error('expected runtime_status enum value');
@@ -98,7 +103,7 @@ export function normalizeStoredDirectoryRow(value: unknown): ControlPlaneDirecto
     workspaceId: asString(row.workspace_id, 'workspace_id'),
     path: asString(row.path, 'path'),
     createdAt: asString(row.created_at, 'created_at'),
-    archivedAt: asStringOrNull(row.archived_at, 'archived_at')
+    archivedAt: asStringOrNull(row.archived_at, 'archived_at'),
   };
 }
 
@@ -120,7 +125,10 @@ export function normalizeStoredConversationRow(value: unknown): ControlPlaneConv
     archivedAt: asStringOrNull(row.archived_at, 'archived_at'),
     runtimeStatus: normalizeRuntimeStatus(row.runtime_status),
     runtimeLive: asBooleanFromInt(row.runtime_live, 'runtime_live'),
-    runtimeAttentionReason: asStringOrNull(row.runtime_attention_reason, 'runtime_attention_reason'),
+    runtimeAttentionReason: asStringOrNull(
+      row.runtime_attention_reason,
+      'runtime_attention_reason',
+    ),
     runtimeProcessId: asNumberOrNull(row.runtime_process_id, 'runtime_process_id'),
     runtimeLastEventAt: asStringOrNull(row.runtime_last_event_at, 'runtime_last_event_at'),
     runtimeLastExit:
@@ -128,15 +136,20 @@ export function normalizeStoredConversationRow(value: unknown): ControlPlaneConv
         ? null
         : {
             code: asNumberOrNull(row.runtime_last_exit_code, 'runtime_last_exit_code'),
-            signal: lastExitSignal as NodeJS.Signals | null
+            signal: lastExitSignal as NodeJS.Signals | null,
           },
-    adapterState: normalizeAdapterState(row.adapter_state_json)
+    adapterState: normalizeAdapterState(row.adapter_state_json),
   };
 }
 
 export function normalizeTelemetrySource(value: unknown): CodexTelemetrySource {
   const source = asString(value, 'source');
-  if (source === 'otlp-log' || source === 'otlp-metric' || source === 'otlp-trace' || source === 'history') {
+  if (
+    source === 'otlp-log' ||
+    source === 'otlp-metric' ||
+    source === 'otlp-trace' ||
+    source === 'history'
+  ) {
     return source;
   }
   throw new Error('expected telemetry source enum value');
@@ -170,7 +183,7 @@ export function normalizeTelemetryRow(value: unknown): ControlPlaneTelemetryReco
     observedAt: asString(row.observed_at, 'observed_at'),
     ingestedAt: asString(row.ingested_at, 'ingested_at'),
     payload: normalizePayloadJson(row.payload_json),
-    fingerprint: asString(row.fingerprint, 'fingerprint')
+    fingerprint: asString(row.fingerprint, 'fingerprint'),
   };
 }
 
@@ -203,7 +216,7 @@ export function defaultTaskLinearRecord(): ControlPlaneTaskLinearRecord {
     priority: null,
     estimate: null,
     dueDate: null,
-    labelIds: []
+    labelIds: [],
   };
 }
 
@@ -214,7 +227,10 @@ function normalizeOptionalTaskLinearString(value: string | null, field: string):
   return normalizeNonEmptyLabel(value, field);
 }
 
-function normalizeTaskLinearPriority(value: number | null, field: string): ControlPlaneTaskLinearPriority | null {
+function normalizeTaskLinearPriority(
+  value: number | null,
+  field: string,
+): ControlPlaneTaskLinearPriority | null {
   if (value === null) {
     return null;
   }
@@ -245,16 +261,22 @@ function normalizeTaskLinearDueDate(value: string | null, field: string): string
   return normalized;
 }
 
-function normalizeTaskLinearLabelIds(value: readonly string[] | null, field: string): readonly string[] {
+function normalizeTaskLinearLabelIds(
+  value: readonly string[] | null,
+  field: string,
+): readonly string[] {
   if (value === null) {
     return [];
   }
   return uniqueValues(
-    value.map((entry, idx) => normalizeNonEmptyLabel(entry, `${field}[${String(idx)}]`))
+    value.map((entry, idx) => normalizeNonEmptyLabel(entry, `${field}[${String(idx)}]`)),
   );
 }
 
-function parseTaskLinearInputRecord(record: Record<string, unknown>, field: string): TaskLinearInput {
+function parseTaskLinearInputRecord(
+  record: Record<string, unknown>,
+  field: string,
+): TaskLinearInput {
   const parsed: TaskLinearInput = {};
   if ('issueId' in record) {
     parsed.issueId = asStringOrNull(record.issueId, `${field}.issueId`);
@@ -272,7 +294,10 @@ function parseTaskLinearInputRecord(record: Record<string, unknown>, field: stri
     parsed.projectId = asStringOrNull(record.projectId, `${field}.projectId`);
   }
   if ('projectMilestoneId' in record) {
-    parsed.projectMilestoneId = asStringOrNull(record.projectMilestoneId, `${field}.projectMilestoneId`);
+    parsed.projectMilestoneId = asStringOrNull(
+      record.projectMilestoneId,
+      `${field}.projectMilestoneId`,
+    );
   }
   if ('cycleId' in record) {
     parsed.cycleId = asStringOrNull(record.cycleId, `${field}.cycleId`);
@@ -307,7 +332,7 @@ function parseTaskLinearInputRecord(record: Record<string, unknown>, field: stri
 
 export function applyTaskLinearInput(
   base: ControlPlaneTaskLinearRecord,
-  input: TaskLinearInput
+  input: TaskLinearInput,
 ): ControlPlaneTaskLinearRecord {
   return {
     issueId:
@@ -319,7 +344,9 @@ export function applyTaskLinearInput(
         ? base.identifier
         : normalizeOptionalTaskLinearString(input.identifier, 'linear.identifier'),
     url:
-      input.url === undefined ? base.url : normalizeOptionalTaskLinearString(input.url, 'linear.url'),
+      input.url === undefined
+        ? base.url
+        : normalizeOptionalTaskLinearString(input.url, 'linear.url'),
     teamId:
       input.teamId === undefined
         ? base.teamId
@@ -359,7 +386,7 @@ export function applyTaskLinearInput(
     labelIds:
       input.labelIds === undefined
         ? base.labelIds
-        : normalizeTaskLinearLabelIds(input.labelIds, 'linear.labelIds')
+        : normalizeTaskLinearLabelIds(input.labelIds, 'linear.labelIds'),
   };
 }
 
@@ -377,7 +404,7 @@ export function serializeTaskLinear(linear: ControlPlaneTaskLinearRecord): strin
     priority: linear.priority,
     estimate: linear.estimate,
     dueDate: linear.dueDate,
-    labelIds: [...linear.labelIds]
+    labelIds: [...linear.labelIds],
   });
 }
 
@@ -396,13 +423,18 @@ function normalizeTaskLinear(value: unknown): ControlPlaneTaskLinearRecord {
   }
   return applyTaskLinearInput(
     defaultTaskLinearRecord(),
-    parseTaskLinearInputRecord(parsed as Record<string, unknown>, 'linear_json')
+    parseTaskLinearInputRecord(parsed as Record<string, unknown>, 'linear_json'),
   );
 }
 
 function normalizeTaskStatus(value: unknown): ControlPlaneTaskStatus {
   const status = asString(value, 'status');
-  if (status === 'draft' || status === 'ready' || status === 'in-progress' || status === 'completed') {
+  if (
+    status === 'draft' ||
+    status === 'ready' ||
+    status === 'in-progress' ||
+    status === 'completed'
+  ) {
     return status;
   }
   if (status === 'queued') {
@@ -423,7 +455,7 @@ export function normalizeRepositoryRow(value: unknown): ControlPlaneRepositoryRe
     defaultBranch: asString(row.default_branch, 'default_branch'),
     metadata: normalizeRepositoryMetadata(row.metadata_json),
     createdAt: asString(row.created_at, 'created_at'),
-    archivedAt: asStringOrNull(row.archived_at, 'archived_at')
+    archivedAt: asStringOrNull(row.archived_at, 'archived_at'),
   };
 }
 
@@ -447,7 +479,7 @@ export function normalizeTaskRow(value: unknown): ControlPlaneTaskRecord {
     completedAt: asStringOrNull(row.completed_at, 'completed_at'),
     linear: normalizeTaskLinear(row.linear_json),
     createdAt: asString(row.created_at, 'created_at'),
-    updatedAt: asString(row.updated_at, 'updated_at')
+    updatedAt: asString(row.updated_at, 'updated_at'),
   };
 }
 

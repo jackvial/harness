@@ -71,7 +71,9 @@ function clamp(value: number, min: number, max: number): number {
 
 function resolveLeftPaneCols(normalizedCols: number, requestedLeftCols: number | null): number {
   const availablePaneCols = normalizedCols - 1;
-  const defaultLeftCols = Math.floor((normalizedCols * LEFT_RATIO_NUMERATOR) / LEFT_RATIO_DENOMINATOR);
+  const defaultLeftCols = Math.floor(
+    (normalizedCols * LEFT_RATIO_NUMERATOR) / LEFT_RATIO_DENOMINATOR,
+  );
   const requested = requestedLeftCols === null ? defaultLeftCols : Math.floor(requestedLeftCols);
 
   let leftCols = clamp(requested, 1, availablePaneCols - 1);
@@ -86,7 +88,7 @@ function resolveLeftPaneCols(normalizedCols: number, requestedLeftCols: number |
 export function computeDualPaneLayout(
   cols: number,
   rows: number,
-  options: ComputeDualPaneLayoutOptions = {}
+  options: ComputeDualPaneLayoutOptions = {},
 ): DualPaneLayout {
   const normalizedCols = Math.max(3, cols);
   const normalizedRows = Math.max(2, rows);
@@ -105,7 +107,7 @@ export function computeDualPaneLayout(
     leftCols,
     rightCols,
     separatorCol: leftCols + 1,
-    rightStartCol: leftCols + 2
+    rightStartCol: leftCols + 2,
   };
 }
 
@@ -151,7 +153,7 @@ function parseSgrMouseEvent(sequence: string): SgrMouseEvent | null {
     code,
     col,
     row,
-    final
+    final,
   };
 }
 
@@ -160,7 +162,7 @@ function splitPartialMouseTail(text: string): { passthrough: string; remainder: 
   if (tailStart < 0) {
     return {
       passthrough: text,
-      remainder: ''
+      remainder: '',
     };
   }
 
@@ -168,13 +170,13 @@ function splitPartialMouseTail(text: string): { passthrough: string; remainder: 
   if (PARTIAL_SGR_BODY.test(candidate)) {
     return {
       passthrough: text.slice(0, tailStart),
-      remainder: text.slice(tailStart)
+      remainder: text.slice(tailStart),
     };
   }
 
   return {
     passthrough: text,
-    remainder: ''
+    remainder: '',
   };
 }
 
@@ -192,7 +194,7 @@ export function parseMuxInputChunk(previousRemainder: string, chunk: Buffer): Pa
     if (start > cursor) {
       tokens.push({
         kind: 'passthrough',
-        text: input.slice(cursor, start)
+        text: input.slice(cursor, start),
       });
     }
 
@@ -222,12 +224,12 @@ export function parseMuxInputChunk(previousRemainder: string, chunk: Buffer): Pa
     if (parsed === null) {
       tokens.push({
         kind: 'passthrough',
-        text: sequence
+        text: sequence,
       });
     } else {
       tokens.push({
         kind: 'mouse',
-        event: parsed
+        event: parsed,
       });
     }
 
@@ -239,13 +241,13 @@ export function parseMuxInputChunk(previousRemainder: string, chunk: Buffer): Pa
   if (splitTail.passthrough.length > 0) {
     tokens.push({
       kind: 'passthrough',
-      text: splitTail.passthrough
+      text: splitTail.passthrough,
     });
   }
 
   return {
     tokens,
-    remainder: splitTail.remainder
+    remainder: splitTail.remainder,
   };
 }
 
@@ -257,7 +259,10 @@ export function wheelDeltaRowsFromCode(code: number): number | null {
   return (code & 0b0000_0001) === 0 ? -SCROLL_STEP_ROWS : SCROLL_STEP_ROWS;
 }
 
-export function routeMuxInputTokens(tokens: readonly MuxInputToken[], layout: DualPaneLayout): RoutedMuxInput {
+export function routeMuxInputTokens(
+  tokens: readonly MuxInputToken[],
+  layout: DualPaneLayout,
+): RoutedMuxInput {
   const forwardToSession: Buffer[] = [];
   let leftPaneScrollRows = 0;
   let rightPaneScrollRows = 0;
@@ -292,7 +297,7 @@ export function routeMuxInputTokens(tokens: readonly MuxInputToken[], layout: Du
   return {
     forwardToSession,
     leftPaneScrollRows,
-    rightPaneScrollRows
+    rightPaneScrollRows,
   };
 }
 
@@ -352,7 +357,7 @@ export class EventPaneViewport {
       lines: rendered,
       followOutput: this.followOutput,
       top: this.top,
-      totalRows: wrapped.length
+      totalRows: wrapped.length,
     };
   }
 
@@ -400,7 +405,10 @@ interface DiffRenderedRowsResult {
   readonly changedRows: readonly number[];
 }
 
-export function diffRenderedRows(currentRows: readonly string[], previousRows: readonly string[]): DiffRenderedRowsResult {
+export function diffRenderedRows(
+  currentRows: readonly string[],
+  previousRows: readonly string[],
+): DiffRenderedRowsResult {
   const changedRows: number[] = [];
   let output = '';
 
@@ -422,6 +430,6 @@ export function diffRenderedRows(currentRows: readonly string[], previousRows: r
   return {
     output,
     nextRows,
-    changedRows
+    changedRows,
   };
 }

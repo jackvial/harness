@@ -12,6 +12,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Use `critique` threads for very fast diff/review loops, with native terminal access when you need to drop to commands.
 - Keep long-running threads alive in the detached gateway so reconnects do not kill work.
 - Add automation last through the typed realtime API (`projects`, `threads`, `repositories`, `tasks`, subscriptions).
+- See project/thread lifecycle updates from other connected clients in real time (no client restart rehydration loop).
 
 ## Demo
 
@@ -54,6 +55,8 @@ Harness includes first-class `critique` threads:
 
 - If a critique thread exists for the current project, it selects it.
 - If not, it creates and opens one in the main pane.
+
+`session.interrupt` is also surfaced as a mux keybinding action (`mux.conversation.interrupt`) so teams can bind a dedicated in-client thread interrupt shortcut without overloading quit semantics.
 
 ## API for Automation
 

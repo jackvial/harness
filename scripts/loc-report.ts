@@ -36,7 +36,7 @@ const EXCLUDED_DIRS = new Set<string>([
   '.cache',
   '.harness',
   'target',
-  'out'
+  'out',
 ]);
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
@@ -71,7 +71,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   '.bash': 'Shell',
   '.zsh': 'Shell',
   '.ps1': 'PowerShell',
-  '.sql': 'SQL'
+  '.sql': 'SQL',
 };
 
 const SUPPORTED_EXTENSIONS = new Set<string>(Object.keys(LANGUAGE_BY_EXTENSION));
@@ -81,7 +81,7 @@ function usage(): string {
     'Usage: bun scripts/loc-report.ts [--json] [--root <path>]',
     '',
     'Reports code volume split by regular/tests/language.',
-    'Only known code extensions are counted.'
+    'Only known code extensions are counted.',
   ].join('\n');
 }
 
@@ -223,12 +223,12 @@ function buildReport(rootPath: string): ReportJson {
   const totals = createCounts();
   const byKind: Record<CodeKind, Counts> = {
     regular: createCounts(),
-    tests: createCounts()
+    tests: createCounts(),
   };
   const byLanguage = new Map<string, Counts>();
   const byKindLanguage = new Map<CodeKind, Map<string, Counts>>([
     ['regular', new Map<string, Counts>()],
-    ['tests', new Map<string, Counts>()]
+    ['tests', new Map<string, Counts>()],
   ]);
 
   const files = walkCodeFiles(rootPath);
@@ -263,7 +263,7 @@ function buildReport(rootPath: string): ReportJson {
 
   const byKindLanguageRecord: Record<CodeKind, Record<string, Counts>> = {
     regular: {},
-    tests: {}
+    tests: {},
   };
   for (const kind of ['regular', 'tests'] as const) {
     const rows = [...(byKindLanguage.get(kind)?.entries() ?? [])].sort(compareLanguageRows);
@@ -277,7 +277,7 @@ function buildReport(rootPath: string): ReportJson {
     totals,
     byKind,
     byLanguage: languageRecord,
-    byKindLanguage: byKindLanguageRecord
+    byKindLanguage: byKindLanguageRecord,
   };
 }
 

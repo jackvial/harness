@@ -75,9 +75,7 @@ export async function createAndActivateConversationInDirectory<TAgentType>(
 interface OpenOrCreateCritiqueConversationInDirectoryOptions {
   directoryId: string;
   orderedConversationIds: () => readonly string[];
-  conversationById: (
-    sessionId: string,
-  ) => {
+  conversationById: (sessionId: string) => {
     readonly directoryId: string | null;
     readonly agentType: string;
   } | null;
@@ -98,7 +96,10 @@ export async function openOrCreateCritiqueConversationInDirectory(
       if (conversation === null) {
         return false;
       }
-      return conversation.directoryId === options.directoryId && isCritiqueAgentType(conversation.agentType);
+      return (
+        conversation.directoryId === options.directoryId &&
+        isCritiqueAgentType(conversation.agentType)
+      );
     }) ?? null;
   if (existingConversationId !== null) {
     await options.activateConversation(existingConversationId);
@@ -162,7 +163,9 @@ export async function archiveConversation(options: ArchiveConversationOptions): 
     const archivedDirectoryId = target.directoryId;
     const ordered = options.orderedConversationIds();
     const nextConversationId =
-      ordered.find((candidateId) => options.conversationDirectoryId(candidateId) === archivedDirectoryId) ??
+      ordered.find(
+        (candidateId) => options.conversationDirectoryId(candidateId) === archivedDirectoryId,
+      ) ??
       ordered[0] ??
       null;
     options.setActiveConversationId(null);

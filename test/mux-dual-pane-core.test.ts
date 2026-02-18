@@ -8,7 +8,7 @@ import {
   padOrTrimDisplay,
   parseMuxInputChunk,
   routeMuxInputTokens,
-  wheelDeltaRowsFromCode
+  wheelDeltaRowsFromCode,
 } from '../src/mux/dual-pane-core.ts';
 
 void test('computeDualPaneLayout normalizes dimensions and computes pane widths', () => {
@@ -34,23 +34,23 @@ void test('computeDualPaneLayout normalizes dimensions and computes pane widths'
   assert.equal(narrow.leftCols + narrow.rightCols + 1, narrow.cols);
 
   const customWide = computeDualPaneLayout(120, 40, {
-    leftCols: 50
+    leftCols: 50,
   });
   assert.equal(customWide.leftCols, 50);
   assert.equal(customWide.rightCols, 69);
 
   const customWideTooSmall = computeDualPaneLayout(120, 40, {
-    leftCols: 5
+    leftCols: 5,
   });
   assert.equal(customWideTooSmall.leftCols, 28);
 
   const customWideTooLarge = computeDualPaneLayout(120, 40, {
-    leftCols: 500
+    leftCols: 500,
   });
   assert.equal(customWideTooLarge.rightCols, 20);
 
   const customNarrow = computeDualPaneLayout(30, 6, {
-    leftCols: 500
+    leftCols: 500,
   });
   assert.equal(customNarrow.leftCols, 28);
   assert.equal(customNarrow.rightCols, 1);
@@ -141,8 +141,8 @@ void test('routeMuxInputTokens forwards left-pane input and consumes right-pane 
         code: 64,
         col: rightCol,
         row: 2,
-        final: 'M'
-      }
+        final: 'M',
+      },
     },
     {
       kind: 'mouse',
@@ -151,8 +151,8 @@ void test('routeMuxInputTokens forwards left-pane input and consumes right-pane 
         code: 65,
         col: 2,
         row: 2,
-        final: 'M'
-      }
+        final: 'M',
+      },
     },
     {
       kind: 'mouse',
@@ -161,8 +161,8 @@ void test('routeMuxInputTokens forwards left-pane input and consumes right-pane 
         code: 0,
         col: 2,
         row: 2,
-        final: 'M'
-      }
+        final: 'M',
+      },
     },
     {
       kind: 'mouse',
@@ -171,8 +171,8 @@ void test('routeMuxInputTokens forwards left-pane input and consumes right-pane 
         code: 0,
         col: rightCol,
         row: 2,
-        final: 'M'
-      }
+        final: 'M',
+      },
     },
     {
       kind: 'mouse',
@@ -181,9 +181,9 @@ void test('routeMuxInputTokens forwards left-pane input and consumes right-pane 
         code: 0,
         col: layout.separatorCol,
         row: 2,
-        final: 'M'
-      }
-    }
+        final: 'M',
+      },
+    },
   ] as const;
 
   const routed = routeMuxInputTokens(tokens, layout);

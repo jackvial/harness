@@ -83,7 +83,7 @@ function parseArgs(argv: string[]): CliOptions {
 
   if (inputPath.length === 0 || outputPath.length === 0) {
     process.stderr.write(
-      'usage: bun run terminal:recording:gif -- --input <recording.jsonl> --output <out.gif> [--cell-width 9 --cell-height 18 --font-size 14 --font-family "Menlo, monospace" --frame-ms 66 --max-colors 256 --no-cursor]\n'
+      'usage: bun run terminal:recording:gif -- --input <recording.jsonl> --output <out.gif> [--cell-width 9 --cell-height 18 --font-size 14 --font-family "Menlo, monospace" --frame-ms 66 --max-colors 256 --no-cursor]\n',
     );
     process.exit(2);
   }
@@ -97,7 +97,7 @@ function parseArgs(argv: string[]): CliOptions {
     fontFamily,
     frameMs,
     maxColors,
-    includeCursor
+    includeCursor,
   };
 }
 
@@ -111,7 +111,7 @@ async function main(): Promise<number> {
     fontSizePx: options.fontSizePx,
     defaultFrameDurationMs: options.frameMs,
     maxColors: options.maxColors,
-    includeCursor: options.includeCursor
+    includeCursor: options.includeCursor,
   };
   if (options.fontFamily !== null) {
     renderOptions.fontFamily = options.fontFamily;
@@ -119,7 +119,7 @@ async function main(): Promise<number> {
   const result = await renderTerminalRecordingToGif(renderOptions);
 
   process.stdout.write(
-    `[recording->gif] input=${result.recordingPath} output=${result.outputPath} frames=${String(result.frameCount)} size=${String(result.width)}x${String(result.height)} bytes=${String(result.bytes)}\n`
+    `[recording->gif] input=${result.recordingPath} output=${result.outputPath} frames=${String(result.frameCount)} size=${String(result.width)}x${String(result.height)} bytes=${String(result.bytes)}\n`,
   );
   return 0;
 }

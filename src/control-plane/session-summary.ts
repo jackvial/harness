@@ -3,7 +3,7 @@ import type {
   StreamSessionController,
   StreamSessionControllerType,
   StreamSessionRuntimeStatus,
-  StreamTelemetrySummary
+  StreamTelemetrySummary,
 } from './stream-protocol.ts';
 
 interface StreamSessionSummary {
@@ -95,12 +95,12 @@ function readExit(value: unknown): PtyExit | null | undefined {
   }
   return {
     code,
-    signal: signal as NodeJS.Signals | null
+    signal: signal as NodeJS.Signals | null,
   };
 }
 
 function readTelemetrySource(
-  value: unknown
+  value: unknown,
 ): 'otlp-log' | 'otlp-metric' | 'otlp-trace' | 'history' | null {
   if (
     value === 'otlp-log' ||
@@ -143,7 +143,7 @@ function readTelemetrySummary(value: unknown): StreamTelemetrySummary | null | u
     eventName,
     severity,
     summary,
-    observedAt
+    observedAt,
   };
 }
 
@@ -181,16 +181,13 @@ function readSessionController(value: unknown): StreamSessionController | null |
     controllerId,
     controllerType,
     controllerLabel,
-    claimedAt
+    claimedAt,
   };
 }
 
 function isRuntimeStatus(value: string): value is StreamSessionRuntimeStatus {
   return (
-    value === 'running' ||
-    value === 'needs-input' ||
-    value === 'completed' ||
-    value === 'exited'
+    value === 'running' || value === 'needs-input' || value === 'completed' || value === 'exited'
   );
 }
 
@@ -290,7 +287,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     live,
     launchCommand,
     telemetry: telemetry ?? null,
-    controller: controller ?? null
+    controller: controller ?? null,
   };
 }
 

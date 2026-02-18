@@ -153,7 +153,8 @@ export class ModalManager {
       input: input.input,
       inputRemainder: input.inputRemainder,
       dismiss: input.dismiss,
-      buildCurrentModalOverlay: () => this.buildCurrentOverlay(input.layoutCols, input.viewportRows),
+      buildCurrentModalOverlay: () =>
+        this.buildCurrentOverlay(input.layoutCols, input.viewportRows),
       isOverlayHit: this.isOverlayHit,
       ...(input.onInsidePointerPress === undefined
         ? {}

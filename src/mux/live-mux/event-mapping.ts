@@ -37,7 +37,7 @@ export function isConversationNotFoundError(error: unknown): boolean {
 export function mapTerminalOutputToNormalizedEvent(
   chunk: Buffer,
   scope: EventScope,
-  idFactory: () => string
+  idFactory: () => string,
 ): NormalizedEventEnvelope {
   return createNormalizedEvent(
     'provider',
@@ -47,17 +47,17 @@ export function mapTerminalOutputToNormalizedEvent(
       kind: 'text-delta',
       threadId: scope.conversationId,
       turnId: scope.turnId ?? 'turn-live',
-      delta: chunk.toString('utf8')
+      delta: chunk.toString('utf8'),
     },
     () => new Date(),
-    idFactory
+    idFactory,
   );
 }
 
 export function mapSessionEventToNormalizedEvent(
   event: StreamSessionEvent,
   scope: EventScope,
-  idFactory: () => string
+  idFactory: () => string,
 ): NormalizedEventEnvelope | null {
   if (event.type === 'session-exit') {
     return createNormalizedEvent(
@@ -69,10 +69,10 @@ export function mapSessionEventToNormalizedEvent(
         threadId: scope.conversationId,
         turnId: scope.turnId ?? 'turn-live',
         reason: 'stalled',
-        detail: 'session-exit'
+        detail: 'session-exit',
       },
       () => new Date(),
-      idFactory
+      idFactory,
     );
   }
 

@@ -47,9 +47,7 @@ interface RuntimeConversationStarterOptions<
   readonly codexArgs: readonly string[];
   readonly critiqueDefaultArgs: readonly string[];
   readonly sessionCwdForConversation: (conversation: TConversation) => string;
-  readonly buildLaunchArgs: (
-    input: RuntimeConversationStarterLaunchArgsInput,
-  ) => readonly string[];
+  readonly buildLaunchArgs: (input: RuntimeConversationStarterLaunchArgsInput) => readonly string[];
   readonly launchCommandForAgent: (agentType: string) => string;
   readonly formatCommandForDebugBar: (command: string, args: readonly string[]) => string;
   readonly startConversationSpan: (sessionId: string) => RuntimeConversationStarterPerfSpan;

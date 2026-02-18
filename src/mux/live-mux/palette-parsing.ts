@@ -115,14 +115,14 @@ export function extractOscColorReplies(buffer: string): {
     remainder,
     ...(foregroundHex !== undefined
       ? {
-          foregroundHex
+          foregroundHex,
         }
       : {}),
     ...(backgroundHex !== undefined
       ? {
-          backgroundHex
+          backgroundHex,
         }
       : {}),
-    indexedHexByCode
+    indexedHexByCode,
   };
 }

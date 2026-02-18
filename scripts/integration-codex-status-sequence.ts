@@ -10,7 +10,7 @@ import { subscribeControlPlaneKeyEvents } from '../src/control-plane/codex-sessi
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import {
   applyMuxControlPlaneKeyEvent,
-  type MuxRuntimeConversationState
+  type MuxRuntimeConversationState,
 } from '../src/mux/runtime-wiring.ts';
 import { projectWorkspaceRailConversation } from '../src/mux/workspace-rail-model.ts';
 
@@ -81,7 +81,7 @@ function parseArgs(argv: readonly string[]): ScriptOptions {
     cwd,
     prompt,
     model,
-    timeoutMs
+    timeoutMs,
   };
 }
 
@@ -96,13 +96,13 @@ function createConversationState(sessionId: string): RuntimeConversationState {
     lastEventAt: null,
     lastKnownWork: null,
     lastKnownWorkAt: null,
-    lastTelemetrySource: null
+    lastTelemetrySource: null,
   };
 }
 
 function projectedPhase(
   conversation: RuntimeConversationState,
-  nowMs: number
+  nowMs: number,
 ): { icon: string; phase: string; statusText: string } {
   const projected = projectWorkspaceRailConversation(
     {
@@ -118,11 +118,11 @@ function projectedPhase(
       attentionReason: conversation.attentionReason,
       startedAt: new Date(nowMs).toISOString(),
       lastEventAt: conversation.lastEventAt,
-      controller: conversation.controller
+      controller: conversation.controller,
     },
     {
-      nowMs
-    }
+      nowMs,
+    },
   );
   if (projected.status === 'working' || projected.status === 'starting') {
     return { icon: projected.glyph, phase: 'active', statusText: projected.detailText };
@@ -133,14 +133,14 @@ function projectedPhase(
   return {
     icon: projected.glyph,
     phase: projected.status,
-    statusText: projected.detailText
+    statusText: projected.detailText,
   };
 }
 
 async function waitFor(
   label: string,
   timeoutMs: number,
-  predicate: () => boolean | Promise<boolean>
+  predicate: () => boolean | Promise<boolean>,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -155,7 +155,9 @@ async function waitFor(
 function printTimeline(timeline: readonly StatusTimelineEntry[]): void {
   for (const entry of timeline) {
     const iso = new Date(entry.atMs).toISOString();
-    process.stdout.write(`${iso} [${entry.label}] ${entry.icon} ${entry.phase} | ${entry.statusText}\n`);
+    process.stdout.write(
+      `${iso} [${entry.label}] ${entry.icon} ${entry.phase} | ${entry.statusText}\n`,
+    );
   }
 }
 
@@ -180,20 +182,20 @@ async function main(): Promise<void> {
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: false
+      captureVerboseEvents: false,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 250
+      pollMs: 250,
     },
-    startSession: (input) => startCodexLiveSession(input)
+    startSession: (input) => startCodexLiveSession(input),
   });
 
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   const conversations = new Map<string, RuntimeConversationState>();
@@ -226,7 +228,7 @@ async function main(): Promise<void> {
       label,
       icon: phase.icon,
       phase: phase.phase,
-      statusText: phase.statusText
+      statusText: phase.statusText,
     });
   };
 
@@ -261,26 +263,26 @@ async function main(): Promise<void> {
           }
           conversations.set(sessionId, created);
           return created;
-        }
+        },
       });
       if (updated !== null) {
         emitPhase(event.type);
       }
-    }
+    },
   });
 
   try {
     await client.sendCommand({
       type: 'directory.upsert',
       directoryId,
-      path: options.cwd
+      path: options.cwd,
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId,
       directoryId,
       title: 'status integration',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     const startArgs: string[] = ['exec', '--skip-git-repo-check'];
     if (options.model !== null) {
@@ -293,10 +295,12 @@ async function main(): Promise<void> {
       args: startArgs,
       cwd: options.cwd,
       initialCols: 120,
-      initialRows: 32
+      initialRows: 32,
     });
 
-    await waitFor('initial status event', remainingTimeoutMs(), () => conversations.has(conversationId));
+    await waitFor('initial status event', remainingTimeoutMs(), () =>
+      conversations.has(conversationId),
+    );
     emitPhase('poll');
 
     await waitFor('active startup phase', remainingTimeoutMs(), () => {
@@ -311,7 +315,7 @@ async function main(): Promise<void> {
         return false;
       }
       const inactiveAfterActive = timeline.findIndex(
-        (entry, index) => index > activeIndex && entry.phase === 'inactive'
+        (entry, index) => index > activeIndex && entry.phase === 'inactive',
       );
       return inactiveAfterActive >= 0;
     });
@@ -322,34 +326,40 @@ async function main(): Promise<void> {
     assert.equal(startupActiveIndex >= 0, true);
     assert.equal(promptInactiveIndex >= 0, true);
     assert.equal(
-      timeline.some((entry) => entry.phase === 'active' && (entry.icon === '◔' || entry.icon === '◆')),
-      true
+      timeline.some(
+        (entry) => entry.phase === 'active' && (entry.icon === '◔' || entry.icon === '◆'),
+      ),
+      true,
     );
     assert.equal(
       timeline.some(
         (entry, index) =>
           index > startupActiveIndex &&
           entry.phase === 'inactive' &&
-          (entry.icon === '○' || entry.icon === '■')
+          (entry.icon === '○' || entry.icon === '■'),
       ),
-      true
+      true,
+    );
+    assert.equal(
+      timeline.some((entry, index) => index > promptInactiveIndex && entry.phase === 'active'),
+      false,
+    );
+    assert.equal(
+      timeline.every((entry) => entry.statusText.trim().length > 0),
+      true,
     );
     assert.equal(
       timeline.some(
-        (entry, index) => index > promptInactiveIndex && entry.phase === 'active'
+        (entry) =>
+          entry.phase === 'needs-action' || entry.statusText.toLowerCase().includes('telemetry'),
       ),
-      false
-    );
-    assert.equal(timeline.every((entry) => entry.statusText.trim().length > 0), true);
-    assert.equal(
-      timeline.some((entry) => entry.phase === 'needs-action' || entry.statusText.toLowerCase().includes('telemetry')),
-      false
+      false,
     );
     assert.equal(observedStatusTelemetryEventNames.has('codex.conversation_starts'), true);
     assert.equal(
       observedStatusTelemetryEventNames.has('codex.user_prompt') ||
         observedKeyEventNames.has('codex.user_prompt'),
-      true
+      true,
     );
 
     process.stdout.write('codex status integration sequence verified\n');
@@ -363,7 +373,7 @@ async function main(): Promise<void> {
     try {
       await client.sendCommand({
         type: 'session.remove',
-        sessionId: conversationId
+        sessionId: conversationId,
       });
     } catch {
       // Best-effort cleanup.

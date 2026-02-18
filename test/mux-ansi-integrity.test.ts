@@ -16,19 +16,19 @@ void test('ansi integrity checker accepts valid rail rows', () => {
             branch: 'main',
             changedFiles: 0,
             additions: 0,
-            deletions: 0
-          }
-        }
+            deletions: 0,
+          },
+        },
       ],
       conversations: [],
       activeProjectId: 'main',
       activeConversationId: null,
       projectSelectionEnabled: true,
       processes: [],
-      nowMs: Date.parse('2026-01-01T00:00:00.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:00.000Z'),
     },
     36,
-    8
+    8,
   );
 
   assert.deepEqual(findAnsiIntegrityIssues(rows), []);
@@ -42,10 +42,10 @@ void test('ansi integrity checker detects mangling from plain-width trimming ans
       activeProjectId: null,
       activeConversationId: null,
       processes: [],
-      nowMs: Date.parse('2026-01-01T00:00:00.000Z')
+      nowMs: Date.parse('2026-01-01T00:00:00.000Z'),
     },
     36,
-    4
+    4,
   );
 
   const mangled = rows.map((row) => padOrTrimDisplay(row, 4));
@@ -58,12 +58,21 @@ void test('ansi integrity checker reports dangling and unterminated escapes', ()
     '\u001b[31mok\u001b[0m',
     '\u001b[31',
     '\u001b]10;rgb:ffff/ffff/ffff',
-    'tail\u001b'
+    'tail\u001b',
   ]);
   assert.equal(issues.length, 3);
-  assert.equal(issues.some((issue) => issue.includes('unterminated CSI')), true);
-  assert.equal(issues.some((issue) => issue.includes('unterminated OSC')), true);
-  assert.equal(issues.some((issue) => issue.includes('dangling ESC')), true);
+  assert.equal(
+    issues.some((issue) => issue.includes('unterminated CSI')),
+    true,
+  );
+  assert.equal(
+    issues.some((issue) => issue.includes('unterminated OSC')),
+    true,
+  );
+  assert.equal(
+    issues.some((issue) => issue.includes('dangling ESC')),
+    true,
+  );
 });
 
 void test('ansi integrity checker accepts osc st terminators and two-byte escapes', () => {
@@ -73,7 +82,7 @@ void test('ansi integrity checker accepts osc st terminators and two-byte escape
     '\u001b]11;rgb:0000/0000/0000\u0007ok',
     '\u001bcreset',
     '\u001b[31mred\u001b[0m',
-    'plain🙂text'
+    'plain🙂text',
   ]);
   assert.deepEqual(issues, []);
 });

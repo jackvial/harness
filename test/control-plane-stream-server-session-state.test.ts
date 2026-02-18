@@ -5,17 +5,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   ControlPlaneStreamServer,
   startControlPlaneStreamServer,
-  type StartControlPlaneSessionInput
+  type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import { type StreamServerEnvelope } from '../src/control-plane/stream-protocol.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import { SqliteControlPlaneStore } from '../src/store/control-plane-store.ts';
-import {
-  FakeLiveSession,
-  collectEnvelopes,
-} from './control-plane-stream-server-test-helpers.ts';
+import { FakeLiveSession, collectEnvelopes } from './control-plane-stream-server-test-helpers.ts';
 
 void test('stream server archives directories and excludes archived rows from default list', async () => {
   const server = await startControlPlaneStreamServer({

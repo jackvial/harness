@@ -124,11 +124,7 @@ export class TaskManager<
     const orderedActiveTaskIds = this.orderedTasks(input.sortTasks)
       .filter((task) => !input.isCompleted(task))
       .map((task) => task.taskId);
-    return this.reorderIdsByMove(
-      orderedActiveTaskIds,
-      input.draggedTaskId,
-      input.targetTaskId,
-    );
+    return this.reorderIdsByMove(orderedActiveTaskIds, input.draggedTaskId, input.targetTaskId);
   }
 
   private reorderIdsByMove(

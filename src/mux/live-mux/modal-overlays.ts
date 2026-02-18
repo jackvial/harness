@@ -123,7 +123,9 @@ export function buildTaskEditorModalOverlay(
   });
   const selectedRepositoryId = prompt.repositoryIds[prompt.repositoryIndex] ?? null;
   const selectedRepositoryName =
-    selectedRepositoryId === null ? '(none)' : (resolveRepositoryName(selectedRepositoryId) ?? '(missing)');
+    selectedRepositoryId === null
+      ? '(none)'
+      : (resolveRepositoryName(selectedRepositoryId) ?? '(missing)');
   const taskBody = [
     `${prompt.fieldIndex === 0 ? '>' : ' '} title: ${prompt.title}${prompt.fieldIndex === 0 ? '_' : ''}`,
     `${prompt.fieldIndex === 1 ? '>' : ' '} repository: ${selectedRepositoryName}`,
@@ -207,7 +209,12 @@ export function buildConversationTitleModalOverlay(
     : edit.value === edit.lastSavedValue
       ? 'saved'
       : 'pending';
-  const editBody = [`title: ${edit.value}_`, `state: ${editState}`, '', CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL];
+  const editBody = [
+    `title: ${edit.value}_`,
+    `state: ${editState}`,
+    '',
+    CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL,
+  ];
   if (edit.error !== null && edit.error.length > 0) {
     editBody.push(`error: ${edit.error}`);
   }

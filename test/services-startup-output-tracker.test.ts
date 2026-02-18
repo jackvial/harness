@@ -77,8 +77,6 @@ void test('startup output tracker ignores startup output when markFirstOutput re
 
   startupOutputTracker.onOutputChunk('session-a', 12);
 
-  assert.deepEqual(events, [
-    'mux.session.first-output:{"sessionId":"session-a","bytes":12}',
-  ]);
+  assert.deepEqual(events, ['mux.session.first-output:{"sessionId":"session-a","bytes":12}']);
   assert.deepEqual(spanEnds, []);
 });

@@ -19,7 +19,7 @@ import {
   taskComposerMoveWordRight,
   taskComposerTextFromTaskFields,
   taskComposerVisibleLines,
-  taskFieldsFromComposerText
+  taskFieldsFromComposerText,
 } from '../src/mux/task-composer.ts';
 
 void test('composer buffer create/normalize/replace are stable', () => {
@@ -29,13 +29,13 @@ void test('composer buffer create/normalize/replace are stable', () => {
 
   const normalized = normalizeTaskComposerBuffer({
     text: 'abc',
-    cursor: 99
+    cursor: 99,
   });
   assert.equal(normalized.cursor, 3);
 
   const normalizedNaN = normalizeTaskComposerBuffer({
     text: 'abc',
-    cursor: Number.NaN
+    cursor: Number.NaN,
   });
   assert.equal(normalizedNaN.cursor, 3);
 
@@ -48,9 +48,9 @@ void test('insert/backspace/delete-forward update text and cursor', () => {
   const inserted = insertTaskComposerText(
     {
       text: 'ab',
-      cursor: 1
+      cursor: 1,
     },
-    'Z'
+    'Z',
   );
   assert.equal(inserted.text, 'aZb');
   assert.equal(inserted.cursor, 2);
@@ -61,29 +61,29 @@ void test('insert/backspace/delete-forward update text and cursor', () => {
 
   const backspaceAtStart = taskComposerBackspace({
     text: 'ab',
-    cursor: 0
+    cursor: 0,
   });
   assert.deepEqual(backspaceAtStart, {
     text: 'ab',
-    cursor: 0
+    cursor: 0,
   });
 
   const deleted = taskComposerDeleteForward({
     text: 'abc',
-    cursor: 1
+    cursor: 1,
   });
   assert.deepEqual(deleted, {
     text: 'ac',
-    cursor: 1
+    cursor: 1,
   });
 
   const deleteAtEnd = taskComposerDeleteForward({
     text: 'abc',
-    cursor: 3
+    cursor: 3,
   });
   assert.deepEqual(deleteAtEnd, {
     text: 'abc',
-    cursor: 3
+    cursor: 3,
   });
 });
 
@@ -91,43 +91,43 @@ void test('left/right and line start/end movement work across lines', () => {
   const text = 'one\ntwo';
   const movedLeft = taskComposerMoveLeft({
     text,
-    cursor: 1
+    cursor: 1,
   });
   assert.equal(movedLeft.cursor, 0);
 
   const movedLeftFloor = taskComposerMoveLeft({
     text,
-    cursor: 0
+    cursor: 0,
   });
   assert.equal(movedLeftFloor.cursor, 0);
 
   const movedRight = taskComposerMoveRight({
     text,
-    cursor: 1
+    cursor: 1,
   });
   assert.equal(movedRight.cursor, 2);
 
   const movedRightCeil = taskComposerMoveRight({
     text,
-    cursor: text.length
+    cursor: text.length,
   });
   assert.equal(movedRightCeil.cursor, text.length);
 
   const lineStart = taskComposerMoveLineStart({
     text,
-    cursor: 6
+    cursor: 6,
   });
   assert.equal(lineStart.cursor, 4);
 
   const lineEnd = taskComposerMoveLineEnd({
     text,
-    cursor: 5
+    cursor: 5,
   });
   assert.equal(lineEnd.cursor, 7);
 
   const lineStartEmpty = taskComposerMoveLineStart({
     text: '',
-    cursor: 0
+    cursor: 0,
   });
   assert.equal(lineStartEmpty.cursor, 0);
 });
@@ -135,88 +135,88 @@ void test('left/right and line start/end movement work across lines', () => {
 void test('word movement and word delete support whitespace and punctuation', () => {
   const sample = {
     text: 'alpha  beta,gamma',
-    cursor: 13
+    cursor: 13,
   };
   const left = taskComposerMoveWordLeft(sample);
   assert.equal(left.cursor, 12);
 
   const leftFromWhitespace = taskComposerMoveWordLeft({
     text: 'alpha   beta',
-    cursor: 8
+    cursor: 8,
   });
   assert.equal(leftFromWhitespace.cursor, 0);
 
   const right = taskComposerMoveWordRight({
     text: 'alpha  beta',
-    cursor: 0
+    cursor: 0,
   });
   assert.equal(right.cursor, 5);
 
   const rightThroughWhitespace = taskComposerMoveWordRight({
     text: 'alpha  beta',
-    cursor: 5
+    cursor: 5,
   });
   assert.equal(rightThroughWhitespace.cursor, 11);
 
   const deletedWord = taskComposerDeleteWordLeft({
     text: 'alpha beta',
-    cursor: 10
+    cursor: 10,
   });
   assert.deepEqual(deletedWord, {
     text: 'alpha ',
-    cursor: 6
+    cursor: 6,
   });
 
   const deletedWordNoop = taskComposerDeleteWordLeft({
     text: '',
-    cursor: 0
+    cursor: 0,
   });
   assert.deepEqual(deletedWordNoop, {
     text: '',
-    cursor: 0
+    cursor: 0,
   });
 });
 
 void test('delete to line start/end trims only the current line segment', () => {
   const base = {
     text: 'abc\ndef',
-    cursor: 5
+    cursor: 5,
   };
   const toStart = taskComposerDeleteToLineStart(base);
   assert.deepEqual(toStart, {
     text: 'abc\nef',
-    cursor: 4
+    cursor: 4,
   });
 
   const toStartNoop = taskComposerDeleteToLineStart({
     text: 'abc',
-    cursor: 0
+    cursor: 0,
   });
   assert.deepEqual(toStartNoop, {
     text: 'abc',
-    cursor: 0
+    cursor: 0,
   });
 
   const toEnd = taskComposerDeleteToLineEnd(base);
   assert.deepEqual(toEnd, {
     text: 'abc\nd',
-    cursor: 5
+    cursor: 5,
   });
 
   const toEndNoop = taskComposerDeleteToLineEnd({
     text: 'abc',
-    cursor: 3
+    cursor: 3,
   });
   assert.deepEqual(toEndNoop, {
     text: 'abc',
-    cursor: 3
+    cursor: 3,
   });
 });
 
 void test('vertical movement reports boundaries for top and bottom lines', () => {
   const base = {
     text: 'a\nbb\nccc',
-    cursor: 3
+    cursor: 3,
   };
   const up = taskComposerMoveVertical(base, -1);
   assert.equal(up.hitBoundary, false);
@@ -229,9 +229,9 @@ void test('vertical movement reports boundaries for top and bottom lines', () =>
   const topBoundary = taskComposerMoveVertical(
     {
       text: 'a\nb',
-      cursor: 0
+      cursor: 0,
     },
-    -1
+    -1,
   );
   assert.equal(topBoundary.hitBoundary, true);
   assert.equal(topBoundary.next.cursor, 0);
@@ -239,9 +239,9 @@ void test('vertical movement reports boundaries for top and bottom lines', () =>
   const bottomBoundary = taskComposerMoveVertical(
     {
       text: 'a\nb',
-      cursor: 3
+      cursor: 3,
     },
-    1
+    1,
   );
   assert.equal(bottomBoundary.hitBoundary, true);
   assert.equal(bottomBoundary.next.cursor, 3);
@@ -250,14 +250,14 @@ void test('vertical movement reports boundaries for top and bottom lines', () =>
 void test('visible lines and task field conversion preserve multiline payloads', () => {
   const lines = taskComposerVisibleLines({
     text: 'line-1\nline-2',
-    cursor: 3
+    cursor: 3,
   });
   assert.deepEqual(lines, ['lin_e-1', 'line-2']);
 
   const fields = taskFieldsFromComposerText('title\nbody line 1\nbody line 2');
   assert.deepEqual(fields, {
     title: 'title',
-    description: 'body line 1\nbody line 2'
+    description: 'body line 1\nbody line 2',
   });
 
   const fieldsTrimmed = taskFieldsFromComposerText('  title padded  \nbody');
@@ -265,8 +265,5 @@ void test('visible lines and task field conversion preserve multiline payloads',
   assert.equal(fieldsTrimmed.description, 'body');
 
   assert.equal(taskComposerTextFromTaskFields('title', ''), 'title');
-  assert.equal(
-    taskComposerTextFromTaskFields('title', 'body'),
-    'title\nbody'
-  );
+  assert.equal(taskComposerTextFromTaskFields('title', 'body'), 'title\nbody');
 });

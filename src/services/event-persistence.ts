@@ -16,10 +16,7 @@ interface EventPersistenceOptions {
   readonly writeStderr: (text: string) => void;
   readonly flushDelayMs?: number;
   readonly flushMaxBatch?: number;
-  readonly setTimeoutFn?: (
-    callback: () => void,
-    delayMs: number,
-  ) => ReturnType<typeof setTimeout>;
+  readonly setTimeoutFn?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   readonly clearTimeoutFn?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 

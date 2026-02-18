@@ -49,7 +49,7 @@ function computePercentiles(valuesMs: readonly number[]): PercentilesMs {
   return {
     p50: percentile(valuesMs, 50),
     p95: percentile(valuesMs, 95),
-    p99: percentile(valuesMs, 99)
+    p99: percentile(valuesMs, 99),
   };
 }
 
@@ -67,9 +67,8 @@ class OutputBuffer {
   }> = [];
 
   append(chunk: Buffer): void {
-    this.window = this.window.length === 0
-      ? Buffer.from(chunk)
-      : Buffer.concat([this.window, chunk]);
+    this.window =
+      this.window.length === 0 ? Buffer.from(chunk) : Buffer.concat([this.window, chunk]);
     if (this.window.length > 65_536) {
       this.window = this.window.subarray(this.window.length - 65_536);
     }
@@ -103,7 +102,7 @@ class OutputBuffer {
         matchPayloads,
         resolve,
         reject,
-        timer
+        timer,
       });
     });
   }
@@ -150,7 +149,7 @@ function frameClose(): Buffer {
 async function measureHarness(sampleCount: number, timeoutMs: number): Promise<BenchmarkSample> {
   const session = startPtySession({
     command: '/bin/cat',
-    commandArgs: []
+    commandArgs: [],
   });
   const output = new OutputBuffer();
   const timingsMs: number[] = [];
@@ -182,7 +181,7 @@ async function measureHarness(sampleCount: number, timeoutMs: number): Promise<B
 
   return {
     label: 'harness',
-    percentilesMs: computePercentiles(timingsMs)
+    percentilesMs: computePercentiles(timingsMs),
   };
 }
 
@@ -190,10 +189,13 @@ function getHelperPath(): string {
   return join(dirname(fileURLToPath(import.meta.url)), '../bin/ptyd');
 }
 
-async function measureFramedDirect(sampleCount: number, timeoutMs: number): Promise<BenchmarkSample> {
+async function measureFramedDirect(
+  sampleCount: number,
+  timeoutMs: number,
+): Promise<BenchmarkSample> {
   const helperPath = getHelperPath();
   const child = spawn(helperPath, ['/bin/cat'], {
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
   const output = new OutputBuffer();
   const timingsMs: number[] = [];
@@ -228,7 +230,7 @@ async function measureFramedDirect(sampleCount: number, timeoutMs: number): Prom
 
   return {
     label: 'direct-framed',
-    percentilesMs: computePercentiles(timingsMs)
+    percentilesMs: computePercentiles(timingsMs),
   };
 }
 
@@ -236,15 +238,15 @@ function printReport(direct: BenchmarkSample, harness: BenchmarkSample): Percent
   const overhead: PercentilesMs = {
     p50: harness.percentilesMs.p50 - direct.percentilesMs.p50,
     p95: harness.percentilesMs.p95 - direct.percentilesMs.p95,
-    p99: harness.percentilesMs.p99 - direct.percentilesMs.p99
+    p99: harness.percentilesMs.p99 - direct.percentilesMs.p99,
   };
 
   process.stdout.write(
     [
       `direct p50=${formatMs(direct.percentilesMs.p50)}ms p95=${formatMs(direct.percentilesMs.p95)}ms p99=${formatMs(direct.percentilesMs.p99)}ms`,
       `harness p50=${formatMs(harness.percentilesMs.p50)}ms p95=${formatMs(harness.percentilesMs.p95)}ms p99=${formatMs(harness.percentilesMs.p99)}ms`,
-      `overhead p50=${formatMs(overhead.p50)}ms p95=${formatMs(overhead.p95)}ms p99=${formatMs(overhead.p99)}ms`
-    ].join('\n') + '\n'
+      `overhead p50=${formatMs(overhead.p50)}ms p95=${formatMs(overhead.p95)}ms p99=${formatMs(overhead.p99)}ms`,
+    ].join('\n') + '\n',
   );
 
   return overhead;
@@ -273,8 +275,8 @@ async function main(): Promise<number> {
       [
         'latency gate failed',
         `required overhead: p50<=${formatMs(maxP50Ms)}ms p95<=${formatMs(maxP95Ms)}ms p99<=${formatMs(maxP99Ms)}ms`,
-        `actual overhead: p50=${formatMs(overhead.p50)}ms p95=${formatMs(overhead.p95)}ms p99=${formatMs(overhead.p99)}ms`
-      ].join('\n') + '\n'
+        `actual overhead: p50=${formatMs(overhead.p50)}ms p95=${formatMs(overhead.p95)}ms p99=${formatMs(overhead.p99)}ms`,
+      ].join('\n') + '\n',
     );
     return 1;
   }

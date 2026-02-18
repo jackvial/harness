@@ -4,7 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   startControlPlaneStreamServer,
-  type StartControlPlaneSessionInput
+  type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import { subscribeControlPlaneKeyEvents } from '../src/control-plane/codex-session-stream.ts';
@@ -12,7 +12,7 @@ import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
 import {
   applyMuxControlPlaneKeyEvent,
-  type MuxRuntimeConversationState
+  type MuxRuntimeConversationState,
 } from '../src/mux/runtime-wiring.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
@@ -93,14 +93,14 @@ function createConversationState(sessionId: string): TestConversationState {
     lastEventAt: null,
     lastKnownWork: null,
     lastKnownWorkAt: null,
-    lastTelemetrySource: null
+    lastTelemetrySource: null,
   };
 }
 
 async function postJson(
   address: { host: string; port: number },
   path: string,
-  payload: unknown
+  payload: unknown,
 ): Promise<{ statusCode: number; body: string }> {
   return await new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
@@ -112,8 +112,8 @@ async function postJson(
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'content-length': Buffer.byteLength(body)
-        }
+          'content-length': Buffer.byteLength(body),
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -123,10 +123,10 @@ async function postJson(
         res.on('end', () => {
           resolve({
             statusCode: res.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString('utf8')
+            body: Buffer.concat(chunks).toString('utf8'),
           });
         });
-      }
+      },
     );
     req.once('error', reject);
     req.write(body);
@@ -145,18 +145,18 @@ void test('mux runtime wiring integration updates rail status line and icon from
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 50
+      pollMs: 50,
     },
     startSession: (input) => {
       const session = new FakeLiveSession(input);
       launchedSessions.push(session);
       return session;
-    }
+    },
   });
 
   const address = server.address();
@@ -165,7 +165,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
 
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   const conversations = new Map<string, TestConversationState>();
@@ -175,21 +175,21 @@ void test('mux runtime wiring integration updates rail status line and icon from
     await client.sendCommand({
       type: 'directory.upsert',
       directoryId: 'directory-runtime',
-      path: '/tmp/runtime'
+      path: '/tmp/runtime',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-runtime',
       directoryId: 'directory-runtime',
       title: 'runtime thread',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-runtime',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
 
     const launched = launchedSessions[0];
@@ -219,12 +219,12 @@ void test('mux runtime wiring integration updates rail status line and icon from
             }
             conversations.set(sessionId, created);
             return created;
-          }
+          },
         });
         if (updated !== null) {
           dirtyMarks += 1;
         }
-      }
+      },
     });
 
     try {
@@ -234,7 +234,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const runningResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/logs/${encodeURIComponent(token)}`,
         {
@@ -249,20 +249,20 @@ void test('mux runtime wiring integration updates rail status line and icon from
                         {
                           key: 'event.name',
                           value: {
-                            stringValue: 'codex.user_prompt'
-                          }
-                        }
+                            stringValue: 'codex.user_prompt',
+                          },
+                        },
                       ],
                       body: {
-                        stringValue: 'prompt submitted'
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                        stringValue: 'prompt submitted',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(runningResponse.statusCode, 200);
       await delay(25);
@@ -275,7 +275,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const noisyTraceResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/traces/${encodeURIComponent(token)}`,
         {
@@ -291,17 +291,17 @@ void test('mux runtime wiring integration updates rail status line and icon from
                         {
                           key: 'kind',
                           value: {
-                            stringValue: 'response.output_text.delta'
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                            stringValue: 'response.output_text.delta',
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(noisyTraceResponse.statusCode, 200);
       await delay(25);
@@ -321,9 +321,9 @@ void test('mux runtime wiring integration updates rail status line and icon from
                 branch: 'main',
                 changedFiles: 0,
                 additions: 0,
-                deletions: 0
-              }
-            }
+                deletions: 0,
+              },
+            },
           ],
           conversations: [
             {
@@ -339,15 +339,15 @@ void test('mux runtime wiring integration updates rail status line and icon from
               attentionReason: runningConversation?.attentionReason ?? null,
               startedAt: '2026-02-15T00:00:00.000Z',
               lastEventAt: runningConversation?.lastEventAt ?? null,
-              controller: null
-            }
+              controller: null,
+            },
           ],
           processes: [],
           activeProjectId: null,
           activeConversationId: 'conversation-runtime',
-          nowMs: 0
+          nowMs: 0,
         },
-        30
+        30,
       );
       const runningTitleRow = runningRows.find((row) => row.kind === 'conversation-title');
       const runningBodyRow = runningRows.find((row) => row.kind === 'conversation-body');
@@ -358,7 +358,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const completedResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/logs/${encodeURIComponent(token)}`,
         {
@@ -373,20 +373,20 @@ void test('mux runtime wiring integration updates rail status line and icon from
                         {
                           key: 'event.name',
                           value: {
-                            stringValue: 'codex.sse_event'
-                          }
-                        }
+                            stringValue: 'codex.sse_event',
+                          },
+                        },
                       ],
                       body: {
-                        stringValue: 'stream response.completed'
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                        stringValue: 'stream response.completed',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(completedResponse.statusCode, 200);
       await delay(25);
@@ -399,7 +399,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const delayedMetricResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/metrics/${encodeURIComponent(token)}`,
         {
@@ -414,17 +414,17 @@ void test('mux runtime wiring integration updates rail status line and icon from
                         dataPoints: [
                           {
                             timeUnixNano: unixNanoAtOffset(1_400),
-                            asDouble: 611
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                            asDouble: 611,
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(delayedMetricResponse.statusCode, 200);
       await delay(25);
@@ -437,7 +437,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const postCompleteTraceResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/traces/${encodeURIComponent(token)}`,
         {
@@ -448,14 +448,14 @@ void test('mux runtime wiring integration updates rail status line and icon from
                   spans: [
                     {
                       name: 'receiving',
-                      endTimeUnixNano: unixNanoAtOffset(500)
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                      endTimeUnixNano: unixNanoAtOffset(500),
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(postCompleteTraceResponse.statusCode, 200);
       await delay(25);
@@ -467,7 +467,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const resumedResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/logs/${encodeURIComponent(token)}`,
         {
@@ -482,20 +482,20 @@ void test('mux runtime wiring integration updates rail status line and icon from
                         {
                           key: 'event.name',
                           value: {
-                            stringValue: 'codex.user_prompt'
-                          }
-                        }
+                            stringValue: 'codex.user_prompt',
+                          },
+                        },
                       ],
                       body: {
-                        stringValue: 'next prompt'
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                        stringValue: 'next prompt',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(resumedResponse.statusCode, 200);
       await delay(25);
@@ -525,18 +525,18 @@ void test('mux runtime wiring integration applies completion projection regardle
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 50
+      pollMs: 50,
     },
     startSession: (input) => {
       const session = new FakeLiveSession(input);
       launchedSessions.push(session);
       return session;
-    }
+    },
   });
 
   const address = server.address();
@@ -545,7 +545,7 @@ void test('mux runtime wiring integration applies completion projection regardle
 
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   const conversations = new Map<string, TestConversationState>();
@@ -554,21 +554,21 @@ void test('mux runtime wiring integration applies completion projection regardle
     await client.sendCommand({
       type: 'directory.upsert',
       directoryId: 'directory-runtime-agent',
-      path: '/tmp/runtime-agent'
+      path: '/tmp/runtime-agent',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-runtime-agent',
       directoryId: 'directory-runtime-agent',
       title: 'runtime agent thread',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-runtime-agent',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
 
     const launched = launchedSessions[0];
@@ -598,9 +598,9 @@ void test('mux runtime wiring integration applies completion projection regardle
             }
             conversations.set(sessionId, created);
             return created;
-          }
+          },
         });
-      }
+      },
     });
 
     try {
@@ -613,14 +613,14 @@ void test('mux runtime wiring integration applies completion projection regardle
         sessionId: 'conversation-runtime-agent',
         controllerId: 'agent-1',
         controllerType: 'agent',
-        controllerLabel: 'agent-1'
+        controllerLabel: 'agent-1',
       });
       await delay(25);
 
       const promptResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/logs/${encodeURIComponent(token)}`,
         {
@@ -635,20 +635,20 @@ void test('mux runtime wiring integration applies completion projection regardle
                         {
                           key: 'event.name',
                           value: {
-                            stringValue: 'codex.user_prompt'
-                          }
-                        }
+                            stringValue: 'codex.user_prompt',
+                          },
+                        },
                       ],
                       body: {
-                        stringValue: 'prompt submitted'
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                        stringValue: 'prompt submitted',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(promptResponse.statusCode, 200);
       await delay(25);
@@ -662,7 +662,7 @@ void test('mux runtime wiring integration applies completion projection regardle
       const completedTurnResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/logs/${encodeURIComponent(token)}`,
         {
@@ -677,20 +677,20 @@ void test('mux runtime wiring integration applies completion projection regardle
                         {
                           key: 'event.name',
                           value: {
-                            stringValue: 'codex.sse_event'
-                          }
-                        }
+                            stringValue: 'codex.sse_event',
+                          },
+                        },
                       ],
                       body: {
-                        stringValue: 'stream response.completed'
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                        stringValue: 'stream response.completed',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(completedTurnResponse.statusCode, 200);
       await delay(25);
@@ -698,7 +698,7 @@ void test('mux runtime wiring integration applies completion projection regardle
       const completedMetricResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/metrics/${encodeURIComponent(token)}`,
         {
@@ -713,17 +713,17 @@ void test('mux runtime wiring integration applies completion projection regardle
                         dataPoints: [
                           {
                             timeUnixNano: unixNanoAtOffset(700),
-                            asDouble: 611
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                            asDouble: 611,
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(completedMetricResponse.statusCode, 200);
       await delay(25);
@@ -743,9 +743,9 @@ void test('mux runtime wiring integration applies completion projection regardle
                 branch: 'main',
                 changedFiles: 0,
                 additions: 0,
-                deletions: 0
-              }
-            }
+                deletions: 0,
+              },
+            },
           ],
           conversations: [
             {
@@ -761,18 +761,22 @@ void test('mux runtime wiring integration applies completion projection regardle
               attentionReason: afterTurnCompletion?.attentionReason ?? null,
               startedAt: '2026-02-15T00:00:00.000Z',
               lastEventAt: afterTurnCompletion?.lastEventAt ?? null,
-              controller: afterTurnCompletion?.controller ?? null
-            }
+              controller: afterTurnCompletion?.controller ?? null,
+            },
           ],
           processes: [],
           activeProjectId: null,
           activeConversationId: 'conversation-runtime-agent',
-          nowMs: 0
+          nowMs: 0,
         },
-        30
+        30,
       );
-      const titleRowWhileAgentActive = rowsWhileAgentActive.find((row) => row.kind === 'conversation-title');
-      const bodyRowWhileAgentActive = rowsWhileAgentActive.find((row) => row.kind === 'conversation-body');
+      const titleRowWhileAgentActive = rowsWhileAgentActive.find(
+        (row) => row.kind === 'conversation-title',
+      );
+      const bodyRowWhileAgentActive = rowsWhileAgentActive.find(
+        (row) => row.kind === 'conversation-body',
+      );
       assert.notEqual(titleRowWhileAgentActive, undefined);
       assert.equal(titleRowWhileAgentActive?.text.includes('○'), true);
       assert.equal(bodyRowWhileAgentActive?.text.includes('inactive'), true);
@@ -780,7 +784,7 @@ void test('mux runtime wiring integration applies completion projection regardle
       const taskTerminalResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
-          port: telemetryAddress?.port ?? 0
+          port: telemetryAddress?.port ?? 0,
         },
         `/v1/logs/${encodeURIComponent(token)}`,
         {
@@ -795,20 +799,20 @@ void test('mux runtime wiring integration applies completion projection regardle
                         {
                           key: 'event.name',
                           value: {
-                            stringValue: 'codex.task.completed'
-                          }
-                        }
+                            stringValue: 'codex.task.completed',
+                          },
+                        },
                       ],
                       body: {
-                        stringValue: 'task completed'
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                        stringValue: 'task completed',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       );
       assert.equal(taskTerminalResponse.statusCode, 200);
       await delay(25);
@@ -828,9 +832,9 @@ void test('mux runtime wiring integration applies completion projection regardle
                 branch: 'main',
                 changedFiles: 0,
                 additions: 0,
-                deletions: 0
-              }
-            }
+                deletions: 0,
+              },
+            },
           ],
           conversations: [
             {
@@ -846,18 +850,22 @@ void test('mux runtime wiring integration applies completion projection regardle
               attentionReason: afterTaskTerminal?.attentionReason ?? null,
               startedAt: '2026-02-15T00:00:00.000Z',
               lastEventAt: afterTaskTerminal?.lastEventAt ?? null,
-              controller: afterTaskTerminal?.controller ?? null
-            }
+              controller: afterTaskTerminal?.controller ?? null,
+            },
           ],
           processes: [],
           activeProjectId: null,
           activeConversationId: 'conversation-runtime-agent',
-          nowMs: 0
+          nowMs: 0,
         },
-        30
+        30,
       );
-      const titleRowAfterTaskTerminal = rowsAfterTaskTerminal.find((row) => row.kind === 'conversation-title');
-      const bodyRowAfterTaskTerminal = rowsAfterTaskTerminal.find((row) => row.kind === 'conversation-body');
+      const titleRowAfterTaskTerminal = rowsAfterTaskTerminal.find(
+        (row) => row.kind === 'conversation-title',
+      );
+      const bodyRowAfterTaskTerminal = rowsAfterTaskTerminal.find(
+        (row) => row.kind === 'conversation-body',
+      );
       assert.notEqual(titleRowAfterTaskTerminal, undefined);
       assert.equal(titleRowAfterTaskTerminal?.text.includes('○'), true);
       assert.equal(bodyRowAfterTaskTerminal?.text.includes('inactive'), true);

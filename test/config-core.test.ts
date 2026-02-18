@@ -592,9 +592,9 @@ void test('parseHarnessConfigText parses claude launch settings', () => {
       defaultMode: 'standard',
       directoryModes: {
         '.': 'yolo',
-        './sandbox': 'standard'
-      }
-    }
+        './sandbox': 'standard',
+      },
+    },
   });
 });
 
@@ -660,7 +660,10 @@ void test('parseHarnessConfigText critique fallback handles non-object launch/in
       }
     }
   `);
-  assert.deepEqual(parsedWithBadDefaultArgs.critique.launch, DEFAULT_HARNESS_CONFIG.critique.launch);
+  assert.deepEqual(
+    parsedWithBadDefaultArgs.critique.launch,
+    DEFAULT_HARNESS_CONFIG.critique.launch,
+  );
 });
 
 void test('parseHarnessConfigText falls back for invalid claude settings', () => {
@@ -682,9 +685,9 @@ void test('parseHarnessConfigText falls back for invalid claude settings', () =>
     launch: {
       defaultMode: DEFAULT_HARNESS_CONFIG.claude.launch.defaultMode,
       directoryModes: {
-        './safe': 'standard'
-      }
-    }
+        './safe': 'standard',
+      },
+    },
   });
 
   const parsedWithBadShapes = parseHarnessConfigText(`
@@ -735,9 +738,9 @@ void test('parseHarnessConfigText parses cursor launch settings', () => {
       defaultMode: 'standard',
       directoryModes: {
         '.': 'yolo',
-        './sandbox': 'standard'
-      }
-    }
+        './sandbox': 'standard',
+      },
+    },
   });
 });
 
@@ -760,9 +763,9 @@ void test('parseHarnessConfigText falls back for invalid cursor settings', () =>
     launch: {
       defaultMode: DEFAULT_HARNESS_CONFIG.cursor.launch.defaultMode,
       directoryModes: {
-        './safe': 'standard'
-      }
-    }
+        './safe': 'standard',
+      },
+    },
   });
 
   const parsedWithBadShapes = parseHarnessConfigText(`

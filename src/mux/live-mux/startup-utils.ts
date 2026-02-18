@@ -32,7 +32,7 @@ export function formatErrorMessage(error: unknown): string {
 export function restoreTerminalState(
   newline: boolean,
   restoreInputModes: (() => void) | null = null,
-  disableInputModes = DISABLE_MUX_INPUT_MODES
+  disableInputModes = DISABLE_MUX_INPUT_MODES,
 ): void {
   try {
     if (restoreInputModes === null) {
@@ -68,7 +68,7 @@ export function extractFocusEvents(chunk: Buffer): FocusEventExtraction {
     return {
       sanitized: chunk,
       focusInCount: 0,
-      focusOutCount: 0
+      focusOutCount: 0,
     };
   }
 
@@ -76,7 +76,7 @@ export function extractFocusEvents(chunk: Buffer): FocusEventExtraction {
   return {
     sanitized: Buffer.from(sanitizedText, 'utf8'),
     focusInCount,
-    focusOutCount
+    focusOutCount,
   };
 }
 
@@ -117,11 +117,13 @@ export function terminalSize(): { cols: number; rows: number } {
 }
 
 export function startupTerminalSizeLooksPlausible(size: { cols: number; rows: number }): boolean {
-  return size.cols >= DEFAULT_STARTUP_TERMINAL_MIN_COLS && size.rows >= DEFAULT_STARTUP_TERMINAL_MIN_ROWS;
+  return (
+    size.cols >= DEFAULT_STARTUP_TERMINAL_MIN_COLS && size.rows >= DEFAULT_STARTUP_TERMINAL_MIN_ROWS
+  );
 }
 
 export async function readStartupTerminalSize(
-  options: StartupTerminalProbeOptions = {}
+  options: StartupTerminalProbeOptions = {},
 ): Promise<{ cols: number; rows: number }> {
   const terminalSizeReader = options.terminalSizeReader ?? terminalSize;
   const sleep =
@@ -178,7 +180,7 @@ export function parseBooleanEnv(value: string | undefined, fallback: boolean): b
 export function resolveWorkspacePathForMux(
   invocationDirectory: string,
   value: string,
-  home = process.env.HOME
+  home = process.env.HOME,
 ): string {
   const resolvedHome = typeof home === 'string' && home.length > 0 ? home : null;
   return resolveWorkspacePath(invocationDirectory, value, resolvedHome);

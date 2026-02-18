@@ -1,4 +1,7 @@
-import type { StreamObservedEvent, StreamServerEnvelope } from '../control-plane/stream-protocol.ts';
+import type {
+  StreamObservedEvent,
+  StreamServerEnvelope,
+} from '../control-plane/stream-protocol.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 
 interface RuntimeEnvelopeConversationLike {
@@ -36,7 +39,10 @@ interface RuntimeEnvelopeHandlerOptions<
   }) => void;
   readonly startupOutputChunk: (sessionId: string, chunkLength: number) => void;
   readonly startupPaintOutputChunk: (sessionId: string) => void;
-  readonly recordPerfEvent: (name: string, attrs: Record<string, string | number | boolean>) => void;
+  readonly recordPerfEvent: (
+    name: string,
+    attrs: Record<string, string | number | boolean>,
+  ) => void;
   readonly mapTerminalOutputToNormalizedEvent: (
     chunk: Buffer,
     scope: unknown,
@@ -67,6 +73,7 @@ interface RuntimeEnvelopeHandlerOptions<
   readonly nowIso: () => string;
   readonly recordOutputHandled: (durationMs: number) => void;
   readonly conversationById: (sessionId: string) => TConversation | undefined;
+  readonly applyObservedWorkspaceEvent: (event: StreamObservedEvent) => void;
   readonly applyObservedGitStatusEvent: (event: StreamObservedEvent) => void;
   readonly applyObservedTaskPlanningEvent: (event: StreamObservedEvent) => void;
   readonly idFactory: () => string;
@@ -120,7 +127,8 @@ export class RuntimeEnvelopeHandler<
       if (this.options.activeConversationId() === envelope.sessionId) {
         this.options.markDirty();
       }
-      const outputHandledDurationMs = Number(this.options.perfNowNs() - outputHandledStartedAtNs) / 1e6;
+      const outputHandledDurationMs =
+        Number(this.options.perfNowNs() - outputHandledStartedAtNs) / 1e6;
       this.options.recordOutputHandled(outputHandledDurationMs);
       return;
     }
@@ -182,6 +190,7 @@ export class RuntimeEnvelopeHandler<
     }
 
     if (envelope.kind === 'stream.event') {
+      this.options.applyObservedWorkspaceEvent(envelope.event);
       this.options.applyObservedGitStatusEvent(envelope.event);
       this.options.applyObservedTaskPlanningEvent(envelope.event);
     }

@@ -8,7 +8,7 @@ import {
   encodeStreamEnvelope,
   parseClientEnvelope,
   type StreamClientEnvelope,
-  type StreamServerEnvelope
+  type StreamServerEnvelope,
 } from '../src/control-plane/stream-protocol.ts';
 
 interface HarnessServer {
@@ -46,7 +46,7 @@ async function reserveLocalPort(): Promise<number> {
 }
 
 async function startHarnessServer(
-  onMessage: (socket: Socket, envelope: StreamClientEnvelope) => void
+  onMessage: (socket: Socket, envelope: StreamClientEnvelope) => void,
 ): Promise<HarnessServer> {
   const server = createServer((socket) => {
     let remainder = '';
@@ -86,7 +86,7 @@ async function startHarnessServer(
           resolve();
         });
       });
-    }
+    },
   };
 }
 
@@ -102,8 +102,8 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
 
     if (commandCount === 1) {
@@ -112,25 +112,25 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            ok: true
-          }
-        })
+            ok: true,
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
           kind: 'command.completed',
           commandId: 'unknown-command',
           result: {
-            ignored: true
-          }
-        })
+            ignored: true,
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
           kind: 'command.failed',
           commandId: 'unknown-command',
-          error: 'ignored'
-        })
+          error: 'ignored',
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -140,10 +140,10 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
             type: 'session-exit',
             exit: {
               code: 0,
-              signal: null
-            }
-          }
-        })
+              signal: null,
+            },
+          },
+        }),
       );
       return;
     }
@@ -153,8 +153,8 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
         encodeStreamEnvelope({
           kind: 'command.failed',
           commandId: envelope.commandId,
-          error: 'boom'
-        })
+          error: 'boom',
+        }),
       );
       return;
     }
@@ -166,7 +166,7 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
 
   const client = await connectControlPlaneStreamClient({
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   const observed: StreamServerEnvelope[] = [];
@@ -179,24 +179,24 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
     sessionId: 'session-1',
     args: [],
     initialCols: 80,
-    initialRows: 24
+    initialRows: 24,
   });
   assert.deepEqual(firstResult, {
-    ok: true
+    ok: true,
   });
 
   await assert.rejects(
     client.sendCommand({
       type: 'pty.close',
-      sessionId: 'session-1'
+      sessionId: 'session-1',
     }),
-    /boom/
+    /boom/,
   );
 
   const pending = client.sendCommand({
     type: 'pty.attach',
     sessionId: 'session-1',
-    sinceCursor: 0
+    sinceCursor: 0,
   });
   await assert.rejects(pending, /closed/);
 
@@ -204,16 +204,18 @@ void test('stream client handles command lifecycle, async envelopes, and shutdow
   await delay(10);
 
   assert.equal(
-    observed.some((envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'session-exit'),
-    true
+    observed.some(
+      (envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'session-exit',
+    ),
+    true,
   );
 
   await assert.rejects(
     client.sendCommand({
       type: 'pty.close',
-      sessionId: 'session-1'
+      sessionId: 'session-1',
     }),
-    /closed/
+    /closed/,
   );
 
   client.sendInput('session-1', Buffer.from('hello', 'utf8'));
@@ -241,19 +243,19 @@ void test('stream client handles parse-ignore, socket error close, and connect f
     writableSocket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
   });
 
   const client = await connectControlPlaneStreamClient({
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   const pending = client.sendCommand({
     type: 'pty.close',
-    sessionId: 'session-error'
+    sessionId: 'session-error',
   });
   const connectedSocket = await socketReady;
   const internalSocket = (client as unknown as { socket: Socket }).socket;
@@ -266,8 +268,8 @@ void test('stream client handles parse-ignore, socket error close, and connect f
   await assert.rejects(
     connectControlPlaneStreamClient({
       host: '127.0.0.1',
-      port: harness.address.port
-    })
+      port: harness.address.port,
+    }),
   );
 });
 
@@ -278,15 +280,15 @@ void test('stream client supports auth handshake and globally unique command ids
       if (envelope.token === 'good-token') {
         socket.write(
           encodeStreamEnvelope({
-            kind: 'auth.ok'
-          })
+            kind: 'auth.ok',
+          }),
         );
       } else {
         socket.write(
           encodeStreamEnvelope({
             kind: 'auth.error',
-            error: 'invalid auth token'
-          })
+            error: 'invalid auth token',
+          }),
         );
         socket.end();
       }
@@ -300,17 +302,17 @@ void test('stream client supports auth handshake and globally unique command ids
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
         result: {
-          ok: true
-        }
-      })
+          ok: true,
+        },
+      }),
     );
   });
 
@@ -318,15 +320,15 @@ void test('stream client supports auth handshake and globally unique command ids
     const client = await connectControlPlaneStreamClient({
       host: harness.address.address,
       port: harness.address.port,
-      authToken: 'good-token'
+      authToken: 'good-token',
     });
     try {
       const first = await client.sendCommand({
-        type: 'session.list'
+        type: 'session.list',
       });
       assert.deepEqual(first, { ok: true });
       const second = await client.sendCommand({
-        type: 'session.list'
+        type: 'session.list',
       });
       assert.deepEqual(second, { ok: true });
       assert.equal(commandIds.length, 2);
@@ -340,9 +342,9 @@ void test('stream client supports auth handshake and globally unique command ids
       connectControlPlaneStreamClient({
         host: harness.address.address,
         port: harness.address.port,
-        authToken: 'bad-token'
+        authToken: 'bad-token',
       }),
-      /invalid auth token|closed/
+      /invalid auth token|closed/,
     );
   } finally {
     await harness.stop();
@@ -355,7 +357,7 @@ void test('stream client auth rejects when closed or already pending', async () 
   });
   const client = await connectControlPlaneStreamClient({
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   try {
@@ -383,7 +385,7 @@ void test('stream client retries connection while server is starting', async () 
       host: '127.0.0.1',
       port,
       connectRetryWindowMs: 1000,
-      connectRetryDelayMs: 20
+      connectRetryDelayMs: 20,
     });
     client.close();
   } finally {
@@ -401,7 +403,7 @@ void test('stream client transport helpers emit envelopes only while open', asyn
 
   const client = await connectControlPlaneStreamClient({
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   try {
@@ -415,9 +417,9 @@ void test('stream client transport helpers emit envelopes only while open', asyn
         (envelope) =>
           envelope.kind === 'pty.input' &&
           envelope.sessionId === 'session-transport' &&
-          Buffer.from(envelope.dataBase64, 'base64').toString('utf8') === 'hello'
+          Buffer.from(envelope.dataBase64, 'base64').toString('utf8') === 'hello',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
@@ -425,18 +427,18 @@ void test('stream client transport helpers emit envelopes only while open', asyn
           envelope.kind === 'pty.resize' &&
           envelope.sessionId === 'session-transport' &&
           envelope.cols === 123 &&
-          envelope.rows === 45
+          envelope.rows === 45,
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'pty.signal' &&
           envelope.sessionId === 'session-transport' &&
-          envelope.signal === 'terminate'
+          envelope.signal === 'terminate',
       ),
-      true
+      true,
     );
 
     const observedCount = observed.length;
@@ -457,9 +459,9 @@ void test('stream client connect treats non-retryable connect errors as fatal', 
       host: '127.0.0.1',
       port: -1,
       connectRetryWindowMs: 1_000,
-      connectRetryDelayMs: 20
+      connectRetryDelayMs: 20,
     }),
-    /ERR_SOCKET_BAD_PORT|port/
+    /ERR_SOCKET_BAD_PORT|port/,
   );
 });
 
@@ -470,7 +472,7 @@ void test('stream client connect stops retrying after retry window expires', asy
       host: '127.0.0.1',
       port,
       connectRetryWindowMs: 25,
-      connectRetryDelayMs: 10
-    })
+      connectRetryDelayMs: 10,
+    }),
   );
 });

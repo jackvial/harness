@@ -53,9 +53,7 @@ function createHarness(dependencies: ConstructorParameters<typeof InputRouter>[1
       markDirty: () => {
         markDirtyCount += 1;
       },
-      conversations: new Map([
-        ['session-a', { title: 'Thread' }],
-      ]),
+      conversations: new Map([['session-a', { title: 'Thread' }]]),
       scheduleConversationTitlePersist: () => {},
       getTaskEditorPrompt: () => taskPrompt,
       setTaskEditorPrompt: (next) => {

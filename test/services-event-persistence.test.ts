@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createNormalizedEvent, type NormalizedEventEnvelope } from '../src/events/normalized-events.ts';
+import {
+  createNormalizedEvent,
+  type NormalizedEventEnvelope,
+} from '../src/events/normalized-events.ts';
 import { EventPersistence } from '../src/services/event-persistence.ts';
 
 function createEvent(suffix: string): NormalizedEventEnvelope {

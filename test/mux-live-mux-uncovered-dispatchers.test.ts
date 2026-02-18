@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { runTaskPaneAction } from '../src/mux/live-mux/actions-task.ts';
-import { applyObservedGitStatusEvent, deleteDirectoryGitState } from '../src/mux/live-mux/git-state.ts';
+import {
+  applyObservedGitStatusEvent,
+  deleteDirectoryGitState,
+} from '../src/mux/live-mux/git-state.ts';
 import { handleHomePaneEntityClick } from '../src/mux/live-mux/home-pane-entity-click.ts';
 import { handleHomePanePointerClick } from '../src/mux/live-mux/home-pane-pointer.ts';
-import { activateLeftNavTarget, cycleLeftNavSelection } from '../src/mux/live-mux/left-nav-activation.ts';
+import {
+  activateLeftNavTarget,
+  cycleLeftNavSelection,
+} from '../src/mux/live-mux/left-nav-activation.ts';
 import { handleLeftRailActionClick } from '../src/mux/live-mux/left-rail-actions.ts';
 import { handleLeftRailConversationClick } from '../src/mux/live-mux/left-rail-conversation-click.ts';
 import {
@@ -47,7 +53,10 @@ void test('runTaskPaneAction covers repository/task action routing and reorder b
     queueArchiveRepository: (repositoryId: string) => {
       calls.push(`queueArchiveRepository:${repositoryId}`);
     },
-    selectedTask: { taskId: 'task-a', status: 'ready' } as { taskId: string; status: string } | null,
+    selectedTask: { taskId: 'task-a', status: 'ready' } as {
+      taskId: string;
+      status: string;
+    } | null,
     openTaskEditPrompt: (taskId: string) => {
       calls.push(`openTaskEditPrompt:${taskId}`);
     },
@@ -425,7 +434,10 @@ void test('home pane pointer click routes action-first then entity handlers', ()
     },
   };
   assert.equal(handleHomePanePointerClick({ ...common, clickEligible: false }), false);
-  assert.equal(handleHomePanePointerClick({ ...common, actionAtCell: () => 'task.status.ready' }), true);
+  assert.equal(
+    handleHomePanePointerClick({ ...common, actionAtCell: () => 'task.status.ready' }),
+    true,
+  );
   assert.equal(calls.includes('runTaskPaneAction:task.ready'), true);
   calls.length = 0;
 
@@ -483,7 +495,10 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
   activateLeftNavTarget({ ...common, target: { kind: 'repository', repositoryId: 'repo-empty' } });
   activateLeftNavTarget({ ...common, target: { kind: 'project', directoryId: 'dir-a' } });
   activateLeftNavTarget({ ...common, target: { kind: 'project', directoryId: 'dir-missing' } });
-  activateLeftNavTarget({ ...common, target: { kind: 'conversation', sessionId: 'session-missing' } });
+  activateLeftNavTarget({
+    ...common,
+    target: { kind: 'conversation', sessionId: 'session-missing' },
+  });
   activateLeftNavTarget({ ...common, target: { kind: 'conversation', sessionId: 'session-live' } });
 
   while (queued.length > 0) {
@@ -493,7 +508,10 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
   assert.equal(calls.includes('enterProjectPane:dir-a'), true);
   assert.equal(calls.includes('setMainPaneProjectMode'), true);
   assert.equal(calls.includes('selectLeftNavRepository:repo-a'), true);
-  assert.equal(calls.some((value) => value.startsWith('queueControlPlaneOp:shortcut-activate-next')), true);
+  assert.equal(
+    calls.some((value) => value.startsWith('queueControlPlaneOp:shortcut-activate-next')),
+    true,
+  );
   assert.equal(calls.includes('activateConversation:session-live'), true);
   assert.equal(calls.includes('activateConversation:session-fallback'), true);
 
@@ -874,7 +892,10 @@ void test('observed stream helpers handle baseline subscribe/unsubscribe and mal
     workspaceId: 'workspace',
   });
   assert.equal(baseline, 12);
-  assert.equal(commands.some((command) => command.type === 'stream.unsubscribe'), true);
+  assert.equal(
+    commands.some((command) => command.type === 'stream.unsubscribe'),
+    true,
+  );
 
   await assert.rejects(
     readObservedStreamCursorBaseline(
@@ -1187,7 +1208,9 @@ void test('pointer routing helpers cover drag, separator press, wheel routing, a
       hasAltModifier: false,
       rowIndex: 5,
       setHomePaneDragState: (next) => {
-        calls.push(`setHomePaneDragState:${String(next.latestRowIndex)}:${String(next.hasDragged)}`);
+        calls.push(
+          `setHomePaneDragState:${String(next.latestRowIndex)}:${String(next.hasDragged)}`,
+        );
       },
       markDirty: () => {
         calls.push('markDirty');

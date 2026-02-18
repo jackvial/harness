@@ -135,7 +135,8 @@ export class RuntimeLeftRailRender<
       layout,
       repositories: this.options.repositories,
       repositoryAssociationByDirectoryId: this.options.repositoryAssociationByDirectoryId,
-      directoryRepositorySnapshotByDirectoryId: this.options.directoryRepositorySnapshotByDirectoryId,
+      directoryRepositorySnapshotByDirectoryId:
+        this.options.directoryRepositorySnapshotByDirectoryId,
       directories: this.options.directories,
       conversations: this.options.conversations,
       orderedIds,
@@ -146,7 +147,8 @@ export class RuntimeLeftRailRender<
       repositorySelectionEnabled: this.options.workspace.leftNavSelection.kind === 'repository',
       homeSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'home',
       repositoriesCollapsed: this.options.workspace.repositoriesCollapsed,
-      collapsedRepositoryGroupIds: this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
+      collapsedRepositoryGroupIds:
+        this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
       shortcutsCollapsed: this.options.workspace.shortcutsCollapsed,
       gitSummaryByDirectoryId: this.options.gitSummaryByDirectoryId,
       processUsageBySessionId: this.options.processUsageBySessionId(),

@@ -40,7 +40,7 @@ function collectExportSymbols(sourceFile: ts.SourceFile): ExportSymbol[] {
     symbols.push({
       filePath: normalizePath(sourceFile.fileName),
       line: line + 1,
-      name
+      name,
     });
   };
 
@@ -87,7 +87,7 @@ function collectExportSymbols(sourceFile: ts.SourceFile): ExportSymbol[] {
 function collectImportedNames(
   sourceFile: ts.SourceFile,
   importedNamesByFile: Map<string, Set<string>>,
-  referencedSourceFiles: Set<string>
+  referencedSourceFiles: Set<string>,
 ): void {
   const fromFilePath = normalizePath(sourceFile.fileName);
 
@@ -140,8 +140,12 @@ function main(): number {
   const srcRoot = resolve(root, 'src');
   const testRoot = resolve(root, 'test');
   const scriptsRoot = resolve(root, 'scripts');
-  const srcFiles = ts.sys.readDirectory(srcRoot, ['.ts'], undefined, ['**/*.ts']).map(normalizePath);
-  const testFiles = ts.sys.readDirectory(testRoot, ['.ts'], undefined, ['**/*.ts']).map(normalizePath);
+  const srcFiles = ts.sys
+    .readDirectory(srcRoot, ['.ts'], undefined, ['**/*.ts'])
+    .map(normalizePath);
+  const testFiles = ts.sys
+    .readDirectory(testRoot, ['.ts'], undefined, ['**/*.ts'])
+    .map(normalizePath);
   const scriptFiles = ts.sys
     .readDirectory(scriptsRoot, ['.ts'], undefined, ['**/*.ts'])
     .map(normalizePath);

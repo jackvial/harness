@@ -36,6 +36,9 @@ void test('global shortcut input delegates detection and handler wiring', () => 
       archiveConversation: async (sessionId) => {
         calls.push(`archive:${sessionId}`);
       },
+      interruptConversation: async (sessionId) => {
+        calls.push(`interrupt:${sessionId}`);
+      },
       takeoverConversation: async (sessionId) => {
         calls.push(`takeover:${sessionId}`);
       },
@@ -97,6 +100,7 @@ void test('global shortcut input default dependencies return false when no short
     conversationsHas: () => false,
     queueControlPlaneOp: () => {},
     archiveConversation: async () => {},
+    interruptConversation: async () => {},
     takeoverConversation: async () => {},
     openAddDirectoryPrompt: () => {},
     getActiveDirectoryId: () => null,

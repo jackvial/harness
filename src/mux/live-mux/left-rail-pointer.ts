@@ -40,7 +40,12 @@ export function handleLeftRailPointerClick(options: HandleLeftRailPointerClickOp
   const selectedConversationId = conversationIdAtWorkspaceRailRow(options.rows, rowIndex);
   const selectedProjectId = projectIdAtWorkspaceRailRow(options.rows, rowIndex);
   const selectedRepositoryId = repositoryIdAtWorkspaceRailRow(options.rows, rowIndex);
-  const selectedAction = actionAtWorkspaceRailCell(options.rows, rowIndex, colIndex, options.leftCols);
+  const selectedAction = actionAtWorkspaceRailCell(
+    options.rows,
+    rowIndex,
+    colIndex,
+    options.leftCols,
+  );
   const selectedRowKind = kindAtWorkspaceRailRow(options.rows, rowIndex);
   const supportsConversationTitleEditClick =
     selectedRowKind === 'conversation-title' || selectedRowKind === 'conversation-body';

@@ -4,10 +4,7 @@ interface PerfSpanLike {
   end(attrs: SpanAttributes): void;
 }
 
-type StartPerfSpanLike = (
-  name: string,
-  attrs: SpanAttributes,
-) => PerfSpanLike;
+type StartPerfSpanLike = (name: string, attrs: SpanAttributes) => PerfSpanLike;
 
 export class StartupSpanTracker {
   private activeStartCommandSpan: PerfSpanLike | null = null;

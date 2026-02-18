@@ -121,11 +121,16 @@ void test('left-rail pointer input delegates action and conversation routing', (
       handleLeftRailActionClick: (options) => {
         calls.push(`action:${options.action}`);
         options.clearConversationTitleEditClickState();
-        options.openNewThreadPrompt(options.selectedProjectId ?? options.resolveDirectoryForAction() ?? 'none');
+        options.openNewThreadPrompt(
+          options.selectedProjectId ?? options.resolveDirectoryForAction() ?? 'none',
+        );
         options.queueArchiveConversation(options.activeConversationId ?? 'none');
         options.openAddDirectoryPrompt();
         options.openRepositoryPromptForCreate();
-        if (options.selectedRepositoryId !== null && options.repositoryExists(options.selectedRepositoryId)) {
+        if (
+          options.selectedRepositoryId !== null &&
+          options.repositoryExists(options.selectedRepositoryId)
+        ) {
           options.openRepositoryPromptForEdit(options.selectedRepositoryId);
           options.queueArchiveRepository(options.selectedRepositoryId);
           options.toggleRepositoryGroup(options.selectedRepositoryId);
@@ -137,7 +142,9 @@ void test('left-rail pointer input delegates action and conversation routing', (
           options.collapseAllRepositoryGroups();
         }
         options.enterHomePane();
-        options.queueCloseDirectory(options.selectedProjectId ?? options.resolveDirectoryForAction() ?? 'none');
+        options.queueCloseDirectory(
+          options.selectedProjectId ?? options.resolveDirectoryForAction() ?? 'none',
+        );
         options.toggleShortcutsCollapsed();
         options.markDirty();
         return true;
@@ -152,7 +159,10 @@ void test('left-rail pointer input delegates action and conversation routing', (
           options.queueActivateConversation(options.selectedConversationId);
           options.queueActivateConversationAndEdit(options.selectedConversationId);
         }
-        if (options.selectedProjectId !== null && options.directoriesHas(options.selectedProjectId)) {
+        if (
+          options.selectedProjectId !== null &&
+          options.directoriesHas(options.selectedProjectId)
+        ) {
           options.enterProjectPane(options.selectedProjectId);
         }
         options.markDirty();

@@ -208,7 +208,14 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
   const commonRepo = {
     isQuitShortcut: (input: Buffer) => input.toString('utf8') === 'q',
     dismissOnOutsideClick: () => false,
-    setPrompt: (next: { mode: 'add' | 'edit'; repositoryId: string | null; value: string; error: string | null } | null) => {
+    setPrompt: (
+      next: {
+        mode: 'add' | 'edit';
+        repositoryId: string | null;
+        value: string;
+        error: string | null;
+      } | null,
+    ) => {
       calls.push(`setRepoPrompt:${next?.mode ?? 'null'}:${next?.error ?? 'null'}`);
     },
     markDirty: () => {
@@ -285,7 +292,12 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
   assert.equal(
     handleRepositoryPromptInput({
       input: Buffer.from('\n', 'utf8'),
-      prompt: { mode: 'edit', repositoryId: null, value: 'https://github.com/org/repo', error: null },
+      prompt: {
+        mode: 'edit',
+        repositoryId: null,
+        value: 'https://github.com/org/repo',
+        error: null,
+      },
       ...commonRepo,
     }),
     true,
@@ -293,7 +305,12 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
   assert.equal(
     handleRepositoryPromptInput({
       input: Buffer.from('\n', 'utf8'),
-      prompt: { mode: 'edit', repositoryId: 'repo-a', value: 'https://github.com/org/repo', error: null },
+      prompt: {
+        mode: 'edit',
+        repositoryId: 'repo-a',
+        value: 'https://github.com/org/repo',
+        error: null,
+      },
       ...commonRepo,
     }),
     true,
@@ -301,7 +318,12 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
   assert.equal(
     handleRepositoryPromptInput({
       input: Buffer.from('\n', 'utf8'),
-      prompt: { mode: 'add', repositoryId: null, value: 'https://github.com/org/repo', error: null },
+      prompt: {
+        mode: 'add',
+        repositoryId: null,
+        value: 'https://github.com/org/repo',
+        error: null,
+      },
       ...commonRepo,
     }),
     true,
@@ -990,11 +1012,21 @@ void test('conversation modal handlers cover archive click/prompt and new-thread
 void test('modal overlay builders return null for missing state and build overlays for active prompts', () => {
   const theme = {} as Parameters<typeof buildNewThreadModalOverlay>[3];
   assert.equal(buildNewThreadModalOverlay(80, 24, null, theme), null);
-  const newThreadOverlay = buildNewThreadModalOverlay(80, 24, createNewThreadPromptState('dir-a'), theme);
+  const newThreadOverlay = buildNewThreadModalOverlay(
+    80,
+    24,
+    createNewThreadPromptState('dir-a'),
+    theme,
+  );
   assert.notEqual(newThreadOverlay, null);
 
   assert.equal(buildAddDirectoryModalOverlay(80, 24, null, theme), null);
-  const addDirectoryOverlay = buildAddDirectoryModalOverlay(80, 24, { value: '', error: null }, theme);
+  const addDirectoryOverlay = buildAddDirectoryModalOverlay(
+    80,
+    24,
+    { value: '', error: null },
+    theme,
+  );
   assert.notEqual(addDirectoryOverlay, null);
   const addDirectoryErrorOverlay = buildAddDirectoryModalOverlay(
     80,
@@ -1004,7 +1036,10 @@ void test('modal overlay builders return null for missing state and build overla
   );
   assert.notEqual(addDirectoryErrorOverlay, null);
 
-  assert.equal(buildTaskEditorModalOverlay(80, 24, null, () => null, theme), null);
+  assert.equal(
+    buildTaskEditorModalOverlay(80, 24, null, () => null, theme),
+    null,
+  );
   const taskEditorOverlay = buildTaskEditorModalOverlay(
     80,
     24,

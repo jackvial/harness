@@ -137,9 +137,9 @@ function parseHeader(value: unknown): TerminalRecordingHeader {
     defaultBackgroundHex: normalizeHex6(defaultBackgroundHex, '0f1419'),
     ...(ansiPaletteIndexedHex !== undefined
       ? {
-          ansiPaletteIndexedHex
+          ansiPaletteIndexedHex,
         }
-      : {})
+      : {}),
   };
 }
 
@@ -177,7 +177,7 @@ function parseLineRecord(value: unknown): RecordingLineRecord {
   if (kind === 'header') {
     return {
       kind: 'header',
-      header: parseHeader(value['header'])
+      header: parseHeader(value['header']),
     };
   }
   if (kind === 'frame') {
@@ -188,7 +188,7 @@ function parseLineRecord(value: unknown): RecordingLineRecord {
     return {
       kind: 'frame',
       atMs,
-      frame: parseFrame(value['frame'])
+      frame: parseFrame(value['frame']),
     };
   }
   if (kind === 'footer') {
@@ -198,7 +198,7 @@ function parseLineRecord(value: unknown): RecordingLineRecord {
     }
     return {
       kind: 'footer',
-      finishedAtMs
+      finishedAtMs,
     };
   }
 
@@ -233,7 +233,7 @@ export function readTerminalRecording(filePath: string): TerminalRecording {
     if (parsedLine.kind === 'frame') {
       frames.push({
         atMs: parsedLine.atMs,
-        frame: parsedLine.frame
+        frame: parsedLine.frame,
       });
       return;
     }
@@ -251,7 +251,7 @@ export function readTerminalRecording(filePath: string): TerminalRecording {
         break;
       }
       const decodedChunk = decoder.decode(readBuffer.subarray(0, bytesRead), {
-        stream: true
+        stream: true,
       });
       let text = remainder + decodedChunk;
       let newlineIndex = text.indexOf('\n');
@@ -278,7 +278,7 @@ export function readTerminalRecording(filePath: string): TerminalRecording {
   return {
     header: header!,
     frames,
-    finishedAtMs
+    finishedAtMs,
   };
 }
 
@@ -287,12 +287,13 @@ function writeLine(stream: RecordingWriteStream, line: RecordingLineRecord): voi
 }
 
 export function createTerminalRecordingWriter(
-  options: CreateTerminalRecordingWriterOptions
+  options: CreateTerminalRecordingWriterOptions,
 ): TerminalRecordingWriter {
   const minFrameIntervalMs = Math.max(0, Math.floor(options.minFrameIntervalMs ?? 0));
   const nowMs = options.nowMs ?? (() => performance.now());
   const nowIso = options.nowIso ?? (() => new Date().toISOString());
-  const createStream = options.createStream ?? ((filePath: string): WriteStream => createWriteStream(filePath));
+  const createStream =
+    options.createStream ?? ((filePath: string): WriteStream => createWriteStream(filePath));
   const stream = createStream(options.filePath);
   const startedAtMs = nowMs();
   const ansiPaletteIndexedHex = (() => {
@@ -319,13 +320,13 @@ export function createTerminalRecordingWriter(
     defaultBackgroundHex: normalizeHex6(options.defaultBackgroundHex, '0f1419'),
     ...(ansiPaletteIndexedHex !== undefined
       ? {
-          ansiPaletteIndexedHex
+          ansiPaletteIndexedHex,
         }
-      : {})
+      : {}),
   };
   writeLine(stream, {
     kind: 'header',
-    header
+    header,
   });
 
   let closed = false;
@@ -354,7 +355,7 @@ export function createTerminalRecordingWriter(
       writeLine(stream, {
         kind: 'frame',
         atMs,
-        frame
+        frame,
       });
       lastRecordedAtMs = atMs;
       lastFrameHash = frame.frameHash;
@@ -367,7 +368,7 @@ export function createTerminalRecordingWriter(
       closed = true;
       writeLine(stream, {
         kind: 'footer',
-        finishedAtMs: Math.max(0, nowMs() - startedAtMs)
+        finishedAtMs: Math.max(0, nowMs() - startedAtMs),
       });
       await new Promise<void>((resolve, reject) => {
         stream.once('finish', resolve);
@@ -377,6 +378,6 @@ export function createTerminalRecordingWriter(
       if (fatalError !== null) {
         throw fatalError;
       }
-    }
+    },
   };
 }

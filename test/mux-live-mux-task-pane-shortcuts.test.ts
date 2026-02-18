@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import {
-  createTaskComposerBuffer,
-  type TaskComposerBuffer,
-} from '../src/mux/task-composer.ts';
+import { createTaskComposerBuffer, type TaskComposerBuffer } from '../src/mux/task-composer.ts';
 import { resolveTaskScreenKeybindings } from '../src/mux/task-screen-keybindings.ts';
 import { handleTaskPaneShortcutInput } from '../src/mux/live-mux/task-pane-shortcuts.ts';
 
@@ -200,7 +197,10 @@ void test('task pane editor cursor and delete actions route through composer ope
     },
   });
   assert.equal(upWithinText.calls.includes('move-up'), false);
-  assert.equal(upWithinText.calls.some((value) => value.startsWith('buffer:')), true);
+  assert.equal(
+    upWithinText.calls.some((value) => value.startsWith('buffer:')),
+    true,
+  );
 
   const downTaskBoundary = runShortcut({
     input: 'm',
@@ -221,7 +221,10 @@ void test('task pane editor cursor and delete actions route through composer ope
     },
   });
   assert.equal(downTaskWithinText.calls.includes('focus-draft'), false);
-  assert.equal(downTaskWithinText.calls.some((value) => value.startsWith('buffer:')), true);
+  assert.equal(
+    downTaskWithinText.calls.some((value) => value.startsWith('buffer:')),
+    true,
+  );
 
   const downDraft = runShortcut({
     input: 'm',
@@ -231,7 +234,10 @@ void test('task pane editor cursor and delete actions route through composer ope
       cursor: 0,
     },
   });
-  assert.equal(downDraft.calls.some((value) => value.startsWith('buffer:')), true);
+  assert.equal(
+    downDraft.calls.some((value) => value.startsWith('buffer:')),
+    true,
+  );
 
   const lineStart = runShortcut({
     input: 'a',

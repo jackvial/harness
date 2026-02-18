@@ -17,10 +17,10 @@ interface ConversationStartupHydrationServiceOptions<TSessionSummary extends Ses
   readonly subscribeConversationEvents: (sessionId: string) => Promise<void>;
 }
 
-export class ConversationStartupHydrationService<
-  TSessionSummary extends SessionSummaryLike,
-> {
-  constructor(private readonly options: ConversationStartupHydrationServiceOptions<TSessionSummary>) {}
+export class ConversationStartupHydrationService<TSessionSummary extends SessionSummaryLike> {
+  constructor(
+    private readonly options: ConversationStartupHydrationServiceOptions<TSessionSummary>,
+  ) {}
 
   async hydrateConversationList(): Promise<void> {
     const hydrateSpan = this.options.startHydrationSpan();

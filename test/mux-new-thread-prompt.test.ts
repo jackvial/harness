@@ -6,7 +6,7 @@ import {
   nextThreadAgentType,
   normalizeThreadAgentType,
   reduceNewThreadPromptInput,
-  resolveNewThreadPromptAgentByRow
+  resolveNewThreadPromptAgentByRow,
 } from '../src/mux/new-thread-prompt.ts';
 
 void test('new thread prompt defaults and normalization are stable', () => {
@@ -34,40 +34,43 @@ void test('new thread prompt reduces keyboard input into selection and submit', 
 
   const codexFromShortcut = reduceNewThreadPromptInput(
     toggled.nextState,
-    Uint8Array.from([0x63, 0x43, 0x31])
+    Uint8Array.from([0x63, 0x43, 0x31]),
   );
   assert.equal(codexFromShortcut.nextState.selectedAgentType, 'codex');
   assert.equal(codexFromShortcut.submit, false);
 
   const claudeFromShortcut = reduceNewThreadPromptInput(
     codexFromShortcut.nextState,
-    Uint8Array.from([0x61, 0x41, 0x32])
+    Uint8Array.from([0x61, 0x41, 0x32]),
   );
   assert.equal(claudeFromShortcut.nextState.selectedAgentType, 'claude');
   assert.equal(claudeFromShortcut.submit, false);
 
   const cursorFromShortcut = reduceNewThreadPromptInput(
     claudeFromShortcut.nextState,
-    Uint8Array.from([0x75, 0x55, 0x33])
+    Uint8Array.from([0x75, 0x55, 0x33]),
   );
   assert.equal(cursorFromShortcut.nextState.selectedAgentType, 'cursor');
   assert.equal(cursorFromShortcut.submit, false);
 
   const terminalFromShortcut = reduceNewThreadPromptInput(
     cursorFromShortcut.nextState,
-    Uint8Array.from([0x74, 0x54, 0x34])
+    Uint8Array.from([0x74, 0x54, 0x34]),
   );
   assert.equal(terminalFromShortcut.nextState.selectedAgentType, 'terminal');
   assert.equal(terminalFromShortcut.submit, false);
 
   const critiqueFromShortcut = reduceNewThreadPromptInput(
     terminalFromShortcut.nextState,
-    Uint8Array.from([0x72, 0x52, 0x35])
+    Uint8Array.from([0x72, 0x52, 0x35]),
   );
   assert.equal(critiqueFromShortcut.nextState.selectedAgentType, 'critique');
   assert.equal(critiqueFromShortcut.submit, false);
 
-  const submitted = reduceNewThreadPromptInput(critiqueFromShortcut.nextState, Uint8Array.from([0x0d]));
+  const submitted = reduceNewThreadPromptInput(
+    critiqueFromShortcut.nextState,
+    Uint8Array.from([0x0d]),
+  );
   assert.equal(submitted.submit, true);
   assert.equal(submitted.nextState.selectedAgentType, 'critique');
 });
@@ -80,49 +83,49 @@ void test('new thread prompt decodes encoded key protocols and ignores unrelated
 
   const modifyOtherCodex = reduceNewThreadPromptInput(
     kittyTerminal.nextState,
-    Buffer.from('\u001b[27;1;99~', 'utf8')
+    Buffer.from('\u001b[27;1;99~', 'utf8'),
   );
   assert.equal(modifyOtherCodex.nextState.selectedAgentType, 'codex');
   assert.equal(modifyOtherCodex.submit, false);
 
   const modifyOtherClaude = reduceNewThreadPromptInput(
     modifyOtherCodex.nextState,
-    Buffer.from('\u001b[27;1;97~', 'utf8')
+    Buffer.from('\u001b[27;1;97~', 'utf8'),
   );
   assert.equal(modifyOtherClaude.nextState.selectedAgentType, 'claude');
   assert.equal(modifyOtherClaude.submit, false);
 
   const ignoredMouseEscape = reduceNewThreadPromptInput(
     modifyOtherClaude.nextState,
-    Buffer.from('\u001b[<64;77;3M', 'utf8')
+    Buffer.from('\u001b[<64;77;3M', 'utf8'),
   );
   assert.equal(ignoredMouseEscape.nextState.selectedAgentType, 'claude');
   assert.equal(ignoredMouseEscape.submit, false);
 
   const ignoredOutOfRangeKitty = reduceNewThreadPromptInput(
     ignoredMouseEscape.nextState,
-    Buffer.from('\u001b[1000u', 'utf8')
+    Buffer.from('\u001b[1000u', 'utf8'),
   );
   assert.equal(ignoredOutOfRangeKitty.nextState.selectedAgentType, 'claude');
   assert.equal(ignoredOutOfRangeKitty.submit, false);
 
   const ignoredMalformedKittyPayload = reduceNewThreadPromptInput(
     ignoredOutOfRangeKitty.nextState,
-    Buffer.from('\u001b[116;badu', 'utf8')
+    Buffer.from('\u001b[116;badu', 'utf8'),
   );
   assert.equal(ignoredMalformedKittyPayload.nextState.selectedAgentType, 'claude');
   assert.equal(ignoredMalformedKittyPayload.submit, false);
 
   const ignoredMalformedModifyOtherKeysPayload = reduceNewThreadPromptInput(
     ignoredMalformedKittyPayload.nextState,
-    Buffer.from('\u001b[27;1;bad~', 'utf8')
+    Buffer.from('\u001b[27;1;bad~', 'utf8'),
   );
   assert.equal(ignoredMalformedModifyOtherKeysPayload.nextState.selectedAgentType, 'claude');
   assert.equal(ignoredMalformedModifyOtherKeysPayload.submit, false);
 
   const newlineSubmit = reduceNewThreadPromptInput(
     ignoredMalformedModifyOtherKeysPayload.nextState,
-    Uint8Array.from([0x0a])
+    Uint8Array.from([0x0a]),
   );
   assert.equal(newlineSubmit.nextState.selectedAgentType, 'claude');
   assert.equal(newlineSubmit.submit, true);
@@ -134,15 +137,24 @@ void test('new thread prompt accepts numeric claude/cursor/terminal/critique sho
   assert.equal(claudeSelected.nextState.selectedAgentType, 'claude');
   assert.equal(claudeSelected.submit, false);
 
-  const cursorSelected = reduceNewThreadPromptInput(claudeSelected.nextState, Uint8Array.from([0x33]));
+  const cursorSelected = reduceNewThreadPromptInput(
+    claudeSelected.nextState,
+    Uint8Array.from([0x33]),
+  );
   assert.equal(cursorSelected.nextState.selectedAgentType, 'cursor');
   assert.equal(cursorSelected.submit, false);
 
-  const terminalSelected = reduceNewThreadPromptInput(cursorSelected.nextState, Uint8Array.from([0x34]));
+  const terminalSelected = reduceNewThreadPromptInput(
+    cursorSelected.nextState,
+    Uint8Array.from([0x34]),
+  );
   assert.equal(terminalSelected.nextState.selectedAgentType, 'terminal');
   assert.equal(terminalSelected.submit, false);
 
-  const critiqueSelected = reduceNewThreadPromptInput(terminalSelected.nextState, Uint8Array.from([0x35]));
+  const critiqueSelected = reduceNewThreadPromptInput(
+    terminalSelected.nextState,
+    Uint8Array.from([0x35]),
+  );
   assert.equal(critiqueSelected.nextState.selectedAgentType, 'critique');
   assert.equal(critiqueSelected.submit, false);
 });
@@ -154,7 +166,7 @@ void test('new thread prompt row mapping and body lines remain deterministic', (
     claudeButtonLabel: '[ claude ]',
     cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
-    critiqueButtonLabel: '[ critique ]'
+    critiqueButtonLabel: '[ critique ]',
   });
   assert.equal(body[2], '● [ codex ]');
   assert.equal(body[3], '○ [ claude ]');
@@ -168,7 +180,7 @@ void test('new thread prompt row mapping and body lines remain deterministic', (
     claudeButtonLabel: '[ claude ]',
     cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
-    critiqueButtonLabel: '[ critique ]'
+    critiqueButtonLabel: '[ critique ]',
   });
   assert.equal(bodyClaude[2], '○ [ codex ]');
   assert.equal(bodyClaude[3], '● [ claude ]');
@@ -182,7 +194,7 @@ void test('new thread prompt row mapping and body lines remain deterministic', (
     claudeButtonLabel: '[ claude ]',
     cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
-    critiqueButtonLabel: '[ critique ]'
+    critiqueButtonLabel: '[ critique ]',
   });
   assert.equal(bodyCursor[2], '○ [ codex ]');
   assert.equal(bodyCursor[3], '○ [ claude ]');
@@ -196,7 +208,7 @@ void test('new thread prompt row mapping and body lines remain deterministic', (
     claudeButtonLabel: '[ claude ]',
     cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
-    critiqueButtonLabel: '[ critique ]'
+    critiqueButtonLabel: '[ critique ]',
   });
   assert.equal(bodyTerminal[2], '○ [ codex ]');
   assert.equal(bodyTerminal[3], '○ [ claude ]');
@@ -210,7 +222,7 @@ void test('new thread prompt row mapping and body lines remain deterministic', (
     claudeButtonLabel: '[ claude ]',
     cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
-    critiqueButtonLabel: '[ critique ]'
+    critiqueButtonLabel: '[ critique ]',
   });
   assert.equal(bodyCritique[2], '○ [ codex ]');
   assert.equal(bodyCritique[3], '○ [ claude ]');

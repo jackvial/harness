@@ -106,6 +106,30 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+function isPidRunning(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code !== 'ESRCH';
+  }
+}
+
+async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isPidRunning(pid)) {
+      return true;
+    }
+    await delay(25);
+  }
+  return !isPidRunning(pid);
+}
+
 async function waitForRepositoryRows(
   client: Awaited<ReturnType<typeof connectControlPlaneStreamClient>>,
   scope: {
@@ -113,7 +137,7 @@ async function waitForRepositoryRows(
     readonly userId: string;
     readonly workspaceId: string;
   },
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<void> {
   const startedAtMs = Date.now();
   while (Date.now() - startedAtMs < timeoutMs) {
@@ -121,7 +145,7 @@ async function waitForRepositoryRows(
       type: 'repository.list',
       tenantId: scope.tenantId,
       userId: scope.userId,
-      workspaceId: scope.workspaceId
+      workspaceId: scope.workspaceId,
     });
     const rows = Array.isArray(listed['repositories']) ? listed['repositories'] : [];
     if (rows.length > 0) {
@@ -299,6 +323,23 @@ async function waitForSnapshotLineContaining(
     await delay(40);
   }
   throw new Error(`timed out waiting for snapshot text: ${text}`);
+}
+
+async function waitForSnapshotLineNotContaining(
+  oracle: TerminalSnapshotOracle,
+  text: string,
+  timeoutMs: number,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const frame = oracle.snapshotWithoutHash();
+    const hasMatch = frame.lines.some((line) => line.includes(text));
+    if (!hasMatch) {
+      return;
+    }
+    await delay(40);
+  }
+  throw new Error(`timed out waiting for snapshot to remove text: ${text}`);
 }
 
 function writeLeftMouseClick(
@@ -560,7 +601,7 @@ void test(
         enabled: true,
         pollMs: 100,
         maxConcurrency: 1,
-        minDirectoryRefreshMs: 100
+        minDirectoryRefreshMs: 100,
       },
       readGitDirectorySnapshot: () =>
         Promise.resolve({
@@ -568,7 +609,7 @@ void test(
             branch: 'main',
             changedFiles: 0,
             additions: 0,
-            deletions: 0
+            deletions: 0,
           },
           repository: {
             normalizedRemoteUrl: 'https://github.com/example/tracked-repo',
@@ -576,15 +617,15 @@ void test(
             lastCommitAt: '2026-02-16T00:00:00.000Z',
             shortCommitHash: 'abc1234',
             inferredName: 'tracked-repo',
-            defaultBranch: 'main'
-          }
+            defaultBranch: 'main',
+          },
         }),
-      startSession: (input) => new StartupTestLiveSession(input)
+      startSession: (input) => new StartupTestLiveSession(input),
     });
     const address = server.address();
     const client = await connectControlPlaneStreamClient({
       host: address.address,
-      port: address.port
+      port: address.port,
     });
 
     try {
@@ -594,16 +635,16 @@ void test(
         tenantId,
         userId,
         workspaceId,
-        path: workspace
+        path: workspace,
       });
       await waitForRepositoryRows(
         client,
         {
           tenantId,
           userId,
-          workspaceId
+          workspaceId,
         },
-        4000
+        4000,
       );
 
       const result = await captureMuxBootOutput(workspace, 1800, {
@@ -613,8 +654,8 @@ void test(
           HARNESS_TENANT_ID: tenantId,
           HARNESS_USER_ID: userId,
           HARNESS_WORKSPACE_ID: workspaceId,
-          HARNESS_WORKTREE_ID: worktreeId
-        }
+          HARNESS_WORKTREE_ID: worktreeId,
+        },
       });
       assertExpectedBootTeardownExit(result.exit);
       assert.equal(result.output.includes('tracked-repo (1 projects, 0 ac'), true);
@@ -625,7 +666,7 @@ void test(
       rmSync(workspace, { recursive: true, force: true });
     }
   },
-  { timeout: 20000 }
+  { timeout: 20000 },
 );
 
 void test(
@@ -819,6 +860,100 @@ void test(
         assert.equal(exit.code, 0);
       } finally {
         client.close();
+        await server.close();
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    }
+  },
+  { timeout: 30000 },
+);
+
+void test(
+  'codex-live-mux applies realtime conversation lifecycle events from another client without creating default gateway state',
+  async () => {
+    const workspace = createWorkspace();
+    const projectPath = join(workspace, 'project-realtime');
+    const defaultGatewayRecordPath = join(workspace, '.harness', 'gateway.json');
+    mkdirSync(projectPath, { recursive: true });
+
+    const tenantId = 'tenant-realtime';
+    const userId = 'user-realtime';
+    const workspaceId = 'workspace-realtime';
+    const worktreeId = 'worktree-realtime';
+    const directoryId = 'directory-realtime';
+    const conversationId = 'conversation-realtime';
+
+    const server = await startControlPlaneStreamServer({
+      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      startSession: (input) => new StartupTestLiveSession(input),
+    });
+    const address = server.address();
+    const publisherClient = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port,
+    });
+
+    const interactive = startInteractiveMuxSession(workspace, {
+      controlPlaneHost: address.address,
+      controlPlanePort: address.port,
+      cols: 120,
+      rows: 30,
+      extraEnv: {
+        HARNESS_TENANT_ID: tenantId,
+        HARNESS_USER_ID: userId,
+        HARNESS_WORKSPACE_ID: workspaceId,
+        HARNESS_WORKTREE_ID: worktreeId,
+      },
+    });
+    const muxPid = interactive.session.processId();
+
+    try {
+      assert.equal(existsSync(defaultGatewayRecordPath), false);
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
+
+      await publisherClient.sendCommand({
+        type: 'directory.upsert',
+        directoryId,
+        tenantId,
+        userId,
+        workspaceId,
+        path: projectPath,
+      });
+      await publisherClient.sendCommand({
+        type: 'conversation.create',
+        conversationId,
+        directoryId,
+        title: 'rt-thread-a',
+        agentType: 'terminal',
+        adapterState: {},
+      });
+      await waitForSnapshotLineContaining(interactive.oracle, 'rt-thread-a', 8000);
+
+      await publisherClient.sendCommand({
+        type: 'conversation.update',
+        conversationId,
+        title: 'rt-thread-b',
+      });
+      await waitForSnapshotLineContaining(interactive.oracle, 'rt-thread-b', 8000);
+
+      await publisherClient.sendCommand({
+        type: 'conversation.archive',
+        conversationId,
+      });
+      await waitForSnapshotLineNotContaining(interactive.oracle, 'rt-thread-b', 8000);
+
+      assert.equal(existsSync(defaultGatewayRecordPath), false);
+    } finally {
+      try {
+        interactive.session.write('\u0003');
+        const exit = await interactive.waitForExit;
+        assert.equal(exit.signal, null);
+        assert.equal(exit.code, 0);
+        if (muxPid !== null) {
+          assert.equal(await waitForPidExit(muxPid, 5000), true);
+        }
+      } finally {
+        publisherClient.close();
         await server.close();
         rmSync(workspace, { recursive: true, force: true });
       }

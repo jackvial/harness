@@ -35,7 +35,7 @@ class SingleSessionBroker {
   constructor(
     options?: StartPtySessionOptions,
     maxBacklogBytes = 256 * 1024,
-    startSession: StartSessionFactory = startPtySession
+    startSession: StartSessionFactory = startPtySession,
   ) {
     this.session = startSession(options);
     this.maxBacklogBytes = maxBacklogBytes;
@@ -64,7 +64,7 @@ class SingleSessionBroker {
       }
       handlers.onData({
         cursor: entry.cursor,
-        chunk: Buffer.from(entry.chunk)
+        chunk: Buffer.from(entry.chunk),
       });
     }
 
@@ -110,7 +110,7 @@ class SingleSessionBroker {
 
     const entry: BacklogEntry = {
       cursor: this.nextCursor,
-      chunk: storedChunk
+      chunk: storedChunk,
     };
     this.nextCursor += 1;
 
@@ -124,7 +124,7 @@ class SingleSessionBroker {
     for (const handlers of this.attachments.values()) {
       handlers.onData({
         cursor: entry.cursor,
-        chunk: Buffer.from(fullChunk)
+        chunk: Buffer.from(fullChunk),
       });
     }
   }
@@ -143,7 +143,7 @@ class SingleSessionBroker {
     void error;
     this.handleExit({
       code: null,
-      signal: null
+      signal: null,
     });
   }
 }
@@ -151,7 +151,7 @@ class SingleSessionBroker {
 export function startSingleSessionBroker(
   options?: StartPtySessionOptions,
   maxBacklogBytes?: number,
-  dependencies: StartSingleSessionBrokerDependencies = {}
+  dependencies: StartSingleSessionBrokerDependencies = {},
 ): SingleSessionBroker {
   const startSession = dependencies.startSession ?? startPtySession;
   return new SingleSessionBroker(options, maxBacklogBytes, startSession);

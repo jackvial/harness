@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   ControlPlaneStreamServer,
-  startControlPlaneStreamServer
+  startControlPlaneStreamServer,
 } from '../src/control-plane/stream-server.ts';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import {
@@ -17,7 +17,7 @@ import {
   FakeLiveSession,
   collectEnvelopes,
   postJson,
-  postRaw
+  postRaw,
 } from './control-plane-stream-server-test-helpers.ts';
 
 void test('stream server injects codex telemetry args, ingests otlp payloads, and updates runtime state', async () => {
@@ -880,13 +880,13 @@ void test('stream server history poll applies jittered scheduling and idle backo
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: true,
       filePath: '~/missing-history-jitter.jsonl',
-      pollMs: 1000
-    }
+      pollMs: 1000,
+    },
   });
   const internals = server as unknown as {
     pollHistoryFile: () => Promise<void>;
@@ -935,13 +935,13 @@ void test('stream server history polling helpers start once and stop cleanly', a
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: true,
       filePath: '~/missing-history-jitter.jsonl',
-      pollMs: 1000
-    }
+      pollMs: 1000,
+    },
   });
   const internals = server as unknown as {
     historyPollTimer: NodeJS.Timeout | null;
@@ -1027,7 +1027,10 @@ void test('stream server launches claude sessions with hook settings and no code
     assert.equal(launchedArgs[0], '--settings');
     assert.equal(launchedArgs[2], '--foo');
     assert.equal(launchedArgs[3], 'bar');
-    assert.equal(launchedArgs.some((arg) => arg.includes('otel.exporter=')), false);
+    assert.equal(
+      launchedArgs.some((arg) => arg.includes('otel.exporter=')),
+      false,
+    );
     const settingsArg = launchedArgs[1];
     assert.equal(typeof settingsArg, 'string');
     const parsedSettings = JSON.parse(settingsArg as string) as Record<string, unknown>;
@@ -1205,18 +1208,18 @@ void test('stream server maps claude hook notify events into status/key events a
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 50
-    }
+      pollMs: 50,
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -1227,26 +1230,26 @@ void test('stream server maps claude hook notify events into status/key events a
       tenantId: 'tenant-claude-status',
       userId: 'user-claude-status',
       workspaceId: 'workspace-claude-status',
-      path: '/tmp/claude-status'
+      path: '/tmp/claude-status',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-claude-status',
       directoryId: 'directory-claude-status',
       title: 'claude status',
-      agentType: 'claude'
+      agentType: 'claude',
     });
     await client.sendCommand({
       type: 'stream.subscribe',
       conversationId: 'conversation-claude-status',
-      includeOutput: false
+      includeOutput: false,
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-claude-status',
       args: ['--foo', 'bar'],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await delay(10);
     assert.equal(created.length, 1);
@@ -1257,17 +1260,20 @@ void test('stream server maps claude hook notify events into status/key events a
         ts: '2026-02-16T00:00:00.000Z',
         payload: {
           hook_event_name: 'UserPromptSubmit',
-          session_id: 'claude-session-123'
-        }
-      }
+          session_id: 'claude-session-123',
+        },
+      },
     });
     await delay(10);
     const runningStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-claude-status'
+      sessionId: 'conversation-claude-status',
     });
     assert.equal(runningStatus['status'], 'running');
-    assert.equal((runningStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.userpromptsubmit');
+    assert.equal(
+      (runningStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'claude.userpromptsubmit',
+    );
 
     created[0]!.emitEvent({
       type: 'notify',
@@ -1275,17 +1281,20 @@ void test('stream server maps claude hook notify events into status/key events a
         ts: '2026-02-16T00:00:00.500Z',
         payload: {
           hook_event_name: 'PreToolUse',
-          session_id: 'claude-session-123'
-        }
-      }
+          session_id: 'claude-session-123',
+        },
+      },
     });
     await delay(10);
     const preToolStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-claude-status'
+      sessionId: 'conversation-claude-status',
     });
     assert.equal(preToolStatus['status'], 'running');
-    assert.equal((preToolStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.pretooluse');
+    assert.equal(
+      (preToolStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'claude.pretooluse',
+    );
 
     created[0]!.emitEvent({
       type: 'notify',
@@ -1293,17 +1302,20 @@ void test('stream server maps claude hook notify events into status/key events a
         ts: '2026-02-16T00:00:01.000Z',
         payload: {
           hook_event_name: 'Stop',
-          session_id: 'claude-session-123'
-        }
-      }
+          session_id: 'claude-session-123',
+        },
+      },
     });
     await delay(10);
     const completedStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-claude-status'
+      sessionId: 'conversation-claude-status',
     });
     assert.equal(completedStatus['status'], 'completed');
-    assert.equal((completedStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.stop');
+    assert.equal(
+      (completedStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'claude.stop',
+    );
 
     created[0]!.emitEvent({
       type: 'notify',
@@ -1313,18 +1325,21 @@ void test('stream server maps claude hook notify events into status/key events a
           hook_event_name: 'Notification',
           notification_type: 'permission_request',
           message: 'approval required',
-          session_id: 'claude-session-123'
-        }
-      }
+          session_id: 'claude-session-123',
+        },
+      },
     });
     await delay(10);
     const needsInputStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-claude-status'
+      sessionId: 'conversation-claude-status',
     });
     assert.equal(needsInputStatus['status'], 'needs-input');
     assert.equal(needsInputStatus['attentionReason'], 'approval required');
-    assert.equal((needsInputStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.notification');
+    assert.equal(
+      (needsInputStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'claude.notification',
+    );
 
     created[0]!.emitEvent({
       type: 'notify',
@@ -1334,23 +1349,26 @@ void test('stream server maps claude hook notify events into status/key events a
           hook_event_name: 'Notification',
           notification_type: 'permission_approved',
           message: 'approval granted',
-          session_id: 'claude-session-123'
-        }
-      }
+          session_id: 'claude-session-123',
+        },
+      },
     });
     await delay(10);
     const resumedStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-claude-status'
+      sessionId: 'conversation-claude-status',
     });
     assert.equal(resumedStatus['status'], 'running');
     assert.equal(resumedStatus['attentionReason'], null);
-    assert.equal((resumedStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.notification');
+    assert.equal(
+      (resumedStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'claude.notification',
+    );
 
     const listed = await client.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-claude-status',
-      includeArchived: true
+      includeArchived: true,
     });
     const conversationRow = (listed['conversations'] as Array<Record<string, unknown>>)[0]!;
     const adapterState = conversationRow['adapterState'] as Record<string, unknown>;
@@ -1363,27 +1381,27 @@ void test('stream server maps claude hook notify events into status/key events a
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.event.type === 'session-key-event' &&
-          envelope.event.keyEvent.eventName === 'claude.userpromptsubmit'
+          envelope.event.keyEvent.eventName === 'claude.userpromptsubmit',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.event.type === 'session-key-event' &&
-          envelope.event.keyEvent.eventName === 'claude.pretooluse'
+          envelope.event.keyEvent.eventName === 'claude.pretooluse',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.event.type === 'session-key-event' &&
-          envelope.event.keyEvent.eventName === 'claude.stop'
+          envelope.event.keyEvent.eventName === 'claude.stop',
       ),
-      true
+      true,
     );
   } finally {
     client.close();
@@ -1410,18 +1428,18 @@ void test('stream server maps cursor hook notify events and treats aborted stop 
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 50
-    }
+      pollMs: 50,
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -1432,26 +1450,26 @@ void test('stream server maps cursor hook notify events and treats aborted stop 
       tenantId: 'tenant-cursor-status',
       userId: 'user-cursor-status',
       workspaceId: 'workspace-cursor-status',
-      path: '/tmp/cursor-status'
+      path: '/tmp/cursor-status',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-cursor-status',
       directoryId: 'directory-cursor-status',
       title: 'cursor status',
-      agentType: 'cursor'
+      agentType: 'cursor',
     });
     await client.sendCommand({
       type: 'stream.subscribe',
       conversationId: 'conversation-cursor-status',
-      includeOutput: false
+      includeOutput: false,
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-cursor-status',
       args: ['--foo', 'bar'],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await delay(10);
     assert.equal(created.length, 1);
@@ -1462,17 +1480,20 @@ void test('stream server maps cursor hook notify events and treats aborted stop 
         ts: '2026-02-16T00:00:00.000Z',
         payload: {
           event: 'beforeSubmitPrompt',
-          conversation_id: 'cursor-session-123'
-        }
-      }
+          conversation_id: 'cursor-session-123',
+        },
+      },
     });
     await delay(10);
     const runningStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-cursor-status'
+      sessionId: 'conversation-cursor-status',
     });
     assert.equal(runningStatus['status'], 'running');
-    assert.equal((runningStatus['telemetry'] as Record<string, unknown>)['eventName'], 'cursor.beforesubmitprompt');
+    assert.equal(
+      (runningStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'cursor.beforesubmitprompt',
+    );
 
     created[0]!.emitEvent({
       type: 'notify',
@@ -1482,22 +1503,25 @@ void test('stream server maps cursor hook notify events and treats aborted stop 
           event: 'stop',
           final_status: 'aborted',
           reason: 'aborted by user',
-          conversation_id: 'cursor-session-123'
-        }
-      }
+          conversation_id: 'cursor-session-123',
+        },
+      },
     });
     await delay(10);
     const completedStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-cursor-status'
+      sessionId: 'conversation-cursor-status',
     });
     assert.equal(completedStatus['status'], 'completed');
-    assert.equal((completedStatus['telemetry'] as Record<string, unknown>)['eventName'], 'cursor.stop');
+    assert.equal(
+      (completedStatus['telemetry'] as Record<string, unknown>)['eventName'],
+      'cursor.stop',
+    );
 
     const listed = await client.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-cursor-status',
-      includeArchived: true
+      includeArchived: true,
     });
     const conversationRow = (listed['conversations'] as Array<Record<string, unknown>>)[0]!;
     const adapterState = conversationRow['adapterState'] as Record<string, unknown>;
@@ -1510,18 +1534,18 @@ void test('stream server maps cursor hook notify events and treats aborted stop 
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.event.type === 'session-key-event' &&
-          envelope.event.keyEvent.eventName === 'cursor.beforesubmitprompt'
+          envelope.event.keyEvent.eventName === 'cursor.beforesubmitprompt',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.event.type === 'session-key-event' &&
-          envelope.event.keyEvent.eventName === 'cursor.stop'
+          envelope.event.keyEvent.eventName === 'cursor.stop',
       ),
-      true
+      true,
     );
   } finally {
     client.close();

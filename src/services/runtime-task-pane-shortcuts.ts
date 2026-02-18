@@ -5,9 +5,7 @@ import {
   taskFieldsFromComposerText as taskFieldsFromComposerTextFrame,
   type TaskComposerBuffer,
 } from '../mux/task-composer.ts';
-import {
-  handleTaskPaneShortcutInput as handleTaskPaneShortcutInputFrame,
-} from '../mux/live-mux/task-pane-shortcuts.ts';
+import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputFrame } from '../mux/live-mux/task-pane-shortcuts.ts';
 import type { ResolvedTaskScreenKeybindings } from '../mux/task-screen-keybindings.ts';
 
 type TaskPaneShortcutAction = Parameters<
@@ -56,10 +54,12 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
   private readonly handleTaskPaneShortcutInput: typeof handleTaskPaneShortcutInputFrame;
 
   constructor(private readonly options: RuntimeTaskPaneShortcutsOptions<TTaskRecord>) {
-    this.createTaskComposerBuffer = options.createTaskComposerBuffer ?? createTaskComposerBufferFrame;
+    this.createTaskComposerBuffer =
+      options.createTaskComposerBuffer ?? createTaskComposerBufferFrame;
     this.normalizeTaskComposerBuffer =
       options.normalizeTaskComposerBuffer ?? normalizeTaskComposerBufferFrame;
-    this.taskFieldsFromComposerText = options.taskFieldsFromComposerText ?? taskFieldsFromComposerTextFrame;
+    this.taskFieldsFromComposerText =
+      options.taskFieldsFromComposerText ?? taskFieldsFromComposerTextFrame;
     this.handleTaskPaneShortcutInput =
       options.handleTaskPaneShortcutInput ?? handleTaskPaneShortcutInputFrame;
   }
@@ -67,7 +67,10 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
   homeEditorBuffer(): TaskComposerBuffer {
     const taskEditorTarget = this.options.workspace.taskEditorTarget;
     if (taskEditorTarget.kind === 'task') {
-      return this.options.taskComposerForTask(taskEditorTarget.taskId) ?? this.createTaskComposerBuffer('');
+      return (
+        this.options.taskComposerForTask(taskEditorTarget.taskId) ??
+        this.createTaskComposerBuffer('')
+      );
     }
     return this.options.workspace.taskDraftComposer;
   }

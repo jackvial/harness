@@ -42,10 +42,19 @@ void test('home gridfire renders ansi rows with fixed viewport width and overlay
     overlaySubtitle: null,
   });
   assert.equal(rows.length, 6);
-  assert.equal(rows.some((row) => row.includes('\u001b[')), true);
+  assert.equal(
+    rows.some((row) => row.includes('\u001b[')),
+    true,
+  );
   const stripped = rows.map((row) => stripAnsi(row));
-  assert.equal(stripped.some((row) => row.includes('repo界')), true);
-  assert.equal(stripped.some((row) => row.includes('界')), true);
+  assert.equal(
+    stripped.some((row) => row.includes('repo界')),
+    true,
+  );
+  assert.equal(
+    stripped.some((row) => row.includes('界')),
+    true,
+  );
   for (const row of stripped) {
     assert.equal(displayWidth(row), 24);
   }

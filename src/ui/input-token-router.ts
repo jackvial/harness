@@ -1,4 +1,8 @@
-import { classifyPaneAt as classifyPaneAtFrame, type computeDualPaneLayout, type parseMuxInputChunk } from '../mux/dual-pane-core.ts';
+import {
+  classifyPaneAt as classifyPaneAtFrame,
+  type computeDualPaneLayout,
+  type parseMuxInputChunk,
+} from '../mux/dual-pane-core.ts';
 import {
   hasAltModifier as hasAltModifierFrame,
   isLeftButtonPress as isLeftButtonPressFrame,

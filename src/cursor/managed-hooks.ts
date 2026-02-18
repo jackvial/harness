@@ -80,7 +80,7 @@ function isManagedHookCommand(command: string): boolean {
 }
 
 function cloneHooksByEvent(
-  hooksByEvent: Readonly<Record<string, readonly CursorHookEntryRecord[]>>
+  hooksByEvent: Readonly<Record<string, readonly CursorHookEntryRecord[]>>,
 ): Record<string, CursorHookEntryRecord[]> {
   const next: Record<string, CursorHookEntryRecord[]> = {};
   for (const [eventName, entries] of Object.entries(hooksByEvent)) {
@@ -138,7 +138,7 @@ function parseCursorHooksFile(filePath: string): ParsedCursorHooksFile {
 
 function serializeCursorHooksFile(
   root: CursorHooksRootRecord,
-  hooksByEvent: Readonly<Record<string, readonly CursorHookEntryRecord[]>>
+  hooksByEvent: Readonly<Record<string, readonly CursorHookEntryRecord[]>>,
 ): string {
   const normalizedVersion = typeof root['version'] === 'number' ? root['version'] : 1;
   return `${JSON.stringify(
@@ -152,9 +152,7 @@ function serializeCursorHooksFile(
   )}\n`;
 }
 
-function removeManagedHooks(
-  hooksByEvent: Record<string, CursorHookEntryRecord[]>
-): number {
+function removeManagedHooks(hooksByEvent: Record<string, CursorHookEntryRecord[]>): number {
   let removedCount = 0;
   for (const [eventName, entries] of Object.entries(hooksByEvent)) {
     const nextEntries = entries.filter((entry) => {
@@ -198,7 +196,7 @@ export function buildCursorManagedHookRelayCommand(relayScriptPath: string): str
 
 export function buildCursorHookRelayEnvironment(
   sessionId: string,
-  notifyFilePath: string
+  notifyFilePath: string,
 ): Record<string, string> {
   return {
     [CURSOR_HOOK_NOTIFY_FILE_ENV]: notifyFilePath,
@@ -207,7 +205,7 @@ export function buildCursorHookRelayEnvironment(
 }
 
 export function ensureManagedCursorHooksInstalled(
-  options: EnsureManagedCursorHooksOptions
+  options: EnsureManagedCursorHooksOptions,
 ): CursorManagedHooksResult {
   const filePath = resolveCursorHooksFilePath(options.hooksFilePath);
   const parsed = parseCursorHooksFile(filePath);
@@ -243,7 +241,7 @@ export function ensureManagedCursorHooksInstalled(
 }
 
 export function uninstallManagedCursorHooks(
-  options: UninstallManagedCursorHooksOptions = {}
+  options: UninstallManagedCursorHooksOptions = {},
 ): CursorManagedHooksResult {
   const filePath = resolveCursorHooksFilePath(options.hooksFilePath);
   const parsed = parseCursorHooksFile(filePath);

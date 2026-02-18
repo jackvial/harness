@@ -7,7 +7,7 @@ import {
   configurePerfCore,
   recordPerfEvent,
   shutdownPerfCore,
-  startPerfSpan
+  startPerfSpan,
 } from '../src/perf/perf-core.ts';
 
 interface DaemonOptions {
@@ -49,13 +49,13 @@ function configureProcessPerf(invocationDirectory: string): void {
 
   configurePerfCore({
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
   });
 
   recordPerfEvent('daemon-fixture.perf.configured', {
     process: 'daemon-fixture',
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
   });
 }
 
@@ -63,7 +63,8 @@ function parseArgs(argv: string[]): DaemonOptions {
   const defaultHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? '127.0.0.1';
   const defaultPortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? '7777';
   const defaultAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
-  const defaultStateDbPath = process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane-fixture.sqlite';
+  const defaultStateDbPath =
+    process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane-fixture.sqlite';
   const defaultFixtureCommand = process.env.HARNESS_FIXTURE_COMMAND ?? '/bin/sh';
 
   let host = defaultHost;
@@ -140,7 +141,7 @@ function parseArgs(argv: string[]): DaemonOptions {
     port,
     authToken,
     stateDbPath,
-    fixtureCommand
+    fixtureCommand,
   };
 }
 
@@ -151,19 +152,21 @@ async function main(): Promise<number> {
   const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
   const serverSnapshotModelEnabled = loadedConfig.config.debug.mux.serverSnapshotModelEnabled;
   const cursorLaunchDirectoryModes: Record<string, 'yolo' | 'standard'> = {};
-  for (const [directoryPath, mode] of Object.entries(loadedConfig.config.cursor.launch.directoryModes)) {
+  for (const [directoryPath, mode] of Object.entries(
+    loadedConfig.config.cursor.launch.directoryModes,
+  )) {
     cursorLaunchDirectoryModes[resolve(invocationDirectory, directoryPath)] = mode;
   }
   const startupSpan = startPerfSpan('daemon-fixture.startup.total', {
-    process: 'daemon-fixture'
+    process: 'daemon-fixture',
   });
   recordPerfEvent('daemon-fixture.startup.begin', {
-    process: 'daemon-fixture'
+    process: 'daemon-fixture',
   });
   const options = parseArgs(process.argv.slice(2));
 
   const listenSpan = startPerfSpan('daemon-fixture.startup.listen', {
-    process: 'daemon-fixture'
+    process: 'daemon-fixture',
   });
   const serverOptions: Parameters<typeof startControlPlaneStreamServer>[0] = {
     host: options.host,
@@ -174,13 +177,13 @@ async function main(): Promise<number> {
     critique: loadedConfig.config.critique,
     cursorLaunch: {
       defaultMode: loadedConfig.config.cursor.launch.defaultMode,
-      directoryModes: cursorLaunchDirectoryModes
+      directoryModes: cursorLaunchDirectoryModes,
     },
     gitStatus: {
       enabled: loadedConfig.config.mux.git.enabled,
       pollMs: loadedConfig.config.mux.git.idlePollMs,
       maxConcurrency: loadedConfig.config.mux.git.maxConcurrency,
-      minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000)
+      minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000),
     },
     lifecycleHooks: loadedConfig.config.hooks.lifecycle,
     startSession: (input) => {
@@ -190,7 +193,7 @@ async function main(): Promise<number> {
         args: input.args,
         initialCols: input.initialCols,
         initialRows: input.initialRows,
-        enableSnapshotModel: serverSnapshotModelEnabled
+        enableSnapshotModel: serverSnapshotModelEnabled,
       };
       if (input.useNotifyHook !== undefined) {
         sessionOptions.useNotifyHook = input.useNotifyHook;
@@ -214,7 +217,7 @@ async function main(): Promise<number> {
         sessionOptions.terminalBackgroundHex = input.terminalBackgroundHex;
       }
       return startCodexLiveSession(sessionOptions);
-    }
+    },
   };
   if (options.authToken !== null) {
     serverOptions.authToken = options.authToken;
@@ -228,11 +231,11 @@ async function main(): Promise<number> {
     host: address.address,
     port: address.port,
     auth: options.authToken === null ? 'off' : 'on',
-    fixtureCommand: options.fixtureCommand
+    fixtureCommand: options.fixtureCommand,
   });
   startupSpan.end({ listening: true });
   process.stdout.write(
-    `[control-plane-fixture] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'} db=${options.stateDbPath} cmd=${options.fixtureCommand}\n`
+    `[control-plane-fixture] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'} db=${options.stateDbPath} cmd=${options.fixtureCommand}\n`,
   );
 
   let stopRequested = false;
@@ -254,11 +257,11 @@ async function main(): Promise<number> {
 
   await stopPromise;
   recordPerfEvent('daemon-fixture.runtime.stop-requested', {
-    process: 'daemon-fixture'
+    process: 'daemon-fixture',
   });
   await server.close();
   recordPerfEvent('daemon-fixture.runtime.closed', {
-    process: 'daemon-fixture'
+    process: 'daemon-fixture',
   });
   return 0;
 }
@@ -267,7 +270,7 @@ try {
   process.exitCode = await main();
 } catch (error: unknown) {
   process.stderr.write(
-    `control-plane daemon fixture fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+    `control-plane daemon fixture fatal error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );
   process.exitCode = 1;
 } finally {

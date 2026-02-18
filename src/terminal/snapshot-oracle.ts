@@ -96,13 +96,13 @@ interface InternalLine {
 const DEFAULT_COLOR: TerminalColor = { kind: 'default' };
 const DEFAULT_CURSOR_STYLE: TerminalCursorStyle = {
   shape: 'block',
-  blinking: true
+  blinking: true,
 };
 
 function cloneCursorStyle(style: TerminalCursorStyle): TerminalCursorStyle {
   return {
     shape: style.shape,
-    blinking: style.blinking
+    blinking: style.blinking,
   };
 }
 
@@ -117,14 +117,14 @@ function cloneColor(color: TerminalColor): TerminalColor {
   if (color.kind === 'indexed') {
     return {
       kind: 'indexed',
-      index: color.index
+      index: color.index,
     };
   }
   return {
     kind: 'rgb',
     r: color.r,
     g: color.g,
-    b: color.b
+    b: color.b,
   };
 }
 
@@ -136,7 +136,7 @@ function defaultCellStyle(): TerminalCellStyle {
     underline: false,
     inverse: false,
     fg: DEFAULT_COLOR,
-    bg: DEFAULT_COLOR
+    bg: DEFAULT_COLOR,
   };
 }
 
@@ -148,7 +148,7 @@ function cloneStyle(style: TerminalCellStyle): TerminalCellStyle {
     underline: style.underline,
     inverse: style.inverse,
     fg: cloneColor(style.fg),
-    bg: cloneColor(style.bg)
+    bg: cloneColor(style.bg),
   };
 }
 
@@ -186,7 +186,7 @@ function blankCell(style: TerminalCellStyle): TerminalCell {
     glyph: ' ',
     width: 1,
     continued: false,
-    style: cloneStyle(style)
+    style: cloneStyle(style),
   };
 }
 
@@ -195,7 +195,7 @@ function continuationCell(style: TerminalCellStyle): TerminalCell {
     glyph: '',
     width: 0,
     continued: true,
-    style: cloneStyle(style)
+    style: cloneStyle(style),
   };
 }
 
@@ -204,7 +204,7 @@ function cloneCell(cell: TerminalCell): TerminalCell {
     glyph: cell.glyph,
     width: cell.width,
     continued: cell.continued,
-    style: cloneStyle(cell.style)
+    style: cloneStyle(cell.style),
   };
 }
 
@@ -243,7 +243,7 @@ function createLine(cols: number, style: TerminalCellStyle, revision: number): I
     revision,
     snapshotCache: null,
     snapshotCacheRevision: -1,
-    snapshotCacheWrapped: false
+    snapshotCacheWrapped: false,
   };
 }
 
@@ -326,7 +326,7 @@ class ScreenBuffer {
   scrollRegion(): { top: number; bottom: number } {
     return {
       top: this.scrollRegionTop,
-      bottom: this.scrollRegionBottom
+      bottom: this.scrollRegionBottom,
     };
   }
 
@@ -364,7 +364,7 @@ class ScreenBuffer {
       glyph,
       width: normalizedWidth,
       continued: false,
-      style: cloneStyle(style)
+      style: cloneStyle(style),
     };
     this.touchLine(targetLine);
 
@@ -478,11 +478,7 @@ class ScreenBuffer {
     const count = Math.max(1, lines);
     for (let idx = 0; idx < count; idx += 1) {
       const shifted = this.lines.splice(clampedTop, 1)[0];
-      if (
-        shifted !== undefined &&
-        this.includeScrollback &&
-        clampedTop === 0
-      ) {
+      if (shifted !== undefined && this.includeScrollback && clampedTop === 0) {
         this.scrollback.push(shifted);
         while (this.scrollback.length > this.scrollbackLimit) {
           this.scrollback.shift();
@@ -565,7 +561,7 @@ class ScreenBuffer {
     cursorStyle: TerminalCursorStyle,
     activeScreen: ActiveScreen,
     bracketedPasteMode: boolean,
-    includeHash: true
+    includeHash: true,
   ): TerminalSnapshotFrame;
   snapshot(
     cursor: ScreenCursor,
@@ -573,7 +569,7 @@ class ScreenBuffer {
     cursorStyle: TerminalCursorStyle,
     activeScreen: ActiveScreen,
     bracketedPasteMode: boolean,
-    includeHash: false
+    includeHash: false,
   ): TerminalSnapshotFrameCore;
   snapshot(
     cursor: ScreenCursor,
@@ -581,7 +577,7 @@ class ScreenBuffer {
     cursorStyle: TerminalCursorStyle,
     activeScreen: ActiveScreen,
     bracketedPasteMode: boolean,
-    includeHash: boolean
+    includeHash: boolean,
   ): TerminalSnapshotFrame | TerminalSnapshotFrameCore {
     const combined = [...this.scrollback, ...this.lines];
     const totalRows = combined.length;
@@ -600,21 +596,21 @@ class ScreenBuffer {
       cols: this.cols,
       activeScreen,
       modes: {
-        bracketedPaste: bracketedPasteMode
+        bracketedPaste: bracketedPasteMode,
       },
       cursor: {
         row: cursor.row,
         col: cursor.col,
         visible: cursorVisible,
-        style: cloneCursorStyle(cursorStyle)
+        style: cloneCursorStyle(cursorStyle),
       },
       viewport: {
         top: viewportTop,
         totalRows,
-        followOutput: this.followOutput
+        followOutput: this.followOutput,
       },
       lines: simpleLines,
-      richLines
+      richLines,
     };
 
     if (!includeHash) {
@@ -623,7 +619,7 @@ class ScreenBuffer {
 
     return {
       ...frameWithoutHash,
-      frameHash: createHash('sha256').update(JSON.stringify(frameWithoutHash)).digest('hex')
+      frameHash: createHash('sha256').update(JSON.stringify(frameWithoutHash)).digest('hex'),
     };
   }
 
@@ -667,13 +663,13 @@ class ScreenBuffer {
       glyph: cell.glyph,
       width: cell.width,
       continued: cell.continued,
-      style: cloneStyle(cell.style)
+      style: cloneStyle(cell.style),
     }));
     const trimmedText = cellsToText(trimRightCells(cells));
     const snapshotLine: TerminalSnapshotLine = {
       wrapped: line.wrapped,
       text: trimmedText,
-      cells
+      cells,
     };
     line.snapshotCache = snapshotLine;
     line.snapshotCacheRevision = line.revision;
@@ -755,7 +751,7 @@ function isWideCodePoint(codePoint: number): boolean {
     [0xfe30, 0xfe6f],
     [0xff00, 0xff60],
     [0xffe0, 0xffe6],
-    [0x1f300, 0x1faff]
+    [0x1f300, 0x1faff],
   ];
 
   for (const [start, end] of ranges) {
@@ -900,7 +896,7 @@ function applySgrParams(style: TerminalCellStyle, params: number[]): TerminalCel
       if (typeof value === 'number' && Number.isFinite(value)) {
         const parsedColor: TerminalColor = {
           kind: 'indexed',
-          index: clampColor(value)
+          index: clampColor(value),
         };
         if (isBackground) {
           nextStyle.bg = parsedColor;
@@ -928,7 +924,7 @@ function applySgrParams(style: TerminalCellStyle, params: number[]): TerminalCel
           kind: 'rgb',
           r: clampColor(red),
           g: clampColor(green),
-          b: clampColor(blue)
+          b: clampColor(blue),
         };
         if (isBackground) {
           nextStyle.bg = parsedColor;
@@ -963,7 +959,12 @@ export class TerminalSnapshotOracle {
   private pendingWrap = false;
   private tabStops = new Set<number>();
 
-  constructor(cols: number, rows: number, scrollbackLimit = 5000, queryHooks: TerminalQueryHooks | null = null) {
+  constructor(
+    cols: number,
+    rows: number,
+    scrollbackLimit = 5000,
+    queryHooks: TerminalQueryHooks | null = null,
+  ) {
     this.primary = new ScreenBuffer(cols, rows, true, scrollbackLimit);
     this.alternate = new ScreenBuffer(cols, rows, false, 0);
     this.queryHooks = queryHooks;
@@ -1010,8 +1011,8 @@ export class TerminalSnapshotOracle {
       cols: screen.cols,
       cursor: {
         row: this.cursor.row,
-        col: this.cursor.col
-      }
+        col: this.cursor.col,
+      },
     };
   }
 
@@ -1022,7 +1023,7 @@ export class TerminalSnapshotOracle {
       this.cursorStyle,
       this.activeScreen,
       this.bracketedPasteMode,
-      true
+      true,
     );
   }
 
@@ -1033,7 +1034,7 @@ export class TerminalSnapshotOracle {
       this.cursorStyle,
       this.activeScreen,
       this.bracketedPasteMode,
-      false
+      false,
     );
   }
 
@@ -1465,42 +1466,42 @@ export class TerminalSnapshotOracle {
     if (value === 0 || value === 1) {
       this.cursorStyle = {
         shape: 'block',
-        blinking: true
+        blinking: true,
       };
       return;
     }
     if (value === 2) {
       this.cursorStyle = {
         shape: 'block',
-        blinking: false
+        blinking: false,
       };
       return;
     }
     if (value === 3) {
       this.cursorStyle = {
         shape: 'underline',
-        blinking: true
+        blinking: true,
       };
       return;
     }
     if (value === 4) {
       this.cursorStyle = {
         shape: 'underline',
-        blinking: false
+        blinking: false,
       };
       return;
     }
     if (value === 5) {
       this.cursorStyle = {
         shape: 'bar',
-        blinking: true
+        blinking: true,
       };
       return;
     }
     if (value === 6) {
       this.cursorStyle = {
         shape: 'bar',
-        blinking: false
+        blinking: false,
       };
     }
   }
@@ -1535,7 +1536,7 @@ export class TerminalSnapshotOracle {
     if (!this.originMode) {
       return {
         top: 0,
-        bottom: this.currentScreen().rows - 1
+        bottom: this.currentScreen().rows - 1,
       };
     }
     return this.currentScreen().scrollRegion();
@@ -1569,7 +1570,7 @@ export class TerminalSnapshotOracle {
 export function renderSnapshotAnsiRow(
   frame: TerminalSnapshotFrameCore,
   rowIndex: number,
-  cols: number
+  cols: number,
 ): string {
   const line = frame.richLines[rowIndex];
   const defaultStyle = defaultCellStyle();
@@ -1586,7 +1587,7 @@ export function renderSnapshotAnsiRow(
       glyph: ' ',
       width: 1,
       continued: false,
-      style: defaultStyle
+      style: defaultStyle,
     };
     if (cell.continued) {
       continue;
@@ -1621,7 +1622,7 @@ interface TerminalReplayStep {
 export function replayTerminalSteps(
   steps: readonly TerminalReplayStep[],
   initialCols: number,
-  initialRows: number
+  initialRows: number,
 ): TerminalSnapshotFrame[] {
   const oracle = new TerminalSnapshotOracle(initialCols, initialRows);
   const snapshots: TerminalSnapshotFrame[] = [];
@@ -1647,7 +1648,10 @@ interface TerminalFrameDiff {
   reasons: string[];
 }
 
-export function diffTerminalFrames(expected: TerminalSnapshotFrame, actual: TerminalSnapshotFrame): TerminalFrameDiff {
+export function diffTerminalFrames(
+  expected: TerminalSnapshotFrame,
+  actual: TerminalSnapshotFrame,
+): TerminalFrameDiff {
   const reasons: string[] = [];
 
   if (expected.rows !== actual.rows || expected.cols !== actual.cols) {
@@ -1708,6 +1712,6 @@ export function diffTerminalFrames(expected: TerminalSnapshotFrame, actual: Term
 
   return {
     equal: reasons.length === 0,
-    reasons
+    reasons,
   };
 }

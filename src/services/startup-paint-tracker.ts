@@ -61,7 +61,9 @@ export class StartupPaintTracker {
       return;
     }
 
-    const glyphCells = this.options.startupVisibility.visibleGlyphCellCount(input.activeConversation);
+    const glyphCells = this.options.startupVisibility.visibleGlyphCellCount(
+      input.activeConversation,
+    );
     if (
       !startupSnapshot.firstPaintObserved &&
       this.options.startupSequencer.markFirstPaintVisible(targetSessionId, glyphCells)

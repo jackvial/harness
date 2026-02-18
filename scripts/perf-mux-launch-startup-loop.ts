@@ -83,7 +83,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     timeoutMs,
     json,
     keepPerf,
-    codexArgs
+    codexArgs,
   };
 }
 
@@ -130,7 +130,7 @@ function readPerfEvents(filePath: string): readonly PerfEventRecord[] {
     records.push({
       type: 'event',
       name: value.name,
-      'ts-ms': value['ts-ms']
+      'ts-ms': value['ts-ms'],
     });
   }
 
@@ -149,7 +149,7 @@ function eventTimeMs(records: readonly PerfEventRecord[], eventName: string): nu
 function traceDeltaMs(
   records: readonly PerfEventRecord[],
   baseEvent: string,
-  targetEvent: string
+  targetEvent: string,
 ): number | null {
   const base = eventTimeMs(records, baseEvent);
   const target = eventTimeMs(records, targetEvent);
@@ -164,7 +164,7 @@ async function measureFirstOutput(
   commandArgs: readonly string[],
   timeoutMs: number,
   envOverrides: NodeJS.ProcessEnv = {},
-  closeDelayMs = 75
+  closeDelayMs = 75,
 ): Promise<PtyRunMetrics> {
   const startedNs = nowNs();
   const session = startPtySession({
@@ -174,10 +174,10 @@ async function measureFirstOutput(
       ...process.env,
       TERM: process.env.TERM ?? 'xterm-256color',
       NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS ?? '1',
-      ...envOverrides
+      ...envOverrides,
     },
     initialCols: 120,
-    initialRows: 40
+    initialRows: 40,
   });
 
   let firstOutputNs: bigint | null = null;
@@ -223,7 +223,7 @@ async function measureFirstOutput(
 
   return {
     firstOutputMs: firstOutputNs === null ? null : nsToMs(firstOutputNs - startedNs),
-    timedOut
+    timedOut,
   };
 }
 
@@ -231,8 +231,12 @@ async function measureMuxLaunchToSettled(
   launchScriptPath: string,
   codexArgs: readonly string[],
   timeoutMs: number,
-  perfPath: string
-): Promise<{ firstOutputMs: number | null; timedOut: boolean; perfEvents: readonly PerfEventRecord[] }> {
+  perfPath: string,
+): Promise<{
+  firstOutputMs: number | null;
+  timedOut: boolean;
+  perfEvents: readonly PerfEventRecord[];
+}> {
   const startedNs = nowNs();
   const session = startPtySession({
     command: process.execPath,
@@ -243,10 +247,10 @@ async function measureMuxLaunchToSettled(
       NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS ?? '1',
       HARNESS_PERF_ENABLED: '1',
       HARNESS_PERF_FILE_PATH: perfPath,
-      HARNESS_PERF_TRUNCATE_ON_START: '1'
+      HARNESS_PERF_TRUNCATE_ON_START: '1',
     },
     initialCols: 120,
-    initialRows: 40
+    initialRows: 40,
   });
 
   let firstOutputNs: bigint | null = null;
@@ -295,14 +299,14 @@ async function measureMuxLaunchToSettled(
     exitedPromise,
     new Promise<void>((resolveDelay) => {
       setTimeout(resolveDelay, 350);
-    })
+    }),
   ]);
 
   events = readPerfEvents(perfPath);
   return {
     firstOutputMs: firstOutputNs === null ? null : nsToMs(firstOutputNs - startedNs),
     timedOut,
-    perfEvents: events
+    perfEvents: events,
   };
 }
 
@@ -311,7 +315,10 @@ function percentile(values: readonly number[], fraction: number): number {
     return Number.NaN;
   }
   const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * fraction)));
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.floor((sorted.length - 1) * fraction)),
+  );
   return sorted[index]!;
 }
 
@@ -333,7 +340,7 @@ async function main(): Promise<number> {
     const perfPath = resolve(
       process.cwd(),
       '.harness',
-      `perf-mux-launch-startup-${randomUUID()}-${String(run)}.jsonl`
+      `perf-mux-launch-startup-${randomUUID()}-${String(run)}.jsonl`,
     );
     mkdirSync(dirname(perfPath), { recursive: true });
     rmSync(perfPath, { force: true });
@@ -342,7 +349,7 @@ async function main(): Promise<number> {
       launchScriptPath,
       args.codexArgs,
       args.timeoutMs,
-      perfPath
+      perfPath,
     );
 
     const deltaMs =
@@ -355,17 +362,25 @@ async function main(): Promise<number> {
       directFirstOutputMs: direct.firstOutputMs,
       muxFirstOutputMs: mux.firstOutputMs,
       deltaMs,
-      daemonReadyMs: traceDeltaMs(mux.perfEvents, 'launch.startup.begin', 'launch.startup.daemon-ready'),
+      daemonReadyMs: traceDeltaMs(
+        mux.perfEvents,
+        'launch.startup.begin',
+        'launch.startup.daemon-ready',
+      ),
       muxReadyMs: traceDeltaMs(mux.perfEvents, 'launch.startup.begin', 'mux.startup.ready'),
       muxFirstPaintMs: traceDeltaMs(
         mux.perfEvents,
         'launch.startup.begin',
-        'mux.startup.active-first-visible-paint'
+        'mux.startup.active-first-visible-paint',
       ),
-      muxSettledMs: traceDeltaMs(mux.perfEvents, 'launch.startup.begin', 'mux.startup.active-settled'),
+      muxSettledMs: traceDeltaMs(
+        mux.perfEvents,
+        'launch.startup.begin',
+        'mux.startup.active-settled',
+      ),
       timedOutDirect: direct.timedOut,
       timedOutMux: mux.timedOut,
-      perfPath
+      perfPath,
     });
 
     if (!args.keepPerf) {
@@ -380,7 +395,7 @@ async function main(): Promise<number> {
 
   for (const run of runs) {
     process.stdout.write(
-      `run ${String(run.run).padStart(2, ' ')}: direct-first-output=${formatMs(run.directFirstOutputMs)} mux-first-output=${formatMs(run.muxFirstOutputMs)} delta=${formatMs(run.deltaMs)} launch->daemon-ready=${formatMs(run.daemonReadyMs)} launch->mux-ready=${formatMs(run.muxReadyMs)} launch->first-paint=${formatMs(run.muxFirstPaintMs)} launch->settled=${formatMs(run.muxSettledMs)} timeout={direct:${String(run.timedOutDirect)},mux:${String(run.timedOutMux)}}\n`
+      `run ${String(run.run).padStart(2, ' ')}: direct-first-output=${formatMs(run.directFirstOutputMs)} mux-first-output=${formatMs(run.muxFirstOutputMs)} delta=${formatMs(run.deltaMs)} launch->daemon-ready=${formatMs(run.daemonReadyMs)} launch->mux-ready=${formatMs(run.muxReadyMs)} launch->first-paint=${formatMs(run.muxFirstPaintMs)} launch->settled=${formatMs(run.muxSettledMs)} timeout={direct:${String(run.timedOutDirect)},mux:${String(run.timedOutMux)}}\n`,
     );
     if (args.keepPerf) {
       process.stdout.write(`         perf=${run.perfPath}\n`);
@@ -388,28 +403,30 @@ async function main(): Promise<number> {
   }
 
   const deltas = runs.flatMap((run) => (run.deltaMs === null ? [] : [run.deltaMs]));
-  const daemonReady = runs.flatMap((run) => (run.daemonReadyMs === null ? [] : [run.daemonReadyMs]));
+  const daemonReady = runs.flatMap((run) =>
+    run.daemonReadyMs === null ? [] : [run.daemonReadyMs],
+  );
   const muxReady = runs.flatMap((run) => (run.muxReadyMs === null ? [] : [run.muxReadyMs]));
   const muxSettled = runs.flatMap((run) => (run.muxSettledMs === null ? [] : [run.muxSettledMs]));
 
   if (deltas.length > 0) {
     process.stdout.write(
-      `delta p50=${formatMs(percentile(deltas, 0.5))} p95=${formatMs(percentile(deltas, 0.95))} min=${formatMs(Math.min(...deltas))} max=${formatMs(Math.max(...deltas))}\n`
+      `delta p50=${formatMs(percentile(deltas, 0.5))} p95=${formatMs(percentile(deltas, 0.95))} min=${formatMs(Math.min(...deltas))} max=${formatMs(Math.max(...deltas))}\n`,
     );
   }
   if (daemonReady.length > 0) {
     process.stdout.write(
-      `launch->daemon-ready p50=${formatMs(percentile(daemonReady, 0.5))} p95=${formatMs(percentile(daemonReady, 0.95))} min=${formatMs(Math.min(...daemonReady))} max=${formatMs(Math.max(...daemonReady))}\n`
+      `launch->daemon-ready p50=${formatMs(percentile(daemonReady, 0.5))} p95=${formatMs(percentile(daemonReady, 0.95))} min=${formatMs(Math.min(...daemonReady))} max=${formatMs(Math.max(...daemonReady))}\n`,
     );
   }
   if (muxReady.length > 0) {
     process.stdout.write(
-      `launch->mux-ready   p50=${formatMs(percentile(muxReady, 0.5))} p95=${formatMs(percentile(muxReady, 0.95))} min=${formatMs(Math.min(...muxReady))} max=${formatMs(Math.max(...muxReady))}\n`
+      `launch->mux-ready   p50=${formatMs(percentile(muxReady, 0.5))} p95=${formatMs(percentile(muxReady, 0.95))} min=${formatMs(Math.min(...muxReady))} max=${formatMs(Math.max(...muxReady))}\n`,
     );
   }
   if (muxSettled.length > 0) {
     process.stdout.write(
-      `launch->settled     p50=${formatMs(percentile(muxSettled, 0.5))} p95=${formatMs(percentile(muxSettled, 0.95))} min=${formatMs(Math.min(...muxSettled))} max=${formatMs(Math.max(...muxSettled))}\n`
+      `launch->settled     p50=${formatMs(percentile(muxSettled, 0.5))} p95=${formatMs(percentile(muxSettled, 0.95))} min=${formatMs(Math.min(...muxSettled))} max=${formatMs(Math.max(...muxSettled))}\n`,
     );
   }
 
@@ -420,7 +437,7 @@ try {
   process.exitCode = await main();
 } catch (error: unknown) {
   process.stderr.write(
-    `perf mux launch startup loop failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+    `perf mux launch startup loop failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );
   process.exitCode = 1;
 }

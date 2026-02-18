@@ -43,7 +43,11 @@ export class RepositoryFoldInput {
 
   handleRepositoryTreeArrow(input: Buffer): boolean {
     const repositoryId = this.selectedRepositoryGroupId();
-    const action = repositoryTreeArrowAction(input, this.options.getLeftNavSelection(), repositoryId);
+    const action = repositoryTreeArrowAction(
+      input,
+      this.options.getLeftNavSelection(),
+      repositoryId,
+    );
     if (repositoryId === null || action === null) {
       return false;
     }

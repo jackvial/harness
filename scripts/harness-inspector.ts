@@ -16,7 +16,10 @@ export class InspectorWebSocketClient {
   private nextId = 1;
   private closed = false;
 
-  private constructor(private readonly socket: WebSocket, private readonly endpoint: string) {
+  private constructor(
+    private readonly socket: WebSocket,
+    private readonly endpoint: string,
+  ) {
     socket.addEventListener('message', (event) => {
       const payload = this.parseMessagePayload(event.data);
       if (payload === null) {
@@ -109,7 +112,9 @@ export class InspectorWebSocketClient {
     return await new Promise<Record<string, unknown>>((resolveCommand, rejectCommand) => {
       const timeoutHandle = setTimeout(() => {
         this.pending.delete(id);
-        rejectCommand(new Error(`${method} timed out after ${String(timeoutMs)}ms (${this.endpoint})`));
+        rejectCommand(
+          new Error(`${method} timed out after ${String(timeoutMs)}ms (${this.endpoint})`),
+        );
       }, timeoutMs);
       this.pending.set(id, {
         method,
@@ -349,7 +354,11 @@ export async function readInspectorProfileState(
   client: InspectorWebSocketClient,
   timeoutMs: number,
 ): Promise<InspectorProfileState | null> {
-  const rawState = await evaluateInspectorExpression(client, buildInspectorProfileStatusExpression(), timeoutMs);
+  const rawState = await evaluateInspectorExpression(
+    client,
+    buildInspectorProfileStatusExpression(),
+    timeoutMs,
+  );
   return normalizeInspectorProfileState(rawState);
 }
 
@@ -382,7 +391,10 @@ function parseInspectorWebSocketUrlsFromGatewayLog(logPath: string): readonly st
   return urls;
 }
 
-function resolveInspectorWebSocketCandidates(invocationDirectory: string, logPath: string): readonly string[] {
+function resolveInspectorWebSocketCandidates(
+  invocationDirectory: string,
+  logPath: string,
+): readonly string[] {
   const urls = [...parseInspectorWebSocketUrlsFromGatewayLog(logPath)];
   const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
   const debugConfig = loadedConfig.config.debug;

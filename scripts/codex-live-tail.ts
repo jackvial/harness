@@ -101,7 +101,7 @@ function parseArgs(argv: string[]): TailOptions {
 
   if (typeof conversationId !== 'string' || conversationId.length === 0) {
     process.stderr.write(
-      'usage: bun run codex:live:tail -- --conversation-id <id> [--json] [--include-text-deltas] [--from-now|--from-start]\n'
+      'usage: bun run codex:live:tail -- --conversation-id <id> [--json] [--include-text-deltas] [--from-now|--from-start]\n',
     );
     process.exitCode = 2;
     process.exit(2);
@@ -116,7 +116,7 @@ function parseArgs(argv: string[]): TailOptions {
     json,
     includeTextDeltas,
     exitOnSessionEnd,
-    fromNow
+    fromNow,
   };
 }
 
@@ -203,7 +203,7 @@ async function main(): Promise<number> {
         userId: options.userId,
         conversationId: options.conversationId,
         afterRowId: 0,
-        limit: 1_000_000
+        limit: 1_000_000,
       });
       if (baseline.length > 0) {
         lastRowId = baseline[baseline.length - 1]!.rowId;
@@ -211,7 +211,7 @@ async function main(): Promise<number> {
     }
 
     process.stderr.write(
-      `[tail] conversation=${options.conversationId} tenant=${options.tenantId} user=${options.userId} db=${options.dbPath} fromNow=${String(options.fromNow)}\n`
+      `[tail] conversation=${options.conversationId} tenant=${options.tenantId} user=${options.userId} db=${options.dbPath} fromNow=${String(options.fromNow)}\n`,
     );
 
     while (!stop) {
@@ -222,7 +222,7 @@ async function main(): Promise<number> {
           userId: options.userId,
           conversationId: options.conversationId,
           afterRowId: lastRowId,
-          limit: 500
+          limit: 500,
         });
       } catch (error) {
         if (isSqliteBusyError(error)) {

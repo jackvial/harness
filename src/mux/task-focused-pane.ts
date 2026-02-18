@@ -4,7 +4,7 @@ import { formatUiButton } from '../ui/kit.ts';
 import {
   taskComposerTextFromTaskFields,
   taskComposerVisibleLines,
-  type TaskComposerBuffer
+  type TaskComposerBuffer,
 } from './task-composer.ts';
 
 export type TaskFocusedPaneAction =
@@ -80,23 +80,26 @@ export interface TaskFocusedPaneView {
 
 const READY_CHIP_LABEL = formatUiButton({
   label: 'ready',
-  prefixIcon: 'r'
+  prefixIcon: 'r',
 });
 const DRAFT_CHIP_LABEL = formatUiButton({
   label: 'queued',
-  prefixIcon: 'd'
+  prefixIcon: 'd',
 });
 const COMPLETE_CHIP_LABEL = formatUiButton({
   label: 'complete',
-  prefixIcon: 'c'
+  prefixIcon: 'c',
 });
 
 function sortedRepositories(
-  repositories: ReadonlyMap<string, TaskFocusedPaneRepositoryRecord>
+  repositories: ReadonlyMap<string, TaskFocusedPaneRepositoryRecord>,
 ): readonly TaskFocusedPaneRepositoryRecord[] {
   return [...repositories.values()]
     .filter((entry) => entry.archivedAt === null)
-    .sort((left, right) => left.name.localeCompare(right.name) || left.repositoryId.localeCompare(right.repositoryId));
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) || left.repositoryId.localeCompare(right.repositoryId),
+    );
 }
 
 function parseIsoMs(value: string): number {
@@ -104,7 +107,7 @@ function parseIsoMs(value: string): number {
 }
 
 function sortTasksByOrderLocal(
-  tasks: readonly TaskFocusedPaneTaskRecord[]
+  tasks: readonly TaskFocusedPaneTaskRecord[],
 ): readonly TaskFocusedPaneTaskRecord[] {
   return [...tasks].sort((left, right) => {
     if (left.orderIndex !== right.orderIndex) {
@@ -151,13 +154,13 @@ function truncate(text: string, max: number): string {
 function composeRowWithRightChips(
   left: string,
   width: number,
-  chips: readonly { label: string; action: TaskFocusedPaneAction }[]
+  chips: readonly { label: string; action: TaskFocusedPaneAction }[],
 ): { readonly text: string; readonly cells: readonly ActionCell[] } {
   const joined = chips.map((chip) => chip.label).join(' ');
   if (joined.length === 0 || joined.length >= width) {
     return {
       text: padOrTrimDisplay(left, width),
-      cells: []
+      cells: [],
     };
   }
   const startCol = Math.max(0, width - joined.length);
@@ -173,7 +176,7 @@ function composeRowWithRightChips(
     cells.push({
       startCol: cursor,
       endCol: cursor + chip.label.length - 1,
-      action: chip.action
+      action: chip.action,
     });
     cursor += chip.label.length;
     if (idx < chips.length - 1) {
@@ -183,18 +186,18 @@ function composeRowWithRightChips(
   }
   return {
     text: padOrTrimDisplay(parts.join(''), width),
-    cells
+    cells,
   };
 }
 
 function taskBufferFromRecord(
   task: TaskFocusedPaneTaskRecord,
-  overrides: ReadonlyMap<string, TaskComposerBuffer>
+  overrides: ReadonlyMap<string, TaskComposerBuffer>,
 ): TaskComposerBuffer {
   return (
     overrides.get(task.taskId) ?? {
       text: taskComposerTextFromTaskFields(task.title, task.description),
-      cursor: task.title.length
+      cursor: task.title.length,
     }
   );
 }
@@ -207,7 +210,9 @@ function taskPreviewText(task: TaskFocusedPaneTaskRecord): string {
   return `${task.title} · ${summary}`;
 }
 
-export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): TaskFocusedPaneView {
+export function buildTaskFocusedPaneView(
+  options: BuildTaskFocusedPaneOptions,
+): TaskFocusedPaneView {
   const safeCols = Math.max(1, options.cols);
   const safeRows = Math.max(1, options.rows);
   const repositories = sortedRepositories(options.repositories);
@@ -215,10 +220,12 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
     (options.selectedRepositoryId !== null &&
     repositories.some((entry) => entry.repositoryId === options.selectedRepositoryId)
       ? options.selectedRepositoryId
-      : null) ?? repositories[0]?.repositoryId ?? null;
+      : null) ??
+    repositories[0]?.repositoryId ??
+    null;
 
   const scopedTasks = sortTasksByOrderLocal(
-    [...options.tasks.values()].filter((task) => task.repositoryId === selectedRepositoryId)
+    [...options.tasks.values()].filter((task) => task.repositoryId === selectedRepositoryId),
   );
 
   const lines: PaneLine[] = [];
@@ -227,14 +234,14 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
     taskId: string | null = null,
     repositoryId: string | null = null,
     action: TaskFocusedPaneAction | null = null,
-    actionCells: readonly ActionCell[] | null = null
+    actionCells: readonly ActionCell[] | null = null,
   ): void => {
     lines.push({
       text: padOrTrimDisplay(text, safeCols),
       taskId,
       repositoryId,
       action,
-      actionCells
+      actionCells,
     });
   };
 
@@ -242,10 +249,11 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
   const selectedRepositoryName =
     selectedRepositoryId === null
       ? 'select repository'
-      : repositories.find((entry) => entry.repositoryId === selectedRepositoryId)?.name ?? '(missing)';
+      : (repositories.find((entry) => entry.repositoryId === selectedRepositoryId)?.name ??
+        '(missing)');
   const repositoryButton = formatUiButton({
     label: truncate(selectedRepositoryName, Math.max(8, safeCols - 16)),
-    suffixIcon: 'v'
+    suffixIcon: 'v',
   });
   const repositoryRowText = ` repo: ${repositoryButton}`;
   const toggleStart = repositoryRowText.indexOf(repositoryButton);
@@ -256,8 +264,8 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
           {
             startCol: toggleStart,
             endCol: toggleStart + repositoryButton.length - 1,
-            action: 'repository.dropdown.toggle' as const
-          }
+            action: 'repository.dropdown.toggle' as const,
+          },
         ];
   push(repositoryRowText, null, selectedRepositoryId, 'repository.dropdown.toggle', repoCells);
 
@@ -268,7 +276,7 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
         `   ${activeMark} ${repository.name}`,
         null,
         repository.repositoryId,
-        'repository.select'
+        'repository.select',
       );
     }
   }
@@ -286,7 +294,8 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
     push(` tasks (${String(scopedTasks.length)})`);
     for (let index = 0; index < scopedTasks.length; index += 1) {
       const task = scopedTasks[index]!;
-      const focused = options.editorTarget.kind === 'task' && options.editorTarget.taskId === task.taskId;
+      const focused =
+        options.editorTarget.kind === 'task' && options.editorTarget.taskId === task.taskId;
       const leftLabel = ` ${focused ? '▸' : ' '} ${statusGlyph(task.status)} ${truncate(taskPreviewText(task), Math.max(8, safeCols - 24))}`;
       const chips =
         task.status === 'completed'
@@ -294,7 +303,7 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
           : [
               { label: READY_CHIP_LABEL, action: 'task.status.ready' as const },
               { label: DRAFT_CHIP_LABEL, action: 'task.status.draft' as const },
-              { label: COMPLETE_CHIP_LABEL, action: 'task.status.complete' as const }
+              { label: COMPLETE_CHIP_LABEL, action: 'task.status.complete' as const },
             ];
       const composed = composeRowWithRightChips(leftLabel, safeCols, chips);
       push(composed.text, task.taskId, selectedRepositoryId, 'task.focus', composed.cells);
@@ -302,9 +311,16 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
       if (focused) {
         const editBuffer = taskBufferFromRecord(task, options.taskBufferById);
         const linesWithCursor = taskComposerVisibleLines(editBuffer);
-        push(`    ${padOrTrimDisplay('─'.repeat(Math.max(4, Math.min(20, safeCols - 4))), Math.max(0, safeCols - 4))}`);
+        push(
+          `    ${padOrTrimDisplay('─'.repeat(Math.max(4, Math.min(20, safeCols - 4))), Math.max(0, safeCols - 4))}`,
+        );
         for (const line of linesWithCursor) {
-          push(`    ${truncate(line, Math.max(1, safeCols - 4))}`, task.taskId, selectedRepositoryId, 'task.focus');
+          push(
+            `    ${truncate(line, Math.max(1, safeCols - 4))}`,
+            task.taskId,
+            selectedRepositoryId,
+            'task.focus',
+          );
         }
       }
     }
@@ -332,7 +348,7 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
       taskId: null,
       repositoryId: null,
       action: null,
-      actionCells: null
+      actionCells: null,
     });
   }
   return {
@@ -342,13 +358,13 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
     actions: viewport.map((line) => line.action),
     actionCells: viewport.map((line) => line.actionCells),
     top,
-    selectedRepositoryId
+    selectedRepositoryId,
   };
 }
 
 export function taskFocusedPaneActionAtRow(
   view: TaskFocusedPaneView,
-  rowIndex: number
+  rowIndex: number,
 ): TaskFocusedPaneAction | null {
   if (view.actions.length === 0) {
     return null;
@@ -360,7 +376,7 @@ export function taskFocusedPaneActionAtRow(
 export function taskFocusedPaneActionAtCell(
   view: TaskFocusedPaneView,
   rowIndex: number,
-  colIndex: number
+  colIndex: number,
 ): TaskFocusedPaneAction | null {
   if (view.rows.length === 0) {
     return null;
@@ -380,7 +396,7 @@ export function taskFocusedPaneActionAtCell(
 
 export function taskFocusedPaneTaskIdAtRow(
   view: TaskFocusedPaneView,
-  rowIndex: number
+  rowIndex: number,
 ): string | null {
   if (view.taskIds.length === 0) {
     return null;
@@ -391,7 +407,7 @@ export function taskFocusedPaneTaskIdAtRow(
 
 export function taskFocusedPaneRepositoryIdAtRow(
   view: TaskFocusedPaneView,
-  rowIndex: number
+  rowIndex: number,
 ): string | null {
   if (view.repositoryIds.length === 0) {
     return null;

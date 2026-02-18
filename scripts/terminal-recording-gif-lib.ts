@@ -1,12 +1,8 @@
 import { writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createCanvas, type SKRSContext2D } from '@napi-rs/canvas';
-import type {
-  TerminalSnapshotFrame
-} from '../src/terminal/snapshot-oracle.ts';
-import {
-  readTerminalRecording
-} from '../src/recording/terminal-recording.ts';
+import type { TerminalSnapshotFrame } from '../src/terminal/snapshot-oracle.ts';
+import { readTerminalRecording } from '../src/recording/terminal-recording.ts';
 
 type GifEncPalette = number[][];
 type TerminalRecording = ReturnType<typeof readTerminalRecording>;
@@ -20,7 +16,7 @@ interface GifEncEncoder {
       palette: GifEncPalette;
       delay: number;
       repeat?: number;
-    }
+    },
   ): void;
   finish(): void;
   bytesView(): Uint8Array;
@@ -29,10 +25,7 @@ interface GifEncEncoder {
 interface GifEncModule {
   GIFEncoder: () => GifEncEncoder;
   quantize: (rgba: Uint8Array | Uint8ClampedArray, maxColors: number) => GifEncPalette;
-  applyPalette: (
-    rgba: Uint8Array | Uint8ClampedArray,
-    palette: GifEncPalette
-  ) => Uint8Array;
+  applyPalette: (rgba: Uint8Array | Uint8ClampedArray, palette: GifEncPalette) => Uint8Array;
 }
 
 const require = createRequire(import.meta.url);
@@ -114,11 +107,7 @@ function parseHexColor(value: string, fallback: Rgb): Rgb {
     return fallback;
   }
   const parsed = Number.parseInt(normalized, 16);
-  return [
-    (parsed >> 16) & 0xff,
-    (parsed >> 8) & 0xff,
-    parsed & 0xff
-  ];
+  return [(parsed >> 16) & 0xff, (parsed >> 8) & 0xff, parsed & 0xff];
 }
 
 function indexedColor(index: number): Rgb {
@@ -141,7 +130,7 @@ function indexedColor(index: number): Rgb {
     [59, 142, 234],
     [214, 112, 214],
     [41, 184, 219],
-    [255, 255, 255]
+    [255, 255, 255],
   ];
   if (index < ansi16.length) {
     return ansi16[index]!;
@@ -169,7 +158,7 @@ function indexedColorWithPalette(index: number, lookup: ColorLookup): Rgb {
 function colorToRgb(
   color: TerminalSnapshotFrame['richLines'][number]['cells'][number]['style']['fg'],
   fallback: Rgb,
-  lookup: ColorLookup
+  lookup: ColorLookup,
 ): Rgb {
   if (color.kind === 'default') {
     return fallback;
@@ -184,13 +173,13 @@ function resolveCellColors(
   frame: TerminalSnapshotFrame,
   row: number,
   col: number,
-  lookup: ColorLookup
+  lookup: ColorLookup,
 ): ResolvedTerminalColors {
   const cell = frame.richLines[row]?.cells[col];
   if (cell === undefined) {
     return {
       foreground: lookup.defaults.foreground,
-      background: lookup.defaults.background
+      background: lookup.defaults.background,
     };
   }
 
@@ -204,14 +193,14 @@ function resolveCellColors(
 
   return {
     foreground,
-    background
+    background,
   };
 }
 
 function createRenderPlan(
   frame: TerminalSnapshotFrame,
   lookup: ColorLookup,
-  includeCursor: boolean
+  includeCursor: boolean,
 ): RenderPlan {
   const backgroundCells: Rgb[][] = [];
   const glyphs: RenderGlyph[] = [];
@@ -236,9 +225,9 @@ function createRenderPlan(
             style: {
               bold: cell.style.bold,
               italic: cell.style.italic,
-              underline: true
+              underline: true,
             },
-            foreground: resolved.foreground
+            foreground: resolved.foreground,
           });
         }
         continue;
@@ -252,9 +241,9 @@ function createRenderPlan(
         style: {
           bold: cell.style.bold,
           italic: cell.style.italic,
-          underline: cell.style.underline
+          underline: cell.style.underline,
         },
-        foreground: resolved.foreground
+        foreground: resolved.foreground,
       });
     }
     backgroundCells.push(rowBackground);
@@ -273,12 +262,7 @@ function createRenderPlan(
       row: frame.cursor.row,
       col: frame.cursor.col,
       shape: frame.cursor.style.shape,
-      color: resolveCellColors(
-        frame,
-        frame.cursor.row,
-        frame.cursor.col,
-        lookup
-      ).foreground
+      color: resolveCellColors(frame, frame.cursor.row, frame.cursor.col, lookup).foreground,
     };
   }
 
@@ -287,7 +271,7 @@ function createRenderPlan(
     rows: frame.rows,
     backgroundCells,
     glyphs,
-    cursor
+    cursor,
   };
 }
 
@@ -299,7 +283,7 @@ function drawCursor(
   ctx: SKRSContext2D,
   cursor: RenderCursor | null,
   cellWidthPx: number,
-  cellHeightPx: number
+  cellHeightPx: number,
 ): void {
   if (cursor === null) {
     return;
@@ -312,7 +296,12 @@ function drawCursor(
     return;
   }
   if (cursor.shape === 'underline') {
-    ctx.fillRect(x, y + cellHeightPx - Math.max(1, Math.floor(cellHeightPx / 8)), cellWidthPx, Math.max(1, Math.floor(cellHeightPx / 8)));
+    ctx.fillRect(
+      x,
+      y + cellHeightPx - Math.max(1, Math.floor(cellHeightPx / 8)),
+      cellWidthPx,
+      Math.max(1, Math.floor(cellHeightPx / 8)),
+    );
     return;
   }
   ctx.globalAlpha = 0.35;
@@ -327,7 +316,7 @@ function renderFrameRgba(
   cellHeightPx: number,
   fontSizePx: number,
   fontFamily: string,
-  includeCursor: boolean
+  includeCursor: boolean,
 ): { rgba: Uint8ClampedArray; width: number; height: number } {
   const width = frame.cols * cellWidthPx;
   const height = frame.rows * cellHeightPx;
@@ -369,7 +358,7 @@ function renderFrameRgba(
         x,
         y + cellHeightPx - underlineHeight,
         glyph.widthCells * cellWidthPx,
-        underlineHeight
+        underlineHeight,
       );
     }
   }
@@ -379,14 +368,14 @@ function renderFrameRgba(
   return {
     rgba: imageData.data,
     width,
-    height
+    height,
   };
 }
 
 function frameDelayMs(
   recording: TerminalRecording,
   index: number,
-  defaultFrameDurationMs: number
+  defaultFrameDurationMs: number,
 ): number {
   const current = recording.frames[index];
   if (current === undefined) {
@@ -411,9 +400,11 @@ function frameDelayMs(
 
 function buildFrameDelaysMs(
   recording: TerminalRecording,
-  defaultFrameDurationMs: number
+  defaultFrameDurationMs: number,
 ): number[] {
-  const delaysMs = recording.frames.map((_, idx) => frameDelayMs(recording, idx, defaultFrameDurationMs));
+  const delaysMs = recording.frames.map((_, idx) =>
+    frameDelayMs(recording, idx, defaultFrameDurationMs),
+  );
   const normalizedDelaysMs: number[] = [];
   let remainderMs = 0;
 
@@ -430,7 +421,7 @@ function buildFrameDelaysMs(
 function parseIndexedPalette(
   recording: TerminalRecording,
   defaultForeground: Rgb,
-  defaultBackground: Rgb
+  defaultBackground: Rgb,
 ): Map<number, Rgb> {
   const palette = new Map<number, Rgb>();
   const source = recording.header.ansiPaletteIndexedHex;
@@ -448,7 +439,7 @@ function parseIndexedPalette(
 }
 
 export function renderTerminalRecordingToGif(
-  options: TerminalRecordingGifOptions
+  options: TerminalRecordingGifOptions,
 ): Promise<TerminalRecordingGifResult> {
   const recording = readTerminalRecording(options.recordingPath);
   if (recording.frames.length === 0) {
@@ -468,9 +459,9 @@ export function renderTerminalRecordingToGif(
   const colorLookup: ColorLookup = {
     defaults: {
       foreground: defaultForeground,
-      background: defaultBackground
+      background: defaultBackground,
     },
-    indexedPalette: parseIndexedPalette(recording, defaultForeground, defaultBackground)
+    indexedPalette: parseIndexedPalette(recording, defaultForeground, defaultBackground),
   };
   const delaysMs = buildFrameDelaysMs(recording, defaultFrameDurationMs);
   const gif = gifenc.GIFEncoder();
@@ -487,7 +478,7 @@ export function renderTerminalRecordingToGif(
       cellHeightPx,
       fontSizePx,
       fontFamily,
-      includeCursor
+      includeCursor,
     );
     if (idx === 0) {
       width = rendered.width;
@@ -501,7 +492,7 @@ export function renderTerminalRecordingToGif(
       repeat?: number;
     } = {
       palette,
-      delay: delaysMs[idx] ?? Math.max(10, Math.round(defaultFrameDurationMs))
+      delay: delaysMs[idx] ?? Math.max(10, Math.round(defaultFrameDurationMs)),
     };
     if (idx === 0) {
       frameOptions.repeat = 0;
@@ -519,7 +510,7 @@ export function renderTerminalRecordingToGif(
     width,
     height,
     frameCount: recording.frames.length,
-    bytes: bytes.byteLength
+    bytes: bytes.byteLength,
   });
 }
 
@@ -531,5 +522,5 @@ export const __terminalGifInternals = {
   buildFrameDelaysMs,
   parseIndexedPalette,
   createRenderPlan,
-  renderFrameRgba
+  renderFrameRgba,
 };

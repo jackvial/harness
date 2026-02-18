@@ -131,7 +131,8 @@ export class LeftRailPointerInput {
       supportsConversationTitleEditClick: context.supportsConversationTitleEditClick,
       previousClickState: this.options.previousConversationClickState(),
       nowMs: this.options.nowMs(),
-      conversationTitleEditDoubleClickWindowMs: this.options.conversationTitleEditDoubleClickWindowMs,
+      conversationTitleEditDoubleClickWindowMs:
+        this.options.conversationTitleEditDoubleClickWindowMs,
       activeConversationId: this.options.activeConversationId(),
       isConversationPaneActive: this.options.isConversationPaneActive(),
       setConversationClickState: this.options.setConversationClickState,

@@ -8,7 +8,7 @@ import {
   type StreamCommand,
   type StreamCommandEnvelope,
   type StreamServerEnvelope,
-  type StreamSignal
+  type StreamSignal,
 } from './stream-protocol.ts';
 
 interface ControlPlaneStreamClientOptions {
@@ -31,12 +31,10 @@ export class ControlPlaneStreamClient {
   private readonly listeners = new Set<(envelope: StreamServerEnvelope) => void>();
   private readonly pending = new Map<string, PendingCommand>();
   private remainder = '';
-  private pendingAuth:
-    | {
-        resolve: () => void;
-        reject: (error: Error) => void;
-      }
-    | null = null;
+  private pendingAuth: {
+    resolve: () => void;
+    reject: (error: Error) => void;
+  } | null = null;
   private closed = false;
 
   constructor(socket: Socket) {
@@ -67,14 +65,14 @@ export class ControlPlaneStreamClient {
     const commandType = command.type;
     const commandSpan = startPerfSpan('control-plane.command.rtt', {
       role: 'client',
-      type: commandType
+      type: commandType,
     });
 
     return new Promise<Record<string, unknown>>((resolve, reject) => {
       if (this.closed) {
         commandSpan.end({
           type: commandType,
-          status: 'client-closed'
+          status: 'client-closed',
         });
         reject(new Error('control-plane stream is closed'));
         return;
@@ -84,17 +82,17 @@ export class ControlPlaneStreamClient {
         type: commandType,
         span: commandSpan,
         resolve,
-        reject
+        reject,
       });
       recordPerfEvent('control-plane.command.sent', {
         role: 'client',
-        type: commandType
+        type: commandType,
       });
 
       const envelope: StreamCommandEnvelope = {
         kind: 'command',
         commandId,
-        command
+        command,
       };
       this.socket.write(encodeStreamEnvelope(envelope));
     });
@@ -102,19 +100,19 @@ export class ControlPlaneStreamClient {
 
   authenticate(token: string): Promise<void> {
     const authSpan = startPerfSpan('control-plane.auth.rtt', {
-      role: 'client'
+      role: 'client',
     });
     return new Promise<void>((resolve, reject) => {
       if (this.closed) {
         authSpan.end({
-          status: 'client-closed'
+          status: 'client-closed',
         });
         reject(new Error('control-plane stream is closed'));
         return;
       }
       if (this.pendingAuth !== null) {
         authSpan.end({
-          status: 'already-pending'
+          status: 'already-pending',
         });
         reject(new Error('auth is already pending'));
         return;
@@ -123,23 +121,23 @@ export class ControlPlaneStreamClient {
       this.pendingAuth = {
         resolve: () => {
           authSpan.end({
-            status: 'ok'
+            status: 'ok',
           });
           resolve();
         },
         reject: (error: Error) => {
           authSpan.end({
             status: 'error',
-            message: error.message
+            message: error.message,
           });
           reject(error);
-        }
+        },
       };
       this.socket.write(
         encodeStreamEnvelope({
           kind: 'auth',
-          token
-        })
+          token,
+        }),
       );
     });
   }
@@ -153,8 +151,8 @@ export class ControlPlaneStreamClient {
       encodeStreamEnvelope({
         kind: 'pty.input',
         sessionId,
-        dataBase64: data.toString('base64')
-      })
+        dataBase64: data.toString('base64'),
+      }),
     );
   }
 
@@ -168,8 +166,8 @@ export class ControlPlaneStreamClient {
         kind: 'pty.resize',
         sessionId,
         cols,
-        rows
-      })
+        rows,
+      }),
     );
   }
 
@@ -182,8 +180,8 @@ export class ControlPlaneStreamClient {
       encodeStreamEnvelope({
         kind: 'pty.signal',
         sessionId,
-        signal
-      })
+        signal,
+      }),
     );
   }
 
@@ -240,7 +238,7 @@ export class ControlPlaneStreamClient {
       this.pending.delete(envelope.commandId);
       pending.span.end({
         type: pending.type,
-        status: 'completed'
+        status: 'completed',
       });
       pending.resolve(envelope.result);
       return;
@@ -255,7 +253,7 @@ export class ControlPlaneStreamClient {
       pending.span.end({
         type: pending.type,
         status: 'failed',
-        message: envelope.error
+        message: envelope.error,
       });
       pending.reject(new Error(envelope.error));
       return;
@@ -284,7 +282,7 @@ export class ControlPlaneStreamClient {
       pending.span.end({
         type: pending.type,
         status: 'closed',
-        message: error.message
+        message: error.message,
       });
       pending.reject(error);
     }
@@ -293,7 +291,7 @@ export class ControlPlaneStreamClient {
 }
 
 export async function connectControlPlaneStreamClient(
-  options: ControlPlaneStreamClientOptions
+  options: ControlPlaneStreamClientOptions,
 ): Promise<ControlPlaneStreamClient> {
   const retryWindowMs = Math.max(0, options.connectRetryWindowMs ?? 0);
   const retryDelayMs = Math.max(1, options.connectRetryDelayMs ?? 50);
@@ -303,7 +301,7 @@ export async function connectControlPlaneStreamClient(
     'EHOSTUNREACH',
     'ENETUNREACH',
     'ENOTFOUND',
-    'ETIMEDOUT'
+    'ETIMEDOUT',
   ]);
   const startedAtMs = Date.now();
   recordPerfEvent('control-plane.connect.begin', {
@@ -311,7 +309,7 @@ export async function connectControlPlaneStreamClient(
     host: options.host,
     port: options.port,
     retryWindowMs,
-    retryDelayMs
+    retryDelayMs,
   });
   let attempts = 0;
   let socket: Socket | null = null;
@@ -321,7 +319,7 @@ export async function connectControlPlaneStreamClient(
       role: 'client',
       attempt: attempts,
       host: options.host,
-      port: options.port
+      port: options.port,
     });
     try {
       socket = await new Promise<Socket>((resolve, reject) => {
@@ -340,7 +338,7 @@ export async function connectControlPlaneStreamClient(
       });
       attemptSpan.end({
         attempt: attempts,
-        status: 'connected'
+        status: 'connected',
       });
     } catch (error: unknown) {
       const code = (error as NodeJS.ErrnoException | null)?.code;
@@ -348,7 +346,7 @@ export async function connectControlPlaneStreamClient(
       attemptSpan.end({
         attempt: attempts,
         status: 'error',
-        code: typeof code === 'string' ? code : 'unknown'
+        code: typeof code === 'string' ? code : 'unknown',
       });
       if (
         retryWindowMs === 0 ||
@@ -362,7 +360,7 @@ export async function connectControlPlaneStreamClient(
           port: options.port,
           attempts,
           elapsedMs,
-          code: typeof code === 'string' ? code : 'unknown'
+          code: typeof code === 'string' ? code : 'unknown',
         });
         throw error;
       }
@@ -374,7 +372,7 @@ export async function connectControlPlaneStreamClient(
         attempts,
         elapsedMs,
         remainingMs,
-        code: typeof code === 'string' ? code : 'unknown'
+        code: typeof code === 'string' ? code : 'unknown',
       });
       await new Promise<void>((resolve) => {
         setTimeout(resolve, Math.max(1, Math.min(retryDelayMs, remainingMs)));
@@ -392,7 +390,7 @@ export async function connectControlPlaneStreamClient(
     port: options.port,
     attempts,
     elapsedMs: Date.now() - startedAtMs,
-    authenticated: typeof options.authToken === 'string'
+    authenticated: typeof options.authToken === 'string',
   });
   return client;
 }

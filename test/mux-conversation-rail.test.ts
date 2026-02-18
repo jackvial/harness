@@ -6,7 +6,7 @@ import {
   cycleConversationId,
   renderConversationRailAnsiRows,
   sortConversationRailSessions,
-  type ConversationRailSessionSummary
+  type ConversationRailSessionSummary,
 } from '../src/mux/conversation-rail.ts';
 
 const sessions: readonly ConversationRailSessionSummary[] = [
@@ -16,7 +16,7 @@ const sessions: readonly ConversationRailSessionSummary[] = [
     attentionReason: null,
     live: true,
     startedAt: '2026-01-01T00:00:00.000Z',
-    lastEventAt: '2026-01-01T00:03:00.000Z'
+    lastEventAt: '2026-01-01T00:03:00.000Z',
   },
   {
     sessionId: 'conversation-aaaaaaaa-0000',
@@ -24,7 +24,7 @@ const sessions: readonly ConversationRailSessionSummary[] = [
     attentionReason: 'approval',
     live: true,
     startedAt: '2026-01-01T00:01:00.000Z',
-    lastEventAt: '2026-01-01T00:05:00.000Z'
+    lastEventAt: '2026-01-01T00:05:00.000Z',
   },
   {
     sessionId: 'conversation-bbbbbbbb-0000',
@@ -32,7 +32,7 @@ const sessions: readonly ConversationRailSessionSummary[] = [
     attentionReason: null,
     live: true,
     startedAt: '2026-01-01T00:02:00.000Z',
-    lastEventAt: '2026-01-01T00:04:00.000Z'
+    lastEventAt: '2026-01-01T00:04:00.000Z',
   },
   {
     sessionId: 'external-session-with-very-long-id-123456',
@@ -40,8 +40,8 @@ const sessions: readonly ConversationRailSessionSummary[] = [
     attentionReason: null,
     live: false,
     startedAt: '2026-01-01T00:02:00.000Z',
-    lastEventAt: null
-  }
+    lastEventAt: null,
+  },
 ];
 
 void test('sortConversationRailSessions honors attention-first and started sorts', () => {
@@ -52,8 +52,8 @@ void test('sortConversationRailSessions honors attention-first and started sorts
       'conversation-aaaaaaaa-0000',
       'conversation-bbbbbbbb-0000',
       'conversation-cccccccc-0000',
-      'external-session-with-very-long-id-123456'
-    ]
+      'external-session-with-very-long-id-123456',
+    ],
   );
 
   const startedDesc = sortConversationRailSessions(sessions, 'started-desc');
@@ -63,8 +63,8 @@ void test('sortConversationRailSessions honors attention-first and started sorts
       'conversation-bbbbbbbb-0000',
       'external-session-with-very-long-id-123456',
       'conversation-aaaaaaaa-0000',
-      'conversation-cccccccc-0000'
-    ]
+      'conversation-cccccccc-0000',
+    ],
   );
 
   const startedAsc = sortConversationRailSessions(sessions, 'started-asc');
@@ -74,18 +74,13 @@ void test('sortConversationRailSessions honors attention-first and started sorts
       'conversation-cccccccc-0000',
       'conversation-aaaaaaaa-0000',
       'conversation-bbbbbbbb-0000',
-      'external-session-with-very-long-id-123456'
-    ]
+      'external-session-with-very-long-id-123456',
+    ],
   );
 });
 
 void test('buildConversationRailLines renders header, active marker, and truncation', () => {
-  const lines = buildConversationRailLines(
-    sessions,
-    'conversation-bbbbbbbb-0000',
-    48,
-    3
-  );
+  const lines = buildConversationRailLines(sessions, 'conversation-bbbbbbbb-0000', 48, 3);
   assert.equal(lines.length, 3);
   assert.equal(lines[0]?.includes('conversations (4)'), true);
   assert.equal(lines[1]?.includes('[!] aaaaaaaa - approval'), true);
@@ -95,7 +90,7 @@ void test('buildConversationRailLines renders header, active marker, and truncat
     sessions,
     'external-session-with-very-long-id-123456',
     48,
-    3
+    3,
   );
   assert.equal(hiddenActive.length, 3);
   assert.equal(hiddenActive[2]?.includes('external-session…'), true);
@@ -113,8 +108,14 @@ void test('buildConversationRailLines renders header, active marker, and truncat
   assert.equal(oneRow[0]?.length, 10);
 
   const completedVisible = buildConversationRailLines(sessions, null, 60, 6);
-  assert.equal(completedVisible.some((line) => line.includes('[+] cccccccc')), true);
-  assert.equal(completedVisible.some((line) => line.includes('[x] external-session…')), true);
+  assert.equal(
+    completedVisible.some((line) => line.includes('[+] cccccccc')),
+    true,
+  );
+  assert.equal(
+    completedVisible.some((line) => line.includes('[x] external-session…')),
+    true,
+  );
 
   const shortConversationId = buildConversationRailLines(
     [
@@ -124,12 +125,12 @@ void test('buildConversationRailLines renders header, active marker, and truncat
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
-        lastEventAt: '2026-01-01T00:01:00.000Z'
-      }
+        lastEventAt: '2026-01-01T00:01:00.000Z',
+      },
     ],
     'conversation-12345678',
     48,
-    3
+    3,
   );
   assert.equal(shortConversationId[1]?.includes('[~] 12345678'), true);
 
@@ -141,12 +142,12 @@ void test('buildConversationRailLines renders header, active marker, and truncat
         attentionReason: '',
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
-        lastEventAt: '2026-01-01T00:01:00.000Z'
-      }
+        lastEventAt: '2026-01-01T00:01:00.000Z',
+      },
     ],
     'conversation-empty-reason',
     48,
-    2
+    2,
   );
   assert.equal(emptyAttentionReason[1]?.includes('empty-re'), true);
   assert.equal(emptyAttentionReason[1]?.trimEnd().endsWith('[!] empty-re'), true);
@@ -169,7 +170,7 @@ void test('attention-first sort handles last-event and started/id tie-breakers',
       attentionReason: null,
       live: true,
       startedAt: '2026-01-01T00:01:00.000Z',
-      lastEventAt: null
+      lastEventAt: null,
     },
     {
       sessionId: 'session-b',
@@ -177,7 +178,7 @@ void test('attention-first sort handles last-event and started/id tie-breakers',
       attentionReason: null,
       live: true,
       startedAt: '2026-01-01T00:03:00.000Z',
-      lastEventAt: '2026-01-01T00:05:00.000Z'
+      lastEventAt: '2026-01-01T00:05:00.000Z',
     },
     {
       sessionId: 'session-a',
@@ -185,14 +186,14 @@ void test('attention-first sort handles last-event and started/id tie-breakers',
       attentionReason: null,
       live: true,
       startedAt: '2026-01-01T00:03:00.000Z',
-      lastEventAt: '2026-01-01T00:05:00.000Z'
-    }
+      lastEventAt: '2026-01-01T00:05:00.000Z',
+    },
   ];
 
   const sorted = sortConversationRailSessions(tieRows, 'attention-first');
   assert.deepEqual(
     sorted.map((row) => row.sessionId),
-    ['session-a', 'session-b', 'short-id']
+    ['session-a', 'session-b', 'short-id'],
   );
 
   const rendered = buildConversationRailLines(tieRows, 'short-id', 32, 5);
@@ -208,7 +209,7 @@ void test('attention-first sort handles last-event and started/id tie-breakers',
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
-        lastEventAt: '2026-01-01T00:01:00.000Z'
+        lastEventAt: '2026-01-01T00:01:00.000Z',
       },
       {
         sessionId: 'id-1',
@@ -216,14 +217,14 @@ void test('attention-first sort handles last-event and started/id tie-breakers',
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:02:00.000Z',
-        lastEventAt: '2026-01-01T00:01:00.000Z'
-      }
+        lastEventAt: '2026-01-01T00:01:00.000Z',
+      },
     ],
-    'attention-first'
+    'attention-first',
   );
   assert.deepEqual(
     byStartedDescFallback.map((row) => row.sessionId),
-    ['id-1', 'id-2']
+    ['id-1', 'id-2'],
   );
 });
 
@@ -233,7 +234,7 @@ void test('buildConversationRailLines supports stable input order mode', () => {
     'conversation-cccccccc-0000',
     48,
     5,
-    'input-order'
+    'input-order',
   );
   assert.equal(inputOrdered[1]?.includes('cccccccc'), true);
   assert.equal(inputOrdered[2]?.includes('aaaaaaaa'), true);
@@ -248,7 +249,7 @@ void test('attention-first sort covers null and non-null lastEvent comparator br
       attentionReason: null,
       live: true,
       startedAt: '2026-01-01T00:01:00.000Z',
-      lastEventAt: null
+      lastEventAt: null,
     },
     {
       sessionId: 'right-non-null',
@@ -256,14 +257,14 @@ void test('attention-first sort covers null and non-null lastEvent comparator br
       attentionReason: null,
       live: true,
       startedAt: '2026-01-01T00:01:00.000Z',
-      lastEventAt: '2026-01-01T00:05:00.000Z'
-    }
+      lastEventAt: '2026-01-01T00:05:00.000Z',
+    },
   ];
 
   const nullCompared = sortConversationRailSessions(rows, 'attention-first');
   assert.deepEqual(
     nullCompared.map((row) => row.sessionId),
-    ['right-non-null', 'left-null']
+    ['right-non-null', 'left-null'],
   );
 
   const localeCompared = sortConversationRailSessions(
@@ -274,7 +275,7 @@ void test('attention-first sort covers null and non-null lastEvent comparator br
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
-        lastEventAt: '2026-01-01T00:05:00.000Z'
+        lastEventAt: '2026-01-01T00:05:00.000Z',
       },
       {
         sessionId: 'event-a',
@@ -282,14 +283,14 @@ void test('attention-first sort covers null and non-null lastEvent comparator br
         attentionReason: null,
         live: true,
         startedAt: '2026-01-01T00:01:00.000Z',
-        lastEventAt: '2026-01-01T00:04:00.000Z'
-      }
+        lastEventAt: '2026-01-01T00:04:00.000Z',
+      },
     ],
-    'attention-first'
+    'attention-first',
   );
   assert.deepEqual(
     localeCompared.map((row) => row.sessionId),
-    ['event-b', 'event-a']
+    ['event-b', 'event-a'],
   );
 });
 
@@ -297,14 +298,8 @@ void test('compareIsoDesc handles null and lexicographic ordering', () => {
   assert.equal(compareIsoDesc(null, null), 0);
   assert.equal(compareIsoDesc(null, '2026-01-01T00:00:00.000Z'), 1);
   assert.equal(compareIsoDesc('2026-01-01T00:00:00.000Z', null), -1);
-  assert.equal(
-    compareIsoDesc('2026-01-01T00:04:00.000Z', '2026-01-01T00:05:00.000Z'),
-    1
-  );
-  assert.equal(
-    compareIsoDesc('2026-01-01T00:05:00.000Z', '2026-01-01T00:04:00.000Z'),
-    -1
-  );
+  assert.equal(compareIsoDesc('2026-01-01T00:04:00.000Z', '2026-01-01T00:05:00.000Z'), 1);
+  assert.equal(compareIsoDesc('2026-01-01T00:05:00.000Z', '2026-01-01T00:04:00.000Z'), -1);
 });
 
 void test('renderConversationRailAnsiRows paints header, badges, and active-row highlight', () => {
@@ -313,7 +308,7 @@ void test('renderConversationRailAnsiRows paints header, badges, and active-row 
     'conversation-bbbbbbbb-0000',
     48,
     6,
-    'input-order'
+    'input-order',
   );
   assert.equal(ansiRows.length, 6);
   assert.equal(ansiRows[0]?.includes('\u001b[0;38;5;250;48;5;236m'), true);

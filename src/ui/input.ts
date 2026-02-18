@@ -12,7 +12,10 @@ import type {
   RepositoryPromptState,
   TaskEditorPromptState,
 } from '../domain/workspace.ts';
-import type { createNewThreadPromptState, normalizeThreadAgentType } from '../mux/new-thread-prompt.ts';
+import type {
+  createNewThreadPromptState,
+  normalizeThreadAgentType,
+} from '../mux/new-thread-prompt.ts';
 
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;

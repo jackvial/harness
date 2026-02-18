@@ -449,7 +449,11 @@ void test('archiveConversation falls back to project pane or dirty mark when no 
       calls.push('markDirty');
     },
   });
-  assert.deepEqual(calls, ['setActiveConversationId', 'enterProjectPane:dir-fallback', 'markDirty']);
+  assert.deepEqual(calls, [
+    'setActiveConversationId',
+    'enterProjectPane:dir-fallback',
+    'markDirty',
+  ]);
 
   calls.length = 0;
   await archiveConversation({
@@ -828,7 +832,12 @@ void test('closeDirectory falls back to project pane or dirty mark when no fallb
       calls.push('markDirty');
     },
   });
-  assert.deepEqual(calls, ['setActiveDirectoryId:dir-b', 'noteGitActivity:stale-dir', 'enterProjectPane:dir-b', 'markDirty']);
+  assert.deepEqual(calls, [
+    'setActiveDirectoryId:dir-b',
+    'noteGitActivity:stale-dir',
+    'enterProjectPane:dir-b',
+    'markDirty',
+  ]);
 
   calls.length = 0;
   await closeDirectory({

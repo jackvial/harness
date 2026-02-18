@@ -8,19 +8,17 @@ import {
   type ControlPlaneKeyEvent,
 } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
-import type { StreamObservedEvent, StreamServerEnvelope } from '../src/control-plane/stream-protocol.ts';
+import type {
+  StreamObservedEvent,
+  StreamServerEnvelope,
+} from '../src/control-plane/stream-protocol.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
-import {
-  computeDualPaneLayout,
-} from '../src/mux/dual-pane-core.ts';
+import { computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
 import { loadHarnessConfig, updateHarnessMuxUiConfig } from '../src/config/config-core.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
-import {
-  detectMuxGlobalShortcut,
-  resolveMuxShortcutBindings,
-} from '../src/mux/input-shortcuts.ts';
+import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
 import {
@@ -46,9 +44,7 @@ import {
   taskFieldsFromComposerText,
   type TaskComposerBuffer,
 } from '../src/mux/task-composer.ts';
-import {
-  resolveTaskScreenKeybindings,
-} from '../src/mux/task-screen-keybindings.ts';
+import { resolveTaskScreenKeybindings } from '../src/mux/task-screen-keybindings.ts';
 import { applyMuxControlPlaneKeyEvent } from '../src/mux/runtime-wiring.ts';
 import {
   applyModalOverlay,
@@ -70,6 +66,8 @@ import {
   startPerfSpan,
 } from '../src/perf/perf-core.ts';
 import {
+  parseConversationRecord,
+  parseDirectoryRecord,
   parseRepositoryRecord,
   parseTaskRecord,
 } from '../src/mux/live-mux/control-plane-records.ts';
@@ -83,9 +81,7 @@ import {
 } from '../src/mux/live-mux/git-parsing.ts';
 import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
-import {
-  firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn,
-} from '../src/mux/live-mux/repository-folding.ts';
+import { firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn } from '../src/mux/live-mux/repository-folding.ts';
 import {
   readObservedStreamCursorBaseline,
   subscribeObservedStream,
@@ -134,9 +130,7 @@ import {
   type GitRepositorySnapshot,
   type GitSummary,
 } from '../src/mux/live-mux/git-state.ts';
-import {
-  resolveDirectoryForAction as resolveDirectoryForActionFn,
-} from '../src/mux/live-mux/directory-resolution.ts';
+import { resolveDirectoryForAction as resolveDirectoryForActionFn } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
 import {
   archiveRepositoryById as archiveRepositoryByIdFn,
@@ -146,17 +140,10 @@ import {
   reorderRepositoryByDrop as reorderRepositoryByDropFn,
   upsertRepositoryByRemoteUrl as upsertRepositoryByRemoteUrlFn,
 } from '../src/mux/live-mux/actions-repository.ts';
-import {
-  openNewThreadPrompt as openNewThreadPromptFn,
-} from '../src/mux/live-mux/actions-conversation.ts';
+import { openNewThreadPrompt as openNewThreadPromptFn } from '../src/mux/live-mux/actions-conversation.ts';
 import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
-import {
-  WorkspaceModel,
-} from '../src/domain/workspace.ts';
-import {
-  ConversationManager,
-  type ConversationSeed,
-} from '../src/domain/conversations.ts';
+import { WorkspaceModel } from '../src/domain/workspace.ts';
+import { ConversationManager, type ConversationSeed } from '../src/domain/conversations.ts';
 import { RepositoryManager } from '../src/domain/repositories.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
@@ -192,6 +179,7 @@ import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shor
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
+import { WorkspaceObservedEvents } from '../src/services/workspace-observed-events.ts';
 import { StartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
@@ -214,6 +202,7 @@ import { InputPreflight } from '../src/ui/input-preflight.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
+type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
 type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
 type ControlPlaneSessionSummary = NonNullable<
@@ -343,6 +332,7 @@ async function main(): Promise<number> {
     'mux.conversation.critique.open-or-create': [],
     'mux.conversation.next': [],
     'mux.conversation.previous': [],
+    'mux.conversation.interrupt': [],
     'mux.conversation.archive': [],
     'mux.conversation.takeover': [],
     'mux.conversation.delete': [],
@@ -632,7 +622,9 @@ async function main(): Promise<number> {
   });
 
   const resolveActiveDirectoryId = (): string | null => {
-    workspace.activeDirectoryId = directoryManager.resolveActiveDirectoryId(workspace.activeDirectoryId);
+    workspace.activeDirectoryId = directoryManager.resolveActiveDirectoryId(
+      workspace.activeDirectoryId,
+    );
     return workspace.activeDirectoryId;
   };
 
@@ -703,13 +695,22 @@ async function main(): Promise<number> {
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
     const existing = conversationManager.get(event.sessionId);
     const beforeProjection =
-      existing === undefined ? null : sessionProjectionInstrumentation.snapshotForConversation(existing);
+      existing === undefined
+        ? null
+        : sessionProjectionInstrumentation.snapshotForConversation(existing);
     const updated = applyMuxControlPlaneKeyEvent(event, {
       removedConversationIds: conversationManager.removedConversationIds,
       ensureConversation,
     });
     if (updated === null) {
       return;
+    }
+    if (event.type === 'session-status') {
+      if (event.live) {
+        void subscribeConversationEvents(event.sessionId).catch(() => {});
+      } else {
+        void unsubscribeConversationEvents(event.sessionId).catch(() => {});
+      }
     }
     sessionProjectionInstrumentation.refreshSelectorSnapshot(
       `event:${event.type}`,
@@ -740,7 +741,9 @@ async function main(): Promise<number> {
   };
 
   const syncRepositoryAssociationsWithDirectorySnapshots = (): void => {
-    repositoryManager.syncWithDirectories((directoryId) => directoryManager.hasDirectory(directoryId));
+    repositoryManager.syncWithDirectories((directoryId) =>
+      directoryManager.hasDirectory(directoryId),
+    );
   };
 
   const hydratePersistedConversationsForDirectory = async (
@@ -776,8 +779,10 @@ async function main(): Promise<number> {
     }
   }
 
-  const runtimeConversationStarter =
-    new RuntimeConversationStarter<ConversationState, ControlPlaneSessionSummary>({
+  const runtimeConversationStarter = new RuntimeConversationStarter<
+    ConversationState,
+    ControlPlaneSessionSummary
+  >({
     runWithStartInFlight: async (sessionId, run) => {
       return await conversationManager.runWithStartInFlight(sessionId, run);
     },
@@ -1002,7 +1007,6 @@ async function main(): Promise<number> {
     }
   };
 
-
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
   const screen = new Screen();
@@ -1038,7 +1042,8 @@ async function main(): Promise<number> {
       hasConversationTitleEdit: workspace.conversationTitleEdit !== null,
       stopConversationTitleEdit: () => stopConversationTitleEdit(true),
       activeTaskEditorTaskId:
-        'taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string'
+        'taskId' in workspace.taskEditorTarget &&
+        typeof workspace.taskEditorTarget.taskId === 'string'
           ? workspace.taskEditorTarget.taskId
           : null,
       autosaveTaskIds: [...taskManager.autosaveTaskIds()],
@@ -1054,7 +1059,9 @@ async function main(): Promise<number> {
         await controlPlaneService.closePtySession(sessionId);
       },
       markDirty,
-      setStop: (next) => { stop = next; },
+      setStop: (next) => {
+        stop = next;
+      },
     });
   };
 
@@ -1389,15 +1396,11 @@ async function main(): Promise<number> {
     runtimeConversationTitleEdit.begin(conversationId);
   };
 
-  const buildNewThreadModalOverlay = (
-    viewportRows: number,
-  ) => {
+  const buildNewThreadModalOverlay = (viewportRows: number) => {
     return modalManager.buildNewThreadOverlay(layout.cols, viewportRows);
   };
 
-  const buildConversationTitleModalOverlay = (
-    viewportRows: number,
-  ) => {
+  const buildConversationTitleModalOverlay = (viewportRows: number) => {
     return modalManager.buildConversationTitleOverlay(layout.cols, viewportRows);
   };
 
@@ -1661,6 +1664,170 @@ async function main(): Promise<number> {
     taskPlanningObservedEvents.apply(observed);
   };
 
+  const workspaceObservedEvents = new WorkspaceObservedEvents<
+    ControlPlaneDirectoryRecord,
+    ControlPlaneConversationRecord
+  >({
+    parseDirectoryRecord,
+    parseConversationRecord,
+    setDirectory: (directoryId, directory) => {
+      directoryManager.setDirectory(directoryId, directory);
+    },
+    deleteDirectory: (directoryId) => {
+      if (!directoryManager.hasDirectory(directoryId)) {
+        return false;
+      }
+      directoryManager.deleteDirectory(directoryId);
+      return true;
+    },
+    deleteDirectoryGitState,
+    syncGitStateWithDirectories,
+    upsertConversationFromPersistedRecord: (record) => {
+      conversationManager.upsertFromPersistedRecord({
+        record,
+        ensureConversation,
+      });
+    },
+    removeConversation: (sessionId) => {
+      if (!conversationManager.has(sessionId)) {
+        return false;
+      }
+      removeConversationState(sessionId);
+      return true;
+    },
+    orderedConversationIds: () => conversationManager.orderedIds(),
+    conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
+  });
+
+  const applyObservedWorkspaceEvent = (observed: StreamObservedEvent): void => {
+    const activeConversationIdBefore = conversationManager.activeConversationId;
+    const leftNavConversationIdBefore =
+      workspace.leftNavSelection.kind === 'conversation'
+        ? workspace.leftNavSelection.sessionId
+        : null;
+    const previousConversationDirectoryById = new Map<string, string | null>();
+    for (const sessionId of conversationManager.orderedIds()) {
+      previousConversationDirectoryById.set(
+        sessionId,
+        conversationManager.directoryIdOf(sessionId),
+      );
+    }
+
+    const reduced = workspaceObservedEvents.apply(observed);
+    if (!reduced.changed) {
+      return;
+    }
+
+    for (const sessionId of reduced.removedConversationIds) {
+      void unsubscribeConversationEvents(sessionId);
+      if (workspace.conversationTitleEdit?.conversationId === sessionId) {
+        stopConversationTitleEdit(false);
+      }
+    }
+
+    for (const directoryId of reduced.removedDirectoryIds) {
+      if (workspace.projectPaneSnapshot?.directoryId === directoryId) {
+        workspace.projectPaneSnapshot = null;
+        workspace.projectPaneScrollTop = 0;
+      }
+    }
+
+    if (
+      workspace.activeDirectoryId !== null &&
+      !directoryManager.hasDirectory(workspace.activeDirectoryId)
+    ) {
+      workspace.activeDirectoryId = resolveActiveDirectoryId();
+    }
+
+    const removedConversationIdSet = new Set(reduced.removedConversationIds);
+    const activateFallbackConversation = (
+      preferredDirectoryId: string | null,
+      label: string,
+    ): boolean => {
+      const ordered = conversationManager.orderedIds();
+      const fallbackConversationId =
+        (preferredDirectoryId === null
+          ? null
+          : (ordered.find(
+              (sessionId) => conversationManager.directoryIdOf(sessionId) === preferredDirectoryId,
+            ) ?? null)) ??
+        ordered[0] ??
+        null;
+      if (fallbackConversationId === null) {
+        return false;
+      }
+      queueControlPlaneOp(async () => {
+        await activateConversation(fallbackConversationId);
+      }, label);
+      return true;
+    };
+    const fallbackToDirectoryOrHome = (): void => {
+      const fallbackDirectoryId = resolveActiveDirectoryId();
+      if (fallbackDirectoryId !== null) {
+        enterProjectPane(fallbackDirectoryId);
+        markDirty();
+        return;
+      }
+      enterHomePane();
+    };
+
+    if (
+      activeConversationIdBefore !== null &&
+      removedConversationIdSet.has(activeConversationIdBefore)
+    ) {
+      conversationManager.setActiveConversationId(null);
+      const preferredDirectoryId =
+        previousConversationDirectoryById.get(activeConversationIdBefore) ?? null;
+      if (
+        !activateFallbackConversation(preferredDirectoryId, 'observed-active-conversation-removed')
+      ) {
+        fallbackToDirectoryOrHome();
+      }
+      markDirty();
+      return;
+    }
+
+    if (
+      leftNavConversationIdBefore !== null &&
+      removedConversationIdSet.has(leftNavConversationIdBefore)
+    ) {
+      const currentActiveId = conversationManager.activeConversationId;
+      if (currentActiveId !== null && conversationManager.has(currentActiveId)) {
+        workspace.selectLeftNavConversation(currentActiveId);
+        markDirty();
+        return;
+      }
+      const preferredDirectoryId =
+        previousConversationDirectoryById.get(leftNavConversationIdBefore) ?? null;
+      if (
+        !activateFallbackConversation(
+          preferredDirectoryId,
+          'observed-selected-conversation-removed',
+        )
+      ) {
+        fallbackToDirectoryOrHome();
+      }
+      markDirty();
+      return;
+    }
+
+    if (
+      workspace.leftNavSelection.kind === 'project' &&
+      !directoryManager.hasDirectory(workspace.leftNavSelection.directoryId)
+    ) {
+      const fallbackDirectoryId = resolveActiveDirectoryId();
+      if (fallbackDirectoryId !== null) {
+        enterProjectPane(fallbackDirectoryId);
+      } else {
+        enterHomePane();
+      }
+      markDirty();
+      return;
+    }
+
+    markDirty();
+  };
+
   async function subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {
     if (observedStreamSubscriptionId !== null) {
       return;
@@ -1703,7 +1870,10 @@ async function main(): Promise<number> {
       screen.resetFrameCache();
     },
     stopConversationTitleEditForOtherSession: (sessionId) => {
-      if (workspace.conversationTitleEdit !== null && workspace.conversationTitleEdit.conversationId !== sessionId) {
+      if (
+        workspace.conversationTitleEdit !== null &&
+        workspace.conversationTitleEdit.conversationId !== sessionId
+      ) {
         stopConversationTitleEdit(true);
       }
     },
@@ -1933,7 +2103,8 @@ async function main(): Promise<number> {
   const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
     await archiveRepositoryByIdFn({
       repositoryId,
-      archiveRepository: (targetRepositoryId) => controlPlaneService.archiveRepository(targetRepositoryId),
+      archiveRepository: (targetRepositoryId) =>
+        controlPlaneService.archiveRepository(targetRepositoryId),
       deleteRepository: (targetRepositoryId) => {
         repositories.delete(targetRepositoryId);
       },
@@ -2110,6 +2281,20 @@ async function main(): Promise<number> {
 
   const takeoverConversation = async (sessionId: string): Promise<void> => {
     await runtimeConversationActions.takeoverConversation(sessionId);
+  };
+
+  const interruptConversation = async (sessionId: string): Promise<void> => {
+    const conversation = conversationManager.get(sessionId);
+    if (conversation === undefined || !conversation.live) {
+      return;
+    }
+    const result = await controlPlaneService.interruptSession(sessionId);
+    if (result.interrupted) {
+      conversation.status = 'completed';
+      conversation.attentionReason = null;
+      conversation.lastEventAt = new Date().toISOString();
+      markDirty();
+    }
   };
 
   const addDirectoryByPath = async (rawPath: string): Promise<void> => {
@@ -2365,7 +2550,11 @@ async function main(): Promise<number> {
         makeId,
       ),
     mapSessionEventToNormalizedEvent: (event, scope, makeId) =>
-      mapSessionEventToNormalizedEvent(event as Parameters<typeof mapSessionEventToNormalizedEvent>[0], scope as Parameters<typeof mapSessionEventToNormalizedEvent>[1], makeId),
+      mapSessionEventToNormalizedEvent(
+        event as Parameters<typeof mapSessionEventToNormalizedEvent>[0],
+        scope as Parameters<typeof mapSessionEventToNormalizedEvent>[1],
+        makeId,
+      ),
     observedAtFromSessionEvent: (event) =>
       observedAtFromSessionEvent(event as Parameters<typeof observedAtFromSessionEvent>[0]),
     mergeAdapterStateFromSessionEvent: (agentType, adapterState, event, observedAt) =>
@@ -2394,6 +2583,7 @@ async function main(): Promise<number> {
       outputLoadSampler.recordOutputHandled(durationMs);
     },
     conversationById: (sessionId) => conversationManager.get(sessionId),
+    applyObservedWorkspaceEvent,
     applyObservedGitStatusEvent,
     applyObservedTaskPlanningEvent,
     idFactory,
@@ -2446,27 +2636,32 @@ async function main(): Promise<number> {
       queueControlPlaneOp(async () => {
         try {
           if (payload.mode === 'create') {
-            applyTaskRecord(await controlPlaneService.createTask({
-              repositoryId: payload.repositoryId,
-              title: payload.title,
-              description: payload.description,
-            }));
+            applyTaskRecord(
+              await controlPlaneService.createTask({
+                repositoryId: payload.repositoryId,
+                title: payload.title,
+                description: payload.description,
+              }),
+            );
           } else {
             if (payload.taskId === null) {
               throw new Error('task edit state missing task id');
             }
-            applyTaskRecord(await controlPlaneService.updateTask({
-              taskId: payload.taskId,
-              repositoryId: payload.repositoryId,
-              title: payload.title,
-              description: payload.description,
-            }));
+            applyTaskRecord(
+              await controlPlaneService.updateTask({
+                taskId: payload.taskId,
+                repositoryId: payload.repositoryId,
+                title: payload.title,
+                description: payload.description,
+              }),
+            );
           }
           workspace.taskEditorPrompt = null;
           workspace.taskPaneNotice = null;
         } catch (error: unknown) {
           if (workspace.taskEditorPrompt !== null) {
-            workspace.taskEditorPrompt.error = error instanceof Error ? error.message : String(error);
+            workspace.taskEditorPrompt.error =
+              error instanceof Error ? error.message : String(error);
           } else {
             workspace.taskPaneNotice = error instanceof Error ? error.message : String(error);
           }
@@ -2537,7 +2732,8 @@ async function main(): Promise<number> {
   const leftRailPointerInput = new LeftRailPointerInput({
     getLatestRailRows: () => workspace.latestRailViewRows,
     hasConversationTitleEdit: () => workspace.conversationTitleEdit !== null,
-    conversationTitleEditConversationId: () => workspace.conversationTitleEdit?.conversationId ?? null,
+    conversationTitleEditConversationId: () =>
+      workspace.conversationTitleEdit?.conversationId ?? null,
     stopConversationTitleEdit: () => {
       stopConversationTitleEdit(true);
     },
@@ -2574,7 +2770,8 @@ async function main(): Promise<number> {
         await archiveRepositoryById(repositoryId);
       }, 'mouse-archive-repository');
     },
-    queueCloseDirectory: (directoryId) => queueCloseDirectoryMouseAction(directoryId, 'mouse-close-directory'),
+    queueCloseDirectory: (directoryId) =>
+      queueCloseDirectoryMouseAction(directoryId, 'mouse-close-directory'),
     toggleRepositoryGroup,
     selectLeftNavRepository: (repositoryGroupId) => {
       workspace.selectLeftNavRepository(repositoryGroupId);
@@ -2723,6 +2920,7 @@ async function main(): Promise<number> {
     conversationsHas: (sessionId) => conversationManager.has(sessionId),
     queueControlPlaneOp,
     archiveConversation,
+    interruptConversation,
     takeoverConversation,
     openAddDirectoryPrompt: () => {
       workspace.repositoryPrompt = null;

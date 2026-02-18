@@ -150,22 +150,52 @@ function gridEnergy(col: number, row: number, cols: number, rows: number, phase:
   const radialPulse = Math.sin(dist * 10 - phase * 1.5) * 0.3 * (1 - dist);
   const nodePulse = intersectionBoost * (0.6 + Math.sin(phase * 0.7 + col * 0.3 + row * 0.5) * 0.4);
   const ambient = 0.03 + Math.sin(nx * 4 + phase * 0.2) * Math.sin(ny * 3 - phase * 0.15) * 0.03;
-  return clamp01(ambient + lineEnergy * 0.6 + nodePulse * 0.5 + Math.max(0, radialPulse) * gridLine);
+  return clamp01(
+    ambient + lineEnergy * 0.6 + nodePulse * 0.5 + Math.max(0, radialPulse) * gridLine,
+  );
 }
 
-function pickGridGlyph(col: number, row: number, cols: number, rows: number, energy: number): string {
+function pickGridGlyph(
+  col: number,
+  row: number,
+  cols: number,
+  rows: number,
+  energy: number,
+): string {
   const onHorizontal = row % spacingY(rows) === 0;
   const onVertical = col % spacingX(cols) === 0;
   if (onHorizontal && onVertical) {
-    return energy > 0.6 ? GRID_CHARS.brightNode : energy > 0.3 ? GRID_CHARS.node : GRID_CHARS.intersection;
+    return energy > 0.6
+      ? GRID_CHARS.brightNode
+      : energy > 0.3
+        ? GRID_CHARS.node
+        : GRID_CHARS.intersection;
   }
   if (onHorizontal) {
-    return energy > 0.7 ? GRID_CHARS.heavy : energy > 0.4 ? GRID_CHARS.hline : energy > 0.15 ? GRID_CHARS.dot : GRID_CHARS.empty;
+    return energy > 0.7
+      ? GRID_CHARS.heavy
+      : energy > 0.4
+        ? GRID_CHARS.hline
+        : energy > 0.15
+          ? GRID_CHARS.dot
+          : GRID_CHARS.empty;
   }
   if (onVertical) {
-    return energy > 0.7 ? GRID_CHARS.heavy : energy > 0.4 ? GRID_CHARS.vline : energy > 0.15 ? GRID_CHARS.dot : GRID_CHARS.empty;
+    return energy > 0.7
+      ? GRID_CHARS.heavy
+      : energy > 0.4
+        ? GRID_CHARS.vline
+        : energy > 0.15
+          ? GRID_CHARS.dot
+          : GRID_CHARS.empty;
   }
-  return energy > 0.65 ? GRID_CHARS.light : energy > 0.45 ? GRID_CHARS.brightDot : energy > 0.25 ? GRID_CHARS.dot : GRID_CHARS.empty;
+  return energy > 0.65
+    ? GRID_CHARS.light
+    : energy > 0.45
+      ? GRID_CHARS.brightDot
+      : energy > 0.25
+        ? GRID_CHARS.dot
+        : GRID_CHARS.empty;
 }
 
 function paintBackground(surface: ReturnType<typeof createUiSurface>, phase: number): void {
@@ -261,7 +291,12 @@ export function renderHomeGridfireAnsiRows(options: HomeGridfireOptions): readon
 
   const centerRow = Math.floor(safeRows / 2);
   paintCenteredLabel(surface, centerRow, options.overlayTitle, phase);
-  paintCenteredLabel(surface, Math.min(safeRows - 1, centerRow + 2), options.overlaySubtitle, phase);
+  paintCenteredLabel(
+    surface,
+    Math.min(safeRows - 1, centerRow + 2),
+    options.overlaySubtitle,
+    phase,
+  );
 
   return renderUiSurfaceAnsiRows(surface);
 }

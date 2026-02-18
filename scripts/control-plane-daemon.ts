@@ -7,7 +7,7 @@ import {
   configurePerfCore,
   recordPerfEvent,
   shutdownPerfCore,
-  startPerfSpan
+  startPerfSpan,
 } from '../src/perf/perf-core.ts';
 
 interface DaemonOptions {
@@ -48,13 +48,13 @@ function configureProcessPerf(invocationDirectory: string): void {
 
   configurePerfCore({
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
   });
 
   recordPerfEvent('daemon.perf.configured', {
     process: 'daemon',
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
   });
 }
 
@@ -62,7 +62,8 @@ function parseArgs(argv: string[]): DaemonOptions {
   const defaultHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? '127.0.0.1';
   const defaultPortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? '7777';
   const defaultAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
-  const defaultStateDbPath = process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite';
+  const defaultStateDbPath =
+    process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite';
 
   let host = defaultHost;
   let portRaw = defaultPortRaw;
@@ -126,7 +127,7 @@ function parseArgs(argv: string[]): DaemonOptions {
     host,
     port,
     authToken,
-    stateDbPath
+    stateDbPath,
   };
 }
 
@@ -137,23 +138,27 @@ async function main(): Promise<number> {
   const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
   const serverSnapshotModelEnabled = loadedConfig.config.debug.mux.serverSnapshotModelEnabled;
   const codexLaunchDirectoryModes: Record<string, 'yolo' | 'standard'> = {};
-  for (const [directoryPath, mode] of Object.entries(loadedConfig.config.codex.launch.directoryModes)) {
+  for (const [directoryPath, mode] of Object.entries(
+    loadedConfig.config.codex.launch.directoryModes,
+  )) {
     codexLaunchDirectoryModes[resolve(invocationDirectory, directoryPath)] = mode;
   }
   const cursorLaunchDirectoryModes: Record<string, 'yolo' | 'standard'> = {};
-  for (const [directoryPath, mode] of Object.entries(loadedConfig.config.cursor.launch.directoryModes)) {
+  for (const [directoryPath, mode] of Object.entries(
+    loadedConfig.config.cursor.launch.directoryModes,
+  )) {
     cursorLaunchDirectoryModes[resolve(invocationDirectory, directoryPath)] = mode;
   }
   const startupSpan = startPerfSpan('daemon.startup.total', {
-    process: 'daemon'
+    process: 'daemon',
   });
   recordPerfEvent('daemon.startup.begin', {
-    process: 'daemon'
+    process: 'daemon',
   });
   const options = parseArgs(process.argv.slice(2));
 
   const listenSpan = startPerfSpan('daemon.startup.listen', {
-    process: 'daemon'
+    process: 'daemon',
   });
   const serverOptions: Parameters<typeof startControlPlaneStreamServer>[0] = {
     host: options.host,
@@ -163,18 +168,18 @@ async function main(): Promise<number> {
     codexHistory: loadedConfig.config.codex.history,
     codexLaunch: {
       defaultMode: loadedConfig.config.codex.launch.defaultMode,
-      directoryModes: codexLaunchDirectoryModes
+      directoryModes: codexLaunchDirectoryModes,
     },
     critique: loadedConfig.config.critique,
     cursorLaunch: {
       defaultMode: loadedConfig.config.cursor.launch.defaultMode,
-      directoryModes: cursorLaunchDirectoryModes
+      directoryModes: cursorLaunchDirectoryModes,
     },
     gitStatus: {
       enabled: loadedConfig.config.mux.git.enabled,
       pollMs: loadedConfig.config.mux.git.idlePollMs,
       maxConcurrency: loadedConfig.config.mux.git.maxConcurrency,
-      minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000)
+      minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000),
     },
     lifecycleHooks: loadedConfig.config.hooks.lifecycle,
     startSession: (input) => {
@@ -182,7 +187,7 @@ async function main(): Promise<number> {
         args: input.args,
         initialCols: input.initialCols,
         initialRows: input.initialRows,
-        enableSnapshotModel: serverSnapshotModelEnabled
+        enableSnapshotModel: serverSnapshotModelEnabled,
       };
       if (input.command !== undefined) {
         sessionOptions.command = input.command;
@@ -212,7 +217,7 @@ async function main(): Promise<number> {
         sessionOptions.terminalBackgroundHex = input.terminalBackgroundHex;
       }
       return startCodexLiveSession(sessionOptions);
-    }
+    },
   };
   if (options.authToken !== null) {
     serverOptions.authToken = options.authToken;
@@ -225,11 +230,11 @@ async function main(): Promise<number> {
     process: 'daemon',
     host: address.address,
     port: address.port,
-    auth: options.authToken === null ? 'off' : 'on'
+    auth: options.authToken === null ? 'off' : 'on',
   });
   startupSpan.end({ listening: true });
   process.stdout.write(
-    `[control-plane] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'} db=${options.stateDbPath}\n`
+    `[control-plane] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'} db=${options.stateDbPath}\n`,
   );
 
   let stopRequested = false;
@@ -251,11 +256,11 @@ async function main(): Promise<number> {
 
   await stopPromise;
   recordPerfEvent('daemon.runtime.stop-requested', {
-    process: 'daemon'
+    process: 'daemon',
   });
   await server.close();
   recordPerfEvent('daemon.runtime.closed', {
-    process: 'daemon'
+    process: 'daemon',
   });
   return 0;
 }
@@ -264,7 +269,7 @@ try {
   process.exitCode = await main();
 } catch (error: unknown) {
   process.stderr.write(
-    `control-plane daemon fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+    `control-plane daemon fatal error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );
   process.exitCode = 1;
 } finally {

@@ -8,7 +8,11 @@ interface DismissModalOnOutsideClickOptions {
   dismiss: () => void;
   buildCurrentModalOverlay: () => ReturnType<typeof buildUiModalOverlay> | null;
   onInsidePointerPress?: (col: number, row: number) => boolean;
-  isOverlayHit: (overlay: ReturnType<typeof buildUiModalOverlay>, col: number, row: number) => boolean;
+  isOverlayHit: (
+    overlay: ReturnType<typeof buildUiModalOverlay>,
+    col: number,
+    row: number,
+  ) => boolean;
 }
 
 interface DismissModalOnOutsideClickResult {

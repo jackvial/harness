@@ -107,7 +107,10 @@ interface ParsedProfileStopCommand {
   stopOptions: ProfileStopOptions;
 }
 
-type ParsedProfileCommand = ParsedProfileRunCommand | ParsedProfileStartCommand | ParsedProfileStopCommand;
+type ParsedProfileCommand =
+  | ParsedProfileRunCommand
+  | ParsedProfileStartCommand
+  | ParsedProfileStopCommand;
 
 interface ParsedCursorHooksCommand {
   type: 'install' | 'uninstall';
@@ -315,7 +318,10 @@ function parseProfileStopOptions(argv: readonly string[]): ProfileStopOptions {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!;
     if (arg === '--timeout-ms') {
-      options.timeoutMs = parsePositiveIntFlag(readCliValue(argv, index, '--timeout-ms'), '--timeout-ms');
+      options.timeoutMs = parsePositiveIntFlag(
+        readCliValue(argv, index, '--timeout-ms'),
+        '--timeout-ms',
+      );
       index += 1;
       continue;
     }
@@ -409,8 +415,12 @@ function resolveInspectRuntimeOptions(invocationDirectory: string): RuntimeInspe
     };
   }
   return {
-    gatewayRuntimeArgs: [`--inspect=localhost:${String(debugConfig.inspect.gatewayPort)}/harness-gateway`],
-    clientRuntimeArgs: [`--inspect=localhost:${String(debugConfig.inspect.clientPort)}/harness-client`],
+    gatewayRuntimeArgs: [
+      `--inspect=localhost:${String(debugConfig.inspect.gatewayPort)}/harness-gateway`,
+    ],
+    clientRuntimeArgs: [
+      `--inspect=localhost:${String(debugConfig.inspect.clientPort)}/harness-client`,
+    ],
   };
 }
 
@@ -882,7 +892,9 @@ function findOrphanPtyHelperPidsForWorkspace(invocationDirectory: string): reado
     .map((entry) => entry.pid);
 }
 
-function findOrphanRelayLinkedAgentPidsForWorkspace(invocationDirectory: string): readonly number[] {
+function findOrphanRelayLinkedAgentPidsForWorkspace(
+  invocationDirectory: string,
+): readonly number[] {
   const relayScriptPath = resolve(invocationDirectory, 'scripts/codex-notify-relay.ts');
   return readProcessTable()
     .filter((entry) => entry.ppid === 1)
@@ -1276,17 +1288,13 @@ async function stopGateway(
     if (!options.cleanupOrphans) {
       return baseMessage;
     }
-    const [
-      gatewayCleanupResult,
-      ptyCleanupResult,
-      relayCleanupResult,
-      sqliteCleanupResult,
-    ] = await Promise.all([
-      cleanupOrphanGatewayDaemons(stateDbPath, daemonScriptPath, options),
-      cleanupOrphanPtyHelpersForWorkspace(invocationDirectory, options),
-      cleanupOrphanRelayLinkedAgentsForWorkspace(invocationDirectory, options),
-      cleanupOrphanSqliteProcessesForDbPath(stateDbPath, options),
-    ]);
+    const [gatewayCleanupResult, ptyCleanupResult, relayCleanupResult, sqliteCleanupResult] =
+      await Promise.all([
+        cleanupOrphanGatewayDaemons(stateDbPath, daemonScriptPath, options),
+        cleanupOrphanPtyHelpersForWorkspace(invocationDirectory, options),
+        cleanupOrphanRelayLinkedAgentsForWorkspace(invocationDirectory, options),
+        cleanupOrphanSqliteProcessesForDbPath(stateDbPath, options),
+      ]);
     return [
       baseMessage,
       formatOrphanProcessCleanupResult('orphan gateway daemon', gatewayCleanupResult),
@@ -1694,7 +1702,9 @@ async function runProfileRun(
   const existingProfileState = readActiveProfileState(sessionPaths.profileStatePath);
   if (existingProfileState !== null) {
     if (isPidRunning(existingProfileState.pid)) {
-      throw new Error('profile run requires no active profile session; stop it first with `harness profile stop`');
+      throw new Error(
+        'profile run requires no active profile session; stop it first with `harness profile stop`',
+      );
     }
     removeActiveProfileState(sessionPaths.profileStatePath);
   }
@@ -1792,7 +1802,9 @@ async function runProfileStart(
   command: ParsedProfileStartCommand,
 ): Promise<number> {
   const profileDir =
-    command.profileDir === null ? sessionPaths.profileDir : resolve(invocationDirectory, command.profileDir);
+    command.profileDir === null
+      ? sessionPaths.profileDir
+      : resolve(invocationDirectory, command.profileDir);
   mkdirSync(profileDir, { recursive: true });
   const gatewayProfilePath = resolve(profileDir, PROFILE_GATEWAY_FILE_NAME);
   removeFileIfExists(gatewayProfilePath);
@@ -1838,7 +1850,10 @@ async function runProfileStart(
     const startDeadline = Date.now() + DEFAULT_PROFILE_INSPECT_TIMEOUT_MS;
     let runningState: InspectorProfileState | null = null;
     while (Date.now() < startDeadline) {
-      const state = await readInspectorProfileState(inspector.client, DEFAULT_PROFILE_INSPECT_TIMEOUT_MS);
+      const state = await readInspectorProfileState(
+        inspector.client,
+        DEFAULT_PROFILE_INSPECT_TIMEOUT_MS,
+      );
       if (state !== null && state.status === 'running') {
         runningState = state;
         break;
@@ -1885,7 +1900,9 @@ async function runProfileStop(
 ): Promise<number> {
   const profileState = readActiveProfileState(sessionPaths.profileStatePath);
   if (profileState === null) {
-    throw new Error('no active profile run for this session; start one with `harness profile start`');
+    throw new Error(
+      'no active profile run for this session; start one with `harness profile start`',
+    );
   }
   if (profileState.mode !== PROFILE_LIVE_INSPECT_MODE) {
     throw new Error('active profile run is incompatible with this harness version');
@@ -1927,7 +1944,10 @@ async function runProfileStop(
     inspector.close();
   }
 
-  const profileFlushed = await waitForFileExists(profileState.gatewayProfilePath, command.stopOptions.timeoutMs);
+  const profileFlushed = await waitForFileExists(
+    profileState.gatewayProfilePath,
+    command.stopOptions.timeoutMs,
+  );
   if (!profileFlushed) {
     throw new Error(`missing gateway CPU profile: ${profileState.gatewayProfilePath}`);
   }
@@ -1972,7 +1992,10 @@ async function runCursorHooksCommandEntry(
   invocationDirectory: string,
   command: ParsedCursorHooksCommand,
 ): Promise<number> {
-  const hooksFilePath = command.hooksFilePath === null ? undefined : resolve(invocationDirectory, command.hooksFilePath);
+  const hooksFilePath =
+    command.hooksFilePath === null
+      ? undefined
+      : resolve(invocationDirectory, command.hooksFilePath);
   if (command.type === 'install') {
     const relayScriptPath = resolveScriptPath(
       process.env.HARNESS_CURSOR_HOOK_RELAY_SCRIPT_PATH,
@@ -1988,9 +2011,7 @@ async function runCursorHooksCommandEntry(
     );
     return 0;
   }
-  const result = uninstallManagedCursorHooks(
-    hooksFilePath === undefined ? {} : { hooksFilePath },
-  );
+  const result = uninstallManagedCursorHooks(hooksFilePath === undefined ? {} : { hooksFilePath });
   process.stdout.write(
     `cursor hooks uninstall: ${result.changed ? 'updated' : 'no changes'} file=${result.filePath} removed=${String(result.removedCount)}\n`,
   );

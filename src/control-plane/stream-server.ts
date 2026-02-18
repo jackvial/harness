@@ -353,12 +353,12 @@ const DEFAULT_USER_ID = 'user-local';
 const DEFAULT_WORKSPACE_ID = 'workspace-local';
 const DEFAULT_WORKTREE_ID = 'worktree-local';
 const DEFAULT_CLAUDE_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
-  new URL('../../scripts/codex-notify-relay.ts', import.meta.url)
+  new URL('../../scripts/codex-notify-relay.ts', import.meta.url),
 );
 const DEFAULT_CRITIQUE_DEFAULT_ARGS = ['--watch'] as const;
 const DEFAULT_CRITIQUE_PACKAGE = 'critique@latest';
 const DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
-  new URL('../../scripts/cursor-hook-relay.ts', import.meta.url)
+  new URL('../../scripts/cursor-hook-relay.ts', import.meta.url),
 );
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
@@ -387,7 +387,8 @@ function compareIsoDesc(left: string | null, right: string | null): number {
 }
 
 function createSessionRollingCounter(nowMs = Date.now()): SessionRollingCounter {
-  const roundedStartMs = Math.floor(nowMs / SESSION_DIAGNOSTICS_BUCKET_MS) * SESSION_DIAGNOSTICS_BUCKET_MS;
+  const roundedStartMs =
+    Math.floor(nowMs / SESSION_DIAGNOSTICS_BUCKET_MS) * SESSION_DIAGNOSTICS_BUCKET_MS;
   return {
     buckets: [0, 0, 0, 0, 0, 0],
     currentBucketStartMs: roundedStartMs,
@@ -395,8 +396,11 @@ function createSessionRollingCounter(nowMs = Date.now()): SessionRollingCounter 
 }
 
 function advanceSessionRollingCounter(counter: SessionRollingCounter, nowMs: number): void {
-  const roundedNowMs = Math.floor(nowMs / SESSION_DIAGNOSTICS_BUCKET_MS) * SESSION_DIAGNOSTICS_BUCKET_MS;
-  const elapsedBuckets = Math.floor((roundedNowMs - counter.currentBucketStartMs) / SESSION_DIAGNOSTICS_BUCKET_MS);
+  const roundedNowMs =
+    Math.floor(nowMs / SESSION_DIAGNOSTICS_BUCKET_MS) * SESSION_DIAGNOSTICS_BUCKET_MS;
+  const elapsedBuckets = Math.floor(
+    (roundedNowMs - counter.currentBucketStartMs) / SESSION_DIAGNOSTICS_BUCKET_MS,
+  );
   if (elapsedBuckets <= 0) {
     return;
   }
@@ -520,7 +524,9 @@ function normalizeCursorLaunchConfig(input: CursorLaunchConfig | undefined): Cur
   };
 }
 
-function normalizeCursorHooksConfig(input: Partial<CursorHooksConfig> | undefined): CursorHooksConfig {
+function normalizeCursorHooksConfig(
+  input: Partial<CursorHooksConfig> | undefined,
+): CursorHooksConfig {
   const relayScriptPath = input?.relayScriptPath;
   const normalizedRelayScriptPath =
     typeof relayScriptPath === 'string' && relayScriptPath.trim().length > 0
@@ -540,9 +546,7 @@ function normalizeCursorHooksConfig(input: Partial<CursorHooksConfig> | undefine
 function jitterDelayMs(baseMs: number): number {
   const clampedBaseMs = Math.max(25, Math.floor(baseMs));
   const jitterWindowMs = Math.max(1, Math.floor(clampedBaseMs * HISTORY_POLL_JITTER_RATIO));
-  const jitterOffsetMs = Math.floor(
-    Math.random() * (2 * jitterWindowMs + 1) - jitterWindowMs,
-  );
+  const jitterOffsetMs = Math.floor(Math.random() * (2 * jitterWindowMs + 1) - jitterWindowMs);
   return Math.max(25, clampedBaseMs + jitterOffsetMs);
 }
 
@@ -594,7 +598,7 @@ async function runWithConcurrencyLimit<T>(
           }
           await worker(value);
         }
-      })()
+      })(),
     );
   }
   await Promise.all(runners);
@@ -778,7 +782,7 @@ export class ControlPlaneStreamServer {
       options.readGitDirectorySnapshot ??
       (async (cwd: string) =>
         await readGitDirectorySnapshot(cwd, undefined, {
-          includeCommitCount: false
+          includeCommitCount: false,
         }));
     this.lifecycleHooks = new LifecycleHooksRuntime(
       options.lifecycleHooks ?? {
@@ -1020,7 +1024,7 @@ export class ControlPlaneStreamServer {
 
   private claudeHookLaunchConfigForSession(
     sessionId: string,
-    agentType: string
+    agentType: string,
   ): {
     readonly args: readonly string[];
     readonly notifyFilePath: string;
@@ -1028,30 +1032,33 @@ export class ControlPlaneStreamServer {
     if (agentType !== 'claude') {
       return null;
     }
-    const notifyFilePath = join(tmpdir(), `harness-claude-hook-${process.pid}-${sessionId}-${randomUUID()}.jsonl`);
+    const notifyFilePath = join(
+      tmpdir(),
+      `harness-claude-hook-${process.pid}-${sessionId}-${randomUUID()}.jsonl`,
+    );
     const relayScriptPath = resolve(DEFAULT_CLAUDE_HOOK_RELAY_SCRIPT_PATH);
     const hookCommand = `/usr/bin/env ${shellEscape(process.execPath)} ${shellEscape(relayScriptPath)} ${shellEscape(notifyFilePath)}`;
     const hook = {
       type: 'command',
-      command: hookCommand
+      command: hookCommand,
     };
     const settings = {
       hooks: {
         UserPromptSubmit: [{ hooks: [hook] }],
         PreToolUse: [{ hooks: [hook] }],
         Stop: [{ hooks: [hook] }],
-        Notification: [{ hooks: [hook] }]
-      }
+        Notification: [{ hooks: [hook] }],
+      },
     };
     return {
       args: ['--settings', JSON.stringify(settings)],
-      notifyFilePath
+      notifyFilePath,
     };
   }
 
   private cursorHookLaunchConfigForSession(
     sessionId: string,
-    agentType: string
+    agentType: string,
   ): {
     readonly notifyFilePath: string;
     readonly env: Readonly<Record<string, string>>;
@@ -1074,7 +1081,10 @@ export class ControlPlaneStreamServer {
         addedCount: installResult.addedCount,
       });
     }
-    const notifyFilePath = join(tmpdir(), `harness-cursor-hook-${process.pid}-${sessionId}-${randomUUID()}.jsonl`);
+    const notifyFilePath = join(
+      tmpdir(),
+      `harness-cursor-hook-${process.pid}-${sessionId}-${randomUUID()}.jsonl`,
+    );
     return {
       notifyFilePath,
       env: buildCursorHookRelayEnvironment(sessionId, notifyFilePath),
@@ -1092,19 +1102,19 @@ export class ControlPlaneStreamServer {
     if (agentType === 'claude') {
       return {
         command: 'claude',
-        baseArgs: []
+        baseArgs: [],
       };
     }
     if (agentType === 'cursor') {
       return {
         command: 'cursor-agent',
-        baseArgs: []
+        baseArgs: [],
       };
     }
     if (agentType === 'critique') {
       return {
         command: 'critique',
-        baseArgs: []
+        baseArgs: [],
       };
     }
     if (agentType !== 'terminal') {
@@ -1123,7 +1133,8 @@ export class ControlPlaneStreamServer {
     for (const conversation of conversations) {
       const adapterState = normalizeAdapterState(conversation.adapterState);
       const directory = this.stateStore.getDirectory(conversation.directoryId);
-      const baseArgs = conversation.agentType === 'critique' ? this.critique.launch.defaultArgs : [];
+      const baseArgs =
+        conversation.agentType === 'critique' ? this.critique.launch.defaultArgs : [];
       const startArgs = buildAgentSessionStartArgs(conversation.agentType, baseArgs, adapterState, {
         directoryPath: directory?.path ?? null,
         codexLaunchDefaultMode: this.codexLaunch.defaultMode,
@@ -1173,19 +1184,26 @@ export class ControlPlaneStreamServer {
         ? [...this.critique.launch.defaultArgs]
         : [...command.args];
     const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
-    const claudeHookLaunchConfig = this.claudeHookLaunchConfigForSession(command.sessionId, agentType);
-    const cursorHookLaunchConfig = this.cursorHookLaunchConfigForSession(command.sessionId, agentType);
+    const claudeHookLaunchConfig = this.claudeHookLaunchConfigForSession(
+      command.sessionId,
+      agentType,
+    );
+    const cursorHookLaunchConfig = this.cursorHookLaunchConfigForSession(
+      command.sessionId,
+      agentType,
+    );
     const launchProfile = this.launchProfileForAgent(agentType);
     let launchCommandName = launchProfile.command ?? 'codex';
-    let launchArgs = [...codexLaunchArgs, ...(claudeHookLaunchConfig?.args ?? []), ...baseSessionArgs];
+    let launchArgs = [
+      ...codexLaunchArgs,
+      ...(claudeHookLaunchConfig?.args ?? []),
+      ...baseSessionArgs,
+    ];
     if (agentType === 'critique' && this.critique.install.autoInstall) {
       launchCommandName = 'bunx';
       launchArgs = [this.critique.install.package, ...launchArgs];
     }
-    const launchCommand = formatLaunchCommand(
-      launchCommandName,
-      launchArgs,
-    );
+    const launchCommand = formatLaunchCommand(launchCommandName, launchArgs);
     const startInput: StartControlPlaneSessionInput = {
       args: launchArgs,
       initialCols: command.initialCols,
@@ -1193,7 +1211,9 @@ export class ControlPlaneStreamServer {
     };
     if (agentType === 'codex' || agentType === 'claude') {
       startInput.useNotifyHook = true;
-      startInput.notifyMode = (agentType === 'claude' ? 'external' : 'codex') as LiveSessionNotifyMode;
+      startInput.notifyMode = (
+        agentType === 'claude' ? 'external' : 'codex'
+      ) as LiveSessionNotifyMode;
     }
     if (agentType === 'cursor') {
       startInput.useNotifyHook = true;
@@ -1584,7 +1604,7 @@ export class ControlPlaneStreamServer {
     directory: ControlPlaneDirectoryRecord,
     options: {
       readonly forcePublish?: boolean;
-    } = {}
+    } = {},
   ): Promise<void> {
     await refreshStreamServerGitStatusForDirectory(
       this as unknown as Parameters<typeof refreshStreamServerGitStatusForDirectory>[0],
@@ -1594,10 +1614,7 @@ export class ControlPlaneStreamServer {
   }
 
   private handleConnection(socket: Socket): void {
-    handleServerConnection(
-      this as unknown as Parameters<typeof handleServerConnection>[0],
-      socket,
-    );
+    handleServerConnection(this as unknown as Parameters<typeof handleServerConnection>[0], socket);
   }
 
   private handleSocketData(connection: ConnectionState, chunk: Buffer): void {
@@ -1684,25 +1701,25 @@ export class ControlPlaneStreamServer {
     );
   }
 
-  private publishSessionKeyObservedEvent(state: SessionState, keyEvent: StreamSessionKeyEventRecord): void {
-    this.publishObservedEvent(
-      this.sessionScope(state),
-      {
-        type: 'session-key-event',
-        sessionId: state.id,
-        keyEvent: {
-          source: keyEvent.source,
-          eventName: keyEvent.eventName,
-          severity: keyEvent.severity,
-          summary: keyEvent.summary,
-          observedAt: keyEvent.observedAt,
-          statusHint: keyEvent.statusHint
-        },
-        ts: new Date().toISOString(),
-        directoryId: state.directoryId,
-        conversationId: state.id
-      }
-    );
+  private publishSessionKeyObservedEvent(
+    state: SessionState,
+    keyEvent: StreamSessionKeyEventRecord,
+  ): void {
+    this.publishObservedEvent(this.sessionScope(state), {
+      type: 'session-key-event',
+      sessionId: state.id,
+      keyEvent: {
+        source: keyEvent.source,
+        eventName: keyEvent.eventName,
+        severity: keyEvent.severity,
+        summary: keyEvent.summary,
+        observedAt: keyEvent.observedAt,
+        statusHint: keyEvent.statusHint,
+      },
+      ts: new Date().toISOString(),
+      directoryId: state.directoryId,
+      conversationId: state.id,
+    });
   }
 
   private setSessionStatus(
@@ -1802,12 +1819,16 @@ export class ControlPlaneStreamServer {
       if (!this.matchesObservedFilter(scope, event, subscription.filter)) {
         continue;
       }
-      this.sendToConnection(subscription.connectionId, {
-        kind: 'stream.event',
-        subscriptionId: subscription.id,
-        cursor: entry.cursor,
-        event: entry.event,
-      }, diagnosticSessionId);
+      this.sendToConnection(
+        subscription.connectionId,
+        {
+          kind: 'stream.event',
+          subscriptionId: subscription.id,
+          cursor: entry.cursor,
+          event: entry.event,
+        },
+        diagnosticSessionId,
+      );
     }
     this.lifecycleHooks.publish(scope, event, entry.cursor);
   }
@@ -2138,7 +2159,10 @@ export class ControlPlaneStreamServer {
 
   private sessionDiagnosticsRecord(state: SessionState): Record<string, unknown> {
     const nowMs = Date.now();
-    const telemetryEventsLast60s = sessionRollingCounterTotal(state.diagnostics.telemetryIngestRate, nowMs);
+    const telemetryEventsLast60s = sessionRollingCounterTotal(
+      state.diagnostics.telemetryIngestRate,
+      nowMs,
+    );
     return {
       telemetryIngestedTotal: state.diagnostics.telemetryIngestedTotal,
       telemetryRetainedTotal: state.diagnostics.telemetryRetainedTotal,
@@ -2209,7 +2233,10 @@ export class ControlPlaneStreamServer {
     state.diagnostics.fanoutBackpressureDisconnectsTotal += 1;
   }
 
-  private diagnosticSessionIdForObservedEvent(scope: StreamObservedScope, event: StreamObservedEvent): string | null {
+  private diagnosticSessionIdForObservedEvent(
+    scope: StreamObservedScope,
+    event: StreamObservedEvent,
+  ): string | null {
     if (event.type === 'session-status') {
       return event.sessionId;
     }

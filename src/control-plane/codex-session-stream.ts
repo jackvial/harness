@@ -5,7 +5,7 @@ import type {
   StreamSessionController,
   StreamSessionKeyEventRecord,
   StreamSessionRuntimeStatus,
-  StreamTelemetrySummary
+  StreamTelemetrySummary,
 } from './stream-protocol.ts';
 
 interface BaseControlPlaneAddress {
@@ -104,7 +104,10 @@ interface OpenCodexControlPlaneSessionDependencies {
   startEmbeddedServer?: () => Promise<ControlPlaneStreamServer>;
 }
 
-function mapObservedEventToKeyEvent(event: StreamObservedEvent, cursor: number): ControlPlaneKeyEvent | null {
+function mapObservedEventToKeyEvent(
+  event: StreamObservedEvent,
+  cursor: number,
+): ControlPlaneKeyEvent | null {
   if (event.type === 'session-status') {
     return {
       type: 'session-status',
@@ -117,7 +120,7 @@ function mapObservedEventToKeyEvent(event: StreamObservedEvent, cursor: number):
       conversationId: event.conversationId,
       telemetry: event.telemetry,
       controller: event.controller,
-      cursor
+      cursor,
     };
   }
   if (event.type === 'session-key-event') {
@@ -128,7 +131,7 @@ function mapObservedEventToKeyEvent(event: StreamObservedEvent, cursor: number):
       ts: event.ts,
       directoryId: event.directoryId,
       conversationId: event.conversationId,
-      cursor
+      cursor,
     };
   }
   if (event.type === 'session-control') {
@@ -142,7 +145,7 @@ function mapObservedEventToKeyEvent(event: StreamObservedEvent, cursor: number):
       ts: event.ts,
       directoryId: event.directoryId,
       conversationId: event.conversationId,
-      cursor
+      cursor,
     };
   }
   return null;
@@ -150,7 +153,7 @@ function mapObservedEventToKeyEvent(event: StreamObservedEvent, cursor: number):
 
 export async function subscribeControlPlaneKeyEvents(
   client: ControlPlaneStreamClient,
-  options: SubscribeControlPlaneKeyEventsOptions
+  options: SubscribeControlPlaneKeyEventsOptions,
 ): Promise<ControlPlaneKeyEventSubscription> {
   let subscriptionId: string | null = null;
   const bufferedEnvelopes: Array<{
@@ -181,7 +184,7 @@ export async function subscribeControlPlaneKeyEvents(
     const payload = {
       subscriptionId: envelope.subscriptionId,
       cursor: envelope.cursor,
-      event: envelope.event
+      event: envelope.event,
     };
     if (subscriptionId === null) {
       bufferedEnvelopes.push(payload);
@@ -201,7 +204,7 @@ export async function subscribeControlPlaneKeyEvents(
     afterCursor?: number;
   } = {
     type: 'stream.subscribe',
-    includeOutput: options.includeOutput ?? false
+    includeOutput: options.includeOutput ?? false,
   };
   if (options.tenantId !== undefined) {
     subscribeCommand.tenantId = options.tenantId;
@@ -252,18 +255,18 @@ export async function subscribeControlPlaneKeyEvents(
       try {
         await client.sendCommand({
           type: 'stream.unsubscribe',
-          subscriptionId: parsedSubscriptionId
+          subscriptionId: parsedSubscriptionId,
         });
       } catch {
         // Best-effort unsubscribe on shutdown.
       }
-    }
+    },
   };
 }
 
 export async function openCodexControlPlaneClient(
   controlPlane: CodexControlPlaneMode,
-  dependencies: OpenCodexControlPlaneSessionDependencies = {}
+  dependencies: OpenCodexControlPlaneSessionDependencies = {},
 ): Promise<OpenCodexControlPlaneClientResult> {
   let controlPlaneAddress: BaseControlPlaneAddress;
   let embeddedServer: ControlPlaneStreamServer | null = null;
@@ -276,7 +279,7 @@ export async function openCodexControlPlaneClient(
     const embeddedAddress = embeddedServer.address();
     controlPlaneAddress = {
       host: '127.0.0.1',
-      port: embeddedAddress.port
+      port: embeddedAddress.port,
     };
   } else {
     controlPlaneAddress = controlPlane;
@@ -290,7 +293,7 @@ export async function openCodexControlPlaneClient(
     connectRetryDelayMs?: number;
   } = {
     host: controlPlaneAddress.host,
-    port: controlPlaneAddress.port
+    port: controlPlaneAddress.port,
   };
   if (controlPlaneAddress.authToken !== undefined) {
     clientConnectOptions.authToken = controlPlaneAddress.authToken;
@@ -310,13 +313,13 @@ export async function openCodexControlPlaneClient(
       if (embeddedServer !== null) {
         await embeddedServer.close();
       }
-    }
+    },
   };
 }
 
 export async function openCodexControlPlaneSession(
   options: OpenCodexControlPlaneSessionOptions,
-  dependencies: OpenCodexControlPlaneSessionDependencies = {}
+  dependencies: OpenCodexControlPlaneSessionDependencies = {},
 ): Promise<OpenCodexControlPlaneSessionResult> {
   const opened = await openCodexControlPlaneClient(options.controlPlane, dependencies);
   const client = opened.client;
@@ -338,7 +341,7 @@ export async function openCodexControlPlaneSession(
       args: options.args,
       env: options.env,
       initialCols: options.initialCols,
-      initialRows: options.initialRows
+      initialRows: options.initialRows,
     };
     if (options.cwd !== undefined) {
       startCommand.cwd = options.cwd;
@@ -357,12 +360,12 @@ export async function openCodexControlPlaneSession(
 
     await client.sendCommand({
       type: 'pty.subscribe-events',
-      sessionId: options.sessionId
+      sessionId: options.sessionId,
     });
     await client.sendCommand({
       type: 'pty.attach',
       sessionId: options.sessionId,
-      sinceCursor: 0
+      sinceCursor: 0,
     });
   } catch (error: unknown) {
     await opened.close();
@@ -375,12 +378,12 @@ export async function openCodexControlPlaneSession(
       try {
         await client.sendCommand({
           type: 'pty.close',
-          sessionId: options.sessionId
+          sessionId: options.sessionId,
         });
       } catch {
         // Best-effort close only.
       }
       await opened.close();
-    }
+    },
   };
 }

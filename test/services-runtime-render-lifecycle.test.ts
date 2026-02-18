@@ -53,10 +53,7 @@ void test('runtime render lifecycle marks dirty and schedules render until clean
           // no-op test timer
         },
       } as unknown as ReturnType<typeof setTimeout>;
-    }) as unknown as (
-      callback: () => void,
-      delayMs: number,
-    ) => ReturnType<typeof setTimeout>,
+    }) as unknown as (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>,
     clearTimeoutFn: () => {},
   });
 
@@ -133,8 +130,7 @@ void test('runtime render lifecycle fatal path sets shutdown/stop and is idempot
     restoreTerminalState: () => {
       calls.push('restoreTerminalState');
     },
-    formatErrorMessage: (error) =>
-      error instanceof Error ? error.message : String(error),
+    formatErrorMessage: (error) => (error instanceof Error ? error.message : String(error)),
     writeStderr: (text) => {
       calls.push(`stderr:${text.trim()}`);
     },
@@ -151,10 +147,7 @@ void test('runtime render lifecycle fatal path sets shutdown/stop and is idempot
           timerUnrefCalls += 1;
         },
       } as unknown as ReturnType<typeof setTimeout>;
-    }) as unknown as (
-      callback: () => void,
-      delayMs: number,
-    ) => ReturnType<typeof setTimeout>,
+    }) as unknown as (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>,
     clearTimeoutFn: () => {
       clearTimeoutCalls += 1;
     },

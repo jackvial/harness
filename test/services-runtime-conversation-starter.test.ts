@@ -24,7 +24,10 @@ void test('runtime conversation starter returns existing live conversation and r
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
+  const starter = new RuntimeConversationStarter<
+    ConversationRecord,
+    { readonly sessionId: string }
+  >({
     runWithStartInFlight: async (_sessionId, run) => {
       calls.push('runWithStartInFlight');
       return await run();
@@ -87,10 +90,7 @@ void test('runtime conversation starter returns existing live conversation and r
 
   assert.equal(result, existing);
   assert.equal(existing.launchCommand, 'launch-codex resume --foo');
-  assert.deepEqual(calls, [
-    'runWithStartInFlight',
-    'endStartCommandSpan:{"alreadyLive":true}',
-  ]);
+  assert.deepEqual(calls, ['runWithStartInFlight', 'endStartCommandSpan:{"alreadyLive":true}']);
 });
 
 void test('runtime conversation starter starts codex conversation, updates status, and subscribes events', async () => {
@@ -118,7 +118,10 @@ void test('runtime conversation starter starts codex conversation, updates statu
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
+  const starter = new RuntimeConversationStarter<
+    ConversationRecord,
+    { readonly sessionId: string }
+  >({
     runWithStartInFlight: async (_sessionId, run) => {
       calls.push('runWithStartInFlight');
       return await run();
@@ -235,7 +238,10 @@ void test('runtime conversation starter uses critique defaults and skips startup
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
+  const starter = new RuntimeConversationStarter<
+    ConversationRecord,
+    { readonly sessionId: string }
+  >({
     runWithStartInFlight: async (_sessionId, run) => {
       return await run();
     },
@@ -319,7 +325,10 @@ void test('runtime conversation starter falls back to empty base args for non-co
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
+  const starter = new RuntimeConversationStarter<
+    ConversationRecord,
+    { readonly sessionId: string }
+  >({
     runWithStartInFlight: async (_sessionId, run) => {
       return await run();
     },

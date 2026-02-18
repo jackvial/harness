@@ -113,7 +113,9 @@ export function applySummaryToConversation(
   applyTelemetrySummaryToConversation(target, summary.telemetry);
 }
 
-export function conversationSummary(conversation: ConversationState): ConversationRailSessionSummary {
+export function conversationSummary(
+  conversation: ConversationState,
+): ConversationRailSessionSummary {
   return {
     sessionId: conversation.sessionId,
     status: conversation.status,

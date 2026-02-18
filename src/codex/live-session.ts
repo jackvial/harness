@@ -6,13 +6,13 @@ import { fileURLToPath } from 'node:url';
 import {
   startSingleSessionBroker,
   type BrokerAttachmentHandlers,
-  type BrokerDataEvent
+  type BrokerDataEvent,
 } from '../pty/session-broker.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 import {
   TerminalSnapshotOracle,
   type TerminalSnapshotFrame,
-  type TerminalQueryState
+  type TerminalQueryState,
 } from '../terminal/snapshot-oracle.ts';
 import { recordPerfEvent } from '../perf/perf-core.ts';
 
@@ -92,7 +92,7 @@ const DEFAULT_BASE_ARGS = ['--no-alt-screen'];
 const DEFAULT_NOTIFY_POLL_MS = 100;
 const DEFAULT_NOTIFY_POLL_MAX_BACKOFF_MS = 2000;
 const DEFAULT_RELAY_SCRIPT_PATH = fileURLToPath(
-  new URL('../../scripts/codex-notify-relay.ts', import.meta.url)
+  new URL('../../scripts/codex-notify-relay.ts', import.meta.url),
 );
 const DEFAULT_TERMINAL_FOREGROUND_HEX = 'd0d7de';
 const DEFAULT_TERMINAL_BACKGROUND_HEX = '0f1419';
@@ -112,7 +112,7 @@ const DEFAULT_INDEXED_TERMINAL_HEX_BY_CODE: Readonly<Record<number, string>> = {
   12: '8bc5ff',
   13: 'e2a7f3',
   14: '56d4dd',
-  15: 'f5f7fa'
+  15: 'f5f7fa',
 };
 
 interface TerminalPalette {
@@ -144,11 +144,11 @@ export function terminalHexToOscColor(hexColor: string): string {
 function buildTerminalPalette(options: StartCodexLiveSessionOptions): TerminalPalette {
   const fallbackForeground = normalizeTerminalColorHex(
     options.env?.HARNESS_TERM_FG,
-    DEFAULT_TERMINAL_FOREGROUND_HEX
+    DEFAULT_TERMINAL_FOREGROUND_HEX,
   );
   const fallbackBackground = normalizeTerminalColorHex(
     options.env?.HARNESS_TERM_BG,
-    DEFAULT_TERMINAL_BACKGROUND_HEX
+    DEFAULT_TERMINAL_BACKGROUND_HEX,
   );
   const foreground = normalizeTerminalColorHex(options.terminalForegroundHex, fallbackForeground);
   const background = normalizeTerminalColorHex(options.terminalBackgroundHex, fallbackBackground);
@@ -160,7 +160,7 @@ function buildTerminalPalette(options: StartCodexLiveSessionOptions): TerminalPa
   return {
     foregroundOsc: terminalHexToOscColor(foreground),
     backgroundOsc: terminalHexToOscColor(background),
-    indexedOscByCode
+    indexedOscByCode,
   };
 }
 
@@ -198,12 +198,16 @@ export function parseNotifyRecordLine(line: string): NotifyRecord | null {
   if (typeof record.ts !== 'string') {
     return null;
   }
-  if (typeof record.payload !== 'object' || record.payload === null || Array.isArray(record.payload)) {
+  if (
+    typeof record.payload !== 'object' ||
+    record.payload === null ||
+    Array.isArray(record.payload)
+  ) {
     return null;
   }
   return {
     ts: record.ts,
-    payload: record.payload as NotifyPayload
+    payload: record.payload as NotifyPayload,
   };
 }
 
@@ -219,7 +223,7 @@ class TerminalQueryResponder {
   constructor(
     palette: TerminalPalette,
     readQueryState: () => TerminalQueryState,
-    writeReply: (reply: string) => void
+    writeReply: (reply: string) => void,
   ) {
     this.palette = palette;
     this.readQueryState = readQueryState;
@@ -428,7 +432,11 @@ class TerminalQueryResponder {
     this.recordQueryObservation('dcs', trimmedPayload, false);
   }
 
-  private recordQueryObservation(kind: 'csi' | 'osc' | 'dcs', payload: string, handled: boolean): void {
+  private recordQueryObservation(
+    kind: 'csi' | 'osc' | 'dcs',
+    payload: string,
+    handled: boolean,
+  ): void {
     if (kind === 'csi' && !this.isLikelyCsiQueryPayload(payload)) {
       return;
     }
@@ -438,7 +446,7 @@ class TerminalQueryResponder {
     recordPerfEvent('codex.terminal-query', {
       kind,
       payload: payload.slice(0, 120),
-      handled
+      handled,
     });
   }
 
@@ -486,7 +494,7 @@ class CodexLiveSession {
 
   constructor(
     options: StartCodexLiveSessionOptions = {},
-    dependencies: LiveSessionDependencies = {}
+    dependencies: LiveSessionDependencies = {},
   ) {
     const initialCols = options.initialCols ?? 80;
     const initialRows = options.initialRows ?? 24;
@@ -501,12 +509,18 @@ class CodexLiveSession {
       options.notifyFilePath ??
       join(tmpdir(), `harness-codex-notify-${process.pid}-${randomUUID()}.jsonl`);
     const relayScriptPath = resolve(options.relayScriptPath ?? DEFAULT_RELAY_SCRIPT_PATH);
-    const notifyCommand = ['/usr/bin/env', process.execPath, ...tsRuntimeArgs(relayScriptPath, [this.notifyFilePath])];
+    const notifyCommand = [
+      '/usr/bin/env',
+      process.execPath,
+      ...tsRuntimeArgs(relayScriptPath, [this.notifyFilePath]),
+    ];
     const shouldInjectCodexNotifyConfig = useNotifyHook && notifyMode === 'codex';
     const commandArgs = [
       ...(options.baseArgs ?? DEFAULT_BASE_ARGS),
-      ...(shouldInjectCodexNotifyConfig ? ['-c', `notify=${buildTomlStringArray(notifyCommand)}`] : []),
-      ...(options.args ?? [])
+      ...(shouldInjectCodexNotifyConfig
+        ? ['-c', `notify=${buildTomlStringArray(notifyCommand)}`]
+        : []),
+      ...(options.args ?? []),
     ];
 
     const startBroker = dependencies.startBroker ?? startSingleSessionBroker;
@@ -518,7 +532,7 @@ class CodexLiveSession {
       command,
       commandArgs,
       initialCols,
-      initialRows
+      initialRows,
     };
     if (options.env !== undefined) {
       startOptions.env = options.env;
@@ -533,7 +547,7 @@ class CodexLiveSession {
       () => this.snapshotOracle.queryState(),
       (reply) => {
         this.broker.write(reply);
-      }
+      },
     );
     if (this.snapshotModelEnabled) {
       this.snapshotOracle.setQueryHooks({
@@ -545,7 +559,7 @@ class CodexLiveSession {
         },
         onDcsQuery: (payload) => {
           this.terminalQueryResponder.onDcsQuery(payload);
-        }
+        },
       });
     }
 
@@ -559,15 +573,15 @@ class CodexLiveSession {
         this.emit({
           type: 'terminal-output',
           cursor: event.cursor,
-          chunk: Buffer.from(event.chunk)
+          chunk: Buffer.from(event.chunk),
         });
       },
       onExit: (exit: PtyExit) => {
         this.emit({
           type: 'session-exit',
-          exit
+          exit,
         });
-      }
+      },
     });
 
     if (useNotifyHook) {
@@ -690,7 +704,7 @@ class CodexLiveSession {
     this.notifyIdleStreak = Math.min(this.notifyIdleStreak + 1, 4);
     const backoffMs = Math.min(
       DEFAULT_NOTIFY_POLL_MAX_BACKOFF_MS,
-      this.notifyPollMs * (1 << this.notifyIdleStreak)
+      this.notifyPollMs * (1 << this.notifyIdleStreak),
     );
     this.notifyNextAllowedPollAtMs = Date.now() + backoffMs;
   }
@@ -706,7 +720,7 @@ class CodexLiveSession {
         : '';
     recordPerfEvent('codex.notify.poll.error', {
       code,
-      message: error instanceof Error ? error.message : String(error)
+      message: error instanceof Error ? error.message : String(error),
     });
   }
 
@@ -755,7 +769,7 @@ class CodexLiveSession {
           buffer,
           bytesReadTotal,
           remainingBytes - bytesReadTotal,
-          this.notifyOffset + bytesReadTotal
+          this.notifyOffset + bytesReadTotal,
         );
         if (bytesRead <= 0) {
           break;
@@ -790,7 +804,7 @@ class CodexLiveSession {
       }
       this.emit({
         type: 'notify',
-        record
+        record,
       });
     }
     return true;
@@ -805,7 +819,7 @@ class CodexLiveSession {
 
 export function startCodexLiveSession(
   options: StartCodexLiveSessionOptions = {},
-  dependencies: LiveSessionDependencies = {}
+  dependencies: LiveSessionDependencies = {},
 ): CodexLiveSession {
   return new CodexLiveSession(options, dependencies);
 }

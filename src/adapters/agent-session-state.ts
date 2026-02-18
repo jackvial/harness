@@ -17,7 +17,7 @@ const CODEX_EXPLICIT_SUBCOMMANDS = new Set([
   'fork',
   'cloud',
   'features',
-  'help'
+  'help',
 ]);
 
 const CLAUDE_EXPLICIT_SUBCOMMANDS = new Set([
@@ -27,7 +27,7 @@ const CLAUDE_EXPLICIT_SUBCOMMANDS = new Set([
   'plugin',
   'setup-token',
   'update',
-  'help'
+  'help',
 ]);
 
 type CodexLaunchMode = 'yolo' | 'standard';
@@ -83,12 +83,12 @@ export function normalizeAdapterState(value: unknown): Record<string, unknown> {
     return {};
   }
   return {
-    ...normalized
+    ...normalized,
   };
 }
 
 export function codexResumeSessionIdFromAdapterState(
-  adapterState: Record<string, unknown>
+  adapterState: Record<string, unknown>,
 ): string | null {
   const codex = asRecord(adapterState['codex']);
   if (codex === null) {
@@ -106,7 +106,7 @@ export function codexResumeSessionIdFromAdapterState(
 }
 
 export function claudeResumeSessionIdFromAdapterState(
-  adapterState: Record<string, unknown>
+  adapterState: Record<string, unknown>,
 ): string | null {
   const claude = asRecord(adapterState['claude']);
   if (claude === null) {
@@ -120,7 +120,7 @@ export function claudeResumeSessionIdFromAdapterState(
 }
 
 export function cursorResumeSessionIdFromAdapterState(
-  adapterState: Record<string, unknown>
+  adapterState: Record<string, unknown>,
 ): string | null {
   const cursor = asRecord(adapterState['cursor']);
   if (cursor === null) {
@@ -141,7 +141,7 @@ export function mergeAdapterStateFromSessionEvent(
   agentType: string,
   _currentState?: Record<string, unknown>,
   _event?: StreamSessionEvent,
-  _observedAt?: string
+  _observedAt?: string,
 ): Record<string, unknown> | null {
   if (_event?.type !== 'notify') {
     return null;
@@ -168,8 +168,8 @@ export function mergeAdapterStateFromSessionEvent(
       claude: {
         ...claude,
         resumeSessionId: sessionId,
-        ...(nextObservedAt === null ? {} : { lastObservedAt: nextObservedAt })
-      }
+        ...(nextObservedAt === null ? {} : { lastObservedAt: nextObservedAt }),
+      },
     };
   }
   if (agentType !== 'cursor') {
@@ -196,8 +196,8 @@ export function mergeAdapterStateFromSessionEvent(
     cursor: {
       ...cursor,
       resumeSessionId: sessionId,
-      ...(nextObservedAt === null ? {} : { lastObservedAt: nextObservedAt })
-    }
+      ...(nextObservedAt === null ? {} : { lastObservedAt: nextObservedAt }),
+    },
   };
 }
 
@@ -258,7 +258,7 @@ export function buildAgentStartArgs(
     codexLaunchMode?: CodexLaunchMode;
     claudeLaunchMode?: ClaudeLaunchMode;
     cursorLaunchMode?: CursorLaunchMode;
-  }
+  },
 ): string[] {
   if (agentType === 'codex') {
     const firstArg = firstNonOptionArg(baseArgs);
@@ -268,7 +268,9 @@ export function buildAgentStartArgs(
 
     const codexLaunchMode = options?.codexLaunchMode ?? 'standard';
     const argsWithLaunchMode =
-      codexLaunchMode === 'yolo' && !baseArgs.includes('--yolo') ? [...baseArgs, '--yolo'] : [...baseArgs];
+      codexLaunchMode === 'yolo' && !baseArgs.includes('--yolo')
+        ? [...baseArgs, '--yolo']
+        : [...baseArgs];
 
     const resumeSessionId = codexResumeSessionIdFromAdapterState(adapterState);
     if (resumeSessionId === null) {
@@ -335,7 +337,7 @@ export function buildAgentSessionStartArgs(
   agentType: string,
   baseArgs: readonly string[],
   adapterState: Record<string, unknown>,
-  options: BuildAgentSessionStartArgsOptions = {}
+  options: BuildAgentSessionStartArgsOptions = {},
 ): string[] {
   const normalizedDirectoryPath = options.directoryPath?.trim() ?? '';
 

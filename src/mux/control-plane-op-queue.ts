@@ -30,20 +30,20 @@ interface ControlPlaneOpQueueOptions {
   readonly schedule?: (callback: () => void) => void;
   readonly onEnqueued?: (
     event: ControlPlaneOpQueueEvent,
-    metrics: ControlPlaneOpQueueMetrics
+    metrics: ControlPlaneOpQueueMetrics,
   ) => void;
   readonly onStart?: (
     event: ControlPlaneOpQueueStartEvent,
-    metrics: ControlPlaneOpQueueMetrics
+    metrics: ControlPlaneOpQueueMetrics,
   ) => void;
   readonly onSuccess?: (
     event: ControlPlaneOpQueueStartEvent,
-    metrics: ControlPlaneOpQueueMetrics
+    metrics: ControlPlaneOpQueueMetrics,
   ) => void;
   readonly onError?: (
     event: ControlPlaneOpQueueStartEvent,
     metrics: ControlPlaneOpQueueMetrics,
-    error: unknown
+    error: unknown,
   ) => void;
   readonly onFatal?: (error: unknown) => void;
 }
@@ -103,13 +103,17 @@ export class ControlPlaneOpQueue {
     return this.metricsSnapshot();
   }
 
-  private enqueue(task: () => Promise<void>, priority: ControlPlaneOpPriority, label: string): void {
+  private enqueue(
+    task: () => Promise<void>,
+    priority: ControlPlaneOpPriority,
+    label: string,
+  ): void {
     const op: QueuedControlPlaneOp = {
       id: this.nextId,
       priority,
       label,
       enqueuedAtMs: this.nowMs(),
-      task
+      task,
     };
     this.nextId += 1;
 
@@ -124,9 +128,9 @@ export class ControlPlaneOpQueue {
         id: op.id,
         priority: op.priority,
         label: op.label,
-        enqueuedAtMs: op.enqueuedAtMs
+        enqueuedAtMs: op.enqueuedAtMs,
       },
-      this.metricsSnapshot()
+      this.metricsSnapshot(),
     );
     this.schedulePump();
   }
@@ -135,7 +139,7 @@ export class ControlPlaneOpQueue {
     return {
       interactiveQueued: this.interactiveQueue.length,
       backgroundQueued: this.backgroundQueue.length,
-      running: this.running
+      running: this.running,
     };
   }
 
@@ -188,7 +192,7 @@ export class ControlPlaneOpQueue {
       priority: next.priority,
       label: next.label,
       enqueuedAtMs: next.enqueuedAtMs,
-      waitMs
+      waitMs,
     };
 
     try {

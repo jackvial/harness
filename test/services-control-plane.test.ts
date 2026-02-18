@@ -44,7 +44,10 @@ function directoryRecord(directoryId = 'dir-1', path = '/tmp/project'): Record<s
   };
 }
 
-function conversationRecord(conversationId = 'conversation-1', directoryId = 'dir-1'): Record<string, unknown> {
+function conversationRecord(
+  conversationId = 'conversation-1',
+  directoryId = 'dir-1',
+): Record<string, unknown> {
   return {
     conversationId,
     directoryId,
@@ -59,7 +62,10 @@ function conversationRecord(conversationId = 'conversation-1', directoryId = 'di
   };
 }
 
-function directoryGitStatusRecord(directoryId = 'dir-1', repositoryId = 'repo-1'): Record<string, unknown> {
+function directoryGitStatusRecord(
+  directoryId = 'dir-1',
+  repositoryId = 'repo-1',
+): Record<string, unknown> {
   return {
     directoryId,
     summary: {
@@ -166,20 +172,24 @@ void test('control-plane service sends scoped commands and parses repository/tas
   assert.equal((await service.listTasks())[0]?.taskId, 'task-list-default');
   assert.equal((await service.listTasks(50))[0]?.taskId, 'task-list-limit');
   assert.equal(
-    (await service.createTask({
-      repositoryId: 'repo-1',
-      title: 'Create',
-      description: 'desc',
-    })).taskId,
+    (
+      await service.createTask({
+        repositoryId: 'repo-1',
+        title: 'Create',
+        description: 'desc',
+      })
+    ).taskId,
     'task-create',
   );
   assert.equal(
-    (await service.updateTask({
-      taskId: 'task-update',
-      repositoryId: 'repo-1',
-      title: 'Update',
-      description: 'desc',
-    })).taskId,
+    (
+      await service.updateTask({
+        taskId: 'task-update',
+        repositoryId: 'repo-1',
+        title: 'Update',
+        description: 'desc',
+      })
+    ).taskId,
     'task-update',
   );
   assert.equal((await service.taskReady('task-ready')).status, 'ready');
@@ -224,7 +234,10 @@ void test('control-plane service sends directory/conversation commands and parse
     'dir-upsert',
   );
   assert.equal((await service.listDirectories())[0]?.directoryId, 'dir-list');
-  assert.equal((await service.listConversations('dir-list'))[0]?.conversationId, 'conversation-list');
+  assert.equal(
+    (await service.listConversations('dir-list'))[0]?.conversationId,
+    'conversation-list',
+  );
   await service.createConversation({
     conversationId: 'conversation-create',
     directoryId: 'dir-list',
@@ -233,10 +246,12 @@ void test('control-plane service sends directory/conversation commands and parse
     adapterState: {},
   });
   assert.equal(
-    (await service.updateConversationTitle({
-      conversationId: 'conversation-title',
-      title: 'Renamed',
-    }))?.title,
+    (
+      await service.updateConversationTitle({
+        conversationId: 'conversation-title',
+        title: 'Renamed',
+      })
+    )?.title,
     'Thread',
   );
   await service.archiveConversation('conversation-title');
@@ -259,7 +274,18 @@ void test('control-plane service wraps pty/session lifecycle commands', async ()
     workspaceId: 'workspace-1',
   });
 
-  client.results.push({}, {}, {}, {}, {}, {}, { controller: sessionControllerRecord('controller-ok') }, { controller: {} });
+  client.results.push(
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    { controller: sessionControllerRecord('controller-ok') },
+    { controller: {} },
+    { responded: true, sentBytes: 12 },
+    { interrupted: true },
+  );
 
   await service.attachPty({ sessionId: 'session-a', sinceCursor: 10 });
   await service.detachPty('session-a');
@@ -268,14 +294,16 @@ void test('control-plane service wraps pty/session lifecycle commands', async ()
   await service.closePtySession('session-a');
   await service.removeSession('session-a');
   assert.equal(
-    (await service.claimSession({
-      sessionId: 'session-a',
-      controllerId: 'controller-local',
-      controllerType: 'human',
-      controllerLabel: 'Human',
-      reason: 'takeover',
-      takeover: true,
-    }))?.controllerId,
+    (
+      await service.claimSession({
+        sessionId: 'session-a',
+        controllerId: 'controller-local',
+        controllerType: 'human',
+        controllerLabel: 'Human',
+        reason: 'takeover',
+        takeover: true,
+      })
+    )?.controllerId,
     'controller-ok',
   );
   assert.equal(
@@ -289,6 +317,13 @@ void test('control-plane service wraps pty/session lifecycle commands', async ()
     }),
     null,
   );
+  assert.deepEqual(await service.respondToSession('session-a', 'hello world!'), {
+    responded: true,
+    sentBytes: 12,
+  });
+  assert.deepEqual(await service.interruptSession('session-a'), {
+    interrupted: true,
+  });
 
   assert.equal(client.commands[0]?.type, 'pty.attach');
   assert.equal(client.commands[1]?.type, 'pty.detach');
@@ -298,6 +333,8 @@ void test('control-plane service wraps pty/session lifecycle commands', async ()
   assert.equal(client.commands[5]?.type, 'session.remove');
   assert.equal(client.commands[6]?.type, 'session.claim');
   assert.equal(client.commands[7]?.type, 'session.claim');
+  assert.equal(client.commands[8]?.type, 'session.respond');
+  assert.equal(client.commands[9]?.type, 'session.interrupt');
 });
 
 void test('control-plane service wraps startup/session hydration commands', async () => {
@@ -331,7 +368,10 @@ void test('control-plane service wraps startup/session hydration commands', asyn
     worktreeId: 'worktree-1',
   });
   assert.equal((await service.getSessionStatus('session-status'))?.sessionId, 'session-status');
-  assert.equal((await service.listSessions({ sort: 'started-asc', worktreeId: 'worktree-1' }))[0]?.sessionId, 'session-list');
+  assert.equal(
+    (await service.listSessions({ sort: 'started-asc', worktreeId: 'worktree-1' }))[0]?.sessionId,
+    'session-list',
+  );
 
   assert.equal(client.commands[0]?.type, 'directory.git-status');
   assert.equal(client.commands[1]?.type, 'pty.start');
@@ -347,7 +387,11 @@ void test('control-plane service wraps repository mutation commands', async () =
     workspaceId: 'workspace-1',
   });
 
-  client.results.push({ repository: repositoryRecord('repo-upsert') }, { repository: repositoryRecord('repo-update') }, {});
+  client.results.push(
+    { repository: repositoryRecord('repo-upsert') },
+    { repository: repositoryRecord('repo-update') },
+    {},
+  );
 
   assert.equal(
     (
@@ -362,7 +406,8 @@ void test('control-plane service wraps repository mutation commands', async () =
     'repo-upsert',
   );
   assert.equal(
-    (await service.updateRepository({ repositoryId: 'repo-update', metadata: { homePriority: 1 } })).repositoryId,
+    (await service.updateRepository({ repositoryId: 'repo-update', metadata: { homePriority: 1 } }))
+      .repositoryId,
     'repo-update',
   );
   await service.archiveRepository('repo-archive');

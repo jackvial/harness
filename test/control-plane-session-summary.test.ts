@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
   parseSessionSummaryList,
-  parseSessionSummaryRecord
+  parseSessionSummaryRecord,
 } from '../src/control-plane/session-summary.ts';
 
 const validSummary = {
@@ -30,8 +30,8 @@ const validSummary = {
     eventName: 'codex.api_request',
     severity: 'INFO',
     summary: 'codex.api_request (ok)',
-    observedAt: '2026-01-01T00:01:00.000Z'
-  }
+    observedAt: '2026-01-01T00:01:00.000Z',
+  },
 };
 
 void test('parseSessionSummaryRecord accepts valid summary and nullable fields', () => {
@@ -54,9 +54,9 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
     lastEventAt: null,
     lastExit: {
       code: null,
-      signal: 'SIGTERM'
+      signal: 'SIGTERM',
     },
-    exitedAt: '2026-01-01T00:02:00.000Z'
+    exitedAt: '2026-01-01T00:02:00.000Z',
   });
   assert.equal(exited?.status, 'exited');
   assert.equal(exited?.lastExit?.signal, 'SIGTERM');
@@ -64,13 +64,13 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
 
   const needsInput = parseSessionSummaryRecord({
     ...validSummary,
-    status: 'needs-input'
+    status: 'needs-input',
   });
   assert.equal(needsInput?.status, 'needs-input');
 
   const completed = parseSessionSummaryRecord({
     ...validSummary,
-    status: 'completed'
+    status: 'completed',
   });
   assert.equal(completed?.status, 'completed');
 
@@ -80,14 +80,14 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
       controllerId: 'agent-1',
       controllerType: 'agent',
       controllerLabel: 'agent one',
-      claimedAt: '2026-01-01T00:01:30.000Z'
-    }
+      claimedAt: '2026-01-01T00:01:30.000Z',
+    },
   });
   assert.equal(controlled?.controller?.controllerId, 'agent-1');
 
   const withoutTelemetry = parseSessionSummaryRecord({
     ...validSummary,
-    telemetry: null
+    telemetry: null,
   });
   assert.equal(withoutTelemetry?.telemetry, null);
 });
@@ -97,79 +97,79 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      status: 'bad'
+      status: 'bad',
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      live: 'yes'
+      live: 'yes',
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      launchCommand: 123
+      launchCommand: 123,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
       lastExit: {
         code: 1,
-        signal: 'NOPE'
-      }
+        signal: 'NOPE',
+      },
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      attentionReason: 123
+      attentionReason: 123,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      latestCursor: '12'
+      latestCursor: '12',
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      lastExit: 'bad'
+      lastExit: 'bad',
     }),
-    null
-  );
-  assert.equal(
-    parseSessionSummaryRecord({
-      ...validSummary,
-      lastExit: {
-        code: 1
-      }
-    }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
       lastExit: {
-        signal: null
-      }
+        code: 1,
+      },
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      live: null
+      lastExit: {
+        signal: null,
+      },
     }),
-    null
+    null,
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      live: null,
+    }),
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
@@ -179,24 +179,24 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
         eventName: null,
         severity: null,
         summary: null,
-        observedAt: new Date(0).toISOString()
-      }
+        observedAt: new Date(0).toISOString(),
+      },
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      telemetry: 'bad'
+      telemetry: 'bad',
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      controller: 'bad-controller'
+      controller: 'bad-controller',
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
@@ -205,10 +205,10 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
         controllerId: 'agent-1',
         controllerType: 'invalid',
         controllerLabel: 'agent one',
-        claimedAt: new Date(0).toISOString()
-      }
+        claimedAt: new Date(0).toISOString(),
+      },
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
@@ -216,10 +216,10 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
       controller: {
         controllerId: 'agent-1',
         controllerType: 'agent',
-        controllerLabel: 'agent one'
-      }
+        controllerLabel: 'agent one',
+      },
     }),
-    null
+    null,
   );
 });
 
@@ -227,93 +227,93 @@ void test('parseSessionSummaryRecord rejects missing nullable fields when absent
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      directoryId: undefined
+      directoryId: undefined,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      attentionReason: undefined
+      attentionReason: undefined,
     }),
-    null
-  );
-  assert.equal(
-    parseSessionSummaryRecord({
-    ...validSummary,
-    latestCursor: undefined
-  }),
-  null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      processId: undefined
+      latestCursor: undefined,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      lastExit: undefined
+      processId: undefined,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      attachedClients: null
+      lastExit: undefined,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      eventSubscribers: null
+      attachedClients: null,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      startedAt: null
+      eventSubscribers: null,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      lastEventAt: undefined
+      startedAt: null,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      exitedAt: undefined
+      lastEventAt: undefined,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      launchCommand: undefined
+      exitedAt: undefined,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      telemetry: undefined
+      launchCommand: undefined,
     }),
-    null
+    null,
   );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
-      controller: undefined
+      telemetry: undefined,
     }),
-    null
+    null,
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      controller: undefined,
+    }),
+    null,
   );
 });
 
@@ -321,12 +321,12 @@ void test('parseSessionSummaryList filters invalid entries', () => {
   const parsed = parseSessionSummaryList([
     validSummary,
     {
-      nope: true
+      nope: true,
     },
     {
       ...validSummary,
-      sessionId: 'conversation-2'
-    }
+      sessionId: 'conversation-2',
+    },
   ]);
   assert.equal(parsed.length, 2);
   assert.equal(parsed[0]?.sessionId, 'conversation-1');

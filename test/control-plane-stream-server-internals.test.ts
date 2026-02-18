@@ -26,19 +26,19 @@ void test('stream server internals gitSummaryEqual compares all summary fields',
     branch: 'main',
     changedFiles: 2,
     additions: 3,
-    deletions: 4
+    deletions: 4,
   };
   const right = {
     branch: 'main',
     changedFiles: 2,
     additions: 3,
-    deletions: 4
+    deletions: 4,
   };
   const different = {
     branch: 'main',
     changedFiles: 9,
     additions: 3,
-    deletions: 4
+    deletions: 4,
   };
   assert.equal(streamServerTestInternals.gitSummaryEqual(left, right), true);
   assert.equal(streamServerTestInternals.gitSummaryEqual(left, different), false);
@@ -51,7 +51,7 @@ void test('stream server internals gitRepositorySnapshotEqual compares all repos
     lastCommitAt: '2026-01-01T00:00:00.000Z',
     shortCommitHash: 'abc1234',
     inferredName: 'harness',
-    defaultBranch: 'main'
+    defaultBranch: 'main',
   };
   const right = {
     normalizedRemoteUrl: 'https://github.com/example/harness',
@@ -59,7 +59,7 @@ void test('stream server internals gitRepositorySnapshotEqual compares all repos
     lastCommitAt: '2026-01-01T00:00:00.000Z',
     shortCommitHash: 'abc1234',
     inferredName: 'harness',
-    defaultBranch: 'main'
+    defaultBranch: 'main',
   };
   const different = {
     normalizedRemoteUrl: 'https://github.com/example/harness',
@@ -67,7 +67,7 @@ void test('stream server internals gitRepositorySnapshotEqual compares all repos
     lastCommitAt: '2026-01-01T00:00:00.000Z',
     shortCommitHash: 'abc1234',
     inferredName: 'harness',
-    defaultBranch: 'main'
+    defaultBranch: 'main',
   };
   assert.equal(streamServerTestInternals.gitRepositorySnapshotEqual(left, right), true);
   assert.equal(streamServerTestInternals.gitRepositorySnapshotEqual(left, different), false);

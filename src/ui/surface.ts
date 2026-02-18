@@ -25,13 +25,13 @@ export interface UiSurface {
 }
 
 const DEFAULT_COLOR: UiColor = {
-  kind: 'default'
+  kind: 'default',
 };
 
 export const DEFAULT_UI_STYLE: UiStyle = {
   fg: DEFAULT_COLOR,
   bg: DEFAULT_COLOR,
-  bold: false
+  bold: false,
 };
 
 function cloneColor(color: UiColor): UiColor {
@@ -41,14 +41,14 @@ function cloneColor(color: UiColor): UiColor {
   if (color.kind === 'indexed') {
     return {
       kind: 'indexed',
-      index: color.index
+      index: color.index,
     };
   }
   return {
     kind: 'rgb',
     r: color.r,
     g: color.g,
-    b: color.b
+    b: color.b,
   };
 }
 
@@ -56,7 +56,7 @@ function cloneStyle(style: UiStyle): UiStyle {
   return {
     fg: cloneColor(style.fg),
     bg: cloneColor(style.bg),
-    bold: style.bold
+    bold: style.bold,
   };
 }
 
@@ -97,7 +97,7 @@ function createCell(style: UiStyle): UiCell {
   return {
     glyph: ' ',
     continued: false,
-    style: cloneStyle(style)
+    style: cloneStyle(style),
   };
 }
 
@@ -126,7 +126,11 @@ function styleToSgr(style: UiStyle): string {
   return `\u001b[${codes.join(';')}m`;
 }
 
-export function createUiSurface(cols: number, rows: number, baseStyle: UiStyle = DEFAULT_UI_STYLE): UiSurface {
+export function createUiSurface(
+  cols: number,
+  rows: number,
+  baseStyle: UiStyle = DEFAULT_UI_STYLE,
+): UiSurface {
   const safeCols = Math.max(1, cols);
   const safeRows = Math.max(1, rows);
   const typedBaseStyle = cloneStyle(baseStyle);
@@ -134,7 +138,7 @@ export function createUiSurface(cols: number, rows: number, baseStyle: UiStyle =
     cols: safeCols,
     rows: safeRows,
     baseStyle: typedBaseStyle,
-    cells: Array.from({ length: safeCols * safeRows }, () => createCell(typedBaseStyle))
+    cells: Array.from({ length: safeCols * safeRows }, () => createCell(typedBaseStyle)),
   };
 }
 
@@ -156,7 +160,7 @@ export function drawUiText(
   colStart: number,
   row: number,
   text: string,
-  style: UiStyle = surface.baseStyle
+  style: UiStyle = surface.baseStyle,
 ): void {
   if (row < 0 || row >= surface.rows || colStart >= surface.cols) {
     return;
@@ -211,7 +215,7 @@ export function renderUiSurfaceAnsiRows(surface: UiSurface): readonly string[] {
         output += styleToSgr(cell.style);
         lastStyle = cell.style;
       }
-      output += cell.continued ? '' : (cell.glyph.length > 0 ? cell.glyph : ' ');
+      output += cell.continued ? '' : cell.glyph.length > 0 ? cell.glyph : ' ';
     }
     output += '\u001b[0m';
     rows.push(output);

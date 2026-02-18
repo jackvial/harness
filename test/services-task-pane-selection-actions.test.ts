@@ -125,12 +125,8 @@ void test('task pane selection actions focusTaskComposer handles missing and swi
 
 void test('task pane selection actions syncTaskPaneSelectionFocus keeps valid focus and chooses fallback focus', () => {
   const workspace = createWorkspace();
-  const tasks = new Map<string, TaskRecord>([
-    ['task-1', { taskId: 'task-1', repositoryId: null }],
-  ]);
-  const repositories = new Map<string, RepositoryRecord>([
-    ['repo-1', { archivedAt: null }],
-  ]);
+  const tasks = new Map<string, TaskRecord>([['task-1', { taskId: 'task-1', repositoryId: null }]]);
+  const repositories = new Map<string, RepositoryRecord>([['repo-1', { archivedAt: null }]]);
   const actions = createActions(workspace, {
     tasks,
     repositories,
@@ -227,9 +223,7 @@ void test('task pane selection actions selectTaskById applies repository when av
   const workspace = createWorkspace();
   const calls: string[] = [];
   const actions = createActions(workspace, {
-    tasks: new Map<string, TaskRecord>([
-      ['task-1', { taskId: 'task-1', repositoryId: 'repo-1' }],
-    ]),
+    tasks: new Map<string, TaskRecord>([['task-1', { taskId: 'task-1', repositoryId: 'repo-1' }]]),
     repositories: new Map<string, RepositoryRecord>([['repo-1', { archivedAt: null }]]),
     onMarkDirty: () => {
       calls.push('markDirty');

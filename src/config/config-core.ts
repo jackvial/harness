@@ -262,14 +262,14 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
   claude: {
     launch: {
       defaultMode: 'yolo',
-      directoryModes: {}
-    }
+      directoryModes: {},
+    },
   },
   cursor: {
     launch: {
       defaultMode: 'yolo',
-      directoryModes: {}
-    }
+      directoryModes: {},
+    },
   },
   critique: {
     launch: {
@@ -825,7 +825,7 @@ function readClaudeLaunchMode(value: unknown): HarnessClaudeLaunchMode | null {
 }
 
 function normalizeClaudeDirectoryModesConfig(
-  input: unknown
+  input: unknown,
 ): Readonly<Record<string, HarnessClaudeLaunchMode>> {
   const record = asRecord(input);
   if (record === null) {
@@ -855,7 +855,7 @@ function normalizeClaudeLaunchConfig(input: unknown): HarnessClaudeLaunchConfig 
     readClaudeLaunchMode(record['defaultMode']) ?? DEFAULT_HARNESS_CONFIG.claude.launch.defaultMode;
   return {
     defaultMode,
-    directoryModes: normalizeClaudeDirectoryModesConfig(record['directoryModes'])
+    directoryModes: normalizeClaudeDirectoryModesConfig(record['directoryModes']),
   };
 }
 
@@ -865,7 +865,7 @@ function normalizeClaudeConfig(input: unknown): HarnessClaudeConfig {
     return DEFAULT_HARNESS_CONFIG.claude;
   }
   return {
-    launch: normalizeClaudeLaunchConfig(record['launch'])
+    launch: normalizeClaudeLaunchConfig(record['launch']),
   };
 }
 
@@ -881,7 +881,7 @@ function readCursorLaunchMode(value: unknown): HarnessCursorLaunchMode | null {
 }
 
 function normalizeCursorDirectoryModesConfig(
-  input: unknown
+  input: unknown,
 ): Readonly<Record<string, HarnessCursorLaunchMode>> {
   const record = asRecord(input);
   if (record === null) {
@@ -911,7 +911,7 @@ function normalizeCursorLaunchConfig(input: unknown): HarnessCursorLaunchConfig 
     readCursorLaunchMode(record['defaultMode']) ?? DEFAULT_HARNESS_CONFIG.cursor.launch.defaultMode;
   return {
     defaultMode,
-    directoryModes: normalizeCursorDirectoryModesConfig(record['directoryModes'])
+    directoryModes: normalizeCursorDirectoryModesConfig(record['directoryModes']),
   };
 }
 
@@ -921,7 +921,7 @@ function normalizeCursorConfig(input: unknown): HarnessCursorConfig {
     return DEFAULT_HARNESS_CONFIG.cursor;
   }
   return {
-    launch: normalizeCursorLaunchConfig(record['launch'])
+    launch: normalizeCursorLaunchConfig(record['launch']),
   };
 }
 

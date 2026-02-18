@@ -57,10 +57,7 @@ export function buildRenderRows(
   return rows;
 }
 
-export function applyModalOverlay(
-  rows: string[],
-  overlay: MuxModalOverlay
-): void {
+export function applyModalOverlay(rows: string[], overlay: MuxModalOverlay): void {
   for (let rowOffset = 0; rowOffset < overlay.rows.length; rowOffset += 1) {
     const targetRow = overlay.top + rowOffset;
     if (targetRow < 0 || targetRow >= rows.length) {
@@ -86,7 +83,7 @@ export function cursorStyleToDecscusr(style: RenderCursorStyle): string {
 
 export function cursorStyleEqual(
   left: RenderCursorStyle | null,
-  right: RenderCursorStyle
+  right: RenderCursorStyle,
 ): boolean {
   if (left === null) {
     return false;
@@ -99,7 +96,7 @@ export function renderCanonicalFrameAnsi(
   cursorStyle: RenderCursorStyle,
   cursorVisible: boolean,
   cursorRow: number,
-  cursorCol: number
+  cursorCol: number,
 ): string {
   let output = '\u001b[?25l\u001b[H\u001b[2J';
   output += cursorStyleToDecscusr(cursorStyle);

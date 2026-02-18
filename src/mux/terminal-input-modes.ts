@@ -30,6 +30,6 @@ export function createMuxInputModeManager(write: (sequence: string) => void): Mu
       write(DISABLE_MUX_INPUT_MODES);
       enabled = false;
     },
-    isEnabled: (): boolean => enabled
+    isEnabled: (): boolean => enabled,
   };
 }

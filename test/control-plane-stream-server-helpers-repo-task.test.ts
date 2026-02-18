@@ -5,14 +5,11 @@ import {
   ControlPlaneStreamServer,
   resolveTerminalCommandForEnvironment,
   streamServerTestInternals,
-  startControlPlaneStreamServer
+  startControlPlaneStreamServer,
 } from '../src/control-plane/stream-server.ts';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import type { SqliteControlPlaneStore } from '../src/store/control-plane-store.ts';
-import {
-  FakeLiveSession,
-  collectEnvelopes,
-} from './control-plane-stream-server-test-helpers.ts';
+import { FakeLiveSession, collectEnvelopes } from './control-plane-stream-server-test-helpers.ts';
 
 void test('resolveTerminalCommandForEnvironment prefers shell then ComSpec then platform fallback', () => {
   assert.equal(
@@ -310,7 +307,7 @@ void test('stream server telemetry/history private guard branches are stable', a
       end() {
         this.ended = true;
         this.writableEnded = true;
-      }
+      },
     };
     internals.handleTelemetryHttpRequest(
       {
@@ -324,12 +321,12 @@ void test('stream server telemetry/history private guard branches are stable', a
             },
             [Symbol.asyncIterator]() {
               return iterator;
-            }
+            },
           };
           return iterator;
-        }
+        },
       },
-      abortedResponse
+      abortedResponse,
     );
     await delay(20);
     assert.equal(abortedResponse.statusCode, 0);
@@ -342,7 +339,7 @@ void test('stream server telemetry/history private guard branches are stable', a
       end() {
         this.ended = true;
         this.writableEnded = true;
-      }
+      },
     };
     internals.handleTelemetryHttpRequest(
       {
@@ -355,12 +352,12 @@ void test('stream server telemetry/history private guard branches are stable', a
             },
             [Symbol.asyncIterator]() {
               return iterator;
-            }
+            },
           };
           return iterator;
-        }
+        },
       },
-      fatalResponse
+      fatalResponse,
     );
     await delay(20);
     assert.equal(fatalResponse.statusCode, 500);

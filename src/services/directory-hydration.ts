@@ -5,10 +5,7 @@ interface DirectoryRecordLike {
 
 interface DirectoryHydrationControlPlane<TDirectoryRecord extends DirectoryRecordLike> {
   listDirectories(): Promise<readonly TDirectoryRecord[]>;
-  upsertDirectory(input: {
-    directoryId: string;
-    path: string;
-  }): Promise<TDirectoryRecord>;
+  upsertDirectory(input: { directoryId: string; path: string }): Promise<TDirectoryRecord>;
 }
 
 interface DirectoryHydrationServiceOptions<TDirectoryRecord extends DirectoryRecordLike> {

@@ -4,10 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'bun:test';
 import { createNormalizedEvent, type EventScope } from '../src/events/normalized-events.ts';
-import {
-  SqliteEventStore,
-  normalizeStoredRow
-} from '../src/store/event-store.ts';
+import { SqliteEventStore, normalizeStoredRow } from '../src/store/event-store.ts';
 
 function makeScope(overrides: Partial<EventScope> = {}): EventScope {
   return {
@@ -16,7 +13,7 @@ function makeScope(overrides: Partial<EventScope> = {}): EventScope {
     workspaceId: 'workspace-1',
     worktreeId: 'worktree-1',
     conversationId: 'conversation-1',
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -27,10 +24,10 @@ function createThreadEvent(scope: EventScope, eventId: string) {
     scope,
     {
       kind: 'thread',
-      threadId: 'thread-1'
+      threadId: 'thread-1',
     },
     () => new Date('2026-02-14T03:00:00.000Z'),
-    () => eventId
+    () => eventId,
   );
 }
 
@@ -45,31 +42,31 @@ void test('event store appends and reads events with tenant user and cursor filt
         'provider-turn-started',
         {
           ...makeScope(),
-          turnId: 'turn-1'
+          turnId: 'turn-1',
         },
         {
           kind: 'turn',
           threadId: 'thread-1',
           turnId: 'turn-1',
-          status: 'in-progress'
+          status: 'in-progress',
         },
         () => new Date('2026-02-14T03:00:01.000Z'),
-        () => 'event-2'
+        () => 'event-2',
       ),
       createThreadEvent(
         makeScope({
           tenantId: 'tenant-2',
           userId: 'user-2',
-          conversationId: 'conversation-2'
+          conversationId: 'conversation-2',
         }),
-        'event-3'
-      )
+        'event-3',
+      ),
     ]);
 
     const firstPage = store.listEvents({
       tenantId: 'tenant-1',
       userId: 'user-1',
-      limit: 1
+      limit: 1,
     });
     assert.equal(firstPage.length, 1);
     assert.equal(firstPage[0]?.event.eventId, 'event-1');
@@ -78,7 +75,7 @@ void test('event store appends and reads events with tenant user and cursor filt
       tenantId: 'tenant-1',
       userId: 'user-1',
       afterRowId: firstPage[0]?.rowId,
-      limit: 10
+      limit: 10,
     });
     assert.equal(nextPage.length, 1);
     assert.equal(nextPage[0]?.event.eventId, 'event-2');
@@ -87,7 +84,7 @@ void test('event store appends and reads events with tenant user and cursor filt
     const otherTenant = store.listEvents({
       tenantId: 'tenant-2',
       userId: 'user-2',
-      conversationId: 'conversation-2'
+      conversationId: 'conversation-2',
     });
     assert.equal(otherTenant.length, 1);
     assert.equal(otherTenant[0]?.event.eventId, 'event-3');
@@ -114,7 +111,7 @@ void test('normalizeStoredRow validates row shape and field types', () => {
       source: 'provider',
       event_type: 'provider-thread-started',
       ts: '2026-02-14T03:00:00.000Z',
-      payload_json: '{}'
+      payload_json: '{}',
     });
   });
 
@@ -131,7 +128,7 @@ void test('normalizeStoredRow validates row shape and field types', () => {
       source: 'provider',
       event_type: 'provider-thread-started',
       ts: '2026-02-14T03:00:00.000Z',
-      payload_json: '{}'
+      payload_json: '{}',
     });
   });
 });
@@ -142,20 +139,20 @@ void test('event store writes are transactional and rollback on duplicate event 
     store.appendEvents([createThreadEvent(makeScope(), 'event-1')]);
     const before = store.listEvents({
       tenantId: 'tenant-1',
-      userId: 'user-1'
+      userId: 'user-1',
     });
     assert.equal(before.length, 1);
 
     assert.throws(() => {
       store.appendEvents([
         createThreadEvent(makeScope(), 'event-2'),
-        createThreadEvent(makeScope(), 'event-1')
+        createThreadEvent(makeScope(), 'event-1'),
       ]);
     });
 
     const after = store.listEvents({
       tenantId: 'tenant-1',
-      userId: 'user-1'
+      userId: 'user-1',
     });
     assert.equal(after.length, 1);
     assert.equal(after[0]?.event.eventId, 'event-1');
@@ -177,25 +174,25 @@ void test('event store persists to file path and payload parsing is preserved', 
         'meta-attention-raised',
         {
           ...scope,
-          turnId: 'turn-2'
+          turnId: 'turn-2',
         },
         {
           kind: 'attention',
           threadId: 'thread-1',
           turnId: 'turn-2',
           reason: 'approval',
-          detail: 'manual-check'
+          detail: 'manual-check',
         },
         () => new Date('2026-02-14T03:00:02.000Z'),
-        () => 'event-file-1'
-      )
+        () => 'event-file-1',
+      ),
     ]);
     firstStore.close();
 
     const secondStore = new SqliteEventStore(dbPath);
     const records = secondStore.listEvents({
       tenantId: scope.tenantId,
-      userId: scope.userId
+      userId: scope.userId,
     });
     assert.equal(records.length, 1);
     assert.equal(records[0]?.event.type, 'meta-attention-raised');

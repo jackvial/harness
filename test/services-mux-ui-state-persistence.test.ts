@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { MuxUiStatePersistence, type MuxUiStateSnapshot } from '../src/services/mux-ui-state-persistence.ts';
+import {
+  MuxUiStatePersistence,
+  type MuxUiStateSnapshot,
+} from '../src/services/mux-ui-state-persistence.ts';
 
 const INITIAL_STATE: MuxUiStateSnapshot = {
   paneWidthPercent: 40,
@@ -82,7 +85,7 @@ void test('mux ui state persistence skips unchanged state writes', () => {
       applyCalls += 1;
     },
     writeStderr: () => {},
-    setTimeoutFn: () => ({ id: 2 } as unknown as ReturnType<typeof setTimeout>),
+    setTimeoutFn: () => ({ id: 2 }) as unknown as ReturnType<typeof setTimeout>,
     clearTimeoutFn: () => {},
   });
 
@@ -141,7 +144,7 @@ void test('mux ui state persistence reports persist failures', () => {
     writeStderr: (text) => {
       stderr.push(text);
     },
-    setTimeoutFn: () => ({ id: 4 } as unknown as ReturnType<typeof setTimeout>),
+    setTimeoutFn: () => ({ id: 4 }) as unknown as ReturnType<typeof setTimeout>,
     clearTimeoutFn: () => {},
   });
 
@@ -168,7 +171,7 @@ void test('mux ui state persistence reports non-error failures', () => {
     writeStderr: (text) => {
       stderr.push(text);
     },
-    setTimeoutFn: () => ({ id: 5 } as unknown as ReturnType<typeof setTimeout>),
+    setTimeoutFn: () => ({ id: 5 }) as unknown as ReturnType<typeof setTimeout>,
     clearTimeoutFn: () => {},
   });
 

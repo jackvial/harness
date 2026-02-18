@@ -13,13 +13,9 @@ import {
   paintUiRowWithTrailingLabel,
   SINGLE_LINE_UI_BOX_GLYPHS,
   strokeUiRect,
-  truncateUiText
+  truncateUiText,
 } from '../src/ui/kit.ts';
-import {
-  createUiSurface,
-  DEFAULT_UI_STYLE,
-  renderUiSurfaceAnsiRows
-} from '../src/ui/surface.ts';
+import { createUiSurface, DEFAULT_UI_STYLE, renderUiSurfaceAnsiRows } from '../src/ui/surface.ts';
 
 function stripAnsi(value: string): string {
   let output = '';
@@ -53,11 +49,14 @@ void test('ui kit truncates text deterministically with ellipsis', () => {
 });
 
 void test('ui kit formats button labels with icon and padding defaults', () => {
-  assert.equal(formatUiButton({ label: 'new conversation', prefixIcon: '+' }), '[ + new conversation ]');
+  assert.equal(
+    formatUiButton({ label: 'new conversation', prefixIcon: '+' }),
+    '[ + new conversation ]',
+  );
   assert.equal(formatUiButton({ label: '  ', prefixIcon: '' }), '[ button ]');
   assert.equal(
     formatUiButton({ label: 'archive', prefixIcon: 'x', suffixIcon: '!', paddingX: 2.9 }),
-    '[  x archive !  ]'
+    '[  x archive !  ]',
   );
 });
 
@@ -83,7 +82,7 @@ void test('ui kit paints row with a trailing label aligned to the right edge', (
     '[+ thread]',
     DEFAULT_UI_STYLE,
     DEFAULT_UI_STYLE,
-    DEFAULT_UI_STYLE
+    DEFAULT_UI_STYLE,
   );
 
   const row = stripAnsi(renderUiSurfaceAnsiRows(surface)[0] ?? '');
@@ -99,7 +98,7 @@ void test('ui kit paints row with a trailing label aligned to the right edge', (
     '[+ thread]',
     DEFAULT_UI_STYLE,
     DEFAULT_UI_STYLE,
-    DEFAULT_UI_STYLE
+    DEFAULT_UI_STYLE,
   );
   const clippedRow = stripAnsi(renderUiSurfaceAnsiRows(clippedSurface)[0] ?? '');
   assert.equal(clippedRow.endsWith('[+ thread]'), true);
@@ -115,8 +114,8 @@ void test('ui kit paints row with a trailing label aligned to the right edge', (
     DEFAULT_UI_STYLE,
     DEFAULT_UI_STYLE,
     {
-      width: 0
-    }
+      width: 0,
+    },
   );
   const zeroWidthRow = stripAnsi(renderUiSurfaceAnsiRows(zeroWidthSurface)[0] ?? '');
   assert.equal(zeroWidthRow, '        ');
@@ -129,7 +128,7 @@ void test('ui kit paints row with a trailing label aligned to the right edge', (
     '',
     DEFAULT_UI_STYLE,
     DEFAULT_UI_STYLE,
-    DEFAULT_UI_STYLE
+    DEFAULT_UI_STYLE,
   );
   const noTrailingLabelRow = stripAnsi(renderUiSurfaceAnsiRows(noTrailingLabelSurface)[0] ?? '');
   assert.equal(noTrailingLabelRow.startsWith('left'), true);
@@ -144,13 +143,13 @@ void test('ui kit fillUiRect clamps rectangles and leaves out-of-bounds writes u
       col: 99,
       row: 99,
       width: 5,
-      height: 5
+      height: 5,
     },
     {
       fg: { kind: 'indexed', index: 1 },
       bg: { kind: 'indexed', index: 2 },
-      bold: true
-    }
+      bold: true,
+    },
   );
   fillUiRect(
     surface,
@@ -158,13 +157,13 @@ void test('ui kit fillUiRect clamps rectangles and leaves out-of-bounds writes u
       col: -2,
       row: 0,
       width: 4,
-      height: 2
+      height: 2,
     },
     {
       fg: { kind: 'indexed', index: 1 },
       bg: { kind: 'indexed', index: 2 },
-      bold: true
-    }
+      bold: true,
+    },
   );
 
   const rows = renderUiSurfaceAnsiRows(surface).map((row) => stripAnsi(row));
@@ -176,11 +175,16 @@ void test('ui kit strokeUiRect supports point, horizontal, vertical, and boxed r
   const style = {
     fg: { kind: 'indexed', index: 250 } as const,
     bg: { kind: 'default' } as const,
-    bold: false
+    bold: false,
   };
 
   const pointSurface = createUiSurface(2, 2);
-  strokeUiRect(pointSurface, { col: 0, row: 0, width: 1, height: 1 }, style, SINGLE_LINE_UI_BOX_GLYPHS);
+  strokeUiRect(
+    pointSurface,
+    { col: 0, row: 0, width: 1, height: 1 },
+    style,
+    SINGLE_LINE_UI_BOX_GLYPHS,
+  );
   assert.equal(stripAnsi(renderUiSurfaceAnsiRows(pointSurface)[0] ?? '').startsWith('┌'), true);
 
   const horizontalSurface = createUiSurface(5, 1);
@@ -206,7 +210,7 @@ void test('ui kit modal layout positions center and bottom anchors with clamping
     col: 35,
     row: 15,
     width: 30,
-    height: 10
+    height: 10,
   });
 
   const bottomClamped = layoutUiModalRect(12, 5, 40, 40, 'bottom', 2);
@@ -214,7 +218,7 @@ void test('ui kit modal layout positions center and bottom anchors with clamping
     col: 0,
     row: 0,
     width: 12,
-    height: 5
+    height: 5,
   });
 
   const minimumClamped = layoutUiModalRect(20, 8, -5, -2, 'center', 0);
@@ -222,7 +226,7 @@ void test('ui kit modal layout positions center and bottom anchors with clamping
     col: 9,
     row: 3,
     width: 1,
-    height: 1
+    height: 1,
   });
 });
 
@@ -234,27 +238,30 @@ void test('ui kit drawUiModal renders title body and footer with clipping branch
       col: 3,
       row: 1,
       width: 20,
-      height: 6
+      height: 6,
     },
     {
       title: 'Add Directory',
       bodyLines: ['path: ~/dev/harness', 'type to edit'],
       footer: 'enter save',
-      paddingX: 1
-    }
+      paddingX: 1,
+    },
   );
   assert.notEqual(rect, null);
   assert.deepEqual(rect, {
     col: 3,
     row: 1,
     width: 20,
-    height: 6
+    height: 6,
   });
   const rows = renderUiSurfaceAnsiRows(surface).map((row) => stripAnsi(row));
   assert.equal(rows[1]?.includes('┌'), true);
   assert.equal(rows[2]?.includes('Add Directory'), true);
   assert.equal(rows[6]?.includes('└'), true);
-  assert.equal(rows.some((row) => row.includes('enter save')), true);
+  assert.equal(
+    rows.some((row) => row.includes('enter save')),
+    true,
+  );
 
   const tiny = createUiSurface(4, 4);
   const tinyRect = drawUiModal(
@@ -263,14 +270,14 @@ void test('ui kit drawUiModal renders title body and footer with clipping branch
       col: 0,
       row: 0,
       width: 4,
-      height: 4
+      height: 4,
     },
     {
       title: 'x',
       bodyLines: ['y'],
       footer: 'z',
-      paddingX: 1
-    }
+      paddingX: 1,
+    },
   );
   assert.notEqual(tinyRect, null);
   const tinyRows = renderUiSurfaceAnsiRows(tiny).map((row) => stripAnsi(row));
@@ -283,19 +290,19 @@ void test('ui kit drawUiModal renders title body and footer with clipping branch
       col: 0,
       row: 0,
       width: 2,
-      height: 2
+      height: 2,
     },
     {
       title: 'x',
       bodyLines: ['y'],
-      footer: 'z'
-    }
+      footer: 'z',
+    },
   );
   assert.deepEqual(normalizedInnerNullRect, {
     col: 0,
     row: 0,
     width: 2,
-    height: 2
+    height: 2,
   });
 
   const overflowBody = createUiSurface(20, 6);
@@ -305,17 +312,23 @@ void test('ui kit drawUiModal renders title body and footer with clipping branch
       col: 1,
       row: 1,
       width: 12,
-      height: 4
+      height: 4,
     },
     {
       title: 'T',
       bodyLines: ['line-1', 'line-2', 'line-3'],
-      footer: 'F'
-    }
+      footer: 'F',
+    },
   );
   const overflowRows = renderUiSurfaceAnsiRows(overflowBody).map((row) => stripAnsi(row));
-  assert.equal(overflowRows.some((row) => row.includes('line-1')), false);
-  assert.equal(overflowRows.some((row) => row.includes('F')), true);
+  assert.equal(
+    overflowRows.some((row) => row.includes('line-1')),
+    false,
+  );
+  assert.equal(
+    overflowRows.some((row) => row.includes('F')),
+    true,
+  );
 
   const themedSurface = createUiSurface(12, 5);
   drawUiModal(
@@ -324,34 +337,40 @@ void test('ui kit drawUiModal renders title body and footer with clipping branch
       col: 0,
       row: 0,
       width: 12,
-      height: 5
+      height: 5,
     },
     {
       title: '',
       bodyLines: ['body'],
-      footer: 'tail'
+      footer: 'tail',
     },
     {
       frameStyle: {
         fg: { kind: 'indexed', index: 196 },
         bg: { kind: 'indexed', index: 236 },
-        bold: true
+        bold: true,
       },
       titleStyle: {
         fg: { kind: 'indexed', index: 226 },
         bg: { kind: 'indexed', index: 236 },
-        bold: false
+        bold: false,
       },
       bodyStyle: {
         fg: { kind: 'indexed', index: 118 },
         bg: { kind: 'indexed', index: 236 },
-        bold: false
-      }
-    }
+        bold: false,
+      },
+    },
   );
   const themedRows = renderUiSurfaceAnsiRows(themedSurface);
-  assert.equal(themedRows.some((row) => row.includes('\u001b[0;1;38;5;196;48;5;236m')), true);
-  assert.equal(themedRows.some((row) => stripAnsi(row).includes('body')), true);
+  assert.equal(
+    themedRows.some((row) => row.includes('\u001b[0;1;38;5;196;48;5;236m')),
+    true,
+  );
+  assert.equal(
+    themedRows.some((row) => stripAnsi(row).includes('body')),
+    true,
+  );
 
   const noFooterRoomSurface = createUiSurface(10, 4);
   drawUiModal(
@@ -360,16 +379,21 @@ void test('ui kit drawUiModal renders title body and footer with clipping branch
       col: 1,
       row: 1,
       width: 6,
-      height: 3
+      height: 3,
     },
     {
       title: 'X',
       bodyLines: ['ignored'],
-      footer: 'tail'
-    }
+      footer: 'tail',
+    },
   );
-  const noFooterRoomRows = renderUiSurfaceAnsiRows(noFooterRoomSurface).map((row) => stripAnsi(row));
-  assert.equal(noFooterRoomRows.some((row) => row.includes('tail')), false);
+  const noFooterRoomRows = renderUiSurfaceAnsiRows(noFooterRoomSurface).map((row) =>
+    stripAnsi(row),
+  );
+  assert.equal(
+    noFooterRoomRows.some((row) => row.includes('tail')),
+    false,
+  );
 
   const undefinedBodyLinesSurface = createUiSurface(16, 6);
   drawUiModal(
@@ -378,17 +402,20 @@ void test('ui kit drawUiModal renders title body and footer with clipping branch
       col: 1,
       row: 1,
       width: 12,
-      height: 4
+      height: 4,
     },
     {
       title: 'T',
-      footer: 'tail'
-    }
+      footer: 'tail',
+    },
   );
   const undefinedBodyLinesRows = renderUiSurfaceAnsiRows(undefinedBodyLinesSurface).map((row) =>
-    stripAnsi(row)
+    stripAnsi(row),
   );
-  assert.equal(undefinedBodyLinesRows.some((row) => row.includes('tail')), true);
+  assert.equal(
+    undefinedBodyLinesRows.some((row) => row.includes('tail')),
+    true,
+  );
 
   const offscreen = drawUiModal(
     tiny,
@@ -396,11 +423,11 @@ void test('ui kit drawUiModal renders title body and footer with clipping branch
       col: 50,
       row: 50,
       width: 2,
-      height: 2
+      height: 2,
     },
     {
-      bodyLines: []
-    }
+      bodyLines: [],
+    },
   );
   assert.equal(offscreen, null);
 });
@@ -417,16 +444,22 @@ void test('ui kit buildUiModalOverlay returns positioned modal rows and supports
     bodyLines: ['title: untitled task 1'],
     footer: 'esc done',
     theme: {
-      footerStyle: DEFAULT_UI_MODAL_THEME.footerStyle
-    }
+      footerStyle: DEFAULT_UI_MODAL_THEME.footerStyle,
+    },
   });
 
   assert.equal(overlay.left, 10);
   assert.equal(overlay.top, 4);
   assert.equal(overlay.rows.length, 5);
   assert.equal(stripAnsi(overlay.rows[0] ?? '').includes('┌'), true);
-  assert.equal(overlay.rows.some((row) => stripAnsi(row).includes('Edit Title')), true);
-  assert.equal(overlay.rows.some((row) => stripAnsi(row).includes('esc done')), true);
+  assert.equal(
+    overlay.rows.some((row) => stripAnsi(row).includes('Edit Title')),
+    true,
+  );
+  assert.equal(
+    overlay.rows.some((row) => stripAnsi(row).includes('esc done')),
+    true,
+  );
 
   const minimalOverlay = buildUiModalOverlay({
     viewportCols: 12,
@@ -434,16 +467,19 @@ void test('ui kit buildUiModalOverlay returns positioned modal rows and supports
     width: 8,
     height: 3,
     bodyLines: ['x'],
-    paddingX: 0
+    paddingX: 0,
   });
   assert.equal(minimalOverlay.rows.length, 3);
-  assert.equal(minimalOverlay.rows.some((row) => stripAnsi(row).includes('x')), true);
+  assert.equal(
+    minimalOverlay.rows.some((row) => stripAnsi(row).includes('x')),
+    true,
+  );
 
   const fallbackBodyOverlay = buildUiModalOverlay({
     viewportCols: 12,
     viewportRows: 4,
     width: 8,
-    height: 3
+    height: 3,
   });
   assert.equal(fallbackBodyOverlay.rows.length, 3);
 });
@@ -456,23 +492,23 @@ void test('ui kit modal hit-test returns true only for points inside overlay bou
     height: 5,
     anchor: 'center',
     title: 'Hit Test',
-    bodyLines: ['body']
+    bodyLines: ['body'],
   });
 
   assert.equal(isUiModalOverlayHit(overlay, overlay.left + 1, overlay.top + 1), true);
   assert.equal(
     isUiModalOverlayHit(overlay, overlay.left + overlay.width, overlay.top + overlay.height),
-    true
+    true,
   );
   assert.equal(isUiModalOverlayHit(overlay, overlay.left, overlay.top + 1), false);
   assert.equal(isUiModalOverlayHit(overlay, overlay.left + 1, overlay.top), false);
   assert.equal(
     isUiModalOverlayHit(overlay, overlay.left + overlay.width + 1, overlay.top + 1),
-    false
+    false,
   );
   assert.equal(
     isUiModalOverlayHit(overlay, overlay.left + 1, overlay.top + overlay.height + 1),
-    false
+    false,
   );
   assert.equal(isUiModalOverlayHit(overlay, 0, 1), false);
   assert.equal(isUiModalOverlayHit(overlay, 1, 0), false);

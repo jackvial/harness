@@ -77,10 +77,18 @@ interface StreamRuntimeContext {
     },
     event: StreamObservedEvent,
   ): void;
-  publishSessionKeyObservedEvent(state: RuntimeSession, keyEvent: StreamSessionKeyEventRecord): void;
-  toPublicSessionController(controller: StreamSessionController | null): StreamSessionController | null;
+  publishSessionKeyObservedEvent(
+    state: RuntimeSession,
+    keyEvent: StreamSessionKeyEventRecord,
+  ): void;
+  toPublicSessionController(
+    controller: StreamSessionController | null,
+  ): StreamSessionController | null;
   readonly stateStore: {
-    updateConversationAdapterState(conversationId: string, adapterState: Record<string, unknown>): void;
+    updateConversationAdapterState(
+      conversationId: string,
+      adapterState: Record<string, unknown>,
+    ): void;
     updateConversationRuntime(
       conversationId: string,
       input: {
@@ -104,7 +112,10 @@ function readTrimmedString(value: unknown): string | null {
 }
 
 function normalizeEventToken(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
 }
 
 function claudeStatusHintFromNotificationType(
@@ -155,10 +166,7 @@ function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
   return null;
 }
 
-export function persistConversationRuntime(
-  ctx: StreamRuntimeContext,
-  state: RuntimeSession,
-): void {
+export function persistConversationRuntime(ctx: StreamRuntimeContext, state: RuntimeSession): void {
   ctx.stateStore.updateConversationRuntime(state.id, {
     status: state.status,
     live: state.session !== null,
@@ -169,10 +177,7 @@ export function persistConversationRuntime(
   });
 }
 
-export function publishStatusObservedEvent(
-  ctx: StreamRuntimeContext,
-  state: RuntimeSession,
-): void {
+export function publishStatusObservedEvent(ctx: StreamRuntimeContext, state: RuntimeSession): void {
   ctx.publishObservedEvent(ctx.sessionScope(state), {
     type: 'session-status',
     sessionId: state.id,
@@ -184,7 +189,8 @@ export function publishStatusObservedEvent(
     conversationId: state.id,
     telemetry: state.latestTelemetry,
     controller: ctx.toPublicSessionController(
-      (state as RuntimeSession & { controller?: StreamSessionController | null }).controller ?? null,
+      (state as RuntimeSession & { controller?: StreamSessionController | null }).controller ??
+        null,
     ),
   });
 }
@@ -323,9 +329,7 @@ export function notifyKeyEventFromPayload(
       readTrimmedString(payload['reason']) ??
       readTrimmedString(payload['output']);
     const finalStatusRaw =
-      readTrimmedString(payload['final_status']) ??
-      readTrimmedString(payload['finalStatus']) ??
-      '';
+      readTrimmedString(payload['final_status']) ?? readTrimmedString(payload['finalStatus']) ?? '';
     const finalStatus = normalizeEventToken(finalStatusRaw);
     const reasonToken = normalizeEventToken(readTrimmedString(payload['reason']) ?? '');
 
@@ -336,7 +340,9 @@ export function notifyKeyEventFromPayload(
       normalizedSummary ??= 'prompt submitted';
     } else if (
       hookEventToken.startsWith('before') &&
-      (hookEventToken.includes('shell') || hookEventToken.includes('mcp') || hookEventToken.includes('tool'))
+      (hookEventToken.includes('shell') ||
+        hookEventToken.includes('mcp') ||
+        hookEventToken.includes('tool'))
     ) {
       statusHint = 'running';
       normalizedSummary ??= 'tool started (hook)';
@@ -351,10 +357,13 @@ export function notifyKeyEventFromPayload(
       finalStatus === 'completed'
     ) {
       statusHint = 'completed';
-      normalizedSummary ??= finalStatus === 'aborted' ? 'turn complete (aborted)' : 'turn complete (hook)';
+      normalizedSummary ??=
+        finalStatus === 'aborted' ? 'turn complete (aborted)' : 'turn complete (hook)';
     } else if (
       hookEventToken.startsWith('after') &&
-      (hookEventToken.includes('shell') || hookEventToken.includes('mcp') || hookEventToken.includes('tool'))
+      (hookEventToken.includes('shell') ||
+        hookEventToken.includes('mcp') ||
+        hookEventToken.includes('tool'))
     ) {
       normalizedSummary ??= 'tool finished (hook)';
     } else if (normalizedSummary === null) {
@@ -476,7 +485,8 @@ export function handleSessionEvent(
         };
         ctx.publishSessionKeyObservedEvent(sessionState, keyEvent);
         if (keyEvent.statusHint === 'needs-input') {
-          const nextAttentionReason = keyEvent.summary ?? sessionState.attentionReason ?? 'input required';
+          const nextAttentionReason =
+            keyEvent.summary ?? sessionState.attentionReason ?? 'input required';
           setSessionStatus(ctx, sessionState, 'needs-input', nextAttentionReason, observedAt);
         } else if (keyEvent.statusHint !== null) {
           setSessionStatus(ctx, sessionState, keyEvent.statusHint, null, observedAt);

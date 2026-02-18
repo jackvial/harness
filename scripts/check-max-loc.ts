@@ -38,7 +38,7 @@ const EXCLUDED_DIRS = new Set<string>([
   '.cache',
   '.harness',
   'target',
-  'out'
+  'out',
 ]);
 
 const SUPPORTED_EXTENSIONS = new Set<string>([
@@ -73,7 +73,7 @@ const SUPPORTED_EXTENSIONS = new Set<string>([
   '.bash',
   '.zsh',
   '.ps1',
-  '.sql'
+  '.sql',
 ]);
 
 function usage(): string {
@@ -82,7 +82,7 @@ function usage(): string {
     '',
     'Reports files with LOC strictly greater than --max-loc.',
     'Use --enforce to fail when violations are present.',
-    'LOC is counted as non-empty lines.'
+    'LOC is counted as non-empty lines.',
   ].join('\n');
 }
 
@@ -139,7 +139,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
     root,
     maxLoc,
     json,
-    enforce
+    enforce,
   };
 }
 
@@ -189,7 +189,7 @@ function countFileLoc(content: string): { lines: number; loc: number } {
   }
   return {
     lines: rows.length,
-    loc
+    loc,
   };
 }
 
@@ -210,7 +210,7 @@ function buildVerifyReport(rootPath: string, maxLoc: number, enforce: boolean): 
       violations.push({
         path: relative(rootPath, filePath).replaceAll('\\', '/'),
         lines: counts.lines,
-        loc: counts.loc
+        loc: counts.loc,
       });
     }
   }
@@ -220,7 +220,7 @@ function buildVerifyReport(rootPath: string, maxLoc: number, enforce: boolean): 
     maxLoc,
     checkedFiles: files.length,
     violations,
-    enforce
+    enforce,
   };
 }
 
@@ -232,12 +232,14 @@ function renderSuccess(report: VerifyReport): string {
 function renderAdvisory(report: VerifyReport): string {
   const lines: string[] = [];
   lines.push(
-    `LOC verify advisory: ${report.violations.length} source files exceed ${report.maxLoc} non-empty LOC (checked ${report.checkedFiles} files).`
+    `LOC verify advisory: ${report.violations.length} source files exceed ${report.maxLoc} non-empty LOC (checked ${report.checkedFiles} files).`,
   );
   lines.push('');
   lines.push('Violations:');
   for (const violation of report.violations) {
-    lines.push(`- ${violation.path} (loc=${violation.loc}, lines=${violation.lines}, limit=${report.maxLoc})`);
+    lines.push(
+      `- ${violation.path} (loc=${violation.loc}, lines=${violation.lines}, limit=${report.maxLoc})`,
+    );
   }
   lines.push('');
   lines.push('Refactor guidance for agent-authored changes:');
@@ -256,12 +258,14 @@ function renderAdvisory(report: VerifyReport): string {
 function renderFailure(report: VerifyReport): string {
   const lines: string[] = [];
   lines.push(
-    `LOC verify failed: ${report.violations.length} source files exceed ${report.maxLoc} non-empty LOC (checked ${report.checkedFiles} files).`
+    `LOC verify failed: ${report.violations.length} source files exceed ${report.maxLoc} non-empty LOC (checked ${report.checkedFiles} files).`,
   );
   lines.push('');
   lines.push('Violations:');
   for (const violation of report.violations) {
-    lines.push(`- ${violation.path} (loc=${violation.loc}, lines=${violation.lines}, limit=${report.maxLoc})`);
+    lines.push(
+      `- ${violation.path} (loc=${violation.loc}, lines=${violation.lines}, limit=${report.maxLoc})`,
+    );
   }
   lines.push('');
   lines.push('Refactor guidance for agent-authored changes:');
@@ -273,7 +277,7 @@ function renderFailure(report: VerifyReport): string {
   lines.push('- Build better abstractions around stable domain seams instead of adding flags.');
   lines.push('- Keep code human-friendly: clear names, short functions, readable control flow.');
   lines.push(
-    '- Treat exposed APIs as library-grade: typed, coherent, and consistent with project and open-source standards.'
+    '- Treat exposed APIs as library-grade: typed, coherent, and consistent with project and open-source standards.',
   );
   lines.push('');
   return `${lines.join('\n')}\n`;

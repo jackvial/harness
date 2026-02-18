@@ -6,7 +6,7 @@ function stripWrappingQuotes(value: string): string {
   }
   const first = value[0];
   const last = value[value.length - 1];
-  if ((first === '"' && last === '"') || (first === '\'' && last === '\'')) {
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
     return value.slice(1, -1);
   }
   return value;
@@ -14,10 +14,9 @@ function stripWrappingQuotes(value: string): string {
 
 export function normalizeWorkspacePathInput(value: string): string {
   const trimmed = value.trim();
-  const withoutPrefix =
-    trimmed.toLowerCase().startsWith('path:')
-      ? trimmed.slice('path:'.length).trim()
-      : trimmed;
+  const withoutPrefix = trimmed.toLowerCase().startsWith('path:')
+    ? trimmed.slice('path:'.length).trim()
+    : trimmed;
   return stripWrappingQuotes(withoutPrefix.trim());
 }
 
@@ -38,7 +37,7 @@ export function expandHomePath(value: string, homeDirectory: string | null): str
 export function resolveWorkspacePath(
   invocationDirectory: string,
   value: string,
-  homeDirectory: string | null
+  homeDirectory: string | null,
 ): string {
   const resolvedInvocation = resolve(invocationDirectory);
   const expanded = expandHomePath(value, homeDirectory);

@@ -6,7 +6,7 @@ function createStatementStub() {
   return {
     run: () => ({ changes: 1 }),
     get: () => undefined,
-    all: () => []
+    all: () => [],
   };
 }
 
@@ -30,7 +30,7 @@ void test('createDatabaseForRuntime loads bun sqlite module', () => {
     loadModule: (specifier) => {
       loadedSpecifier = specifier;
       return { Database: BunDatabase };
-    }
+    },
   });
 
   assert.equal(loadedSpecifier, 'bun:sqlite');
@@ -46,8 +46,8 @@ void test('createDatabaseForRuntime requires bun runtime', () => {
       loadModule: () => {
         loaded = true;
         return {};
-      }
-    })
+      },
+    }),
   );
   assert.equal(loaded, false);
 });
@@ -57,7 +57,7 @@ void test('DatabaseSync wrapped statements normalize null get values to undefine
   const statement = {
     run: () => ({ changes: 2 }),
     get: () => null,
-    all: () => ['row-a', 'row-b']
+    all: () => ['row-a', 'row-b'],
   };
 
   class BunDatabase {
@@ -73,7 +73,7 @@ void test('DatabaseSync wrapped statements normalize null get values to undefine
     loadModule: (specifier) => {
       loadedSpecifier = specifier;
       return { Database: BunDatabase };
-    }
+    },
   });
 
   const prepared = database.prepare('SELECT 1');

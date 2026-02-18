@@ -10,7 +10,9 @@ interface ResolveDirectoryForActionOptions {
   directoriesHas: (directoryId: string) => boolean;
 }
 
-export function resolveDirectoryForAction(options: ResolveDirectoryForActionOptions): string | null {
+export function resolveDirectoryForAction(
+  options: ResolveDirectoryForActionOptions,
+): string | null {
   if (options.mainPaneMode === 'project') {
     if (options.activeDirectoryId !== null && options.directoriesHas(options.activeDirectoryId)) {
       return options.activeDirectoryId;

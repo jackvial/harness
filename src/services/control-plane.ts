@@ -33,7 +33,9 @@ type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConvers
 type ControlPlaneDirectoryGitStatusRecord = NonNullable<
   ReturnType<typeof parseDirectoryGitStatusRecord>
 >;
-type ControlPlaneSessionControllerRecord = NonNullable<ReturnType<typeof parseSessionControllerRecord>>;
+type ControlPlaneSessionControllerRecord = NonNullable<
+  ReturnType<typeof parseSessionControllerRecord>
+>;
 type ControlPlaneSessionSummary = NonNullable<ReturnType<typeof parseSessionSummaryRecord>>;
 
 export class ControlPlaneService {
@@ -257,10 +259,7 @@ export class ControlPlaneService {
     });
   }
 
-  async attachPty(input: {
-    sessionId: string;
-    sinceCursor: number;
-  }): Promise<void> {
+  async attachPty(input: { sessionId: string; sinceCursor: number }): Promise<void> {
     await this.client.sendCommand({
       type: 'pty.attach',
       sessionId: input.sessionId,
@@ -390,6 +389,40 @@ export class ControlPlaneService {
     return parseSessionControllerRecord(result['controller']);
   }
 
+  async respondToSession(
+    sessionId: string,
+    text: string,
+  ): Promise<{ responded: boolean; sentBytes: number }> {
+    const result = await this.client.sendCommand({
+      type: 'session.respond',
+      sessionId,
+      text,
+    });
+    const responded = result['responded'];
+    const sentBytes = result['sentBytes'];
+    if (typeof responded !== 'boolean' || typeof sentBytes !== 'number') {
+      throw new Error('control-plane session.respond returned malformed response');
+    }
+    return {
+      responded,
+      sentBytes,
+    };
+  }
+
+  async interruptSession(sessionId: string): Promise<{ interrupted: boolean }> {
+    const result = await this.client.sendCommand({
+      type: 'session.interrupt',
+      sessionId,
+    });
+    const interrupted = result['interrupted'];
+    if (typeof interrupted !== 'boolean') {
+      throw new Error('control-plane session.interrupt returned malformed response');
+    }
+    return {
+      interrupted,
+    };
+  }
+
   async listTasks(limit = 1000): Promise<readonly ControlPlaneTaskRecord[]> {
     const result = await this.client.sendCommand({
       type: 'task.list',
@@ -419,7 +452,10 @@ export class ControlPlaneService {
       title: input.title,
       description: input.description,
     });
-    return this.parseTaskFromResult(result, 'control-plane task.create returned malformed task record');
+    return this.parseTaskFromResult(
+      result,
+      'control-plane task.create returned malformed task record',
+    );
   }
 
   async updateTask(input: {
@@ -435,7 +471,10 @@ export class ControlPlaneService {
       title: input.title,
       description: input.description,
     });
-    return this.parseTaskFromResult(result, 'control-plane task.update returned malformed task record');
+    return this.parseTaskFromResult(
+      result,
+      'control-plane task.update returned malformed task record',
+    );
   }
 
   async taskReady(taskId: string): Promise<ControlPlaneTaskRecord> {
@@ -443,7 +482,10 @@ export class ControlPlaneService {
       type: 'task.ready',
       taskId,
     });
-    return this.parseTaskFromResult(result, 'control-plane task.ready returned malformed task record');
+    return this.parseTaskFromResult(
+      result,
+      'control-plane task.ready returned malformed task record',
+    );
   }
 
   async taskDraft(taskId: string): Promise<ControlPlaneTaskRecord> {
@@ -451,7 +493,10 @@ export class ControlPlaneService {
       type: 'task.draft',
       taskId,
     });
-    return this.parseTaskFromResult(result, 'control-plane task.draft returned malformed task record');
+    return this.parseTaskFromResult(
+      result,
+      'control-plane task.draft returned malformed task record',
+    );
   }
 
   async taskComplete(taskId: string): Promise<ControlPlaneTaskRecord> {
@@ -459,10 +504,15 @@ export class ControlPlaneService {
       type: 'task.complete',
       taskId,
     });
-    return this.parseTaskFromResult(result, 'control-plane task.complete returned malformed task record');
+    return this.parseTaskFromResult(
+      result,
+      'control-plane task.complete returned malformed task record',
+    );
   }
 
-  async reorderTasks(orderedTaskIds: readonly string[]): Promise<readonly ControlPlaneTaskRecord[]> {
+  async reorderTasks(
+    orderedTaskIds: readonly string[],
+  ): Promise<readonly ControlPlaneTaskRecord[]> {
     const result = await this.client.sendCommand({
       type: 'task.reorder',
       tenantId: this.scope.tenantId,

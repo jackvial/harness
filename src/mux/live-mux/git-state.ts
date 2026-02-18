@@ -111,7 +111,8 @@ export function applyObservedGitStatusEvent<TRepositoryRecord extends { reposito
   if (observed.repositoryId === null) {
     associationChanged = repositoryAssociationByDirectoryId.delete(observed.directoryId);
   } else {
-    const previousRepositoryId = repositoryAssociationByDirectoryId.get(observed.directoryId) ?? null;
+    const previousRepositoryId =
+      repositoryAssociationByDirectoryId.get(observed.directoryId) ?? null;
     repositoryAssociationByDirectoryId.set(observed.directoryId, observed.repositoryId);
     associationChanged = previousRepositoryId !== observed.repositoryId;
   }

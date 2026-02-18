@@ -46,7 +46,10 @@ export class StartupSequencer {
   private readonly quietMs: number;
   private readonly nonemptyFallbackMs: number;
   private readonly nowMs: () => number;
-  private readonly setTimer: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+  private readonly setTimer: (
+    callback: () => void,
+    delayMs: number,
+  ) => ReturnType<typeof setTimeout>;
   private readonly clearTimer: (handle: ReturnType<typeof setTimeout>) => void;
 
   private targetSessionId: string | null = null;
@@ -99,7 +102,7 @@ export class StartupSequencer {
       headerObserved: this.headerObserved,
       settleGate: this.settleGate,
       settledObserved: this.settledObserved,
-      settledSignaled: this.settledSignaled
+      settledSignaled: this.settledSignaled,
     };
   }
 
@@ -160,7 +163,7 @@ export class StartupSequencer {
 
   scheduleSettledProbe(
     sessionId: string,
-    onSettled: (event: StartupSettledEvent) => void
+    onSettled: (event: StartupSettledEvent) => void,
   ): boolean {
     if (
       !this.hasTargetSession(sessionId) ||
@@ -189,7 +192,7 @@ export class StartupSequencer {
       onSettled({
         sessionId,
         gate: this.settleGate,
-        quietMs: this.quietMs
+        quietMs: this.quietMs,
       });
       this.signalSettled();
     }, this.quietMs);

@@ -56,10 +56,7 @@ function readPid(value: unknown): number | null {
   return value;
 }
 
-export function resolveInvocationDirectory(
-  env: NodeJS.ProcessEnv,
-  cwd: string
-): string {
+export function resolveInvocationDirectory(env: NodeJS.ProcessEnv, cwd: string): string {
   return env.HARNESS_INVOKE_CWD ?? env.INIT_CWD ?? cwd;
 }
 
@@ -73,7 +70,7 @@ export function resolveGatewayLogPath(workspaceRoot: string): string {
 
 export function normalizeGatewayHost(
   input: string | null | undefined,
-  fallback = DEFAULT_GATEWAY_HOST
+  fallback = DEFAULT_GATEWAY_HOST,
 ): string {
   if (typeof input !== 'string') {
     return fallback;
@@ -87,7 +84,7 @@ export function normalizeGatewayHost(
 
 export function normalizeGatewayPort(
   input: number | string | null | undefined,
-  fallback = DEFAULT_GATEWAY_PORT
+  fallback = DEFAULT_GATEWAY_PORT,
 ): number {
   if (typeof input === 'number') {
     return readPort(input) ?? fallback;
@@ -105,7 +102,7 @@ export function normalizeGatewayPort(
 
 export function normalizeGatewayStateDbPath(
   input: string | null | undefined,
-  fallback = DEFAULT_GATEWAY_DB_PATH
+  fallback = DEFAULT_GATEWAY_DB_PATH,
 ): string {
   if (typeof input !== 'string') {
     return fallback;
@@ -154,7 +151,7 @@ export function parseGatewayRecordText(text: string): GatewayRecord | null {
     stateDbPath === null ||
     startedAt === null ||
     workspaceRoot === null ||
-    authToken === null && authTokenRaw !== null
+    (authToken === null && authTokenRaw !== null)
   ) {
     return null;
   }
@@ -167,7 +164,7 @@ export function parseGatewayRecordText(text: string): GatewayRecord | null {
     authToken,
     stateDbPath,
     startedAt,
-    workspaceRoot
+    workspaceRoot,
   };
 }
 

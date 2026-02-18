@@ -19,21 +19,21 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       tenantId: 'tenant-task',
       userId: 'user-task',
       workspaceId: 'workspace-task',
-      path: '/tmp/task-a'
+      path: '/tmp/task-a',
     });
     store.upsertDirectory({
       directoryId: 'dir-task-b',
       tenantId: 'tenant-task',
       userId: 'user-task',
       workspaceId: 'workspace-task',
-      path: '/tmp/task-b'
+      path: '/tmp/task-b',
     });
     store.upsertDirectory({
       directoryId: 'dir-task-other',
       tenantId: 'tenant-other',
       userId: 'user-other',
       workspaceId: 'workspace-other',
-      path: '/tmp/task-other'
+      path: '/tmp/task-other',
     });
 
     const repo = store.upsertRepository({
@@ -45,8 +45,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       remoteUrl: 'https://github.com/jmoyers/harness.git',
       defaultBranch: 'main',
       metadata: {
-        provider: 'github'
-      }
+        provider: 'github',
+      },
     });
     assert.equal(repo.repositoryId, 'repo-1');
     assert.equal(repo.defaultBranch, 'main');
@@ -60,8 +60,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       remoteUrl: 'https://github.com/jmoyers/harness.git',
       defaultBranch: 'main',
       metadata: {
-        provider: 'github'
-      }
+        provider: 'github',
+      },
     });
     assert.equal(sameRepo.repositoryId, 'repo-1');
 
@@ -75,8 +75,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       defaultBranch: 'develop',
       metadata: {
         provider: 'github',
-        owner: 'jmoyers'
-      }
+        owner: 'jmoyers',
+      },
     });
     assert.equal(updatedRepo.name, 'Harness Updated');
     assert.equal(updatedRepo.defaultBranch, 'develop');
@@ -102,8 +102,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       defaultBranch: 'develop',
       metadata: {
         provider: 'github',
-        owner: 'jmoyers'
-      }
+        owner: 'jmoyers',
+      },
     });
     assert.equal(restoredByUrl.repositoryId, 'repo-1');
     assert.equal(restoredByUrl.archivedAt, null);
@@ -118,8 +118,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       defaultBranch: 'develop',
       metadata: {
         provider: 'github',
-        owner: 'jmoyers'
-      }
+        owner: 'jmoyers',
+      },
     });
     assert.equal(restoredNoop.repositoryId, 'repo-1');
 
@@ -131,9 +131,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           userId: 'user-task',
           workspaceId: 'workspace-task',
           name: 'scope mismatch',
-          remoteUrl: 'https://github.com/jmoyers/harness.git'
+          remoteUrl: 'https://github.com/jmoyers/harness.git',
         }),
-      /scope mismatch/
+      /scope mismatch/,
     );
     assert.throws(() => store.archiveRepository('missing-repository'), /repository not found/);
 
@@ -144,8 +144,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       remoteUrl: 'https://github.com/jmoyers/harness-final.git',
       defaultBranch: 'release',
       metadata: {
-        tier: 'critical'
-      }
+        tier: 'critical',
+      },
     });
     assert.equal(updateRepositoryFull?.name, 'Harness Final');
     assert.equal(updateRepositoryFull?.remoteUrl, 'https://github.com/jmoyers/harness-final.git');
@@ -160,7 +160,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       userId: 'user-task',
       workspaceId: 'workspace-task',
       name: 'Repo 2',
-      remoteUrl: 'https://github.com/jmoyers/repo-2.git'
+      remoteUrl: 'https://github.com/jmoyers/repo-2.git',
     });
     store.upsertRepository({
       repositoryId: 'repo-other-scope',
@@ -168,7 +168,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       userId: 'user-other',
       workspaceId: 'workspace-other',
       name: 'Repo Other Scope',
-      remoteUrl: 'https://github.com/jmoyers/repo-other.git'
+      remoteUrl: 'https://github.com/jmoyers/repo-other.git',
     });
 
     const taskA = store.createTask({
@@ -176,7 +176,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       tenantId: 'tenant-task',
       userId: 'user-task',
       workspaceId: 'workspace-task',
-      title: 'task a'
+      title: 'task a',
     });
     const taskB = store.createTask({
       taskId: 'task-b',
@@ -196,8 +196,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
         priority: 2,
         estimate: 3,
         dueDate: '2026-03-01',
-        labelIds: ['bug', 'backend']
-      }
+        labelIds: ['bug', 'backend'],
+      },
     });
     const taskC = store.createTask({
       taskId: 'task-c',
@@ -205,7 +205,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       userId: 'user-task',
       workspaceId: 'workspace-task',
       repositoryId: 'repo-2',
-      title: 'task c'
+      title: 'task c',
     });
     assert.equal(taskA.orderIndex, 0);
     assert.equal(taskB.orderIndex, 1);
@@ -223,9 +223,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           tenantId: 'tenant-task',
           userId: 'user-task',
           workspaceId: 'workspace-task',
-          title: 'duplicate'
+          title: 'duplicate',
         }),
-      /task already exists/
+      /task already exists/,
     );
     assert.throws(
       () =>
@@ -234,9 +234,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           tenantId: 'tenant-task',
           userId: 'user-task',
           workspaceId: 'workspace-task',
-          title: '  '
+          title: '  ',
         }),
-      /expected non-empty title/
+      /expected non-empty title/,
     );
     assert.throws(
       () =>
@@ -246,9 +246,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           userId: 'user-task',
           workspaceId: 'workspace-task',
           repositoryId: 'missing-repository',
-          title: 'bad'
+          title: 'bad',
         }),
-      /repository not found/
+      /repository not found/,
     );
     assert.throws(
       () =>
@@ -258,9 +258,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           userId: 'user-task',
           workspaceId: 'workspace-task',
           repositoryId: 'repo-other-scope',
-          title: 'bad'
+          title: 'bad',
         }),
-      /scope mismatch/
+      /scope mismatch/,
     );
     assert.throws(
       () =>
@@ -271,10 +271,10 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           workspaceId: 'workspace-task',
           title: 'bad linear priority',
           linear: {
-            priority: 7
-          }
+            priority: 7,
+          },
         }),
-      /linear\.priority/
+      /linear\.priority/,
     );
     assert.throws(
       () =>
@@ -285,10 +285,10 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           workspaceId: 'workspace-task',
           title: 'bad linear date',
           linear: {
-            dueDate: '03-01-2026'
-          }
+            dueDate: '03-01-2026',
+          },
         }),
-      /YYYY-MM-DD/
+      /YYYY-MM-DD/,
     );
     assert.throws(
       () =>
@@ -299,10 +299,10 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           workspaceId: 'workspace-task',
           title: 'bad linear estimate',
           linear: {
-            estimate: -1
-          }
+            estimate: -1,
+          },
         }),
-      /linear\.estimate/
+      /linear\.estimate/,
     );
 
     const taskLinearNullLabels = store.createTask({
@@ -312,8 +312,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       workspaceId: 'workspace-task',
       title: 'null labels',
       linear: {
-        labelIds: null
-      }
+        labelIds: null,
+      },
     });
     assert.deepEqual(taskLinearNullLabels.linear.labelIds, []);
 
@@ -323,9 +323,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       store.listTasks({
         tenantId: 'tenant-task',
         userId: 'user-task',
-        workspaceId: 'workspace-task'
+        workspaceId: 'workspace-task',
       }).length,
-      4
+      4,
     );
     assert.equal(store.listTasks({ repositoryId: 'repo-1' }).length, 1);
     assert.equal(store.listTasks({ status: 'draft' }).length, 4);
@@ -340,8 +340,8 @@ void test('control-plane store manages repositories and task lifecycle', () => {
         identifier: 'ENG-43',
         priority: 1,
         estimate: 5,
-        labelIds: ['feature']
-      }
+        labelIds: ['feature'],
+      },
     });
     assert.equal(updateTaskFull?.title, 'task a updated');
     assert.equal(updateTaskFull?.repositoryId, 'repo-1');
@@ -350,16 +350,16 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     assert.deepEqual(updateTaskFull?.linear.labelIds, ['feature']);
 
     const updateTaskNoop = store.updateTask('task-a', {
-      title: 'task a renamed only'
+      title: 'task a renamed only',
     });
     assert.equal(updateTaskNoop?.title, 'task a renamed only');
 
     const updateTaskClearRepository = store.updateTask('task-a', {
-      repositoryId: null
+      repositoryId: null,
     });
     assert.equal(updateTaskClearRepository?.repositoryId, null);
     const updateTaskResetLinear = store.updateTask('task-a', {
-      linear: null
+      linear: null,
     });
     assert.equal(updateTaskResetLinear?.linear.issueId, null);
     assert.equal(updateTaskResetLinear?.linear.priority, null);
@@ -368,50 +368,50 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     assert.throws(
       () =>
         store.updateTask('task-a', {
-          repositoryId: 'missing-repository'
+          repositoryId: 'missing-repository',
         }),
-      /repository not found/
+      /repository not found/,
     );
     assert.throws(
       () =>
         store.updateTask('task-a', {
-          repositoryId: 'repo-other-scope'
+          repositoryId: 'repo-other-scope',
         }),
-      /scope mismatch/
+      /scope mismatch/,
     );
     assert.throws(
       () =>
         store.updateTask('task-a', {
           linear: {
-            labelIds: ['ok', '  ']
-          }
+            labelIds: ['ok', '  '],
+          },
         }),
-      /linear\.labelIds/
+      /linear\.labelIds/,
     );
 
     assert.throws(
       () =>
         store.claimTask({
           taskId: 'missing-task',
-          controllerId: 'agent-1'
+          controllerId: 'agent-1',
         }),
-      /task not found/
+      /task not found/,
     );
     assert.throws(
       () =>
         store.claimTask({
           taskId: 'task-a',
-          controllerId: '   '
+          controllerId: '   ',
         }),
-      /expected non-empty controllerId/
+      /expected non-empty controllerId/,
     );
     assert.throws(
       () =>
         store.claimTask({
           taskId: 'task-b',
-          controllerId: 'agent-1'
+          controllerId: 'agent-1',
         }),
-      /cannot claim draft task/
+      /cannot claim draft task/,
     );
 
     const readyTaskA = store.readyTask('task-a');
@@ -422,18 +422,18 @@ void test('control-plane store manages repositories and task lifecycle', () => {
         store.claimTask({
           taskId: 'task-a',
           controllerId: 'agent-1',
-          directoryId: 'missing-directory'
+          directoryId: 'missing-directory',
         }),
-      /directory not found/
+      /directory not found/,
     );
     assert.throws(
       () =>
         store.claimTask({
           taskId: 'task-a',
           controllerId: 'agent-1',
-          directoryId: 'dir-task-other'
+          directoryId: 'dir-task-other',
         }),
-      /scope mismatch/
+      /scope mismatch/,
     );
 
     const claimedTaskA = store.claimTask({
@@ -441,7 +441,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       controllerId: 'agent-1',
       directoryId: 'dir-task-a',
       branchName: 'feature/task-a',
-      baseBranch: 'main'
+      baseBranch: 'main',
     });
     assert.equal(claimedTaskA.status, 'in-progress');
     assert.equal(claimedTaskA.claimedByControllerId, 'agent-1');
@@ -460,9 +460,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       () =>
         store.claimTask({
           taskId: 'task-a',
-          controllerId: 'agent-2'
+          controllerId: 'agent-2',
         }),
-      /cannot claim completed task/
+      /cannot claim completed task/,
     );
 
     const requeuedTaskA = store.queueTask('task-a');
@@ -477,7 +477,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     assert.equal(readyTaskB.status, 'ready');
     const claimedTaskWithoutDirectory = store.claimTask({
       taskId: 'task-b',
-      controllerId: 'agent-3'
+      controllerId: 'agent-3',
     });
     assert.equal(claimedTaskWithoutDirectory.claimedByDirectoryId, null);
     const draftedTaskB = store.draftTask('task-b');
@@ -489,9 +489,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       () =>
         store.claimTask({
           taskId: 'task-b',
-          controllerId: 'agent-4'
+          controllerId: 'agent-4',
         }),
-      /cannot claim draft task/
+      /cannot claim draft task/,
     );
 
     assert.throws(() => store.completeTask('missing-task'), /task not found/);
@@ -504,9 +504,9 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           tenantId: 'tenant-task',
           userId: 'user-task',
           workspaceId: 'workspace-task',
-          orderedTaskIds: ['task-c', 'task-c']
+          orderedTaskIds: ['task-c', 'task-c'],
         }),
-      /duplicate ids/
+      /duplicate ids/,
     );
     assert.throws(
       () =>
@@ -514,16 +514,16 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           tenantId: 'tenant-task',
           userId: 'user-task',
           workspaceId: 'workspace-task',
-          orderedTaskIds: ['missing-task']
+          orderedTaskIds: ['missing-task'],
         }),
-      /not found in scope/
+      /not found in scope/,
     );
 
     const reordered = store.reorderTasks({
       tenantId: 'tenant-task',
       userId: 'user-task',
       workspaceId: 'workspace-task',
-      orderedTaskIds: ['task-c', 'task-a', '   ']
+      orderedTaskIds: ['task-c', 'task-a', '   '],
     });
     assert.equal(reordered[0]?.taskId, 'task-c');
     assert.equal(reordered[1]?.taskId, 'task-a');
@@ -545,7 +545,7 @@ void test('control-plane store repository and task normalization guards are stri
       userId: 'user-normalize',
       workspaceId: 'workspace-normalize',
       name: 'normalize',
-      remoteUrl: 'https://github.com/jmoyers/normalize.git'
+      remoteUrl: 'https://github.com/jmoyers/normalize.git',
     });
     store.createTask({
       taskId: 'task-normalize',
@@ -553,7 +553,7 @@ void test('control-plane store repository and task normalization guards are stri
       userId: 'user-normalize',
       workspaceId: 'workspace-normalize',
       repositoryId: 'repo-normalize',
-      title: 'normalize task'
+      title: 'normalize task',
     });
   } finally {
     store.close();
@@ -563,7 +563,7 @@ void test('control-plane store repository and task normalization guards are stri
   try {
     db.prepare('UPDATE repositories SET metadata_json = ? WHERE repository_id = ?').run(
       '[]',
-      'repo-normalize'
+      'repo-normalize',
     );
   } finally {
     db.close();
@@ -602,7 +602,7 @@ void test('control-plane store repository and task normalization guards are stri
   try {
     assert.throws(
       () => reopenedInvalidMetadataType.getRepository('repo-normalize'),
-      /metadata_json/
+      /metadata_json/,
     );
   } finally {
     reopenedInvalidMetadataType.close();
@@ -812,17 +812,14 @@ void test('control-plane store repository and task normalization guards are stri
 
   const reopenedInvalidTaskRows = new SqliteControlPlaneStore(storePath);
   try {
-    assert.throws(
-      () => reopenedInvalidTaskRows.getTask('task-invalid-status'),
-      /task status enum/
-    );
+    assert.throws(() => reopenedInvalidTaskRows.getTask('task-invalid-status'), /task status enum/);
     assert.throws(
       () => reopenedInvalidTaskRows.getTask('task-invalid-order-index'),
-      /finite number/
+      /finite number/,
     );
     assert.throws(
       () => reopenedInvalidTaskRows.getTask('task-invalid-linear-priority'),
-      /linear\.priority/
+      /linear\.priority/,
     );
   } finally {
     reopenedInvalidTaskRows.close();
@@ -846,9 +843,9 @@ void test('control-plane store repository and task rollback guards cover impossi
           userId: 'user-rollback',
           workspaceId: 'workspace-rollback',
           name: 'insert fail',
-          remoteUrl: 'https://github.com/jmoyers/repo-insert-fail.git'
+          remoteUrl: 'https://github.com/jmoyers/repo-insert-fail.git',
         }),
-      /repository insert failed/
+      /repository insert failed/,
     );
     store.getRepository = originalGetRepository;
 
@@ -858,7 +855,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
       name: 'update fail',
-      remoteUrl: 'https://github.com/jmoyers/repo-update-fail.git'
+      remoteUrl: 'https://github.com/jmoyers/repo-update-fail.git',
     });
     let updateFailCalls = 0;
     store.getRepository = ((repositoryId: string) => {
@@ -878,9 +875,9 @@ void test('control-plane store repository and task rollback guards cover impossi
           userId: 'user-rollback',
           workspaceId: 'workspace-rollback',
           name: 'update fail changed',
-          remoteUrl: 'https://github.com/jmoyers/repo-update-fail.git'
+          remoteUrl: 'https://github.com/jmoyers/repo-update-fail.git',
         }),
-      /missing after update/
+      /missing after update/,
     );
     store.getRepository = originalGetRepository;
 
@@ -890,7 +887,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
       name: 'restore fail',
-      remoteUrl: 'https://github.com/jmoyers/repo-restore-fail.git'
+      remoteUrl: 'https://github.com/jmoyers/repo-restore-fail.git',
     });
     store.archiveRepository('repo-restore-fail');
     store.getRepository = ((repositoryId: string) => {
@@ -907,9 +904,9 @@ void test('control-plane store repository and task rollback guards cover impossi
           userId: 'user-rollback',
           workspaceId: 'workspace-rollback',
           name: 'restore fail changed',
-          remoteUrl: 'https://github.com/jmoyers/repo-restore-fail.git'
+          remoteUrl: 'https://github.com/jmoyers/repo-restore-fail.git',
         }),
-      /missing after restore/
+      /missing after restore/,
     );
     store.getRepository = originalGetRepository;
 
@@ -919,7 +916,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
       name: 'archive fail',
-      remoteUrl: 'https://github.com/jmoyers/repo-archive-fail.git'
+      remoteUrl: 'https://github.com/jmoyers/repo-archive-fail.git',
     });
     let archiveFailCalls = 0;
     store.getRepository = ((repositoryId: string) => {
@@ -942,9 +939,9 @@ void test('control-plane store repository and task rollback guards cover impossi
           tenantId: 'tenant-rollback',
           userId: 'user-rollback',
           workspaceId: 'workspace-rollback',
-          title: 'insert fail'
+          title: 'insert fail',
         }),
-      /task insert failed/
+      /task insert failed/,
     );
     store.getTask = originalGetTask;
 
@@ -953,7 +950,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
-      path: '/tmp/dir-rollback'
+      path: '/tmp/dir-rollback',
     });
 
     store.createTask({
@@ -961,7 +958,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
-      title: 'claim fail'
+      title: 'claim fail',
     });
     store.readyTask('task-claim-fail');
     let claimFailCalls = 0;
@@ -979,9 +976,9 @@ void test('control-plane store repository and task rollback guards cover impossi
         store.claimTask({
           taskId: 'task-claim-fail',
           controllerId: 'agent-rollback',
-          directoryId: 'dir-rollback'
+          directoryId: 'dir-rollback',
         }),
-      /missing after claim/
+      /missing after claim/,
     );
     store.getTask = originalGetTask;
 
@@ -990,7 +987,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
-      title: 'complete fail'
+      title: 'complete fail',
     });
     let completeFailCalls = 0;
     store.getTask = ((taskId: string) => {
@@ -1010,7 +1007,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
-      title: 'queue fail'
+      title: 'queue fail',
     });
     let queueFailCalls = 0;
     store.getTask = ((taskId: string) => {
@@ -1029,7 +1026,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
-      title: 'draft fail'
+      title: 'draft fail',
     });
     store.readyTask('task-draft-fail');
     let draftFailCalls = 0;

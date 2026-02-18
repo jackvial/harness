@@ -20,6 +20,7 @@ interface GlobalShortcutInputOptions {
   readonly conversationsHas: (sessionId: string) => boolean;
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   readonly archiveConversation: (sessionId: string) => Promise<void>;
+  readonly interruptConversation: (sessionId: string) => Promise<void>;
   readonly takeoverConversation: (sessionId: string) => Promise<void>;
   readonly openAddDirectoryPrompt: () => void;
   readonly getActiveDirectoryId: () => string | null;
@@ -63,6 +64,7 @@ export class GlobalShortcutInput {
       conversationsHas: this.options.conversationsHas,
       queueControlPlaneOp: this.options.queueControlPlaneOp,
       archiveConversation: this.options.archiveConversation,
+      interruptConversation: this.options.interruptConversation,
       takeoverConversation: this.options.takeoverConversation,
       openAddDirectoryPrompt: this.options.openAddDirectoryPrompt,
       resolveClosableDirectoryId: () => {

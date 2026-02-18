@@ -16,7 +16,7 @@ import {
   resolveGatewayRecordPath,
   resolveInvocationDirectory,
   serializeGatewayRecord,
-  type GatewayRecord
+  type GatewayRecord,
 } from '../src/cli/gateway-record.ts';
 
 void test('gateway record parsing accepts valid records with auth token', () => {
@@ -29,8 +29,8 @@ void test('gateway record parsing accepts valid records with auth token', () => 
       authToken: 'secret-token',
       stateDbPath: '/tmp/control-plane.sqlite',
       startedAt: '2026-02-16T00:00:00.000Z',
-      workspaceRoot: '/tmp/workspace'
-    })
+      workspaceRoot: '/tmp/workspace',
+    }),
   );
   assert.notEqual(parsed, null);
   assert.equal(parsed?.authToken, 'secret-token');
@@ -47,8 +47,8 @@ void test('gateway record parsing accepts records with null auth token', () => {
       authToken: null,
       stateDbPath: '/tmp/control-plane.sqlite',
       startedAt: '2026-02-16T00:00:00.000Z',
-      workspaceRoot: '/tmp/workspace'
-    })
+      workspaceRoot: '/tmp/workspace',
+    }),
   );
   assert.notEqual(parsed, null);
   assert.equal(parsed?.authToken, null);
@@ -67,10 +67,10 @@ void test('gateway record parsing rejects malformed records', () => {
         authToken: null,
         stateDbPath: '/tmp/db.sqlite',
         startedAt: '2026-02-16T00:00:00.000Z',
-        workspaceRoot: '/tmp/ws'
-      })
+        workspaceRoot: '/tmp/ws',
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     parseGatewayRecordText(
@@ -82,10 +82,10 @@ void test('gateway record parsing rejects malformed records', () => {
         authToken: null,
         stateDbPath: '/tmp/db.sqlite',
         startedAt: '2026-02-16T00:00:00.000Z',
-        workspaceRoot: '/tmp/ws'
-      })
+        workspaceRoot: '/tmp/ws',
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     parseGatewayRecordText(
@@ -97,10 +97,10 @@ void test('gateway record parsing rejects malformed records', () => {
         authToken: null,
         stateDbPath: '/tmp/db.sqlite',
         startedAt: '2026-02-16T00:00:00.000Z',
-        workspaceRoot: '/tmp/ws'
-      })
+        workspaceRoot: '/tmp/ws',
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     parseGatewayRecordText(
@@ -112,10 +112,10 @@ void test('gateway record parsing rejects malformed records', () => {
         authToken: null,
         stateDbPath: '/tmp/db.sqlite',
         startedAt: '2026-02-16T00:00:00.000Z',
-        workspaceRoot: '/tmp/ws'
-      })
+        workspaceRoot: '/tmp/ws',
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     parseGatewayRecordText(
@@ -127,10 +127,10 @@ void test('gateway record parsing rejects malformed records', () => {
         authToken: null,
         stateDbPath: '/tmp/db.sqlite',
         startedAt: '2026-02-16T00:00:00.000Z',
-        workspaceRoot: '/tmp/ws'
-      })
+        workspaceRoot: '/tmp/ws',
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     parseGatewayRecordText(
@@ -142,10 +142,10 @@ void test('gateway record parsing rejects malformed records', () => {
         authToken: null,
         stateDbPath: '/tmp/db.sqlite',
         startedAt: '2026-02-16T00:00:00.000Z',
-        workspaceRoot: '/tmp/ws'
-      })
+        workspaceRoot: '/tmp/ws',
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     parseGatewayRecordText(
@@ -157,10 +157,10 @@ void test('gateway record parsing rejects malformed records', () => {
         authToken: 42,
         stateDbPath: '/tmp/db.sqlite',
         startedAt: '2026-02-16T00:00:00.000Z',
-        workspaceRoot: '/tmp/ws'
-      })
+        workspaceRoot: '/tmp/ws',
+      }),
     ),
-    null
+    null,
   );
 });
 
@@ -173,7 +173,7 @@ void test('gateway record serializer writes a trailing newline', () => {
     authToken: 'secret-token',
     stateDbPath: '/tmp/control-plane.sqlite',
     startedAt: '2026-02-16T00:00:00.000Z',
-    workspaceRoot: '/tmp/workspace'
+    workspaceRoot: '/tmp/workspace',
   };
   const serialized = serializeGatewayRecord(record);
   assert.equal(serialized.endsWith('\n'), true);
@@ -188,11 +188,11 @@ void test('invocation directory and gateway paths resolve deterministically', ()
     resolveInvocationDirectory(
       {
         HARNESS_INVOKE_CWD: '/tmp/invoke',
-        INIT_CWD: '/tmp/init'
+        INIT_CWD: '/tmp/init',
       },
-      '/tmp/cwd'
+      '/tmp/cwd',
     ),
-    '/tmp/invoke'
+    '/tmp/invoke',
   );
 
   assert.equal(resolveGatewayRecordPath('/tmp/workspace'), '/tmp/workspace/.harness/gateway.json');
@@ -226,7 +226,10 @@ void test('gateway db path normalization keeps explicit values and falls back ot
   assert.equal(normalizeGatewayStateDbPath('/tmp/custom.sqlite'), '/tmp/custom.sqlite');
   assert.equal(normalizeGatewayStateDbPath('   /tmp/trim.sqlite   '), '/tmp/trim.sqlite');
   assert.equal(normalizeGatewayStateDbPath('   '), DEFAULT_GATEWAY_DB_PATH);
-  assert.equal(normalizeGatewayStateDbPath(undefined, '/tmp/fallback.sqlite'), '/tmp/fallback.sqlite');
+  assert.equal(
+    normalizeGatewayStateDbPath(undefined, '/tmp/fallback.sqlite'),
+    '/tmp/fallback.sqlite',
+  );
   assert.equal(DEFAULT_GATEWAY_DB_PATH, '.harness/control-plane.sqlite');
 });
 

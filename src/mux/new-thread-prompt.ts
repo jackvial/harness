@@ -15,7 +15,7 @@ interface NewThreadPromptInputResult {
 export function createNewThreadPromptState(directoryId: string): NewThreadPromptState {
   return {
     directoryId,
-    selectedAgentType: 'codex'
+    selectedAgentType: 'codex',
   };
 }
 
@@ -77,7 +77,7 @@ function normalizePromptInputBytes(input: Uint8Array): Uint8Array {
 
 export function reduceNewThreadPromptInput(
   state: NewThreadPromptState,
-  input: Uint8Array
+  input: Uint8Array,
 ): NewThreadPromptInputResult {
   const normalizedInput = normalizePromptInputBytes(input);
   let selectedAgentType = state.selectedAgentType;
@@ -103,15 +103,15 @@ export function reduceNewThreadPromptInput(
   return {
     nextState: {
       directoryId: state.directoryId,
-      selectedAgentType
+      selectedAgentType,
     },
-    submit
+    submit,
   };
 }
 
 export function resolveNewThreadPromptAgentByRow(
   overlayTopRowZeroBased: number,
-  rowOneBased: number
+  rowOneBased: number,
 ): ThreadAgentType | null {
   const codexRow = overlayTopRowZeroBased + 4;
   const claudeRow = overlayTopRowZeroBased + 5;
@@ -144,7 +144,7 @@ export function newThreadPromptBodyLines(
     readonly cursorButtonLabel: string;
     readonly terminalButtonLabel: string;
     readonly critiqueButtonLabel: string;
-  }
+  },
 ): readonly string[] {
   const codexSelected = state.selectedAgentType === 'codex';
   const claudeSelected = state.selectedAgentType === 'claude';
@@ -160,6 +160,6 @@ export function newThreadPromptBodyLines(
     `${terminalSelected ? '●' : '○'} ${labels.terminalButtonLabel}`,
     `${critiqueSelected ? '●' : '○'} ${labels.critiqueButtonLabel}`,
     '',
-    'c/a/u/t/r toggle'
+    'c/a/u/t/r toggle',
   ];
 }

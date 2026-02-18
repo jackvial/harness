@@ -1,9 +1,8 @@
-import {
-  TERMINAL_PARITY_SCENES,
-  runTerminalParityMatrix
-} from '../src/terminal/parity-suite.ts';
+import { TERMINAL_PARITY_SCENES, runTerminalParityMatrix } from '../src/terminal/parity-suite.ts';
 
-function summarizeScene(result: ReturnType<typeof runTerminalParityMatrix>['results'][number]): string {
+function summarizeScene(
+  result: ReturnType<typeof runTerminalParityMatrix>['results'][number],
+): string {
   const status = result.pass ? 'PASS' : 'FAIL';
   const suffix = result.pass ? '' : ` failures=${result.failures.join(',')}`;
   return `[${status}] profile=${result.profile} scene=${result.sceneId} hash=${result.frameHash}${suffix}`;

@@ -22,7 +22,7 @@ function scanAnsiText(text: string): ScanResult {
     if (next === undefined) {
       return {
         valid: false,
-        reason: 'dangling ESC at end of row'
+        reason: 'dangling ESC at end of row',
       };
     }
 
@@ -39,7 +39,7 @@ function scanAnsiText(text: string): ScanResult {
         if (csiCode < 0x20 || csiCode > 0x3f) {
           return {
             valid: false,
-            reason: `invalid CSI byte 0x${csiCode.toString(16)}`
+            reason: `invalid CSI byte 0x${csiCode.toString(16)}`,
           };
         }
         csiIndex += 1;
@@ -47,7 +47,7 @@ function scanAnsiText(text: string): ScanResult {
       if (!foundFinal) {
         return {
           valid: false,
-          reason: 'unterminated CSI sequence'
+          reason: 'unterminated CSI sequence',
         };
       }
       index = csiIndex;
@@ -74,7 +74,7 @@ function scanAnsiText(text: string): ScanResult {
       if (!terminated) {
         return {
           valid: false,
-          reason: 'unterminated OSC sequence'
+          reason: 'unterminated OSC sequence',
         };
       }
       index = oscIndex;

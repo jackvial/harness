@@ -3,7 +3,7 @@ import { test } from 'bun:test';
 import {
   DISABLE_MUX_INPUT_MODES,
   ENABLE_MUX_INPUT_MODES,
-  createMuxInputModeManager
+  createMuxInputModeManager,
 } from '../src/mux/terminal-input-modes.ts';
 
 void test('mux input mode manager enables once and tracks state', () => {
@@ -40,6 +40,6 @@ void test('mux input mode manager restore always emits disable sequence and rese
     DISABLE_MUX_INPUT_MODES,
     ENABLE_MUX_INPUT_MODES,
     DISABLE_MUX_INPUT_MODES,
-    DISABLE_MUX_INPUT_MODES
+    DISABLE_MUX_INPUT_MODES,
   ]);
 });

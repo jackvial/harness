@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type {
   HarnessLifecycleEventType,
   HarnessLifecycleHooksConfig,
-  HarnessLifecycleWebhookConfig
+  HarnessLifecycleWebhookConfig,
 } from '../config/config-core.ts';
 import { recordPerfEvent } from '../perf/perf-core.ts';
 import type {
   StreamObservedEvent,
   StreamSessionRuntimeStatus,
-  StreamTelemetrySource
+  StreamTelemetrySource,
 } from './stream-protocol.ts';
 
 type HarnessLifecycleProvider = 'codex' | 'claude' | 'cursor' | 'control-plane' | 'unknown';
@@ -54,7 +54,12 @@ interface SessionStatusSnapshot {
 
 const SESSION_DEDUP_WINDOW_MS = 250;
 const MAX_PENDING_EVENTS = 2048;
-const OTLP_SOURCES = new Set<StreamTelemetrySource>(['history', 'otlp-log', 'otlp-metric', 'otlp-trace']);
+const OTLP_SOURCES = new Set<StreamTelemetrySource>([
+  'history',
+  'otlp-log',
+  'otlp-metric',
+  'otlp-trace',
+]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -90,7 +95,11 @@ function normalizeBaseUrl(baseUrl: string): string {
   return trimmed;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
   if (timeoutMs <= 0) {
     return await fetch(url, init);
   }
@@ -107,9 +116,9 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
     return await Promise.race([
       fetch(url, {
         ...init,
-        signal: controller.signal
+        signal: controller.signal,
       }),
-      timeoutPromise
+      timeoutPromise,
     ]);
   } finally {
     if (timeout !== null) {
@@ -169,11 +178,11 @@ class WebhookLifecycleConnector implements LifecycleConnector {
     }
     const hasBody = this.method !== 'GET' && this.method !== 'HEAD';
     const headers: Record<string, string> = {
-      ...this.headers
+      ...this.headers,
     };
     const init: RequestInit = {
       method: this.method,
-      headers
+      headers,
     };
     if (hasBody) {
       if (headers['content-type'] === undefined) {
@@ -188,7 +197,9 @@ class WebhookLifecycleConnector implements LifecycleConnector {
   }
 }
 
-function providerFromSessionKeyEvent(event: Extract<StreamObservedEvent, { type: 'session-key-event' }>): HarnessLifecycleProvider {
+function providerFromSessionKeyEvent(
+  event: Extract<StreamObservedEvent, { type: 'session-key-event' }>,
+): HarnessLifecycleProvider {
   const eventName = event.keyEvent.eventName?.toLowerCase() ?? '';
   if (
     eventName.startsWith('claude.') ||
@@ -327,7 +338,7 @@ export class LifecycleHooksRuntime {
             connector: connector.id,
             eventType: event.eventType,
             provider: event.provider,
-            sessionId: event.context.sessionId ?? ''
+            sessionId: event.context.sessionId ?? '',
           });
         } catch (error: unknown) {
           recordPerfEvent('control-plane.lifecycle-hooks.dispatch.failed', {
@@ -335,7 +346,7 @@ export class LifecycleHooksRuntime {
             eventType: event.eventType,
             provider: event.provider,
             sessionId: event.context.sessionId ?? '',
-            error: String(error)
+            error: String(error),
           });
         }
       }
@@ -345,7 +356,7 @@ export class LifecycleHooksRuntime {
   private normalizeObservedEvent(
     scope: LifecycleObservedScope,
     event: StreamObservedEvent,
-    cursor: number
+    cursor: number,
   ): readonly HarnessLifecycleEventEnvelope[] {
     const provider = providerFromObservedEvent(event);
     if (!this.isProviderEnabled(provider)) {
@@ -358,9 +369,9 @@ export class LifecycleHooksRuntime {
           sessionId: conversationIdFromConversationRecord(event),
           summary: 'thread created',
           attributes: {
-            conversationId: conversationIdFromConversationRecord(event)
-          }
-        })
+            conversationId: conversationIdFromConversationRecord(event),
+          },
+        }),
       ];
     }
     if (event.type === 'conversation-updated') {
@@ -369,9 +380,9 @@ export class LifecycleHooksRuntime {
           sessionId: conversationIdFromConversationRecord(event),
           summary: 'thread updated',
           attributes: {
-            conversationId: conversationIdFromConversationRecord(event)
-          }
-        })
+            conversationId: conversationIdFromConversationRecord(event),
+          },
+        }),
       ];
     }
     if (event.type === 'conversation-archived') {
@@ -380,9 +391,9 @@ export class LifecycleHooksRuntime {
           sessionId: event.conversationId,
           summary: 'thread archived',
           attributes: {
-            conversationId: event.conversationId
-          }
-        })
+            conversationId: event.conversationId,
+          },
+        }),
       ];
     }
     if (event.type === 'conversation-deleted') {
@@ -391,9 +402,9 @@ export class LifecycleHooksRuntime {
           sessionId: event.conversationId,
           summary: 'thread deleted',
           attributes: {
-            conversationId: event.conversationId
-          }
-        })
+            conversationId: event.conversationId,
+          },
+        }),
       ];
     }
     if (event.type === 'session-status') {
@@ -406,9 +417,9 @@ export class LifecycleHooksRuntime {
           summary: 'session exited',
           attributes: {
             exitCode: event.event.exit.code,
-            exitSignal: event.event.exit.signal
-          }
-        })
+            exitSignal: event.event.exit.signal,
+          },
+        }),
       ];
       if (event.event.exit.code !== 0 || event.event.exit.signal !== null) {
         events.push(
@@ -417,9 +428,9 @@ export class LifecycleHooksRuntime {
             summary: 'turn failed',
             attributes: {
               exitCode: event.event.exit.code,
-              exitSignal: event.event.exit.signal
-            }
-          })
+              exitSignal: event.event.exit.signal,
+            },
+          }),
         );
       }
       return this.dedupeSessionEvents(events);
@@ -437,12 +448,12 @@ export class LifecycleHooksRuntime {
     scope: LifecycleObservedScope,
     event: Extract<StreamObservedEvent, { type: 'session-status' }>,
     cursor: number,
-    provider: HarnessLifecycleProvider
+    provider: HarnessLifecycleProvider,
   ): readonly HarnessLifecycleEventEnvelope[] {
     const previous = this.sessionStatusById.get(event.sessionId);
     this.sessionStatusById.set(event.sessionId, {
       status: event.status,
-      live: event.live
+      live: event.live,
     });
     const lifecycleEvents: HarnessLifecycleEventEnvelope[] = [];
     if (event.live && (previous === undefined || !previous.live || previous.status === 'exited')) {
@@ -451,9 +462,9 @@ export class LifecycleHooksRuntime {
           sessionId: event.sessionId,
           summary: 'session started',
           attributes: {
-            status: event.status
-          }
-        })
+            status: event.status,
+          },
+        }),
       );
     }
     if (previous?.status !== event.status) {
@@ -463,9 +474,9 @@ export class LifecycleHooksRuntime {
             sessionId: event.sessionId,
             summary: 'turn started',
             attributes: {
-              status: event.status
-            }
-          })
+              status: event.status,
+            },
+          }),
         );
       } else if (event.status === 'completed') {
         lifecycleEvents.push(
@@ -473,9 +484,9 @@ export class LifecycleHooksRuntime {
             sessionId: event.sessionId,
             summary: 'turn completed',
             attributes: {
-              status: event.status
-            }
-          })
+              status: event.status,
+            },
+          }),
         );
       } else if (event.status === 'needs-input') {
         lifecycleEvents.push(
@@ -483,9 +494,9 @@ export class LifecycleHooksRuntime {
             sessionId: event.sessionId,
             summary: 'input required',
             attributes: {
-              attentionReason: event.attentionReason
-            }
-          })
+              attentionReason: event.attentionReason,
+            },
+          }),
         );
       } else if (event.status === 'exited') {
         lifecycleEvents.push(
@@ -493,9 +504,9 @@ export class LifecycleHooksRuntime {
             sessionId: event.sessionId,
             summary: 'session exited',
             attributes: {
-              status: event.status
-            }
-          })
+              status: event.status,
+            },
+          }),
         );
       }
     }
@@ -506,7 +517,7 @@ export class LifecycleHooksRuntime {
     scope: LifecycleObservedScope,
     event: Extract<StreamObservedEvent, { type: 'session-key-event' }>,
     cursor: number,
-    provider: HarnessLifecycleProvider
+    provider: HarnessLifecycleProvider,
   ): readonly HarnessLifecycleEventEnvelope[] {
     const lifecycleEvents: HarnessLifecycleEventEnvelope[] = [];
     const eventName = event.keyEvent.eventName?.toLowerCase() ?? '';
@@ -524,9 +535,9 @@ export class LifecycleHooksRuntime {
           summary: event.keyEvent.summary ?? 'tool started',
           attributes: {
             eventName: event.keyEvent.eventName,
-            source: event.keyEvent.source
-          }
-        })
+            source: event.keyEvent.source,
+          },
+        }),
       );
     }
     if (
@@ -549,10 +560,10 @@ export class LifecycleHooksRuntime {
             attributes: {
               eventName: event.keyEvent.eventName,
               source: event.keyEvent.source,
-              severity: event.keyEvent.severity
-            }
-          }
-        )
+              severity: event.keyEvent.severity,
+            },
+          },
+        ),
       );
     }
     if (
@@ -566,24 +577,21 @@ export class LifecycleHooksRuntime {
           summary: event.keyEvent.summary ?? 'turn started',
           attributes: {
             eventName: event.keyEvent.eventName,
-            source: event.keyEvent.source
-          }
-        })
+            source: event.keyEvent.source,
+          },
+        }),
       );
     }
-    if (
-      eventName === 'codex.turn.e2e_duration_ms' ||
-      summary.includes('turn complete')
-    ) {
+    if (eventName === 'codex.turn.e2e_duration_ms' || summary.includes('turn complete')) {
       lifecycleEvents.push(
         this.buildLifecycleEvent(scope, event, cursor, provider, 'turn.completed', {
           sessionId: event.sessionId,
           summary: event.keyEvent.summary ?? 'turn completed',
           attributes: {
             eventName: event.keyEvent.eventName,
-            source: event.keyEvent.source
-          }
-        })
+            source: event.keyEvent.source,
+          },
+        }),
       );
     }
     if (
@@ -597,12 +605,15 @@ export class LifecycleHooksRuntime {
           summary: event.keyEvent.summary ?? 'input required',
           attributes: {
             eventName: event.keyEvent.eventName,
-            source: event.keyEvent.source
-          }
-        })
+            source: event.keyEvent.source,
+          },
+        }),
       );
     }
-    if (maybeToolFailure(event.keyEvent.summary, event.keyEvent.severity) && eventName.includes('api_request')) {
+    if (
+      maybeToolFailure(event.keyEvent.summary, event.keyEvent.severity) &&
+      eventName.includes('api_request')
+    ) {
       lifecycleEvents.push(
         this.buildLifecycleEvent(scope, event, cursor, provider, 'turn.failed', {
           sessionId: event.sessionId,
@@ -610,9 +621,9 @@ export class LifecycleHooksRuntime {
           attributes: {
             eventName: event.keyEvent.eventName,
             source: event.keyEvent.source,
-            severity: event.keyEvent.severity
-          }
-        })
+            severity: event.keyEvent.severity,
+          },
+        }),
       );
     }
 
@@ -620,7 +631,7 @@ export class LifecycleHooksRuntime {
   }
 
   private dedupeSessionEvents(
-    events: readonly HarnessLifecycleEventEnvelope[]
+    events: readonly HarnessLifecycleEventEnvelope[],
   ): readonly HarnessLifecycleEventEnvelope[] {
     const deduped: HarnessLifecycleEventEnvelope[] = [];
     for (const event of events) {
@@ -652,7 +663,7 @@ export class LifecycleHooksRuntime {
       sessionId: string | null;
       summary: string;
       attributes: Readonly<Record<string, unknown>>;
-    }
+    },
   ): HarnessLifecycleEventEnvelope {
     const observedRecord = asRecord(observed);
     const observedTs = readTrimmedString(observedRecord?.['ts']);
@@ -671,9 +682,9 @@ export class LifecycleHooksRuntime {
         workspaceId: scope.workspaceId,
         directoryId: scope.directoryId,
         conversationId: scope.conversationId,
-        sessionId: details.sessionId
+        sessionId: details.sessionId,
       },
-      attributes: details.attributes
+      attributes: details.attributes,
     };
   }
 

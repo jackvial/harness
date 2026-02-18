@@ -4,11 +4,11 @@ import { connect, createServer, type AddressInfo, type Socket } from 'node:net';
 import {
   openCodexControlPlaneClient,
   openCodexControlPlaneSession,
-  subscribeControlPlaneKeyEvents
+  subscribeControlPlaneKeyEvents,
 } from '../src/control-plane/codex-session-stream.ts';
 import {
   startControlPlaneStreamServer,
-  type StartControlPlaneSessionInput
+  type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
@@ -17,7 +17,7 @@ import {
   consumeJsonLines,
   encodeStreamEnvelope,
   parseClientEnvelope,
-  type StreamClientEnvelope
+  type StreamClientEnvelope,
 } from '../src/control-plane/stream-protocol.ts';
 
 interface MockHarnessServer {
@@ -76,7 +76,7 @@ class TestLiveSession {
     for (const handlers of this.attachments.values()) {
       handlers.onData({
         cursor: this.latestCursor,
-        chunk
+        chunk,
       });
     }
   }
@@ -100,7 +100,7 @@ class TestLiveSession {
 }
 
 async function startMockHarnessServer(
-  onMessage: (socket: Socket, envelope: StreamClientEnvelope) => void
+  onMessage: (socket: Socket, envelope: StreamClientEnvelope) => void,
 ): Promise<MockHarnessServer> {
   const server = createServer((socket) => {
     let remainder = '';
@@ -139,7 +139,7 @@ async function startMockHarnessServer(
           resolve();
         });
       });
-    }
+    },
   };
 }
 
@@ -160,7 +160,7 @@ void test('openCodexControlPlaneSession opens and closes a remote session', asyn
     startSession: (input) => {
       startedInputs.push(input);
       return new TestLiveSession(input);
-    }
+    },
   });
   const address = server.address();
 
@@ -169,22 +169,22 @@ void test('openCodexControlPlaneSession opens and closes a remote session', asyn
       mode: 'remote',
       host: address.address,
       port: address.port,
-      authToken: 'remote-secret'
+      authToken: 'remote-secret',
     },
     sessionId: 'remote-session',
     args: [],
     env: {
-      TERM: 'xterm-256color'
+      TERM: 'xterm-256color',
     },
     cwd: '/tmp/remote-session',
     initialCols: 80,
-    initialRows: 24
+    initialRows: 24,
   });
 
   try {
     const status = await opened.client.sendCommand({
       type: 'session.status',
-      sessionId: 'remote-session'
+      sessionId: 'remote-session',
     });
     assert.equal(status['sessionId'], 'remote-session');
     assert.equal(startedInputs[0]?.cwd, '/tmp/remote-session');
@@ -197,7 +197,7 @@ void test('openCodexControlPlaneSession opens and closes a remote session', asyn
 void test('openCodexControlPlaneClient opens remote stream without starting a session', async () => {
   const server = await startControlPlaneStreamServer({
     authToken: 'client-only-secret',
-    startSession: (input) => new TestLiveSession(input)
+    startSession: (input) => new TestLiveSession(input),
   });
   const address = server.address();
   const opened = await openCodexControlPlaneClient({
@@ -206,12 +206,12 @@ void test('openCodexControlPlaneClient opens remote stream without starting a se
     port: address.port,
     authToken: 'client-only-secret',
     connectRetryWindowMs: 250,
-    connectRetryDelayMs: 25
+    connectRetryDelayMs: 25,
   });
 
   try {
     const listed = await opened.client.sendCommand({
-      type: 'session.list'
+      type: 'session.list',
     });
     assert.deepEqual(listed['sessions'], []);
   } finally {
@@ -222,31 +222,31 @@ void test('openCodexControlPlaneClient opens remote stream without starting a se
 
 void test('openCodexControlPlaneSession supports embedded mode with injected server factory', async () => {
   const embeddedServer = await startControlPlaneStreamServer({
-    startSession: (input) => new TestLiveSession(input)
+    startSession: (input) => new TestLiveSession(input),
   });
   const embeddedPort = embeddedServer.address().port;
 
   const opened = await openCodexControlPlaneSession(
     {
       controlPlane: {
-        mode: 'embedded'
+        mode: 'embedded',
       },
       sessionId: 'embedded-session',
       args: [],
       env: {
-        TERM: 'xterm-256color'
+        TERM: 'xterm-256color',
       },
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     },
     {
-      startEmbeddedServer: () => Promise.resolve(embeddedServer)
-    }
+      startEmbeddedServer: () => Promise.resolve(embeddedServer),
+    },
   );
 
   try {
     const listed = await opened.client.sendCommand({
-      type: 'session.list'
+      type: 'session.list',
     });
     const sessions = listed['sessions'] as Array<Record<string, unknown>>;
     assert.equal(sessions.length, 1);
@@ -262,13 +262,13 @@ void test('openCodexControlPlaneSession supports embedded mode with injected ser
         resolve();
       });
       socket.once('error', reject);
-    })
+    }),
   );
 });
 
 void test('openCodexControlPlaneSession closes client when start command fails', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new TestLiveSession(input)
+    startSession: (input) => new TestLiveSession(input),
   });
   const address = server.address();
 
@@ -276,15 +276,15 @@ void test('openCodexControlPlaneSession closes client when start command fails',
     controlPlane: {
       mode: 'remote',
       host: address.address,
-      port: address.port
+      port: address.port,
     },
     sessionId: 'duplicate-session',
     args: [],
     env: {
-      TERM: 'xterm-256color'
+      TERM: 'xterm-256color',
     },
     initialCols: 80,
-    initialRows: 24
+    initialRows: 24,
   });
 
   try {
@@ -293,17 +293,17 @@ void test('openCodexControlPlaneSession closes client when start command fails',
         controlPlane: {
           mode: 'remote',
           host: address.address,
-          port: address.port
+          port: address.port,
         },
         sessionId: 'duplicate-session',
         args: [],
         env: {
-          TERM: 'xterm-256color'
+          TERM: 'xterm-256color',
         },
         initialCols: 80,
-        initialRows: 24
+        initialRows: 24,
       }),
-      /session already exists/
+      /session already exists/,
     );
   } finally {
     await first.close();
@@ -315,17 +315,17 @@ void test('openCodexControlPlaneSession rejects embedded mode without startEmbed
   await assert.rejects(
     openCodexControlPlaneSession({
       controlPlane: {
-        mode: 'embedded'
+        mode: 'embedded',
       },
       sessionId: 'embedded-missing-dependency',
       args: [],
       env: {
-        TERM: 'xterm-256color'
+        TERM: 'xterm-256color',
       },
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     }),
-    /startEmbeddedServer dependency/
+    /startEmbeddedServer dependency/,
   );
 });
 
@@ -335,8 +335,8 @@ void test('openCodexControlPlaneSession rejects mismatched pty.start session id'
       socket.write(
         encodeStreamEnvelope({
           kind: 'command.accepted',
-          commandId: envelope.commandId
-        })
+          commandId: envelope.commandId,
+        }),
       );
       if (envelope.command.type === 'pty.start') {
         socket.write(
@@ -344,9 +344,9 @@ void test('openCodexControlPlaneSession rejects mismatched pty.start session id'
             kind: 'command.completed',
             commandId: envelope.commandId,
             result: {
-              sessionId: 'unexpected-session'
-            }
-          })
+              sessionId: 'unexpected-session',
+            },
+          }),
         );
       }
     }
@@ -358,19 +358,19 @@ void test('openCodexControlPlaneSession rejects mismatched pty.start session id'
         controlPlane: {
           mode: 'remote',
           host: harness.address.address,
-          port: harness.address.port
+          port: harness.address.port,
         },
         sessionId: 'expected-session',
         args: [],
         env: {
-          TERM: 'xterm-256color'
+          TERM: 'xterm-256color',
         },
         initialCols: 80,
         initialRows: 24,
         terminalForegroundHex: 'ffffff',
-        terminalBackgroundHex: '000000'
+        terminalBackgroundHex: '000000',
       }),
-      /unexpected session id/
+      /unexpected session id/,
     );
   } finally {
     await harness.stop();
@@ -385,8 +385,8 @@ void test('openCodexControlPlaneSession closes embedded server when startup fail
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'pty.start') {
       socket.write(
@@ -394,9 +394,9 @@ void test('openCodexControlPlaneSession closes embedded server when startup fail
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            sessionId: 'wrong-embedded-session'
-          }
-        })
+            sessionId: 'wrong-embedded-session',
+          },
+        }),
       );
     }
   });
@@ -406,56 +406,60 @@ void test('openCodexControlPlaneSession closes embedded server when startup fail
     address: () => ({
       address: harness.address.address,
       family: harness.address.family,
-      port: harness.address.port
+      port: harness.address.port,
     }),
     close: async () => {
       closed = true;
       await harness.stop();
-    }
+    },
   };
 
   await assert.rejects(
     openCodexControlPlaneSession(
       {
         controlPlane: {
-          mode: 'embedded'
+          mode: 'embedded',
         },
         sessionId: 'embedded-expected',
         args: [],
         env: {
-          TERM: 'xterm-256color'
+          TERM: 'xterm-256color',
         },
         initialCols: 80,
-        initialRows: 24
+        initialRows: 24,
       },
       {
         startEmbeddedServer: () =>
-          Promise.resolve(embeddedServerLike as unknown as Awaited<ReturnType<typeof startControlPlaneStreamServer>>)
-      }
+          Promise.resolve(
+            embeddedServerLike as unknown as Awaited<
+              ReturnType<typeof startControlPlaneStreamServer>
+            >,
+          ),
+      },
     ),
-    /unexpected session id/
+    /unexpected session id/,
   );
   assert.equal(closed, true);
 });
 
 void test('openCodexControlPlaneSession close is best-effort when daemon is already down', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new TestLiveSession(input)
+    startSession: (input) => new TestLiveSession(input),
   });
   const address = server.address();
   const opened = await openCodexControlPlaneSession({
     controlPlane: {
       mode: 'remote',
       host: address.address,
-      port: address.port
+      port: address.port,
     },
     sessionId: 'best-effort-close',
     args: [],
     env: {
-      TERM: 'xterm-256color'
+      TERM: 'xterm-256color',
     },
     initialCols: 80,
-    initialRows: 24
+    initialRows: 24,
   });
 
   await server.close();
@@ -472,8 +476,8 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
 
     if (envelope.command.type === 'stream.subscribe') {
@@ -483,9 +487,9 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
           commandId: envelope.commandId,
           result: {
             subscriptionId: streamSubscriptionId,
-            cursor: 12
-          }
-        })
+            cursor: 12,
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -507,10 +511,10 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
               eventName: 'codex.api_request',
               severity: 'INFO',
               summary: 'codex.api_request (ok)',
-              observedAt: '2026-01-01T00:00:00.000Z'
-            }
-          }
-        })
+              observedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -526,13 +530,13 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
               severity: 'INFO',
               summary: 'response.completed',
               observedAt: '2026-01-01T00:00:01.000Z',
-              statusHint: 'completed'
+              statusHint: 'completed',
             },
             ts: '2026-01-01T00:00:01.000Z',
             directoryId: 'directory-1',
-            conversationId: 'conversation-1'
-          }
-        })
+            conversationId: 'conversation-1',
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -547,15 +551,15 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
               controllerId: 'agent-1',
               controllerType: 'agent',
               controllerLabel: 'agent one',
-              claimedAt: '2026-01-01T00:00:02.000Z'
+              claimedAt: '2026-01-01T00:00:02.000Z',
             },
             previousController: null,
             reason: 'claim',
             ts: '2026-01-01T00:00:02.000Z',
             directoryId: 'directory-1',
-            conversationId: 'conversation-1'
-          }
-        })
+            conversationId: 'conversation-1',
+          },
+        }),
       );
       return;
     }
@@ -568,9 +572,9 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            unsubscribed: true
-          }
-        })
+            unsubscribed: true,
+          },
+        }),
       );
       return;
     }
@@ -579,15 +583,15 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
-        result: {}
-      })
+        result: {},
+      }),
     );
   });
 
   const opened = await openCodexControlPlaneClient({
     mode: 'remote',
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   try {
@@ -595,7 +599,7 @@ void test('subscribeControlPlaneKeyEvents maps session-status and session-key-ev
     const subscription = await subscribeControlPlaneKeyEvents(opened.client, {
       onEvent: (event) => {
         observed.push(event as unknown as Record<string, unknown>);
-      }
+      },
     });
     await waitForCondition(() => observed.length === 3);
 
@@ -624,8 +628,8 @@ void test('subscribeControlPlaneKeyEvents emits post-subscribe events without bu
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       socket.write(
@@ -634,9 +638,9 @@ void test('subscribeControlPlaneKeyEvents emits post-subscribe events without bu
           commandId: envelope.commandId,
           result: {
             subscriptionId: streamSubscriptionId,
-            cursor: 33
-          }
-        })
+            cursor: 33,
+          },
+        }),
       );
       setTimeout(() => {
         socket.write(
@@ -654,9 +658,9 @@ void test('subscribeControlPlaneKeyEvents emits post-subscribe events without bu
               directoryId: 'directory-live',
               conversationId: 'conversation-live',
               controller: null,
-              telemetry: null
-            }
-          })
+              telemetry: null,
+            },
+          }),
         );
       }, 0);
       return;
@@ -668,9 +672,9 @@ void test('subscribeControlPlaneKeyEvents emits post-subscribe events without bu
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            unsubscribed: true
-          }
-        })
+            unsubscribed: true,
+          },
+        }),
       );
       return;
     }
@@ -678,15 +682,15 @@ void test('subscribeControlPlaneKeyEvents emits post-subscribe events without bu
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
-        result: {}
-      })
+        result: {},
+      }),
     );
   });
 
   const opened = await openCodexControlPlaneClient({
     mode: 'remote',
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   try {
@@ -694,7 +698,7 @@ void test('subscribeControlPlaneKeyEvents emits post-subscribe events without bu
     const subscription = await subscribeControlPlaneKeyEvents(opened.client, {
       onEvent: (event) => {
         observed.push(event as unknown as Record<string, unknown>);
-      }
+      },
     });
     await waitForCondition(() => observed.length === 1);
 
@@ -717,8 +721,8 @@ void test('subscribeControlPlaneKeyEvents rejects malformed subscription ids', a
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       socket.write(
@@ -726,9 +730,9 @@ void test('subscribeControlPlaneKeyEvents rejects malformed subscription ids', a
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            subscriptionId: 123
-          }
-        })
+            subscriptionId: 123,
+          },
+        }),
       );
       return;
     }
@@ -736,23 +740,23 @@ void test('subscribeControlPlaneKeyEvents rejects malformed subscription ids', a
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
-        result: {}
-      })
+        result: {},
+      }),
     );
   });
 
   const opened = await openCodexControlPlaneClient({
     mode: 'remote',
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   try {
     await assert.rejects(
       subscribeControlPlaneKeyEvents(opened.client, {
-        onEvent: () => {}
+        onEvent: () => {},
       }),
-      /malformed subscription id/
+      /malformed subscription id/,
     );
   } finally {
     await opened.close();
@@ -770,8 +774,8 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       subscribeCommandSeen = true;
@@ -788,9 +792,9 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
           commandId: envelope.commandId,
           result: {
             subscriptionId: streamSubscriptionId,
-            cursor: 5
-          }
-        })
+            cursor: 5,
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -800,10 +804,10 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
           event: {
             type: 'directory-upserted',
             directory: {
-              directoryId: 'directory-1'
-            }
-          }
-        })
+              directoryId: 'directory-1',
+            },
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -820,17 +824,17 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
             directoryId: 'directory-1',
             conversationId: 'conversation-1',
             controller: null,
-            telemetry: null
-          }
-        })
+            telemetry: null,
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
           kind: 'pty.output',
           sessionId: 'conversation-1',
           cursor: 1,
-          chunkBase64: Buffer.from('ignored', 'utf8').toString('base64')
-        })
+          chunkBase64: Buffer.from('ignored', 'utf8').toString('base64'),
+        }),
       );
       setTimeout(() => {
         socket.write(
@@ -848,9 +852,9 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
               directoryId: 'directory-1',
               conversationId: 'conversation-1',
               controller: null,
-              telemetry: null
-            }
-          })
+              telemetry: null,
+            },
+          }),
         );
       }, 1);
       return;
@@ -862,9 +866,9 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            unsubscribed: true
-          }
-        })
+            unsubscribed: true,
+          },
+        }),
       );
       return;
     }
@@ -873,15 +877,15 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
-        result: {}
-      })
+        result: {},
+      }),
     );
   });
 
   const opened = await openCodexControlPlaneClient({
     mode: 'remote',
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   try {
@@ -896,7 +900,7 @@ void test('subscribeControlPlaneKeyEvents applies scope filters and ignores unre
       afterCursor: 5,
       onEvent: (event) => {
         observed.push(event as unknown as Record<string, unknown>);
-      }
+      },
     });
     await waitForCondition(() => observed.length === 1);
     assert.equal(subscribeCommandSeen, true);
@@ -918,8 +922,8 @@ void test('subscribeControlPlaneKeyEvents cleans up listener on subscribe failur
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       subscribeAttempted = true;
@@ -927,8 +931,8 @@ void test('subscribeControlPlaneKeyEvents cleans up listener on subscribe failur
         encodeStreamEnvelope({
           kind: 'command.failed',
           commandId: envelope.commandId,
-          error: 'subscribe failed'
-        })
+          error: 'subscribe failed',
+        }),
       );
       return;
     }
@@ -936,23 +940,23 @@ void test('subscribeControlPlaneKeyEvents cleans up listener on subscribe failur
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
-        result: {}
-      })
+        result: {},
+      }),
     );
   });
 
   const opened = await openCodexControlPlaneClient({
     mode: 'remote',
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   try {
     await assert.rejects(
       subscribeControlPlaneKeyEvents(opened.client, {
-        onEvent: () => {}
+        onEvent: () => {},
       }),
-      /subscribe failed/
+      /subscribe failed/,
     );
     assert.equal(subscribeAttempted, true);
   } finally {
@@ -967,8 +971,8 @@ void test('subscribeControlPlaneKeyEvents cleans up listener on subscribe failur
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       socket.write(
@@ -977,9 +981,9 @@ void test('subscribeControlPlaneKeyEvents cleans up listener on subscribe failur
           commandId: envelope.commandId,
           result: {
             subscriptionId: 'subscription-close',
-            cursor: 0
-          }
-        })
+            cursor: 0,
+          },
+        }),
       );
       return;
     }
@@ -987,12 +991,12 @@ void test('subscribeControlPlaneKeyEvents cleans up listener on subscribe failur
   const closeOpened = await openCodexControlPlaneClient({
     mode: 'remote',
     host: closeHarness.address.address,
-    port: closeHarness.address.port
+    port: closeHarness.address.port,
   });
 
   try {
     const subscription = await subscribeControlPlaneKeyEvents(closeOpened.client, {
-      onEvent: () => {}
+      onEvent: () => {},
     });
     closeOpened.client.close();
     await subscription.close();

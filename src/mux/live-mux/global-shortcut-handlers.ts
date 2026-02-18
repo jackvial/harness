@@ -11,6 +11,7 @@ interface HandleGlobalShortcutOptions {
   conversationsHas: (sessionId: string) => boolean;
   queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   archiveConversation: (sessionId: string) => Promise<void>;
+  interruptConversation: (sessionId: string) => Promise<void>;
   takeoverConversation: (sessionId: string) => Promise<void>;
   openAddDirectoryPrompt: () => void;
   resolveClosableDirectoryId: () => string | null;
@@ -30,6 +31,7 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
     conversationsHas,
     queueControlPlaneOp,
     archiveConversation,
+    interruptConversation,
     takeoverConversation,
     openAddDirectoryPrompt,
     resolveClosableDirectoryId,
@@ -68,9 +70,23 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
   if (shortcut === 'mux.conversation.archive' || shortcut === 'mux.conversation.delete') {
     const targetConversationId = resolveConversationForAction();
     if (targetConversationId !== null && conversationsHas(targetConversationId)) {
+      queueControlPlaneOp(
+        async () => {
+          await archiveConversation(targetConversationId);
+        },
+        shortcut === 'mux.conversation.archive'
+          ? 'shortcut-archive-conversation'
+          : 'shortcut-delete-conversation',
+      );
+    }
+    return true;
+  }
+  if (shortcut === 'mux.conversation.interrupt') {
+    const targetConversationId = resolveConversationForAction();
+    if (targetConversationId !== null && conversationsHas(targetConversationId)) {
       queueControlPlaneOp(async () => {
-        await archiveConversation(targetConversationId);
-      }, shortcut === 'mux.conversation.archive' ? 'shortcut-archive-conversation' : 'shortcut-delete-conversation');
+        await interruptConversation(targetConversationId);
+      }, 'shortcut-interrupt-conversation');
     }
     return true;
   }

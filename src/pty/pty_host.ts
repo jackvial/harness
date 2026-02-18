@@ -8,7 +8,7 @@ import {
   perfNowNs,
   recordPerfDuration,
   recordPerfEvent,
-  startPerfSpan
+  startPerfSpan,
 } from '../perf/perf-core.ts';
 
 const OPCODE_DATA = 0x01;
@@ -19,7 +19,7 @@ const DEFAULT_COMMAND = '/bin/sh';
 const DEFAULT_COMMAND_ARGS = ['-i'];
 const DEFAULT_HELPER_PATH_CANDIDATES = [
   join(dirname(fileURLToPath(import.meta.url)), '../../native/ptyd/target/release/ptyd'),
-  join(dirname(fileURLToPath(import.meta.url)), '../../bin/ptyd')
+  join(dirname(fileURLToPath(import.meta.url)), '../../bin/ptyd'),
 ] as const;
 
 interface StartPtySessionOptions {
@@ -40,7 +40,7 @@ export interface PtyExit {
 export function resolvePtyHelperPath(
   helperPath: string | undefined,
   helperPathCandidates: readonly string[] = DEFAULT_HELPER_PATH_CANDIDATES,
-  pathExists: (path: string) => boolean = existsSync
+  pathExists: (path: string) => boolean = existsSync,
 ): string {
   if (typeof helperPath === 'string' && helperPath.length > 0) {
     return helperPath;
@@ -99,7 +99,7 @@ class PtySession extends EventEmitter {
         probeId: this.nextProbeId,
         payloadLength: payload.length,
         matchPayloads: PtySession.buildMatchPayloads(payload),
-        startedAtNs: perfNowNs()
+        startedAtNs: perfNowNs(),
       });
       this.nextProbeId += 1;
     }
@@ -138,12 +138,13 @@ class PtySession extends EventEmitter {
       return;
     }
 
-    this.outputWindow = this.outputWindow.length === 0
-      ? Buffer.from(chunk)
-      : Buffer.concat([this.outputWindow, chunk]);
+    this.outputWindow =
+      this.outputWindow.length === 0
+        ? Buffer.from(chunk)
+        : Buffer.concat([this.outputWindow, chunk]);
     if (this.outputWindow.length > PtySession.MAX_OUTPUT_WINDOW_BYTES) {
       this.outputWindow = this.outputWindow.subarray(
-        this.outputWindow.length - PtySession.MAX_OUTPUT_WINDOW_BYTES
+        this.outputWindow.length - PtySession.MAX_OUTPUT_WINDOW_BYTES,
       );
     }
 
@@ -156,7 +157,7 @@ class PtySession extends EventEmitter {
       ) {
         recordPerfDuration('pty.keystroke.roundtrip', probe.startedAtNs, {
           'probe-id': probe.probeId,
-          bytes: probe.payloadLength
+          bytes: probe.payloadLength,
         });
         this.pendingRoundtripProbes.splice(idx, 1);
         continue;
@@ -170,7 +171,9 @@ class PtySession extends EventEmitter {
       return [payload];
     }
 
-    const crlfPayload = Buffer.alloc(payload.length + payload.filter((byte) => byte === 0x0a).length);
+    const crlfPayload = Buffer.alloc(
+      payload.length + payload.filter((byte) => byte === 0x0a).length,
+    );
     let writeIdx = 0;
     for (const byte of payload.values()) {
       if (byte === 0x0a) {
@@ -192,15 +195,11 @@ export function startPtySession(options: StartPtySessionOptions = {}): PtySessio
   const cwd = options.cwd;
   const helperPath = resolvePtyHelperPath(options.helperPath);
 
-  const child = spawn(
-    helperPath,
-    [command, ...commandArgs],
-    {
-      cwd,
-      env,
-      stdio: ['pipe', 'pipe', 'pipe']
-    }
-  );
+  const child = spawn(helperPath, [command, ...commandArgs], {
+    cwd,
+    env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
 
   const session = new PtySession(child);
   if (

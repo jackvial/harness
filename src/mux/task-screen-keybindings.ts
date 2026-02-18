@@ -61,7 +61,7 @@ const ACTION_ORDER: readonly TaskScreenKeybindingAction[] = [
   'mux.home.editor.delete.forward',
   'mux.home.editor.delete.word.backward',
   'mux.home.editor.delete.line.start',
-  'mux.home.editor.delete.line.end'
+  'mux.home.editor.delete.line.end',
 ] as const;
 
 export const DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW: Readonly<
@@ -90,7 +90,7 @@ export const DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW: Readonly<
   'mux.home.editor.delete.forward': ['delete'],
   'mux.home.editor.delete.word.backward': ['ctrl+w', 'alt+backspace'],
   'mux.home.editor.delete.line.start': ['ctrl+u'],
-  'mux.home.editor.delete.line.end': ['ctrl+k']
+  'mux.home.editor.delete.line.end': ['ctrl+k'],
 };
 
 const KEY_TOKEN_ALIASES = new Map<string, string>([
@@ -107,7 +107,7 @@ const KEY_TOKEN_ALIASES = new Map<string, string>([
   ['return', 'enter'],
   ['spacebar', 'space'],
   ['del', 'delete'],
-  ['bs', 'backspace']
+  ['bs', 'backspace'],
 ]);
 
 const SUPPORTED_NAMED_KEYS = new Set([
@@ -122,7 +122,7 @@ const SUPPORTED_NAMED_KEYS = new Set([
   'home',
   'end',
   'delete',
-  'backspace'
+  'backspace',
 ]);
 
 export interface ResolvedTaskScreenKeybindings {
@@ -144,7 +144,7 @@ function decodeModifiers(modifierCode: number): Omit<KeyStroke, 'key'> | null {
     shift: (mask & 0b0001) !== 0,
     alt: (mask & 0b0010) !== 0,
     ctrl: (mask & 0b0100) !== 0,
-    meta: (mask & 0b1000) !== 0
+    meta: (mask & 0b1000) !== 0,
   };
 }
 
@@ -177,7 +177,7 @@ function decodeSingleByte(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x0d || byte === 0x0a) {
@@ -186,7 +186,7 @@ function decodeSingleByte(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x09) {
@@ -195,7 +195,7 @@ function decodeSingleByte(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x20) {
@@ -204,7 +204,7 @@ function decodeSingleByte(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x7f || byte === 0x08) {
@@ -213,7 +213,7 @@ function decodeSingleByte(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte >= 0x01 && byte <= 0x1a) {
@@ -222,7 +222,7 @@ function decodeSingleByte(byte: number): KeyStroke | null {
       ctrl: true,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte >= 32 && byte <= 126) {
@@ -233,7 +233,7 @@ function decodeSingleByte(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: char !== lower,
-      meta: false
+      meta: false,
     };
   }
   return null;
@@ -249,7 +249,7 @@ function parseAltPrefix(input: Buffer): KeyStroke | null {
   }
   return {
     ...inner,
-    alt: true
+    alt: true,
   };
 }
 
@@ -270,7 +270,7 @@ function parseKitty(input: string): KeyStroke | null {
   }
   return {
     key,
-    ...modifiers
+    ...modifiers,
   };
 }
 
@@ -290,7 +290,7 @@ function parseModifyOtherKeys(input: string): KeyStroke | null {
   }
   return {
     key,
-    ...modifiers
+    ...modifiers,
   };
 }
 
@@ -328,7 +328,7 @@ function parseCsi(input: string): KeyStroke | null {
     }
     return {
       key,
-      ...modifiers
+      ...modifiers,
     };
   }
 
@@ -358,7 +358,7 @@ function parseCsi(input: string): KeyStroke | null {
   }
   return {
     key,
-    ...modifiers
+    ...modifiers,
   };
 }
 
@@ -399,7 +399,7 @@ function parseBinding(input: string): ParsedBinding | null {
     ctrl: false,
     alt: false,
     shift: false,
-    meta: false
+    meta: false,
   };
   for (let idx = 0; idx < tokens.length - 1; idx += 1) {
     const token = tokens[idx]!;
@@ -429,9 +429,9 @@ function parseBinding(input: string): ParsedBinding | null {
   return {
     stroke: {
       key,
-      ...modifiers
+      ...modifiers,
     },
-    originalText: trimmed
+    originalText: trimmed,
   };
 }
 
@@ -457,10 +457,10 @@ function strokesEqual(left: KeyStroke, right: KeyStroke): boolean {
 }
 
 export function resolveTaskScreenKeybindings(
-  overrides: Readonly<Record<string, readonly string[]>> = {}
+  overrides: Readonly<Record<string, readonly string[]>> = {},
 ): ResolvedTaskScreenKeybindings {
   const rawByAction = {
-    ...DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW
+    ...DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW,
   } as Record<TaskScreenKeybindingAction, readonly string[]>;
   for (const action of ACTION_ORDER) {
     const override = overrides[action];
@@ -471,7 +471,9 @@ export function resolveTaskScreenKeybindings(
   return {
     rawByAction,
     parsedByAction: {
-      'mux.home.repo.dropdown.toggle': bindingsForAction(rawByAction['mux.home.repo.dropdown.toggle']),
+      'mux.home.repo.dropdown.toggle': bindingsForAction(
+        rawByAction['mux.home.repo.dropdown.toggle'],
+      ),
       'mux.home.repo.next': bindingsForAction(rawByAction['mux.home.repo.next']),
       'mux.home.repo.previous': bindingsForAction(rawByAction['mux.home.repo.previous']),
       'mux.home.task.submit': bindingsForAction(rawByAction['mux.home.task.submit']),
@@ -479,38 +481,50 @@ export function resolveTaskScreenKeybindings(
       'mux.home.task.newline': bindingsForAction(rawByAction['mux.home.task.newline']),
       'mux.home.task.status.ready': bindingsForAction(rawByAction['mux.home.task.status.ready']),
       'mux.home.task.status.draft': bindingsForAction(rawByAction['mux.home.task.status.draft']),
-      'mux.home.task.status.complete': bindingsForAction(rawByAction['mux.home.task.status.complete']),
+      'mux.home.task.status.complete': bindingsForAction(
+        rawByAction['mux.home.task.status.complete'],
+      ),
       'mux.home.task.reorder.up': bindingsForAction(rawByAction['mux.home.task.reorder.up']),
       'mux.home.task.reorder.down': bindingsForAction(rawByAction['mux.home.task.reorder.down']),
       'mux.home.editor.cursor.left': bindingsForAction(rawByAction['mux.home.editor.cursor.left']),
-      'mux.home.editor.cursor.right': bindingsForAction(rawByAction['mux.home.editor.cursor.right']),
+      'mux.home.editor.cursor.right': bindingsForAction(
+        rawByAction['mux.home.editor.cursor.right'],
+      ),
       'mux.home.editor.cursor.up': bindingsForAction(rawByAction['mux.home.editor.cursor.up']),
       'mux.home.editor.cursor.down': bindingsForAction(rawByAction['mux.home.editor.cursor.down']),
       'mux.home.editor.line.start': bindingsForAction(rawByAction['mux.home.editor.line.start']),
       'mux.home.editor.line.end': bindingsForAction(rawByAction['mux.home.editor.line.end']),
       'mux.home.editor.word.left': bindingsForAction(rawByAction['mux.home.editor.word.left']),
       'mux.home.editor.word.right': bindingsForAction(rawByAction['mux.home.editor.word.right']),
-      'mux.home.editor.delete.backward': bindingsForAction(rawByAction['mux.home.editor.delete.backward']),
-      'mux.home.editor.delete.forward': bindingsForAction(rawByAction['mux.home.editor.delete.forward']),
-      'mux.home.editor.delete.word.backward': bindingsForAction(
-        rawByAction['mux.home.editor.delete.word.backward']
+      'mux.home.editor.delete.backward': bindingsForAction(
+        rawByAction['mux.home.editor.delete.backward'],
       ),
-      'mux.home.editor.delete.line.start': bindingsForAction(rawByAction['mux.home.editor.delete.line.start']),
-      'mux.home.editor.delete.line.end': bindingsForAction(rawByAction['mux.home.editor.delete.line.end'])
-    }
+      'mux.home.editor.delete.forward': bindingsForAction(
+        rawByAction['mux.home.editor.delete.forward'],
+      ),
+      'mux.home.editor.delete.word.backward': bindingsForAction(
+        rawByAction['mux.home.editor.delete.word.backward'],
+      ),
+      'mux.home.editor.delete.line.start': bindingsForAction(
+        rawByAction['mux.home.editor.delete.line.start'],
+      ),
+      'mux.home.editor.delete.line.end': bindingsForAction(
+        rawByAction['mux.home.editor.delete.line.end'],
+      ),
+    },
   };
 }
 
 export function firstTaskScreenShortcutText(
   bindings: ResolvedTaskScreenKeybindings,
-  action: TaskScreenKeybindingAction
+  action: TaskScreenKeybindingAction,
 ): string {
   return bindings.rawByAction[action][0] ?? '';
 }
 
 export function detectTaskScreenKeybindingAction(
   input: Buffer,
-  bindings: ResolvedTaskScreenKeybindings
+  bindings: ResolvedTaskScreenKeybindings,
 ): TaskScreenKeybindingAction | null {
   const stroke = decodeInputToStroke(input);
   if (stroke === null) {

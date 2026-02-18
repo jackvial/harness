@@ -19,7 +19,7 @@ function parsePayload(input: string): Record<string, unknown> {
   }
   return {
     type: 'unknown',
-    raw: input
+    raw: input,
   };
 }
 
@@ -44,7 +44,7 @@ function main(): number {
   }
   const record = {
     ts: new Date().toISOString(),
-    payload: parsePayload(payloadRaw)
+    payload: parsePayload(payloadRaw),
   };
   appendFileSync(outputPath, `${JSON.stringify(record)}\n`, 'utf8');
   return 0;

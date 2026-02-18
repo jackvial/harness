@@ -4,17 +4,19 @@ import {
   consumeJsonLines,
   encodeStreamEnvelope,
   parseClientEnvelope,
-  parseServerEnvelope
+  parseServerEnvelope,
 } from '../src/control-plane/stream-protocol.ts';
 
 void test('stream protocol encodes envelopes and consumes newline-delimited json', () => {
   const encoded = encodeStreamEnvelope({
     kind: 'command.accepted',
-    commandId: 'command-1'
+    commandId: 'command-1',
   });
   assert.equal(encoded.endsWith('\n'), true);
 
-  const consumed = consumeJsonLines(`${encoded}{"oops"\n\n{"kind":"pty.exit","sessionId":"s1","exit":{"code":0,"signal":null}}\npartial`);
+  const consumed = consumeJsonLines(
+    `${encoded}{"oops"\n\n{"kind":"pty.exit","sessionId":"s1","exit":{"code":0,"signal":null}}\npartial`,
+  );
   assert.equal(consumed.messages.length, 2);
   assert.equal(consumed.remainder, 'partial');
 });
@@ -23,14 +25,14 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
   const validClientEnvelopes: unknown[] = [
     {
       kind: 'auth',
-      token: 'token-local'
+      token: 'token-local',
     },
     {
       kind: 'command',
       commandId: 'c1',
       command: {
-        type: 'session.list'
-      }
+        type: 'session.list',
+      },
     },
     {
       kind: 'command',
@@ -41,8 +43,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         tenantId: 'tenant-local',
         userId: 'user-local',
         workspaceId: 'workspace-local',
-        path: '/tmp/project'
-      }
+        path: '/tmp/project',
+      },
     },
     {
       kind: 'command',
@@ -53,16 +55,16 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         userId: 'user-local',
         workspaceId: 'workspace-local',
         includeArchived: true,
-        limit: 10
-      }
+        limit: 10,
+      },
     },
     {
       kind: 'command',
       commandId: 'c0ba',
       command: {
         type: 'directory.archive',
-        directoryId: 'directory-1'
-      }
+        directoryId: 'directory-1',
+      },
     },
     {
       kind: 'command',
@@ -75,10 +77,10 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         agentType: 'codex',
         adapterState: {
           codex: {
-            resumeSessionId: 'thread-123'
-          }
-        }
-      }
+            resumeSessionId: 'thread-123',
+          },
+        },
+      },
     },
     {
       kind: 'command',
@@ -90,16 +92,16 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         userId: 'user-local',
         workspaceId: 'workspace-local',
         includeArchived: false,
-        limit: 20
-      }
+        limit: 20,
+      },
     },
     {
       kind: 'command',
       commandId: 'c0e',
       command: {
         type: 'conversation.archive',
-        conversationId: 'conversation-1'
-      }
+        conversationId: 'conversation-1',
+      },
     },
     {
       kind: 'command',
@@ -107,16 +109,16 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
       command: {
         type: 'conversation.update',
         conversationId: 'conversation-1',
-        title: 'renamed'
-      }
+        title: 'renamed',
+      },
     },
     {
       kind: 'command',
       commandId: 'c0ea',
       command: {
         type: 'conversation.delete',
-        conversationId: 'conversation-1'
-      }
+        conversationId: 'conversation-1',
+      },
     },
     {
       kind: 'command',
@@ -131,17 +133,17 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         remoteUrl: 'https://github.com/acme/harness.git',
         defaultBranch: 'main',
         metadata: {
-          owner: 'acme'
-        }
-      }
+          owner: 'acme',
+        },
+      },
     },
     {
       kind: 'command',
       commandId: 'c0ec',
       command: {
         type: 'repository.get',
-        repositoryId: 'repository-1'
-      }
+        repositoryId: 'repository-1',
+      },
     },
     {
       kind: 'command',
@@ -152,8 +154,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         userId: 'user-local',
         workspaceId: 'workspace-local',
         includeArchived: true,
-        limit: 20
-      }
+        limit: 20,
+      },
     },
     {
       kind: 'command',
@@ -166,17 +168,17 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         defaultBranch: 'develop',
         metadata: {
           owner: 'acme',
-          tier: 'core'
-        }
-      }
+          tier: 'core',
+        },
+      },
     },
     {
       kind: 'command',
       commandId: 'c0ef',
       command: {
         type: 'repository.archive',
-        repositoryId: 'repository-1'
-      }
+        repositoryId: 'repository-1',
+      },
     },
     {
       kind: 'command',
@@ -196,17 +198,17 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
           priority: 2,
           estimate: 3,
           dueDate: '2026-03-08',
-          labelIds: ['backend']
-        }
-      }
+          labelIds: ['backend'],
+        },
+      },
     },
     {
       kind: 'command',
       commandId: 'c0eh',
       command: {
         type: 'task.get',
-        taskId: 'task-1'
-      }
+        taskId: 'task-1',
+      },
     },
     {
       kind: 'command',
@@ -218,8 +220,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         workspaceId: 'workspace-local',
         repositoryId: 'repository-1',
         status: 'ready',
-        limit: 20
-      }
+        limit: 20,
+      },
     },
     {
       kind: 'command',
@@ -231,17 +233,17 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         description: 'Allow reassignment',
         repositoryId: null,
         linear: {
-          priority: 1
-        }
-      }
+          priority: 1,
+        },
+      },
     },
     {
       kind: 'command',
       commandId: 'c0ek',
       command: {
         type: 'task.delete',
-        taskId: 'task-1'
-      }
+        taskId: 'task-1',
+      },
     },
     {
       kind: 'command',
@@ -252,40 +254,40 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         controllerId: 'agent-1',
         directoryId: 'directory-1',
         branchName: 'feature/task-queue',
-        baseBranch: 'main'
-      }
+        baseBranch: 'main',
+      },
     },
     {
       kind: 'command',
       commandId: 'c0em',
       command: {
         type: 'task.complete',
-        taskId: 'task-1'
-      }
+        taskId: 'task-1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c0en',
       command: {
         type: 'task.queue',
-        taskId: 'task-1'
-      }
+        taskId: 'task-1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c0eo',
       command: {
         type: 'task.ready',
-        taskId: 'task-1'
-      }
+        taskId: 'task-1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c0ep',
       command: {
         type: 'task.draft',
-        taskId: 'task-1'
-      }
+        taskId: 'task-1',
+      },
     },
     {
       kind: 'command',
@@ -295,8 +297,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         tenantId: 'tenant-local',
         userId: 'user-local',
         workspaceId: 'workspace-local',
-        orderedTaskIds: ['task-2', 'task-1']
-      }
+        orderedTaskIds: ['task-2', 'task-1'],
+      },
     },
     {
       kind: 'command',
@@ -311,16 +313,16 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         directoryId: 'directory-1',
         conversationId: 'conversation-1',
         includeOutput: true,
-        afterCursor: 5
-      }
+        afterCursor: 5,
+      },
     },
     {
       kind: 'command',
       commandId: 'c0g',
       command: {
         type: 'stream.unsubscribe',
-        subscriptionId: 'subscription-1'
-      }
+        subscriptionId: 'subscription-1',
+      },
     },
     {
       kind: 'command',
@@ -334,31 +336,31 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         status: 'needs-input',
         live: true,
         sort: 'attention-first',
-        limit: 5
-      }
+        limit: 5,
+      },
     },
     {
       kind: 'command',
       commandId: 'c1a',
       command: {
-        type: 'attention.list'
-      }
+        type: 'attention.list',
+      },
     },
     {
       kind: 'command',
       commandId: 'c1b',
       command: {
         type: 'session.status',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c1c',
       command: {
         type: 'session.snapshot',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
@@ -366,8 +368,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
       command: {
         type: 'session.respond',
         sessionId: 's1',
-        text: 'approve'
-      }
+        text: 'approve',
+      },
     },
     {
       kind: 'command',
@@ -379,8 +381,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         controllerType: 'agent',
         controllerLabel: 'agent one',
         reason: 'claim test',
-        takeover: true
-      }
+        takeover: true,
+      },
     },
     {
       kind: 'command',
@@ -390,8 +392,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         sessionId: 's1',
         controllerId: 'automation-1',
         controllerType: 'automation',
-        reason: 'automation claim'
-      }
+        reason: 'automation claim',
+      },
     },
     {
       kind: 'command',
@@ -399,24 +401,24 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
       command: {
         type: 'session.release',
         sessionId: 's1',
-        reason: 'release test'
-      }
+        reason: 'release test',
+      },
     },
     {
       kind: 'command',
       commandId: 'c1cb',
       command: {
         type: 'session.interrupt',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c1cc',
       command: {
         type: 'session.remove',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
@@ -426,7 +428,7 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         sessionId: 's1',
         args: ['--help'],
         env: {
-          TERM: 'xterm-256color'
+          TERM: 'xterm-256color',
         },
         cwd: '/tmp/workspace',
         initialCols: 120,
@@ -436,8 +438,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         tenantId: 'tenant-local',
         userId: 'user-local',
         workspaceId: 'workspace-local',
-        worktreeId: 'worktree-local'
-      }
+        worktreeId: 'worktree-local',
+      },
     },
     {
       kind: 'command',
@@ -445,67 +447,67 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
       command: {
         type: 'pty.attach',
         sessionId: 's1',
-        sinceCursor: 5
-      }
+        sinceCursor: 5,
+      },
     },
     {
       kind: 'command',
       commandId: 'c3a',
       command: {
         type: 'pty.detach',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c4a',
       command: {
         type: 'pty.subscribe-events',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c5a',
       command: {
         type: 'pty.unsubscribe-events',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c6a',
       command: {
         type: 'pty.close',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'pty.input',
       sessionId: 's1',
-      dataBase64: Buffer.from('hello', 'utf8').toString('base64')
+      dataBase64: Buffer.from('hello', 'utf8').toString('base64'),
     },
     {
       kind: 'pty.resize',
       sessionId: 's1',
       cols: 100,
-      rows: 35
+      rows: 35,
     },
     {
       kind: 'pty.signal',
       sessionId: 's1',
-      signal: 'interrupt'
+      signal: 'interrupt',
     },
     {
       kind: 'pty.signal',
       sessionId: 's1',
-      signal: 'eof'
+      signal: 'eof',
     },
     {
       kind: 'pty.signal',
       sessionId: 's1',
-      signal: 'terminate'
-    }
+      signal: 'terminate',
+    },
   ];
 
   for (const value of validClientEnvelopes) {
@@ -524,11 +526,11 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       commandId: 1,
       command: {
         type: 'pty.close',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
-      kind: 'auth'
+      kind: 'auth',
     },
     {
       kind: 'command',
@@ -538,31 +540,31 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         sessionId: 's1',
         args: ['ok', 1],
         initialCols: 80,
-        initialRows: 24
-      }
+        initialRows: 24,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2',
       command: {
         type: 'session.list',
-        status: 'bad-status'
-      }
+        status: 'bad-status',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2directory',
       command: {
-        type: 'directory.upsert'
-      }
+        type: 'directory.upsert',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2directoryb',
       command: {
         type: 'directory.upsert',
-        path: 3
-      }
+        path: 3,
+      },
     },
     {
       kind: 'command',
@@ -570,31 +572,31 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'directory.upsert',
         path: '/tmp/project',
-        tenantId: 3
-      }
+        tenantId: 3,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2directoryd',
       command: {
         type: 'directory.list',
-        includeArchived: 'yes'
-      }
+        includeArchived: 'yes',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2directorye',
       command: {
         type: 'directory.list',
-        limit: 0
-      }
+        limit: 0,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2directoryf',
       command: {
-        type: 'directory.archive'
-      }
+        type: 'directory.archive',
+      },
     },
     {
       kind: 'command',
@@ -602,8 +604,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'conversation.create',
         directoryId: 'directory-1',
-        title: 'title'
-      }
+        title: 'title',
+      },
     },
     {
       kind: 'command',
@@ -612,38 +614,38 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         type: 'conversation.create',
         directoryId: 'directory-1',
         title: 'title',
-        agentType: 9
-      }
+        agentType: 9,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2conversationc',
       command: {
         type: 'conversation.list',
-        limit: 0
-      }
+        limit: 0,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2conversationd',
       command: {
-        type: 'conversation.archive'
-      }
+        type: 'conversation.archive',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2conversationd1',
       command: {
         type: 'conversation.update',
-        conversationId: 'conversation-1'
-      }
+        conversationId: 'conversation-1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2conversatione',
       command: {
-        type: 'conversation.delete'
-      }
+        type: 'conversation.delete',
+      },
     },
     {
       kind: 'command',
@@ -653,8 +655,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         directoryId: 'directory-1',
         title: 'title',
         agentType: 'codex',
-        adapterState: []
-      }
+        adapterState: [],
+      },
     },
     {
       kind: 'command',
@@ -663,16 +665,16 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         type: 'repository.upsert',
         name: 'harness',
         remoteUrl: 'https://github.com/acme/harness.git',
-        metadata: []
-      }
+        metadata: [],
+      },
     },
     {
       kind: 'command',
       commandId: 'c2repositoryb',
       command: {
         type: 'repository.list',
-        includeArchived: 'true'
-      }
+        includeArchived: 'true',
+      },
     },
     {
       kind: 'command',
@@ -680,15 +682,15 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'repository.update',
         repositoryId: 'repository-1',
-        metadata: []
-      }
+        metadata: [],
+      },
     },
     {
       kind: 'command',
       commandId: 'c2repositoryd',
       command: {
-        type: 'repository.archive'
-      }
+        type: 'repository.archive',
+      },
     },
     {
       kind: 'command',
@@ -696,24 +698,24 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'task.create',
         title: 'a',
-        tenantId: 4
-      }
+        tenantId: 4,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2taskb',
       command: {
         type: 'task.list',
-        status: 'bad-status'
-      }
+        status: 'bad-status',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2taskc',
       command: {
         type: 'task.list',
-        limit: 0
-      }
+        limit: 0,
+      },
     },
     {
       kind: 'command',
@@ -721,8 +723,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'task.update',
         taskId: 'task-1',
-        repositoryId: 7
-      }
+        repositoryId: 7,
+      },
     },
     {
       kind: 'command',
@@ -731,9 +733,9 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         type: 'task.update',
         taskId: 'task-1',
         linear: {
-          priority: 9
-        }
-      }
+          priority: 9,
+        },
+      },
     },
     {
       kind: 'command',
@@ -741,36 +743,36 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'task.claim',
         taskId: 'task-1',
-        controllerId: 7
-      }
+        controllerId: 7,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2taskf',
       command: {
-        type: 'task.complete'
-      }
+        type: 'task.complete',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2taskg',
       command: {
-        type: 'task.queue'
-      }
+        type: 'task.queue',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2taskh',
       command: {
-        type: 'task.ready'
-      }
+        type: 'task.ready',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2taski',
       command: {
-        type: 'task.draft'
-      }
+        type: 'task.draft',
+      },
     },
     {
       kind: 'command',
@@ -780,8 +782,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         tenantId: 'tenant-local',
         userId: 'user-local',
         workspaceId: 'workspace-local',
-        orderedTaskIds: 'task-1'
-      }
+        orderedTaskIds: 'task-1',
+      },
     },
     {
       kind: 'command',
@@ -789,8 +791,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'stream.subscribe',
         includeOutput: 'yes',
-        repositoryId: 'repository-1'
-      }
+        repositoryId: 'repository-1',
+      },
     },
     {
       kind: 'command',
@@ -798,95 +800,95 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'stream.subscribe',
         afterCursor: -1,
-        taskId: 'task-1'
-      }
+        taskId: 'task-1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2streamc',
       command: {
-        type: 'stream.unsubscribe'
-      }
+        type: 'stream.unsubscribe',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2b',
       command: {
         type: 'session.list',
-        live: 'true'
-      }
+        live: 'true',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2ba',
       command: {
         type: 'session.list',
-        tenantId: 1
-      }
+        tenantId: 1,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2bb',
       command: {
         type: 'session.list',
-        userId: 1
-      }
+        userId: 1,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2bc',
       command: {
         type: 'session.list',
-        workspaceId: 1
-      }
+        workspaceId: 1,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2bd',
       command: {
         type: 'session.list',
-        worktreeId: 1
-      }
+        worktreeId: 1,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2be',
       command: {
         type: 'session.list',
-        status: 1
-      }
+        status: 1,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2c',
       command: {
         type: 'session.list',
-        sort: 'weird'
-      }
+        sort: 'weird',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2ca',
       command: {
         type: 'session.list',
-        sort: 1
-      }
+        sort: 1,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2d',
       command: {
         type: 'session.list',
-        limit: 0
-      }
+        limit: 0,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2da',
       command: {
         type: 'session.list',
-        limit: '1'
-      }
+        limit: '1',
+      },
     },
     {
       kind: 'command',
@@ -896,11 +898,11 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         sessionId: 's1',
         args: [],
         env: {
-          TERM: 1
+          TERM: 1,
         },
         initialCols: 80,
-        initialRows: 24
-      }
+        initialRows: 24,
+      },
     },
     {
       kind: 'command',
@@ -912,8 +914,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         initialCols: 80,
         initialRows: 24,
         cwd: 123,
-        tenantId: 'tenant-a'
-      }
+        tenantId: 'tenant-a',
+      },
     },
     {
       kind: 'command',
@@ -924,8 +926,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         args: [],
         initialCols: 80,
         initialRows: 24,
-        tenantId: 123
-      }
+        tenantId: 123,
+      },
     },
     {
       kind: 'command',
@@ -936,8 +938,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         args: [],
         initialCols: 80,
         initialRows: 24,
-        userId: 123
-      }
+        userId: 123,
+      },
     },
     {
       kind: 'command',
@@ -948,8 +950,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         args: [],
         initialCols: 80,
         initialRows: 24,
-        workspaceId: 123
-      }
+        workspaceId: 123,
+      },
     },
     {
       kind: 'command',
@@ -960,23 +962,23 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         args: [],
         initialCols: 80,
         initialRows: 24,
-        worktreeId: 123
-      }
+        worktreeId: 123,
+      },
     },
     {
       kind: 'command',
       commandId: 'c2',
       command: {
-        type: 'session.status'
-      }
+        type: 'session.status',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2a',
       command: {
         type: 'session.respond',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
@@ -985,8 +987,8 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         type: 'session.claim',
         sessionId: 's1',
         controllerId: 'agent-1',
-        controllerType: 'invalid'
-      }
+        controllerType: 'invalid',
+      },
     },
     {
       kind: 'command',
@@ -996,23 +998,23 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         sessionId: 's1',
         controllerId: 'agent-1',
         controllerType: 'agent',
-        takeover: 'yes'
-      }
+        takeover: 'yes',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2a-release',
       command: {
-        type: 'session.release'
-      }
+        type: 'session.release',
+      },
     },
     {
       kind: 'command',
       commandId: 'c2b',
       command: {
         type: 'session.respond',
-        text: 'x'
-      }
+        text: 'x',
+      },
     },
     {
       kind: 'command',
@@ -1020,43 +1022,43 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'pty.attach',
         sessionId: 's1',
-        sinceCursor: 'x'
-      }
+        sinceCursor: 'x',
+      },
     },
     {
       kind: 'command',
       commandId: 'c4',
       command: {
         type: 'unknown',
-        sessionId: 's1'
-      }
+        sessionId: 's1',
+      },
     },
     {
       kind: 'command',
       commandId: 'c4b',
       command: {
-        type: 'pty.close'
-      }
+        type: 'pty.close',
+      },
     },
     {
       kind: 'pty.input',
-      sessionId: 's1'
+      sessionId: 's1',
     },
     {
       kind: 'pty.signal',
-      signal: 'interrupt'
+      signal: 'interrupt',
     },
     {
       kind: 'pty.resize',
       sessionId: 's1',
       cols: '100',
-      rows: 24
+      rows: 24,
     },
     {
       kind: 'pty.signal',
       sessionId: 's1',
-      signal: 'boom'
-    }
+      signal: 'boom',
+    },
   ];
 
   for (const value of invalidValues) {
@@ -1067,41 +1069,41 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
 void test('parseServerEnvelope accepts valid server envelopes', () => {
   const validServerEnvelopes: unknown[] = [
     {
-      kind: 'auth.ok'
+      kind: 'auth.ok',
     },
     {
       kind: 'auth.error',
-      error: 'invalid auth token'
+      error: 'invalid auth token',
     },
     {
       kind: 'command.accepted',
-      commandId: 'c1'
+      commandId: 'c1',
     },
     {
       kind: 'command.completed',
       commandId: 'c1',
       result: {
-        ok: true
-      }
+        ok: true,
+      },
     },
     {
       kind: 'command.failed',
       commandId: 'c1',
-      error: 'bad'
+      error: 'bad',
     },
     {
       kind: 'pty.output',
       sessionId: 's1',
       cursor: 9,
-      chunkBase64: Buffer.from('x', 'utf8').toString('base64')
+      chunkBase64: Buffer.from('x', 'utf8').toString('base64'),
     },
     {
       kind: 'pty.exit',
       sessionId: 's1',
       exit: {
         code: 0,
-        signal: null
-      }
+        signal: null,
+      },
     },
     {
       kind: 'pty.event',
@@ -1110,9 +1112,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         type: 'session-exit',
         exit: {
           code: null,
-          signal: 'SIGTERM'
-        }
-      }
+          signal: 'SIGTERM',
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1132,9 +1134,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           eventName: 'codex.api_request',
           severity: 'INFO',
           summary: 'codex.api_request (ok)',
-          observedAt: new Date(0).toISOString()
-        }
-      }
+          observedAt: new Date(0).toISOString(),
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1149,8 +1151,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         ts: new Date(0).toISOString(),
         directoryId: 'directory-1',
         conversationId: 'conversation-1',
-        telemetry: null
-      }
+        telemetry: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1164,8 +1166,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         live: true,
         ts: new Date(0).toISOString(),
         directoryId: 'directory-1',
-        conversationId: 'conversation-1'
-      }
+        conversationId: 'conversation-1',
+      },
     },
     {
       kind: 'stream.event',
@@ -1180,8 +1182,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null,
-        telemetry: null
-      }
+        telemetry: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1196,8 +1198,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null,
-        telemetry: null
-      }
+        telemetry: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1216,10 +1218,10 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           controllerId: 'automation-1',
           controllerType: 'automation',
           controllerLabel: null,
-          claimedAt: new Date(0).toISOString()
+          claimedAt: new Date(0).toISOString(),
         },
-        telemetry: null
-      }
+        telemetry: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1234,12 +1236,12 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           severity: 'INFO',
           summary: 'response.completed',
           observedAt: new Date(0).toISOString(),
-          statusHint: 'completed'
+          statusHint: 'completed',
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1254,12 +1256,12 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           severity: null,
           summary: 'history.entry',
           observedAt: new Date(0).toISOString(),
-          statusHint: null
+          statusHint: null,
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1274,12 +1276,12 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           severity: 'INFO',
           summary: 'turn in progress',
           observedAt: new Date(0).toISOString(),
-          statusHint: 'running'
+          statusHint: 'running',
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1294,12 +1296,12 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           severity: 'WARN',
           summary: 'approval required',
           observedAt: new Date(0).toISOString(),
-          statusHint: 'needs-input'
+          statusHint: 'needs-input',
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1312,8 +1314,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         chunkBase64: Buffer.from('x', 'utf8').toString('base64'),
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1322,9 +1324,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
       event: {
         type: 'directory-upserted',
         directory: {
-          directoryId: 'directory-1'
-        }
-      }
+          directoryId: 'directory-1',
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1333,8 +1335,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
       event: {
         type: 'directory-archived',
         directoryId: 'directory-1',
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -1347,7 +1349,7 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           branch: 'main',
           changedFiles: 3,
           additions: 10,
-          deletions: 2
+          deletions: 2,
         },
         repositorySnapshot: {
           normalizedRemoteUrl: 'https://github.com/example/harness',
@@ -1355,15 +1357,15 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           lastCommitAt: new Date(0).toISOString(),
           shortCommitHash: 'abc1234',
           inferredName: 'harness',
-          defaultBranch: 'main'
+          defaultBranch: 'main',
         },
         repositoryId: 'repository-1',
         repository: {
           repositoryId: 'repository-1',
-          name: 'harness'
+          name: 'harness',
         },
-        observedAt: new Date(0).toISOString()
-      }
+        observedAt: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -1372,9 +1374,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
       event: {
         type: 'conversation-created',
         conversation: {
-          conversationId: 'conversation-1'
-        }
-      }
+          conversationId: 'conversation-1',
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1383,8 +1385,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
       event: {
         type: 'conversation-archived',
         conversationId: 'conversation-1',
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -1394,9 +1396,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         type: 'conversation-updated',
         conversation: {
           conversationId: 'conversation-1',
-          title: 'renamed'
-        }
-      }
+          title: 'renamed',
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1405,8 +1407,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
       event: {
         type: 'conversation-deleted',
         conversationId: 'conversation-1',
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -1416,9 +1418,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         type: 'repository-upserted',
         repository: {
           repositoryId: 'repository-1',
-          name: 'harness'
-        }
-      }
+          name: 'harness',
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1428,9 +1430,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         type: 'repository-updated',
         repository: {
           repositoryId: 'repository-1',
-          name: 'harness-2'
-        }
-      }
+          name: 'harness-2',
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1439,8 +1441,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
       event: {
         type: 'repository-archived',
         repositoryId: 'repository-1',
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -1450,9 +1452,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         type: 'task-created',
         task: {
           taskId: 'task-1',
-          repositoryId: 'repository-1'
-        }
-      }
+          repositoryId: 'repository-1',
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1462,9 +1464,9 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         type: 'task-updated',
         task: {
           taskId: 'task-1',
-          status: 'in-progress'
-        }
-      }
+          status: 'in-progress',
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -1473,8 +1475,8 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
       event: {
         type: 'task-deleted',
         taskId: 'task-1',
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -1485,15 +1487,15 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         tasks: [
           {
             taskId: 'task-2',
-            orderIndex: 0
+            orderIndex: 0,
           },
           {
             taskId: 'task-1',
-            orderIndex: 1
-          }
+            orderIndex: 1,
+          },
         ],
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -1506,13 +1508,13 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           type: 'session-exit',
           exit: {
             code: 0,
-            signal: null
-          }
+            signal: null,
+          },
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1525,13 +1527,13 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           type: 'session-exit',
           exit: {
             code: 0,
-            signal: null
-          }
+            signal: null,
+          },
         },
         ts: new Date(0).toISOString(),
         directoryId: 'directory-1',
-        conversationId: 'conversation-1'
-      }
+        conversationId: 'conversation-1',
+      },
     },
     {
       kind: 'stream.event',
@@ -1545,14 +1547,14 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           record: {
             ts: new Date(0).toISOString(),
             payload: {
-              type: 'agent-turn-complete'
-            }
-          }
+              type: 'agent-turn-complete',
+            },
+          },
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1566,19 +1568,19 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           controllerId: 'human-1',
           controllerType: 'human',
           controllerLabel: 'operator',
-          claimedAt: new Date(0).toISOString()
+          claimedAt: new Date(0).toISOString(),
         },
         previousController: {
           controllerId: 'agent-1',
           controllerType: 'agent',
           controllerLabel: 'agent one',
-          claimedAt: new Date(0).toISOString()
+          claimedAt: new Date(0).toISOString(),
         },
         reason: 'manual takeover',
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1592,14 +1594,14 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           controllerId: 'automation-1',
           controllerType: 'automation',
           controllerLabel: null,
-          claimedAt: new Date(0).toISOString()
+          claimedAt: new Date(0).toISOString(),
         },
         previousController: null,
         reason: null,
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -1614,14 +1616,14 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           controllerId: 'agent-1',
           controllerType: 'agent',
           controllerLabel: 'agent one',
-          claimedAt: new Date(0).toISOString()
+          claimedAt: new Date(0).toISOString(),
         },
         reason: 'released by user',
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
-    }
+        conversationId: null,
+      },
+    },
   ];
 
   for (const value of validServerEnvelopes) {

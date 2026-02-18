@@ -5,7 +5,12 @@ import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const LEGACY_LOCKFILES = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'npm-shrinkwrap.json'];
+const LEGACY_LOCKFILES = [
+  'package-lock.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'npm-shrinkwrap.json',
+];
 
 function readPackageManager(packageJsonPath) {
   try {
@@ -42,7 +47,7 @@ function maybePrintBunMigrationHint() {
   }
   const lockfileList = legacyLockfiles.map((entry) => `  - ${entry}`).join('\n');
   process.stderr.write(
-    `[harness] legacy package-manager lockfiles detected in ${cwd}:\n${lockfileList}\n[harness] run: bun run migrate:bun\n`
+    `[harness] legacy package-manager lockfiles detected in ${cwd}:\n${lockfileList}\n[harness] run: bun run migrate:bun\n`,
   );
 }
 
@@ -52,7 +57,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = resolve(here, './harness.ts');
 const runtimeArgs = [scriptPath, ...process.argv.slice(2)];
 const child = spawn(process.execPath, runtimeArgs, {
-  stdio: 'inherit'
+  stdio: 'inherit',
 });
 
 child.once('exit', (code, signal) => {

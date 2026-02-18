@@ -10,7 +10,7 @@ import {
   recordPerfDuration,
   recordPerfEvent,
   shutdownPerfCore,
-  startPerfSpan
+  startPerfSpan,
 } from '../src/perf/perf-core.ts';
 
 interface ParsedPerfRecord {
@@ -38,7 +38,7 @@ function readRecords(path: string): ParsedPerfRecord[] {
       return {
         ...candidate,
         type: candidate.type,
-        name: candidate.name
+        name: candidate.name,
       };
     });
 }
@@ -55,7 +55,7 @@ void test('perf-core disabled mode is no-op and does not create output file', ()
   try {
     configurePerfCore({
       enabled: false,
-      filePath: outputPath
+      filePath: outputPath,
     });
 
     assert.equal(isPerfCoreEnabled(), false);
@@ -79,7 +79,7 @@ void test('perf-core writes event and span records to configured file', () => {
   try {
     configurePerfCore({
       enabled: true,
-      filePath: outputPath
+      filePath: outputPath,
     });
 
     assert.equal(isPerfCoreEnabled(), true);
@@ -107,24 +107,26 @@ void test('perf-core writes event and span records to configured file', () => {
 
     const records = readRecords(outputPath);
     assert.ok(records.some((record) => record.type === 'event' && record.name === 'perf.event'));
-    const eventRecord = records.find((record) => record.type === 'event' && record.name === 'perf.event');
-    assert.equal(typeof eventRecord?.['ts-ms'], 'number');
-    assert.ok(
-      records.some((record) => record.type === 'span' && record.name === 'perf.span.base')
+    const eventRecord = records.find(
+      (record) => record.type === 'event' && record.name === 'perf.event',
     );
-    const spanRecord = records.find((record) => record.type === 'span' && record.name === 'perf.span.base');
+    assert.equal(typeof eventRecord?.['ts-ms'], 'number');
+    assert.ok(records.some((record) => record.type === 'span' && record.name === 'perf.span.base'));
+    const spanRecord = records.find(
+      (record) => record.type === 'span' && record.name === 'perf.span.base',
+    );
     assert.equal(typeof spanRecord?.['end-ms'], 'number');
     assert.ok(
-      records.some((record) => record.type === 'span' && record.name === 'perf.span.end-attrs')
+      records.some((record) => record.type === 'span' && record.name === 'perf.span.end-attrs'),
     );
     assert.ok(
-      records.some((record) => record.type === 'span' && record.name === 'perf.span.merged-attrs')
+      records.some((record) => record.type === 'span' && record.name === 'perf.span.merged-attrs'),
     );
     assert.ok(
-      records.some((record) => record.type === 'span' && record.name === 'perf.span.no-attrs')
+      records.some((record) => record.type === 'span' && record.name === 'perf.span.no-attrs'),
     );
     assert.ok(
-      records.some((record) => record.type === 'span' && record.name === 'perf.span.duration')
+      records.some((record) => record.type === 'span' && record.name === 'perf.span.duration'),
     );
     assert.ok(
       records.some((record) => {
@@ -133,7 +135,7 @@ void test('perf-core writes event and span records to configured file', () => {
           record.name === 'perf.span.parent' &&
           record['parent-span-id'] === 'span-root'
         );
-      })
+      }),
     );
   } finally {
     rmSync(tempPath, { recursive: true, force: true });
@@ -148,21 +150,27 @@ void test('perf-core supports file path rotation while enabled', () => {
   try {
     configurePerfCore({
       enabled: true,
-      filePath: firstPath
+      filePath: firstPath,
     });
     recordPerfEvent('first.event');
 
     configurePerfCore({
       enabled: true,
-      filePath: secondPath
+      filePath: secondPath,
     });
     recordPerfEvent('second.event');
     shutdownPerfCore();
 
     const firstRecords = readRecords(firstPath);
     const secondRecords = readRecords(secondPath);
-    assert.equal(firstRecords.some((record) => record.name === 'first.event'), true);
-    assert.equal(secondRecords.some((record) => record.name === 'second.event'), true);
+    assert.equal(
+      firstRecords.some((record) => record.name === 'first.event'),
+      true,
+    );
+    assert.equal(
+      secondRecords.some((record) => record.name === 'second.event'),
+      true,
+    );
   } finally {
     rmSync(tempPath, { recursive: true, force: true });
   }
@@ -175,7 +183,7 @@ void test('perf-core samples high-volume pty stdout events and keeps non-sampled
   try {
     configurePerfCore({
       enabled: true,
-      filePath: outputPath
+      filePath: outputPath,
     });
     for (let idx = 0; idx < 20; idx += 1) {
       recordPerfEvent('pty.stdout.chunk');
@@ -200,7 +208,7 @@ void test('perf-core resets event sampling counters on configure', () => {
   try {
     configurePerfCore({
       enabled: true,
-      filePath: outputPath
+      filePath: outputPath,
     });
     for (let idx = 0; idx < 9; idx += 1) {
       recordPerfEvent('pty.stdout.chunk');
@@ -208,7 +216,7 @@ void test('perf-core resets event sampling counters on configure', () => {
 
     configurePerfCore({
       enabled: true,
-      filePath: outputPath
+      filePath: outputPath,
     });
     for (let idx = 0; idx < 10; idx += 1) {
       recordPerfEvent('pty.stdout.chunk');

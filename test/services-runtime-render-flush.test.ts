@@ -162,8 +162,5 @@ void test('runtime render flush skips conversation footer and flush-output hook 
     rightRows: ['row'],
   });
 
-  assert.deepEqual(calls, [
-    'buildRenderRows:empty',
-    'recordRenderSample:0',
-  ]);
+  assert.deepEqual(calls, ['buildRenderRows:empty', 'recordRenderSample:0']);
 });

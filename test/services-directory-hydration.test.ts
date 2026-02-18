@@ -72,10 +72,7 @@ void test('directory hydration service throws when no active directory resolves'
     resolveActiveDirectoryId: () => null,
   });
 
-  await assert.rejects(
-    async () => {
-      await service.hydrate();
-    },
-    /no active directory available after hydrate/,
-  );
+  await assert.rejects(async () => {
+    await service.hydrate();
+  }, /no active directory available after hydrate/);
 });

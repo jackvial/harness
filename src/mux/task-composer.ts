@@ -39,7 +39,7 @@ function lineRanges(text: string): readonly LineRange[] {
 
 function locateCursorLine(
   text: string,
-  cursor: number
+  cursor: number,
 ): {
   readonly ranges: readonly LineRange[];
   readonly lineIndex: number;
@@ -59,7 +59,7 @@ function locateCursorLine(
   return {
     ranges,
     lineIndex,
-    column
+    column,
   };
 }
 
@@ -70,31 +70,31 @@ function isWordChar(char: string): boolean {
 export function createTaskComposerBuffer(text = ''): TaskComposerBuffer {
   return {
     text,
-    cursor: text.length
+    cursor: text.length,
   };
 }
 
 export function normalizeTaskComposerBuffer(buffer: TaskComposerBuffer): TaskComposerBuffer {
   return {
     text: buffer.text,
-    cursor: clampCursor(buffer.text, buffer.cursor)
+    cursor: clampCursor(buffer.text, buffer.cursor),
   };
 }
 
 export function replaceTaskComposerText(
   buffer: TaskComposerBuffer,
   text: string,
-  cursor = text.length
+  cursor = text.length,
 ): TaskComposerBuffer {
   return {
     text,
-    cursor: clampCursor(text, cursor)
+    cursor: clampCursor(text, cursor),
   };
 }
 
 export function insertTaskComposerText(
   buffer: TaskComposerBuffer,
-  value: string
+  value: string,
 ): TaskComposerBuffer {
   const normalized = normalizeTaskComposerBuffer(buffer);
   const head = normalized.text.slice(0, normalized.cursor);
@@ -102,7 +102,7 @@ export function insertTaskComposerText(
   const nextText = `${head}${value}${tail}`;
   return {
     text: nextText,
-    cursor: normalized.cursor + value.length
+    cursor: normalized.cursor + value.length,
   };
 }
 
@@ -115,7 +115,7 @@ export function taskComposerBackspace(buffer: TaskComposerBuffer): TaskComposerB
     normalized.text.slice(0, normalized.cursor - 1) + normalized.text.slice(normalized.cursor);
   return {
     text: nextText,
-    cursor: normalized.cursor - 1
+    cursor: normalized.cursor - 1,
   };
 }
 
@@ -128,7 +128,7 @@ export function taskComposerDeleteForward(buffer: TaskComposerBuffer): TaskCompo
     normalized.text.slice(0, normalized.cursor) + normalized.text.slice(normalized.cursor + 1);
   return {
     text: nextText,
-    cursor: normalized.cursor
+    cursor: normalized.cursor,
   };
 }
 
@@ -136,7 +136,7 @@ export function taskComposerMoveLeft(buffer: TaskComposerBuffer): TaskComposerBu
   const normalized = normalizeTaskComposerBuffer(buffer);
   return {
     text: normalized.text,
-    cursor: Math.max(0, normalized.cursor - 1)
+    cursor: Math.max(0, normalized.cursor - 1),
   };
 }
 
@@ -144,7 +144,7 @@ export function taskComposerMoveRight(buffer: TaskComposerBuffer): TaskComposerB
   const normalized = normalizeTaskComposerBuffer(buffer);
   return {
     text: normalized.text,
-    cursor: Math.min(normalized.text.length, normalized.cursor + 1)
+    cursor: Math.min(normalized.text.length, normalized.cursor + 1),
   };
 }
 
@@ -153,7 +153,7 @@ export function taskComposerMoveLineStart(buffer: TaskComposerBuffer): TaskCompo
   const located = locateCursorLine(normalized.text, normalized.cursor);
   return {
     text: normalized.text,
-    cursor: located.ranges[located.lineIndex]!.start
+    cursor: located.ranges[located.lineIndex]!.start,
   };
 }
 
@@ -162,7 +162,7 @@ export function taskComposerMoveLineEnd(buffer: TaskComposerBuffer): TaskCompose
   const located = locateCursorLine(normalized.text, normalized.cursor);
   return {
     text: normalized.text,
-    cursor: located.ranges[located.lineIndex]!.end
+    cursor: located.ranges[located.lineIndex]!.end,
   };
 }
 
@@ -177,7 +177,7 @@ export function taskComposerMoveWordLeft(buffer: TaskComposerBuffer): TaskCompos
   }
   return {
     text: normalized.text,
-    cursor
+    cursor,
   };
 }
 
@@ -192,7 +192,7 @@ export function taskComposerMoveWordRight(buffer: TaskComposerBuffer): TaskCompo
   }
   return {
     text: normalized.text,
-    cursor
+    cursor,
   };
 }
 
@@ -203,9 +203,8 @@ export function taskComposerDeleteWordLeft(buffer: TaskComposerBuffer): TaskComp
     return normalized;
   }
   return {
-    text:
-      normalized.text.slice(0, moved.cursor) + normalized.text.slice(normalized.cursor),
-    cursor: moved.cursor
+    text: normalized.text.slice(0, moved.cursor) + normalized.text.slice(normalized.cursor),
+    cursor: moved.cursor,
   };
 }
 
@@ -217,7 +216,7 @@ export function taskComposerDeleteToLineStart(buffer: TaskComposerBuffer): TaskC
   }
   return {
     text: normalized.text.slice(0, lineStart) + normalized.text.slice(normalized.cursor),
-    cursor: lineStart
+    cursor: lineStart,
   };
 }
 
@@ -229,13 +228,13 @@ export function taskComposerDeleteToLineEnd(buffer: TaskComposerBuffer): TaskCom
   }
   return {
     text: normalized.text.slice(0, normalized.cursor) + normalized.text.slice(lineEnd),
-    cursor: normalized.cursor
+    cursor: normalized.cursor,
   };
 }
 
 export function taskComposerMoveVertical(
   buffer: TaskComposerBuffer,
-  direction: -1 | 1
+  direction: -1 | 1,
 ): VerticalMoveResult {
   const normalized = normalizeTaskComposerBuffer(buffer);
   const located = locateCursorLine(normalized.text, normalized.cursor);
@@ -243,7 +242,7 @@ export function taskComposerMoveVertical(
   if (targetLineIndex < 0 || targetLineIndex >= located.ranges.length) {
     return {
       next: normalized,
-      hitBoundary: true
+      hitBoundary: true,
     };
   }
   const target = located.ranges[targetLineIndex]!;
@@ -251,15 +250,15 @@ export function taskComposerMoveVertical(
   return {
     next: {
       text: normalized.text,
-      cursor: target.start + Math.min(located.column, targetLength)
+      cursor: target.start + Math.min(located.column, targetLength),
     },
-    hitBoundary: false
+    hitBoundary: false,
   };
 }
 
 export function taskComposerVisibleLines(
   buffer: TaskComposerBuffer,
-  cursorToken = '_'
+  cursorToken = '_',
 ): readonly string[] {
   const normalized = normalizeTaskComposerBuffer(buffer);
   const textWithCursor =
@@ -269,10 +268,7 @@ export function taskComposerVisibleLines(
   return textWithCursor.split('\n');
 }
 
-export function taskComposerTextFromTaskFields(
-  title: string,
-  description: string
-): string {
+export function taskComposerTextFromTaskFields(title: string, description: string): string {
   if (description.length === 0) {
     return title;
   }
@@ -288,6 +284,6 @@ export function taskFieldsFromComposerText(text: string): {
   const rest = lines.slice(1).join('\n');
   return {
     title: firstLine.trim(),
-    description: rest
+    description: rest,
   };
 }

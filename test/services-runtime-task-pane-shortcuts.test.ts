@@ -223,10 +223,7 @@ void test('runtime task pane shortcuts selectRepositoryByDirection clamps index 
   harness.service.selectRepositoryByDirection(1);
   harness.service.selectRepositoryByDirection(1);
 
-  assert.deepEqual(harness.calls, [
-    'selectRepositoryById:repo-2',
-    'selectRepositoryById:repo-2',
-  ]);
+  assert.deepEqual(harness.calls, ['selectRepositoryById:repo-2', 'selectRepositoryById:repo-2']);
 });
 
 void test('runtime task pane shortcuts selectRepositoryByDirection skips undefined ids', () => {

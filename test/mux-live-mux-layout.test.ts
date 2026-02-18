@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   leftColsFromPaneWidthPercent,
   normalizePaneWidthPercent,
-  paneWidthPercentFromLayout
+  paneWidthPercentFromLayout,
 } from '../src/mux/live-mux/layout.ts';
 
 void test('normalizePaneWidthPercent clamps to supported range and defaults NaN', () => {

@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import {
-  StartupSequencer
-} from '../src/mux/startup-sequencer.ts';
+import { StartupSequencer } from '../src/mux/startup-sequencer.ts';
 
 interface TimerEntry {
   readonly callback: () => void;
@@ -40,7 +38,7 @@ function createFakeTimers(): {
       entry.callback();
     },
     handles: () => [...timers.keys()],
-    clearCount: () => cleared
+    clearCount: () => cleared,
   };
 }
 
@@ -49,7 +47,7 @@ void test('startup sequencer initializes, resets target state, and enforces targ
   const sequencer = new StartupSequencer({
     quietMs: 25,
     nonemptyFallbackMs: 50,
-    nowMs: () => nowMs
+    nowMs: () => nowMs,
   });
 
   assert.equal(sequencer.snapshot().phase, 'inactive');
@@ -78,7 +76,7 @@ void test('startup sequencer initializes, resets target state, and enforces targ
 void test('startup sequencer uses Date.now when nowMs override is not provided', () => {
   const sequencer = new StartupSequencer({
     quietMs: 0,
-    nonemptyFallbackMs: 0
+    nonemptyFallbackMs: 0,
   });
   sequencer.setTargetSession('default-now');
   assert.equal(sequencer.markFirstOutput('default-now'), true);
@@ -96,7 +94,7 @@ void test('startup sequencer header gate schedules once and settles through time
     nonemptyFallbackMs: 300,
     nowMs: () => nowMs,
     setTimer: timers.setTimer,
-    clearTimer: timers.clearTimer
+    clearTimer: timers.clearTimer,
   });
 
   sequencer.setTargetSession('session-1');
@@ -113,13 +111,13 @@ void test('startup sequencer header gate schedules once and settles through time
     sequencer.scheduleSettledProbe('session-1', (event) => {
       settledEvents.push({ sessionId: event.sessionId, gate: event.gate, quietMs: event.quietMs });
     }),
-    true
+    true,
   );
   assert.equal(
     sequencer.scheduleSettledProbe('session-1', (event) => {
       settledEvents.push({ sessionId: event.sessionId, gate: event.gate, quietMs: event.quietMs });
     }),
-    false
+    false,
   );
   const [handle] = timers.handles();
   assert.notEqual(handle, undefined);
@@ -146,7 +144,7 @@ void test('startup sequencer nonempty gate reschedules settle timer and ignores 
     nonemptyFallbackMs: 120,
     nowMs: () => nowMs,
     setTimer: timers.setTimer,
-    clearTimer: timers.clearTimer
+    clearTimer: timers.clearTimer,
   });
 
   sequencer.setTargetSession('session-2');
@@ -161,7 +159,7 @@ void test('startup sequencer nonempty gate reschedules settle timer and ignores 
     sequencer.scheduleSettledProbe('session-2', (event) => {
       settledEvents.push({ sessionId: event.sessionId, gate: event.gate, quietMs: event.quietMs });
     }),
-    true
+    true,
   );
   const [firstHandle] = timers.handles();
   assert.notEqual(firstHandle, undefined);
@@ -170,7 +168,7 @@ void test('startup sequencer nonempty gate reschedules settle timer and ignores 
     sequencer.scheduleSettledProbe('session-2', (event) => {
       settledEvents.push({ sessionId: event.sessionId, gate: event.gate, quietMs: event.quietMs });
     }),
-    true
+    true,
   );
   const [secondHandle] = timers.handles();
   assert.notEqual(secondHandle, undefined);
@@ -191,7 +189,7 @@ void test('startup sequencer finalization clears timers, signals waiters, and re
     nonemptyFallbackMs: 0,
     nowMs: () => nowMs,
     setTimer: timers.setTimer,
-    clearTimer: timers.clearTimer
+    clearTimer: timers.clearTimer,
   });
 
   sequencer.setTargetSession('session-3');
@@ -210,7 +208,10 @@ void test('startup sequencer finalization clears timers, signals waiters, and re
   assert.equal(sequencer.markFirstPaintVisible('session-4', 1), true);
   assert.equal(sequencer.markHeaderVisible('session-4', true), true);
   assert.equal(sequencer.maybeSelectSettleGate('session-4', 1), 'header');
-  assert.equal(sequencer.scheduleSettledProbe('session-4', () => {}), true);
+  assert.equal(
+    sequencer.scheduleSettledProbe('session-4', () => {}),
+    true,
+  );
   const [handle] = timers.handles();
   assert.notEqual(handle, undefined);
 
@@ -220,7 +221,10 @@ void test('startup sequencer finalization clears timers, signals waiters, and re
   assert.equal(settledResolved, true);
 
   sequencer.setTargetSession('session-5');
-  assert.equal(sequencer.scheduleSettledProbe('session-5', () => {}), false);
+  assert.equal(
+    sequencer.scheduleSettledProbe('session-5', () => {}),
+    false,
+  );
   timers.fire(handle!);
   assert.equal(sequencer.snapshot().settledObserved, false);
 });
@@ -240,7 +244,7 @@ void test('startup sequencer ignores stale timer callback when state resets to s
     },
     clearTimer: () => {
       // Intentionally noop so we can fire stale callbacks after reset.
-    }
+    },
   });
 
   sequencer.setTargetSession('same-session');
@@ -248,7 +252,10 @@ void test('startup sequencer ignores stale timer callback when state resets to s
   assert.equal(sequencer.markFirstPaintVisible('same-session', 1), true);
   assert.equal(sequencer.markHeaderVisible('same-session', true), true);
   assert.equal(sequencer.maybeSelectSettleGate('same-session', 1), 'header');
-  assert.equal(sequencer.scheduleSettledProbe('same-session', () => {}), true);
+  assert.equal(
+    sequencer.scheduleSettledProbe('same-session', () => {}),
+    true,
+  );
   const staleHandle = [...callbacks.keys()][0];
   assert.notEqual(staleHandle, undefined);
 
@@ -261,14 +268,17 @@ void test('startup sequencer default timer helpers are used when no timer overri
   const sequencer = new StartupSequencer({
     quietMs: 25,
     nonemptyFallbackMs: 0,
-    nowMs: () => 7000
+    nowMs: () => 7000,
   });
   sequencer.setTargetSession('default-timers');
   assert.equal(sequencer.markFirstOutput('default-timers'), true);
   assert.equal(sequencer.markFirstPaintVisible('default-timers', 1), true);
   assert.equal(sequencer.markHeaderVisible('default-timers', true), true);
   assert.equal(sequencer.maybeSelectSettleGate('default-timers', 1), 'header');
-  assert.equal(sequencer.scheduleSettledProbe('default-timers', () => {}), true);
+  assert.equal(
+    sequencer.scheduleSettledProbe('default-timers', () => {}),
+    true,
+  );
   assert.equal(sequencer.clearSettledTimer(), true);
   sequencer.finalize();
   await sequencer.waitForSettled();
@@ -292,7 +302,7 @@ void test('startup sequencer ignores stale nonempty timer callback after already
     },
     clearTimer: () => {
       // noop to preserve stale callbacks for branch coverage checks.
-    }
+    },
   });
 
   sequencer.setTargetSession('session-stale');
@@ -304,7 +314,7 @@ void test('startup sequencer ignores stale nonempty timer callback after already
     sequencer.scheduleSettledProbe('session-stale', (event) => {
       settledEvents.push(event.sessionId);
     }),
-    true
+    true,
   );
   const firstHandle = [...callbacks.keys()][0];
   assert.notEqual(firstHandle, undefined);
@@ -312,7 +322,7 @@ void test('startup sequencer ignores stale nonempty timer callback after already
     sequencer.scheduleSettledProbe('session-stale', (event) => {
       settledEvents.push(event.sessionId);
     }),
-    true
+    true,
   );
   const secondHandle = [...callbacks.keys()][1];
   assert.notEqual(secondHandle, undefined);

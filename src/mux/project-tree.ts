@@ -11,12 +11,12 @@ const DEFAULT_PROJECT_TREE_SKIP_NAMES = new Set<string>([
   '.turbo',
   'dist',
   'build',
-  'target'
+  'target',
 ]);
 const PROJECT_TREE_KIND_SORT_WEIGHT: Record<ProjectTreeDirectoryEntry['kind'], string> = {
   directory: '0',
   file: '1',
-  symlink: '1'
+  symlink: '1',
 };
 
 export interface ProjectTreeDirectoryEntry {
@@ -66,7 +66,7 @@ function toPositiveInt(value: number | undefined, fallback: number): number {
 }
 
 function resolveSkipNames(
-  value: ReadonlySet<string> | readonly string[] | undefined
+  value: ReadonlySet<string> | readonly string[] | undefined,
 ): ReadonlySet<string> {
   if (value === undefined) {
     return DEFAULT_PROJECT_TREE_SKIP_NAMES;
@@ -81,18 +81,18 @@ function mapDirentToProjectTreeEntry(entry: Dirent): ProjectTreeDirectoryEntry {
   if (entry.isDirectory()) {
     return {
       name: entry.name,
-      kind: 'directory'
+      kind: 'directory',
     };
   }
   if (entry.isSymbolicLink()) {
     return {
       name: entry.name,
-      kind: 'symlink'
+      kind: 'symlink',
     };
   }
   return {
     name: entry.name,
-    kind: 'file'
+    kind: 'file',
   };
 }
 
@@ -101,7 +101,7 @@ function readDirectoryEntriesFromFilesystem(path: string): readonly ProjectTreeD
 }
 
 function sortProjectTreeEntries(
-  entries: readonly ProjectTreeDirectoryEntry[]
+  entries: readonly ProjectTreeDirectoryEntry[],
 ): ProjectTreeDirectoryEntry[] {
   return [...entries].sort((left, right) => {
     const leftKey = `${PROJECT_TREE_KIND_SORT_WEIGHT[left.kind]}:${left.name}`;
@@ -117,7 +117,7 @@ function runGitLsFilesSync(cwd: string, args: readonly string[]): string | null 
       encoding: 'utf8',
       timeout: 1500,
       maxBuffer: 4 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
   } catch {
     return null;
@@ -134,16 +134,12 @@ function parseGitLsFilesOutput(output: string): readonly string[] {
 function createGitTreeNode(): GitTreeNode {
   return {
     directories: new Map<string, GitTreeNode>(),
-    files: new Set<string>()
+    files: new Set<string>(),
   };
 }
 
 function insertGitTreePath(root: GitTreeNode, value: string): void {
-  const normalized = value
-    .trim()
-    .replaceAll('\\', '/')
-    .replace(/^\.\//, '')
-    .replace(/\/+$/, '');
+  const normalized = value.trim().replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/+$/, '');
   if (normalized.length === 0) {
     return;
   }
@@ -182,7 +178,7 @@ function walkGitTree(
   node: GitTreeNode,
   depth: number,
   prefix: string,
-  state: ProjectTreeEmitState
+  state: ProjectTreeEmitState,
 ): void {
   if (depth >= state.maxDepth) {
     return;
@@ -191,7 +187,7 @@ function walkGitTree(
   const files = [...node.files.values()].sort((left, right) => left.localeCompare(right));
   const entries = [
     ...directories.map((name) => ({ kind: 'directory' as const, name })),
-    ...files.map((name) => ({ kind: 'file' as const, name }))
+    ...files.map((name) => ({ kind: 'file' as const, name })),
   ];
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
@@ -215,7 +211,7 @@ function walkFilesystemTree(
   prefix: string,
   skipNames: ReadonlySet<string>,
   readDirectoryEntries: ReadDirectoryEntries,
-  state: ProjectTreeEmitState
+  state: ProjectTreeEmitState,
 ): void {
   if (depth >= state.maxDepth) {
     return;
@@ -223,13 +219,10 @@ function walkFilesystemTree(
   let entries: ProjectTreeDirectoryEntry[];
   try {
     entries = sortProjectTreeEntries(
-      readDirectoryEntries(currentPath).filter((entry) => !skipNames.has(entry.name))
+      readDirectoryEntries(currentPath).filter((entry) => !skipNames.has(entry.name)),
     );
   } catch (error: unknown) {
-    void emitProjectTreeLine(
-      state,
-      `${prefix}└─ [unreadable: ${formatProjectTreeError(error)}]`
-    );
+    void emitProjectTreeLine(state, `${prefix}└─ [unreadable: ${formatProjectTreeError(error)}]`);
     return;
   }
   for (let index = 0; index < entries.length; index += 1) {
@@ -249,7 +242,7 @@ function walkFilesystemTree(
       `${prefix}${isLast ? '   ' : '│  '}`,
       skipNames,
       readDirectoryEntries,
-      state
+      state,
     );
   }
 }
@@ -263,7 +256,7 @@ function finalizeProjectTreeLines(state: ProjectTreeEmitState): readonly string[
 
 export function buildProjectTreeLines(
   rootPath: string,
-  options: BuildProjectTreeLinesOptions = {}
+  options: BuildProjectTreeLinesOptions = {},
 ): readonly string[] {
   const rootLabel = basename(rootPath) || rootPath;
   const lines: string[] = [`${rootLabel}/`];
@@ -272,7 +265,7 @@ export function buildProjectTreeLines(
     maxDepth: toPositiveInt(options.maxDepth, DEFAULT_PROJECT_TREE_MAX_DEPTH),
     maxEntries: Math.max(1, toPositiveInt(options.maxEntries, DEFAULT_PROJECT_TREE_MAX_ENTRIES)),
     emitted: 0,
-    truncated: false
+    truncated: false,
   };
   const runGitLsFiles = options.runGitLsFiles ?? runGitLsFilesSync;
   const gitOutput = runGitLsFiles(rootPath, [
@@ -280,7 +273,7 @@ export function buildProjectTreeLines(
     '--cached',
     '--others',
     '--exclude-standard',
-    '-z'
+    '-z',
   ]);
   if (gitOutput !== null) {
     const root = createGitTreeNode();
@@ -296,7 +289,7 @@ export function buildProjectTreeLines(
     '',
     resolveSkipNames(options.skipNames),
     options.readDirectoryEntries ?? readDirectoryEntriesFromFilesystem,
-    state
+    state,
   );
   return finalizeProjectTreeLines(state);
 }

@@ -62,7 +62,9 @@ void test('cursor managed hooks install is merge-only and preserves non-managed 
       hooks['beforeSubmitPrompt']?.some(
         (entry) =>
           typeof entry['command'] === 'string' &&
-          (entry['command'] as string).includes(`/new/cursor-hook-relay.ts --managed-hook-id '${CURSOR_MANAGED_HOOK_ID_PREFIX}:beforeSubmitPrompt'`),
+          (entry['command'] as string).includes(
+            `/new/cursor-hook-relay.ts --managed-hook-id '${CURSOR_MANAGED_HOOK_ID_PREFIX}:beforeSubmitPrompt'`,
+          ),
       ),
       true,
     );
@@ -70,7 +72,9 @@ void test('cursor managed hooks install is merge-only and preserves non-managed 
       hooks['stop']?.some(
         (entry) =>
           typeof entry['command'] === 'string' &&
-          (entry['command'] as string).includes(`/new/cursor-hook-relay.ts --managed-hook-id '${CURSOR_MANAGED_HOOK_ID_PREFIX}:stop'`),
+          (entry['command'] as string).includes(
+            `/new/cursor-hook-relay.ts --managed-hook-id '${CURSOR_MANAGED_HOOK_ID_PREFIX}:stop'`,
+          ),
       ),
       true,
     );

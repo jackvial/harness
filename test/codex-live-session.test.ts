@@ -9,7 +9,7 @@ import {
   normalizeTerminalColorHex,
   parseNotifyRecordLine,
   startCodexLiveSession,
-  terminalHexToOscColor
+  terminalHexToOscColor,
 } from '../src/codex/live-session.ts';
 import type { BrokerAttachmentHandlers } from '../src/pty/session-broker.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
@@ -83,27 +83,19 @@ void test('notify helpers format TOML arrays and parse relay records', () => {
 
   assert.equal(
     buildTomlStringArray(expectedNotifyCommand),
-    `[${expectedNotifyCommand.map((value) => JSON.stringify(value)).join(',')}]`
+    `[${expectedNotifyCommand.map((value) => JSON.stringify(value)).join(',')}]`,
   );
   assert.equal(parseNotifyRecordLine('not-json'), null);
   assert.equal(parseNotifyRecordLine('null'), null);
   assert.equal(parseNotifyRecordLine('{"ts":1}'), null);
+  assert.equal(parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":[]}'), null);
+  assert.equal(parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":null}'), null);
+  assert.equal(parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":"x"}'), null);
   assert.equal(
-    parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":[]}'),
-    null
-  );
-  assert.equal(
-    parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":null}'),
-    null
-  );
-  assert.equal(
-    parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":"x"}'),
-    null
-  );
-  assert.equal(
-    parseNotifyRecordLine('{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"agent-turn-complete"}}')
-      ?.payload['type'],
-    'agent-turn-complete'
+    parseNotifyRecordLine(
+      '{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"agent-turn-complete"}}',
+    )?.payload['type'],
+    'agent-turn-complete',
   );
 });
 
@@ -121,13 +113,13 @@ void test('codex live session builds bun-native notify command', () => {
     refresh: () => fakeTimer,
     ref: () => fakeTimer,
     unref: () => fakeTimer,
-    hasRef: () => false
+    hasRef: () => false,
   } as unknown as NodeJS.Timeout;
   const session = startCodexLiveSession(
     {
       useNotifyHook: true,
       notifyFilePath: '/tmp/harness-notify-bun.jsonl',
-      relayScriptPath: '/tmp/relay.ts'
+      relayScriptPath: '/tmp/relay.ts',
     },
     {
       startBroker: (options) => {
@@ -135,8 +127,8 @@ void test('codex live session builds bun-native notify command', () => {
         return broker;
       },
       readFile: () => '',
-      setIntervalFn: () => fakeTimer
-    }
+      setIntervalFn: () => fakeTimer,
+    },
   );
   try {
     const notifyArg = startOptions?.commandArgs?.find((arg) => arg.startsWith('notify=['));
@@ -164,7 +156,7 @@ void test('codex live session external notify mode skips codex notify cli inject
     refresh: () => fakeTimer,
     ref: () => fakeTimer,
     unref: () => fakeTimer,
-    hasRef: () => false
+    hasRef: () => false,
   } as unknown as NodeJS.Timeout;
 
   const session = startCodexLiveSession(
@@ -175,7 +167,7 @@ void test('codex live session external notify mode skips codex notify cli inject
       useNotifyHook: true,
       notifyMode: 'external',
       notifyFilePath: '/tmp/harness-notify-external.jsonl',
-      notifyPollMs: 250
+      notifyPollMs: 250,
     },
     {
       startBroker: (options) => {
@@ -186,8 +178,8 @@ void test('codex live session external notify mode skips codex notify cli inject
       setIntervalFn: (callback) => {
         pollNotify = callback;
         return fakeTimer;
-      }
-    }
+      },
+    },
   );
 
   const notifyTypes: string[] = [];
@@ -200,7 +192,10 @@ void test('codex live session external notify mode skips codex notify cli inject
     }
   });
 
-  assert.equal(startOptions?.commandArgs?.some((arg) => arg.startsWith('notify=[')) ?? false, false);
+  assert.equal(
+    startOptions?.commandArgs?.some((arg) => arg.startsWith('notify=[')) ?? false,
+    false,
+  );
   notifyContent = '{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"claude.stop"}}\n';
   pollNotify();
   await delay(0);
@@ -228,7 +223,7 @@ void test('codex live session emits notify events when notify hook polling is en
     refresh: () => fakeTimer,
     ref: () => fakeTimer,
     unref: () => fakeTimer,
-    hasRef: () => false
+    hasRef: () => false,
   } as unknown as NodeJS.Timeout;
 
   const session = startCodexLiveSession(
@@ -236,7 +231,7 @@ void test('codex live session emits notify events when notify hook polling is en
       useNotifyHook: true,
       notifyFilePath: '/tmp/harness-notify.jsonl',
       relayScriptPath: '/tmp/relay.ts',
-      notifyPollMs: 250
+      notifyPollMs: 250,
     },
     {
       startBroker: (options) => {
@@ -251,8 +246,8 @@ void test('codex live session emits notify events when notify hook polling is en
       },
       clearIntervalFn: (handle) => {
         clearedTimer = handle === fakeTimer;
-      }
-    }
+      },
+    },
   );
 
   const notifyTypes: string[] = [];
@@ -264,13 +259,16 @@ void test('codex live session emits notify events when notify hook polling is en
   });
 
   assert.notEqual(startOptions, undefined);
-  assert.equal(startOptions?.commandArgs?.some((arg) => arg.startsWith('notify=[')), true);
+  assert.equal(
+    startOptions?.commandArgs?.some((arg) => arg.startsWith('notify=[')),
+    true,
+  );
   assert.equal(hasPollNotify, true);
 
   notifyContent = [
     '{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"agent-turn-complete"}}',
     '{"ts":"2026-01-01T00:00:00.100Z","payload":{"type":"approval-required"}}',
-    'malformed'
+    'malformed',
   ].join('\n');
   pollNotify();
   await delay(0);
@@ -290,7 +288,7 @@ void test('codex live session notify polling handles resets, malformed lines, an
     refresh: () => fakeTimer,
     ref: () => fakeTimer,
     unref: () => fakeTimer,
-    hasRef: () => false
+    hasRef: () => false,
   } as unknown as NodeJS.Timeout;
   const missingFileError = Object.assign(new Error('missing'), { code: 'ENOENT' });
   const deniedFileError = Object.assign(new Error('denied'), { code: 'EACCES' });
@@ -301,7 +299,7 @@ void test('codex live session notify polling handles resets, malformed lines, an
       useNotifyHook: true,
       notifyFilePath: '/tmp/harness-notify.jsonl',
       relayScriptPath: '/tmp/relay.ts',
-      notifyPollMs: 25
+      notifyPollMs: 25,
     },
     {
       startBroker: () => broker,
@@ -324,7 +322,7 @@ void test('codex live session notify polling handles resets, malformed lines, an
             '',
             'malformed',
             '{"ts":"2026-01-01T00:00:00.100Z","payload":{"type":"approval-required"}}',
-            ''
+            '',
           ].join('\n');
         }
         throw deniedFileError;
@@ -332,8 +330,8 @@ void test('codex live session notify polling handles resets, malformed lines, an
       setIntervalFn: (callback) => {
         pollNotify = callback;
         return fakeTimer;
-      }
-    }
+      },
+    },
   );
 
   const removeListener = session.onEvent((event) => {
@@ -373,24 +371,26 @@ void test('codex live session notify polling supports async readFile dependency'
     refresh: () => fakeTimer,
     ref: () => fakeTimer,
     unref: () => fakeTimer,
-    hasRef: () => false
+    hasRef: () => false,
   } as unknown as NodeJS.Timeout;
   const notifyTypes: string[] = [];
   const session = startCodexLiveSession(
     {
       useNotifyHook: true,
       notifyFilePath: '/tmp/harness-notify.jsonl',
-      relayScriptPath: '/tmp/relay.ts'
+      relayScriptPath: '/tmp/relay.ts',
     },
     {
       startBroker: () => broker,
       readFile: () =>
-        Promise.resolve('{"ts":"2026-01-01T00:00:00.200Z","payload":{"type":"agent-turn-complete"}}\n'),
+        Promise.resolve(
+          '{"ts":"2026-01-01T00:00:00.200Z","payload":{"type":"agent-turn-complete"}}\n',
+        ),
       setIntervalFn: (callback) => {
         pollNotify = callback;
         return fakeTimer;
-      }
-    }
+      },
+    },
   );
 
   const removeListener = session.onEvent((event) => {
@@ -417,13 +417,13 @@ void test('codex live session notify polling swallows async readFile rejections'
     refresh: () => fakeTimer,
     ref: () => fakeTimer,
     unref: () => fakeTimer,
-    hasRef: () => false
+    hasRef: () => false,
   } as unknown as NodeJS.Timeout;
   const session = startCodexLiveSession(
     {
       useNotifyHook: true,
       notifyFilePath: '/tmp/harness-notify.jsonl',
-      relayScriptPath: '/tmp/relay.ts'
+      relayScriptPath: '/tmp/relay.ts',
     },
     {
       startBroker: () => broker,
@@ -431,8 +431,8 @@ void test('codex live session notify polling swallows async readFile rejections'
       setIntervalFn: (callback) => {
         pollNotify = callback;
         return fakeTimer;
-      }
-    }
+      },
+    },
   );
 
   pollNotify();
@@ -447,21 +447,21 @@ void test('codex live session default notify polling swallows non-ENOENT filesys
     refresh: () => fakeTimer,
     ref: () => fakeTimer,
     unref: () => fakeTimer,
-    hasRef: () => false
+    hasRef: () => false,
   } as unknown as NodeJS.Timeout;
   const session = startCodexLiveSession(
     {
       useNotifyHook: true,
       notifyFilePath: tmpdir(),
-      relayScriptPath: '/tmp/relay.ts'
+      relayScriptPath: '/tmp/relay.ts',
     },
     {
       startBroker: () => broker,
       setIntervalFn: (callback) => {
         pollNotify = callback;
         return fakeTimer;
-      }
-    }
+      },
+    },
   );
 
   pollNotify();
@@ -477,14 +477,14 @@ void test('codex live session notify polling backs off when no new bytes are ava
     refresh: () => fakeTimer,
     ref: () => fakeTimer,
     unref: () => fakeTimer,
-    hasRef: () => false
+    hasRef: () => false,
   } as unknown as NodeJS.Timeout;
   const session = startCodexLiveSession(
     {
       useNotifyHook: true,
       notifyFilePath: '/tmp/harness-notify.jsonl',
       relayScriptPath: '/tmp/relay.ts',
-      notifyPollMs: 100
+      notifyPollMs: 100,
     },
     {
       startBroker: () => broker,
@@ -495,8 +495,8 @@ void test('codex live session notify polling backs off when no new bytes are ava
       setIntervalFn: (callback) => {
         pollNotify = callback;
         return fakeTimer;
-      }
-    }
+      },
+    },
   );
 
   pollNotify();
@@ -518,7 +518,7 @@ void test('codex live session tolerates notify timers that do not expose unref',
     {
       useNotifyHook: true,
       notifyFilePath: '/tmp/harness-notify.jsonl',
-      relayScriptPath: '/tmp/relay.ts'
+      relayScriptPath: '/tmp/relay.ts',
     },
     {
       startBroker: () => broker,
@@ -526,8 +526,8 @@ void test('codex live session tolerates notify timers that do not expose unref',
       setIntervalFn: (callback) => {
         pollNotify = callback;
         return fakeTimer;
-      }
-    }
+      },
+    },
   );
 
   pollNotify();
@@ -540,7 +540,7 @@ void test('codex live session default notify polling handles missing relay file 
     baseArgs: [],
     args: ['ok'],
     useNotifyHook: true,
-    notifyPollMs: 10
+    notifyPollMs: 10,
   });
 
   await new Promise((resolve) => {
@@ -565,14 +565,14 @@ void test('codex live session emits terminal and exit events', () => {
       command: 'codex-custom',
       args: ['--model', 'gpt-5.3-codex'],
       env: { ...process.env, HARNESS_TEST: '1' },
-      cwd: '/tmp/harness-session'
+      cwd: '/tmp/harness-session',
     },
     {
       startBroker: (options) => {
         startOptions = options;
         return broker;
-      }
-    }
+      },
+    },
   );
 
   const events: string[] = [];
@@ -600,7 +600,7 @@ void test('codex live session emits terminal and exit events', () => {
     },
     onExit: () => {
       // no-op
-    }
+    },
   });
   session.detach(attachmentId);
   assert.equal(session.latestCursorValue(), 7);
@@ -634,11 +634,11 @@ void test('codex live session can disable snapshot ingest while preserving outpu
   const broker = new FakeBroker();
   const session = startCodexLiveSession(
     {
-      enableSnapshotModel: false
+      enableSnapshotModel: false,
     },
     {
-      startBroker: () => broker
-    }
+      startBroker: () => broker,
+    },
   );
 
   const observedChunks: string[] = [];
@@ -664,11 +664,11 @@ void test('codex live session still answers stateful terminal queries when snaps
   const broker = new FakeBroker();
   const session = startCodexLiveSession(
     {
-      enableSnapshotModel: false
+      enableSnapshotModel: false,
     },
     {
-      startBroker: () => broker
-    }
+      startBroker: () => broker,
+    },
   );
 
   broker.emitData(1, Buffer.from('\u001b[6n\u001b[14t\u001b[18t', 'utf8'));
@@ -684,7 +684,9 @@ void test('codex live session only reads query state for csi payloads that requi
   const broker = new FakeBroker();
   const originalQueryState = TerminalSnapshotOracle.prototype.queryState;
   let queryStateReads = 0;
-  TerminalSnapshotOracle.prototype.queryState = function patchedQueryState(this: TerminalSnapshotOracle) {
+  TerminalSnapshotOracle.prototype.queryState = function patchedQueryState(
+    this: TerminalSnapshotOracle,
+  ) {
     queryStateReads += 1;
     return originalQueryState.call(this);
   };
@@ -693,8 +695,8 @@ void test('codex live session only reads query state for csi payloads that requi
     const session = startCodexLiveSession(
       {},
       {
-        startBroker: () => broker
-      }
+        startBroker: () => broker,
+      },
     );
 
     broker.emitData(1, Buffer.from('\u001b[c\u001b[>c\u001b[5n\u001b[16t\u001b[?u', 'utf8'));
@@ -714,8 +716,8 @@ void test('codex live session query replies use cursor state at the exact query 
   const session = startCodexLiveSession(
     {},
     {
-      startBroker: () => broker
-    }
+      startBroker: () => broker,
+    },
   );
 
   broker.emitData(1, Buffer.from('abc\u001b[6n', 'utf8'));
@@ -730,21 +732,21 @@ void test('codex live session replies to OSC terminal color queries', () => {
   const perfPath = join(tmpdir(), `harness-query-perf-${Date.now().toString(36)}.jsonl`);
   configurePerfCore({
     enabled: true,
-    filePath: perfPath
+    filePath: perfPath,
   });
   const session = startCodexLiveSession(
     {
       env: {
         ...process.env,
         HARNESS_TERM_FG: '#010203',
-        HARNESS_TERM_BG: '#040506'
+        HARNESS_TERM_BG: '#040506',
       },
       terminalForegroundHex: '#a0b1c2',
-      terminalBackgroundHex: '0d0e0f'
+      terminalBackgroundHex: '0d0e0f',
     },
     {
-      startBroker: () => broker
-    }
+      startBroker: () => broker,
+    },
   );
 
   broker.emitData(1, Buffer.from('x', 'utf8'));
@@ -806,12 +808,12 @@ void test('codex live session replies to OSC terminal color queries', () => {
     '\u001b[4;384;640t',
     '\u001b[6;16;8t',
     '\u001b[8;24;80t',
-    '\u001b[?0u'
+    '\u001b[?0u',
   ]);
 
   session.close();
   configurePerfCore({
-    enabled: false
+    enabled: false,
   });
   shutdownPerfCore();
   const perfLines = readFileSync(perfPath, 'utf8')
@@ -825,46 +827,46 @@ void test('codex live session replies to OSC terminal color queries', () => {
 
   assert.equal(
     queryRecords.some(
-      (attrs) => attrs.kind === 'csi' && attrs.payload === '>0q' && attrs.handled === false
+      (attrs) => attrs.kind === 'csi' && attrs.payload === '>0q' && attrs.handled === false,
     ),
-    true
+    true,
   );
   assert.equal(
     queryRecords.some(
-      (attrs) => attrs.kind === 'csi' && attrs.payload === '?25$p' && attrs.handled === false
+      (attrs) => attrs.kind === 'csi' && attrs.payload === '?25$p' && attrs.handled === false,
     ),
-    true
+    true,
   );
   assert.equal(
     queryRecords.some(
-      (attrs) => attrs.kind === 'csi' && attrs.payload === '?u' && attrs.handled === true
+      (attrs) => attrs.kind === 'csi' && attrs.payload === '?u' && attrs.handled === true,
     ),
-    true
+    true,
   );
   assert.equal(
     queryRecords.some(
-      (attrs) => attrs.kind === 'dcs' && attrs.payload === '+q544e' && attrs.handled === false
+      (attrs) => attrs.kind === 'dcs' && attrs.payload === '+q544e' && attrs.handled === false,
     ),
-    true
+    true,
   );
   assert.equal(
     queryRecords.some(
       (attrs) =>
-        attrs.kind === 'dcs' && String(attrs.payload).includes('+qfoo') && attrs.handled === false
+        attrs.kind === 'dcs' && String(attrs.payload).includes('+qfoo') && attrs.handled === false,
     ),
-    true
+    true,
   );
   assert.equal(
     queryRecords.some((attrs) => attrs.kind === 'csi' && attrs.payload === '>7u'),
-    false
+    false,
   );
   assert.equal(
     queryRecords.some((attrs) => attrs.kind === 'csi' && attrs.payload === '1;1H'),
-    false
+    false,
   );
   assert.equal(
     queryRecords.some((attrs) => attrs.kind === 'osc' && attrs.payload === '12;plain-text'),
-    false
+    false,
   );
   rmSync(perfPath, { force: true });
 });
@@ -874,8 +876,8 @@ void test('codex live session ignores OSC indexed queries with non-numeric indic
   const session = startCodexLiveSession(
     {},
     {
-      startBroker: () => broker
-    }
+      startBroker: () => broker,
+    },
   );
 
   broker.emitData(1, Buffer.from('\u001b]4;bad;?\u0007', 'utf8'));
@@ -885,7 +887,7 @@ void test('codex live session ignores OSC indexed queries with non-numeric indic
 
 void test('codex live session e2e completes terminal query handshake with configured size', async () => {
   const startupScript = [
-    "const required = [",
+    'const required = [',
     "  '\\u001b]10;rgb:1111/2222/3333\\u0007',",
     "  '\\u001b]11;rgb:4444/5555/6666\\u0007',",
     "  '\\u001b]4;12;rgb:8b8b/c5c5/ffff\\u0007',",
@@ -896,7 +898,7 @@ void test('codex live session e2e completes terminal query handshake with config
     "  '\\u001b[8;29;91t'",
     '];',
     "let observed = '';",
-    "const finish = (ok) => {",
+    'const finish = (ok) => {',
     "  process.stdout.write(ok ? 'READY\\n' : `MISSING:${JSON.stringify(observed)}\\n`);",
     '  process.exit(ok ? 0 : 2);',
     '};',
@@ -911,7 +913,7 @@ void test('codex live session e2e completes terminal query handshake with config
     '    finish(true);',
     '  }',
     '});',
-    "process.stdout.write('\\u001b]10;?\\u0007\\u001b]11;?\\u0007\\u001b]4;12;?\\u0007\\u001b[c\\u001b[>c\\u001b[5n\\u001b[6n\\u001b[18t');"
+    "process.stdout.write('\\u001b]10;?\\u0007\\u001b]11;?\\u0007\\u001b]4;12;?\\u0007\\u001b[c\\u001b[>c\\u001b[5n\\u001b[6n\\u001b[18t');",
   ].join('\n');
 
   const session = startCodexLiveSession({
@@ -921,7 +923,7 @@ void test('codex live session e2e completes terminal query handshake with config
     initialCols: 91,
     initialRows: 29,
     terminalForegroundHex: '#112233',
-    terminalBackgroundHex: '#445566'
+    terminalBackgroundHex: '#445566',
   });
 
   const startedAt = process.hrtime.bigint();
@@ -949,12 +951,19 @@ void test('codex live session e2e completes terminal query handshake with config
           resolve(Number(elapsedNs) / 1_000_000);
           return;
         }
-        reject(new Error(`startup handshake exited with code ${String(exit.code)} output=${JSON.stringify(output)}`));
-      }
+        reject(
+          new Error(
+            `startup handshake exited with code ${String(exit.code)} output=${JSON.stringify(output)}`,
+          ),
+        );
+      },
     });
   });
 
-  assert.ok(handshakeDurationMs < 2000, `expected fast handshake, got ${String(handshakeDurationMs)}ms`);
+  assert.ok(
+    handshakeDurationMs < 2000,
+    `expected fast handshake, got ${String(handshakeDurationMs)}ms`,
+  );
   session.close();
 });
 
@@ -968,7 +977,7 @@ void test('codex live session e2e preserves terminal width across startup and re
     baseArgs: [],
     args: ['-lc', commandScript],
     initialCols: 91,
-    initialRows: 29
+    initialRows: 29,
   });
 
   let exited: PtyExit | null = null;
@@ -978,14 +987,16 @@ void test('codex live session e2e preserves terminal width across startup and re
     },
     onExit: (exit) => {
       exited = exit;
-    }
+    },
   });
 
   const waitForLine = async (pattern: RegExp, timeoutMs: number): Promise<void> => {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
       if (exited !== null) {
-        throw new Error(`session exited early: code=${String(exited.code)} signal=${String(exited.signal)}`);
+        throw new Error(
+          `session exited early: code=${String(exited.code)} signal=${String(exited.signal)}`,
+        );
       }
       const frame = session.snapshot();
       if (frame.lines.some((line) => pattern.test(line))) {
@@ -1011,7 +1022,7 @@ void test('codex live session e2e preserves terminal width across startup and re
 void test('codex live session supports default dependency paths', async () => {
   const session = startCodexLiveSession({
     command: '/bin/echo',
-    args: ['hello']
+    args: ['hello'],
   });
 
   await new Promise((resolve) => {
@@ -1037,14 +1048,14 @@ void test('codex live session supports custom base args', () => {
     {
       baseArgs: ['--no-alt-screen', '--search'],
       initialCols: 120,
-      initialRows: 35
+      initialRows: 35,
     },
     {
       startBroker: (options) => {
         startOptions = options;
         return broker;
-      }
-    }
+      },
+    },
   );
 
   assert.deepEqual(startOptions?.commandArgs, ['--no-alt-screen', '--search']);

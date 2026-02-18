@@ -1,6 +1,10 @@
 import type { ControlPlaneKeyEvent } from '../control-plane/codex-session-stream.ts';
 import { buildSelectorIndexEntries } from '../mux/selector-index.ts';
-import { compactDebugText, conversationSummary, type ConversationState } from '../mux/live-mux/conversation-state.ts';
+import {
+  compactDebugText,
+  conversationSummary,
+  type ConversationState,
+} from '../mux/live-mux/conversation-state.ts';
 import { projectWorkspaceRailConversation } from '../mux/workspace-rail-model.ts';
 
 type PerfAttrs = Record<string, boolean | number | string>;

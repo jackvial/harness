@@ -7,7 +7,7 @@ import {
   mapSessionEventToNormalizedEvent,
   mapTerminalOutputToNormalizedEvent,
   normalizeExitCode,
-  observedAtFromSessionEvent
+  observedAtFromSessionEvent,
 } from '../src/mux/live-mux/event-mapping.ts';
 import type { EventScope } from '../src/events/normalized-events.ts';
 import type { StreamSessionEvent } from '../src/control-plane/stream-protocol.ts';
@@ -18,7 +18,7 @@ const scope: EventScope = {
   workspaceId: 'workspace',
   worktreeId: 'worktree',
   conversationId: 'conversation',
-  turnId: 'turn-1'
+  turnId: 'turn-1',
 };
 
 const scopeNoTurn: EventScope = {
@@ -26,7 +26,7 @@ const scopeNoTurn: EventScope = {
   userId: scope.userId,
   workspaceId: scope.workspaceId,
   worktreeId: scope.worktreeId,
-  conversationId: scope.conversationId
+  conversationId: scope.conversationId,
 };
 
 void test('normalizeExitCode prefers explicit code then signal fallback', () => {
@@ -50,7 +50,11 @@ void test('session and conversation error detectors match expected messages only
 });
 
 void test('mapTerminalOutputToNormalizedEvent emits provider text delta event', () => {
-  const event = mapTerminalOutputToNormalizedEvent(Buffer.from('hello', 'utf8'), scope, () => 'event-1');
+  const event = mapTerminalOutputToNormalizedEvent(
+    Buffer.from('hello', 'utf8'),
+    scope,
+    () => 'event-1',
+  );
 
   assert.equal(event.eventId, 'event-1');
   assert.equal(event.source, 'provider');
@@ -61,7 +65,7 @@ void test('mapTerminalOutputToNormalizedEvent emits provider text delta event', 
   const noTurnEvent = mapTerminalOutputToNormalizedEvent(
     Buffer.from('hi', 'utf8'),
     scopeNoTurn,
-    () => 'event-1b'
+    () => 'event-1b',
   );
   assert.equal(noTurnEvent.payload.kind, 'text-delta');
   if (noTurnEvent.payload.kind !== 'text-delta') {
@@ -76,11 +80,11 @@ void test('mapSessionEventToNormalizedEvent emits attention clear for session-ex
       type: 'session-exit',
       exit: {
         code: 0,
-        signal: null
-      }
+        signal: null,
+      },
     },
     scope,
-    () => 'event-2'
+    () => 'event-2',
   );
   assert.equal(mapped?.eventId, 'event-2');
   assert.equal(mapped?.source, 'meta');
@@ -91,11 +95,11 @@ void test('mapSessionEventToNormalizedEvent emits attention clear for session-ex
       type: 'session-exit',
       exit: {
         code: null,
-        signal: 'SIGTERM'
-      }
+        signal: 'SIGTERM',
+      },
     },
     scopeNoTurn,
-    () => 'event-2b'
+    () => 'event-2b',
   );
   assert.equal(mappedNoTurn?.payload.kind, 'attention');
   if (mappedNoTurn?.payload.kind !== 'attention') {
@@ -108,11 +112,11 @@ void test('mapSessionEventToNormalizedEvent emits attention clear for session-ex
       type: 'notify',
       record: {
         ts: '2026-01-01T00:00:00.000Z',
-        payload: {}
-      }
+        payload: {},
+      },
     },
     scope,
-    () => 'event-3'
+    () => 'event-3',
   );
   assert.equal(unmapped, null);
 });
@@ -122,8 +126,8 @@ void test('observedAtFromSessionEvent prefers notify timestamp and falls back to
     type: 'notify',
     record: {
       ts: '2026-01-01T00:00:00.000Z',
-      payload: {}
-    }
+      payload: {},
+    },
   } satisfies StreamSessionEvent);
   assert.equal(fromNotify, '2026-01-01T00:00:00.000Z');
 
@@ -131,14 +135,14 @@ void test('observedAtFromSessionEvent prefers notify timestamp and falls back to
     type: 'notify',
     record: {
       ts: 42 as unknown as string,
-      payload: {}
-    }
+      payload: {},
+    },
   } as unknown as StreamSessionEvent);
   assert.match(fromMissingTs, /^\d{4}-\d{2}-\d{2}T/);
 
   const fromMalformedRecord = observedAtFromSessionEvent({
     type: 'notify',
-    record: 'invalid' as unknown as { ts: string; payload: Record<string, unknown> }
+    record: 'invalid' as unknown as { ts: string; payload: Record<string, unknown> },
   });
   assert.match(fromMalformedRecord, /^\d{4}-\d{2}-\d{2}T/);
 
@@ -146,8 +150,8 @@ void test('observedAtFromSessionEvent prefers notify timestamp and falls back to
     type: 'session-exit',
     exit: {
       code: null,
-      signal: 'SIGTERM'
-    }
+      signal: 'SIGTERM',
+    },
   });
   assert.match(fromExit, /^\d{4}-\d{2}-\d{2}T/);
 });

@@ -105,7 +105,7 @@ void test('startup background probe timeout path starts with timedOut true', asy
       return { timeout: true } as unknown as TimeoutHandle;
     },
     clearTimeoutFn: () => {},
-    setIntervalFn: () => ({ interval: true } as unknown as IntervalHandle),
+    setIntervalFn: () => ({ interval: true }) as unknown as IntervalHandle,
     clearIntervalFn: () => {},
   });
 
@@ -130,7 +130,7 @@ void test('startup background probe does not start while shutting down', async (
     setIntervalFn: () => {
       throw new Error('interval should not start while shutting down');
     },
-    setTimeoutFn: () => ({ timeout: true } as unknown as TimeoutHandle),
+    setTimeoutFn: () => ({ timeout: true }) as unknown as TimeoutHandle,
     clearTimeoutFn: () => {},
   });
 

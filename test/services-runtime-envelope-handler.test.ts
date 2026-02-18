@@ -47,7 +47,9 @@ void test('runtime envelope handler handles pty.output, records cursor regressio
       calls.push(`noteGit:${directoryId ?? 'null'}`);
     },
     recordOutputChunk: (input) => {
-      calls.push(`recordOutputChunk:${input.sessionId}:${input.chunkLength}:${input.active ? '1' : '0'}`);
+      calls.push(
+        `recordOutputChunk:${input.sessionId}:${input.chunkLength}:${input.active ? '1' : '0'}`,
+      );
     },
     startupOutputChunk: (sessionId, chunkLength) => {
       calls.push(`startupOutput:${sessionId}:${chunkLength}`);
@@ -86,6 +88,9 @@ void test('runtime envelope handler handles pty.output, records cursor regressio
       calls.push(`recordOutputHandled:${durationMs > 0 ? '1' : '0'}`);
     },
     conversationById: () => conversation,
+    applyObservedWorkspaceEvent: () => {
+      calls.push('applyObservedWorkspace');
+    },
     applyObservedGitStatusEvent: () => {
       calls.push('applyObservedGit');
     },
@@ -172,6 +177,7 @@ void test('runtime envelope handler handles pty.event session-exit and pty.exit 
     nowIso: () => '2026-02-18T00:00:00.000Z',
     recordOutputHandled: () => {},
     conversationById: () => conversation,
+    applyObservedWorkspaceEvent: () => {},
     applyObservedGitStatusEvent: () => {},
     applyObservedTaskPlanningEvent: () => {},
     idFactory: () => 'event-id',
@@ -267,6 +273,9 @@ void test('runtime envelope handler handles stream.event and removed-session sho
     nowIso: () => '2026-02-18T00:00:00.000Z',
     recordOutputHandled: () => {},
     conversationById: () => undefined,
+    applyObservedWorkspaceEvent: () => {
+      calls.push('applyObservedWorkspace');
+    },
     applyObservedGitStatusEvent: () => {
       calls.push('applyObservedGit');
     },
@@ -309,5 +318,5 @@ void test('runtime envelope handler handles stream.event and removed-session sho
     }),
   );
 
-  assert.deepEqual(calls, ['applyObservedGit', 'applyObservedTasks']);
+  assert.deepEqual(calls, ['applyObservedWorkspace', 'applyObservedGit', 'applyObservedTasks']);
 });

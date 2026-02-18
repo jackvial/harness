@@ -10,7 +10,7 @@ import {
   ControlPlaneStreamServer,
   resolveTerminalCommandForEnvironment,
   startControlPlaneStreamServer,
-  type StartControlPlaneSessionInput
+  type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import { encodeStreamEnvelope } from '../src/control-plane/stream-protocol.ts';
@@ -19,7 +19,7 @@ import {
   FakeLiveSession,
   collectEnvelopes,
   makeTempStateStorePath,
-  writeRaw
+  writeRaw,
 } from './control-plane-stream-server-test-helpers.ts';
 
 void test('stream server executeCommand guards unsupported command types', async () => {
@@ -135,7 +135,7 @@ void test('stream server publishes directory git snapshots on repeated directory
       enabled: true,
       pollMs: 1000,
       maxConcurrency: 1,
-      minDirectoryRefreshMs: 1000
+      minDirectoryRefreshMs: 1000,
     },
     readGitDirectorySnapshot: () =>
       Promise.resolve({
@@ -143,7 +143,7 @@ void test('stream server publishes directory git snapshots on repeated directory
           branch: 'main',
           changedFiles: 0,
           additions: 0,
-          deletions: 0
+          deletions: 0,
         },
         repository: {
           normalizedRemoteUrl: 'https://github.com/example/harness',
@@ -151,14 +151,14 @@ void test('stream server publishes directory git snapshots on repeated directory
           lastCommitAt: '2026-02-16T00:00:00.000Z',
           shortCommitHash: 'abc1234',
           inferredName: 'harness',
-          defaultBranch: 'main'
-        }
-      })
+          defaultBranch: 'main',
+        },
+      }),
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -167,7 +167,7 @@ void test('stream server publishes directory git snapshots on repeated directory
       type: 'stream.subscribe',
       tenantId: 'tenant-git-upsert-refresh',
       userId: 'user-git-upsert-refresh',
-      workspaceId: 'workspace-git-upsert-refresh'
+      workspaceId: 'workspace-git-upsert-refresh',
     });
 
     await client.sendCommand({
@@ -176,7 +176,7 @@ void test('stream server publishes directory git snapshots on repeated directory
       tenantId: 'tenant-git-upsert-refresh',
       userId: 'user-git-upsert-refresh',
       workspaceId: 'workspace-git-upsert-refresh',
-      path: workspace
+      path: workspace,
     });
     await delay(80);
 
@@ -186,7 +186,7 @@ void test('stream server publishes directory git snapshots on repeated directory
       tenantId: 'tenant-git-upsert-refresh',
       userId: 'user-git-upsert-refresh',
       workspaceId: 'workspace-git-upsert-refresh',
-      path: workspace
+      path: workspace,
     });
     await delay(80);
 
@@ -283,84 +283,81 @@ void test('stream server deduplicates unchanged git snapshots when using default
   }
 });
 
-void test(
-  'stream server lists cached directory git status snapshots for startup hydration',
-  async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'harness-git-status-list-'));
-    const server = await startControlPlaneStreamServer({
-      startSession: (input) => new FakeLiveSession(input),
-      gitStatus: {
-        enabled: true,
-        pollMs: 60_000,
-        maxConcurrency: 1,
-        minDirectoryRefreshMs: 60_000,
-      },
-      readGitDirectorySnapshot: () =>
-        Promise.resolve({
-          summary: {
-            branch: 'main',
-            changedFiles: 3,
-            additions: 4,
-            deletions: 1,
-          },
-          repository: {
-            normalizedRemoteUrl: 'https://github.com/example/harness',
-            commitCount: 42,
-            lastCommitAt: '2026-02-16T00:00:00.000Z',
-            shortCommitHash: '1a2b3c4',
-            inferredName: 'harness',
-            defaultBranch: 'main',
-          },
-        }),
-    });
-    const address = server.address();
-    const client = await connectControlPlaneStreamClient({
-      host: address.address,
-      port: address.port,
-    });
+void test('stream server lists cached directory git status snapshots for startup hydration', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-git-status-list-'));
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    gitStatus: {
+      enabled: true,
+      pollMs: 60_000,
+      maxConcurrency: 1,
+      minDirectoryRefreshMs: 60_000,
+    },
+    readGitDirectorySnapshot: () =>
+      Promise.resolve({
+        summary: {
+          branch: 'main',
+          changedFiles: 3,
+          additions: 4,
+          deletions: 1,
+        },
+        repository: {
+          normalizedRemoteUrl: 'https://github.com/example/harness',
+          commitCount: 42,
+          lastCommitAt: '2026-02-16T00:00:00.000Z',
+          shortCommitHash: '1a2b3c4',
+          inferredName: 'harness',
+          defaultBranch: 'main',
+        },
+      }),
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
 
-    try {
-      await client.sendCommand({
-        type: 'directory.upsert',
-        directoryId: 'directory-git-status-list-1',
-        tenantId: 'tenant-git-status-list-1',
-        userId: 'user-git-status-list-1',
-        workspaceId: 'workspace-git-status-list-1',
-        path: workspace,
-      });
-      await delay(100);
-      const listed = await client.sendCommand({
-        type: 'directory.git-status',
-        tenantId: 'tenant-git-status-list-1',
-        userId: 'user-git-status-list-1',
-        workspaceId: 'workspace-git-status-list-1',
-      });
-      const rowsRaw = listed['gitStatuses'];
-      assert.equal(Array.isArray(rowsRaw), true);
-      if (!Array.isArray(rowsRaw)) {
-        throw new Error('expected gitStatuses array');
-      }
-      assert.equal(rowsRaw.length, 1);
-      const row = rowsRaw[0] as Record<string, unknown>;
-      assert.equal(row['directoryId'], 'directory-git-status-list-1');
-      const summary = row['summary'] as Record<string, unknown>;
-      assert.equal(summary['branch'], 'main');
-      assert.equal(summary['changedFiles'], 3);
-      const repositorySnapshot = row['repositorySnapshot'] as Record<string, unknown>;
-      assert.equal(repositorySnapshot['normalizedRemoteUrl'], 'https://github.com/example/harness');
-      assert.equal(repositorySnapshot['commitCount'], 42);
-      assert.equal(typeof row['repositoryId'], 'string');
-      const repository = row['repository'] as Record<string, unknown>;
-      assert.equal(typeof repository['repositoryId'], 'string');
-      assert.equal(repository['name'], 'harness');
-      assert.equal(typeof row['observedAt'], 'string');
-    } finally {
-      client.close();
-      await server.close();
-      rmSync(workspace, { recursive: true, force: true });
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-git-status-list-1',
+      tenantId: 'tenant-git-status-list-1',
+      userId: 'user-git-status-list-1',
+      workspaceId: 'workspace-git-status-list-1',
+      path: workspace,
+    });
+    await delay(100);
+    const listed = await client.sendCommand({
+      type: 'directory.git-status',
+      tenantId: 'tenant-git-status-list-1',
+      userId: 'user-git-status-list-1',
+      workspaceId: 'workspace-git-status-list-1',
+    });
+    const rowsRaw = listed['gitStatuses'];
+    assert.equal(Array.isArray(rowsRaw), true);
+    if (!Array.isArray(rowsRaw)) {
+      throw new Error('expected gitStatuses array');
     }
-  },
-);
+    assert.equal(rowsRaw.length, 1);
+    const row = rowsRaw[0] as Record<string, unknown>;
+    assert.equal(row['directoryId'], 'directory-git-status-list-1');
+    const summary = row['summary'] as Record<string, unknown>;
+    assert.equal(summary['branch'], 'main');
+    assert.equal(summary['changedFiles'], 3);
+    const repositorySnapshot = row['repositorySnapshot'] as Record<string, unknown>;
+    assert.equal(repositorySnapshot['normalizedRemoteUrl'], 'https://github.com/example/harness');
+    assert.equal(repositorySnapshot['commitCount'], 42);
+    assert.equal(typeof row['repositoryId'], 'string');
+    const repository = row['repository'] as Record<string, unknown>;
+    assert.equal(typeof repository['repositoryId'], 'string');
+    assert.equal(repository['name'], 'harness');
+    assert.equal(typeof row['observedAt'], 'string');
+  } finally {
+    client.close();
+    await server.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
 
 void test('stream server dispatches lifecycle hooks from observed events', async () => {
   const webhookEvents: string[] = [];
@@ -564,7 +561,9 @@ void test('stream server auto-starts persisted conversations during gateway star
     assert.equal(codex.input.initialCols, 80);
     assert.equal(codex.input.initialRows, 24);
 
-    const standardCodex = sessions.find((session) => session.input.cwd === '/tmp/bootstrap-standard');
+    const standardCodex = sessions.find(
+      (session) => session.input.cwd === '/tmp/bootstrap-standard',
+    );
     if (standardCodex === undefined) {
       throw new Error('expected standard codex bootstrap session');
     }

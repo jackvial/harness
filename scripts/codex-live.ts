@@ -6,7 +6,7 @@ import { SqliteEventStore } from '../src/store/event-store.ts';
 import {
   createNormalizedEvent,
   type EventScope,
-  type NormalizedEventEnvelope
+  type NormalizedEventEnvelope,
 } from '../src/events/normalized-events.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 
@@ -32,7 +32,7 @@ function normalizeExitCode(exit: PtyExit): number {
 function mapToNormalizedEvent(
   event: CodexLiveEvent,
   scope: EventScope,
-  idFactory: () => string
+  idFactory: () => string,
 ): NormalizedEventEnvelope | null {
   if (event.type === 'terminal-output') {
     return createNormalizedEvent(
@@ -43,10 +43,10 @@ function mapToNormalizedEvent(
         kind: 'text-delta',
         threadId: scope.conversationId,
         turnId: scope.turnId ?? 'turn-live',
-        delta: event.chunk.toString('utf8')
+        delta: event.chunk.toString('utf8'),
       },
       () => new Date(),
-      idFactory
+      idFactory,
     );
   }
 
@@ -60,10 +60,10 @@ function mapToNormalizedEvent(
         threadId: scope.conversationId,
         turnId: scope.turnId ?? 'turn-live',
         reason: 'stalled',
-        detail: 'session-exit'
+        detail: 'session-exit',
       },
       () => new Date(),
-      idFactory
+      idFactory,
     );
   }
 
@@ -71,7 +71,8 @@ function mapToNormalizedEvent(
 }
 
 async function main(): Promise<number> {
-  const invocationDirectory = process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+  const invocationDirectory =
+    process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
   loadHarnessSecrets({ cwd: invocationDirectory });
   const interactive = process.stdin.isTTY && process.stdout.isTTY;
   const extraArgs = process.argv.slice(2);
@@ -86,7 +87,7 @@ async function main(): Promise<number> {
     workspaceId: process.env.HARNESS_WORKSPACE_ID ?? basename(process.cwd()),
     worktreeId: process.env.HARNESS_WORKTREE_ID ?? 'worktree-local',
     conversationId,
-    turnId
+    turnId,
   };
 
   const idFactory = (): string => {
@@ -97,8 +98,8 @@ async function main(): Promise<number> {
     args: extraArgs,
     env: {
       ...process.env,
-      TERM: process.env.TERM ?? 'xterm-256color'
-    }
+      TERM: process.env.TERM ?? 'xterm-256color',
+    },
   });
   const store = new SqliteEventStore(storePath);
 
@@ -123,7 +124,7 @@ async function main(): Promise<number> {
     },
     onExit: () => {
       // handled via event stream
-    }
+    },
   });
 
   const onInput = (chunk: Buffer): void => {

@@ -5,47 +5,47 @@ import {
   parseClientEnvelope,
   parseServerEnvelope,
   type StreamClientEnvelope,
-  type StreamServerEnvelope
+  type StreamServerEnvelope,
 } from '../src/control-plane/stream-protocol.ts';
 void test('parseServerEnvelope rejects malformed envelopes', () => {
   const invalidValues: unknown[] = [
     null,
     {
       kind: 'auth.error',
-      error: 1
+      error: 1,
     },
     {
       kind: 'command.accepted',
-      commandId: 1
+      commandId: 1,
     },
     {
       kind: 'command.completed',
       commandId: 'c1',
-      result: 'not-record'
+      result: 'not-record',
     },
     {
       kind: 'command.failed',
       commandId: 'c1',
-      error: 9
+      error: 9,
     },
     {
       kind: 'pty.output',
       sessionId: 's1',
       cursor: 'x',
-      chunkBase64: 'abc'
+      chunkBase64: 'abc',
     },
     {
       kind: 'pty.exit',
       sessionId: 's1',
-      exit: null
+      exit: null,
     },
     {
       kind: 'pty.exit',
       sessionId: 's1',
       exit: {
         code: 'x',
-        signal: null
-      }
+        signal: null,
+      },
     },
     {
       kind: 'pty.event',
@@ -54,9 +54,9 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         type: 'notify',
         record: {
           ts: 5,
-          payload: {}
-        }
-      }
+          payload: {},
+        },
+      },
     },
     {
       kind: 'pty.event',
@@ -65,17 +65,17 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         type: 'attention-required',
         record: {
           ts: new Date(0).toISOString(),
-          payload: {}
-        }
-      }
+          payload: {},
+        },
+      },
     },
     {
       kind: 'pty.event',
       sessionId: 's1',
       event: {
         type: 'session-exit',
-        exit: null
-      }
+        exit: null,
+      },
     },
     {
       kind: 'pty.event',
@@ -84,9 +84,9 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         type: 'session-exit',
         exit: {
           code: null,
-          signal: '9'
-        }
-      }
+          signal: '9',
+        },
+      },
     },
     {
       kind: 'pty.event',
@@ -95,9 +95,9 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         type: 'session-exit',
         exit: {
           code: 'x',
-          signal: null
-        }
-      }
+          signal: null,
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -105,20 +105,20 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 'x',
       event: {
         type: 'directory-upserted',
-        directory: {}
-      }
+        directory: {},
+      },
     },
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
       cursor: 1,
-      event: null
+      event: null,
     },
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
       cursor: 1,
-      event: {}
+      event: {},
     },
     {
       kind: 'stream.event',
@@ -126,16 +126,16 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 1,
       event: {
         type: 'directory-upserted',
-        directory: null
-      }
+        directory: null,
+      },
     },
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
       cursor: 1,
       event: {
-        type: 99
-      }
+        type: 99,
+      },
     },
     {
       kind: 'stream.event',
@@ -143,8 +143,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 1,
       event: {
         type: 'directory-archived',
-        directoryId: 'directory-1'
-      }
+        directoryId: 'directory-1',
+      },
     },
     {
       kind: 'stream.event',
@@ -157,7 +157,7 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           branch: 'main',
           changedFiles: 1,
           additions: 1,
-          deletions: 1
+          deletions: 1,
         },
         repositorySnapshot: {
           normalizedRemoteUrl: null,
@@ -165,10 +165,10 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           lastCommitAt: null,
           shortCommitHash: null,
           inferredName: null,
-          defaultBranch: null
+          defaultBranch: null,
         },
-        repositoryId: null
-      }
+        repositoryId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -181,7 +181,7 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           branch: 'main',
           changedFiles: 1,
           additions: null,
-          deletions: 1
+          deletions: 1,
         },
         repositorySnapshot: {
           normalizedRemoteUrl: null,
@@ -189,12 +189,12 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           lastCommitAt: null,
           shortCommitHash: null,
           inferredName: null,
-          defaultBranch: null
+          defaultBranch: null,
         },
         repositoryId: null,
         repository: null,
-        observedAt: new Date(0).toISOString()
-      }
+        observedAt: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -207,7 +207,7 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           branch: 'main',
           changedFiles: 1,
           additions: 1,
-          deletions: 1
+          deletions: 1,
         },
         repositorySnapshot: {
           normalizedRemoteUrl: 42,
@@ -215,12 +215,12 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           lastCommitAt: null,
           shortCommitHash: null,
           inferredName: null,
-          defaultBranch: null
+          defaultBranch: null,
         },
         repositoryId: null,
         repository: null,
-        observedAt: new Date(0).toISOString()
-      }
+        observedAt: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -228,16 +228,16 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 1,
       event: {
         type: 'repository-upserted',
-        repository: null
-      }
+        repository: null,
+      },
     },
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
       cursor: 1,
       event: {
-        type: 'repository-updated'
-      }
+        type: 'repository-updated',
+      },
     },
     {
       kind: 'stream.event',
@@ -246,8 +246,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'repository-archived',
         repositoryId: 'repository-1',
-        ts: null
-      }
+        ts: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -255,16 +255,16 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 1,
       event: {
         type: 'task-created',
-        task: null
-      }
+        task: null,
+      },
     },
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
       cursor: 1,
       event: {
-        type: 'task-updated'
-      }
+        type: 'task-updated',
+      },
     },
     {
       kind: 'stream.event',
@@ -273,8 +273,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'task-deleted',
         taskId: null,
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -283,8 +283,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'task-reordered',
         tasks: {},
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -293,8 +293,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'task-reordered',
         tasks: [null],
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -303,8 +303,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'task-reordered',
         tasks: [],
-        ts: null
-      }
+        ts: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -319,8 +319,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null,
-        telemetry: null
-      }
+        telemetry: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -336,8 +336,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         controller: 'bad-controller',
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -349,8 +349,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         status: 'running',
         attentionReason: null,
         live: true,
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -365,8 +365,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null,
-        telemetry: null
-      }
+        telemetry: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -379,13 +379,13 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           type: 'session-exit',
           exit: {
             code: 0,
-            signal: null
-          }
+            signal: null,
+          },
         },
         ts: new Date(0).toISOString(),
         directoryId: 7,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -398,13 +398,13 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           type: 'session-exit',
           exit: {
             code: 0,
-            signal: null
-          }
+            signal: null,
+          },
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: 7
-      }
+        conversationId: 7,
+      },
     },
     {
       kind: 'stream.event',
@@ -418,8 +418,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null,
-        telemetry: null
-      }
+        telemetry: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -433,13 +433,13 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           controllerId: 'agent-1',
           controllerType: 'agent',
           controllerLabel: 'agent one',
-          claimedAt: new Date(0).toISOString()
+          claimedAt: new Date(0).toISOString(),
         },
         previousController: null,
         reason: null,
         ts: new Date(0).toISOString(),
-        directoryId: null
-      }
+        directoryId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -453,14 +453,14 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           controllerId: 'agent-1',
           controllerType: 'bad-type',
           controllerLabel: 'agent one',
-          claimedAt: new Date(0).toISOString()
+          claimedAt: new Date(0).toISOString(),
         },
         previousController: null,
         reason: null,
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -475,8 +475,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         reason: null,
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -489,8 +489,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         chunkBase64: 'x',
         ts: new Date(0).toISOString(),
         directoryId: 4,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -505,12 +505,12 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           severity: null,
           summary: 'bad source',
           observedAt: new Date(0).toISOString(),
-          statusHint: null
+          statusHint: null,
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -518,16 +518,16 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 1,
       event: {
         type: 'conversation-created',
-        conversation: null
-      }
+        conversation: null,
+      },
     },
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
       cursor: 1,
       event: {
-        type: 'conversation-created'
-      }
+        type: 'conversation-created',
+      },
     },
     {
       kind: 'stream.event',
@@ -535,8 +535,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 1,
       event: {
         type: 'conversation-updated',
-        conversation: null
-      }
+        conversation: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -545,8 +545,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'conversation-archived',
         conversationId: null,
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -555,8 +555,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'conversation-archived',
         conversationId: 'conversation-1',
-        ts: null
-      }
+        ts: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -565,8 +565,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'conversation-deleted',
         conversationId: null,
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -575,8 +575,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'conversation-deleted',
         conversationId: 'conversation-1',
-        ts: null
-      }
+        ts: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -591,8 +591,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null,
-        telemetry: null
-      }
+        telemetry: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -607,8 +607,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         ts: new Date(0).toISOString(),
         directoryId: null,
         conversationId: null,
-        telemetry: 'bad'
-      }
+        telemetry: 'bad',
+      },
     },
     {
       kind: 'stream.event',
@@ -628,9 +628,9 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           eventName: 123,
           severity: null,
           summary: null,
-          observedAt: new Date(0).toISOString()
-        }
-      }
+          observedAt: new Date(0).toISOString(),
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -650,9 +650,9 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           eventName: null,
           severity: null,
           summary: 123,
-          observedAt: new Date(0).toISOString()
-        }
-      }
+          observedAt: new Date(0).toISOString(),
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -672,9 +672,9 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           eventName: null,
           severity: null,
           summary: 'bad source',
-          observedAt: new Date(0).toISOString()
-        }
-      }
+          observedAt: new Date(0).toISOString(),
+        },
+      },
     },
     {
       kind: 'stream.event',
@@ -689,12 +689,12 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           severity: null,
           summary: null,
           observedAt: new Date(0).toISOString(),
-          statusHint: 'bad'
+          statusHint: 'bad',
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -706,8 +706,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         keyEvent: 'bad',
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -721,12 +721,12 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           eventName: null,
           severity: null,
           summary: 'history.entry',
-          observedAt: new Date(0).toISOString()
+          observedAt: new Date(0).toISOString(),
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -740,12 +740,12 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           record: {
             ts: new Date(0).toISOString(),
             payload: {
-              type: 'notify'
-            }
-          }
+              type: 'notify',
+            },
+          },
         },
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
@@ -756,16 +756,16 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         sessionId: 's1',
         outputCursor: 1,
         chunkBase64: 'x',
-        ts: new Date(0).toISOString()
-      }
+        ts: new Date(0).toISOString(),
+      },
     },
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
       cursor: 1,
       event: {
-        type: 'unknown-observed-event'
-      }
+        type: 'unknown-observed-event',
+      },
     },
     {
       kind: 'stream.event',
@@ -778,8 +778,8 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         chunkBase64: 'x',
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
       kind: 'stream.event',
@@ -789,16 +789,16 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         type: 'session-event',
         sessionId: 's1',
         event: {
-          type: 'unknown'
+          type: 'unknown',
         },
         ts: new Date(0).toISOString(),
         directoryId: null,
-        conversationId: null
-      }
+        conversationId: null,
+      },
     },
     {
-      kind: 'unknown'
-    }
+      kind: 'unknown',
+    },
   ];
 
   for (const value of invalidValues) {
@@ -818,7 +818,7 @@ void test('parseServerEnvelope rejects directory git updates with malformed summ
         branch: null,
         changedFiles: 1,
         additions: 1,
-        deletions: 1
+        deletions: 1,
       },
       repositorySnapshot: {
         normalizedRemoteUrl: null,
@@ -826,12 +826,12 @@ void test('parseServerEnvelope rejects directory git updates with malformed summ
         lastCommitAt: null,
         shortCommitHash: null,
         inferredName: null,
-        defaultBranch: null
+        defaultBranch: null,
       },
       repositoryId: null,
       repository: null,
-      observedAt: new Date(0).toISOString()
-    }
+      observedAt: new Date(0).toISOString(),
+    },
   });
   assert.equal(parsed, null);
 });
@@ -848,7 +848,7 @@ void test('parseServerEnvelope rejects directory git updates with malformed repo
         branch: 'main',
         changedFiles: 1,
         additions: 1,
-        deletions: 1
+        deletions: 1,
       },
       repositorySnapshot: {
         normalizedRemoteUrl: null,
@@ -856,12 +856,12 @@ void test('parseServerEnvelope rejects directory git updates with malformed repo
         lastCommitAt: null,
         shortCommitHash: null,
         inferredName: null,
-        defaultBranch: null
+        defaultBranch: null,
       },
       repositoryId: null,
       repository: null,
-      observedAt: new Date(0).toISOString()
-    }
+      observedAt: new Date(0).toISOString(),
+    },
   });
   assert.equal(parsed, null);
 });
@@ -870,18 +870,18 @@ void test('protocol parse helpers round-trip encoded envelopes', () => {
   const client: StreamClientEnvelope = {
     kind: 'pty.signal',
     sessionId: 'session-1',
-    signal: 'terminate'
+    signal: 'terminate',
   };
   const server: StreamServerEnvelope = {
     kind: 'pty.event',
     sessionId: 'session-1',
     event: {
-        type: 'session-exit',
-        exit: {
-          code: 130,
-          signal: 'SIGINT'
-        }
-      }
+      type: 'session-exit',
+      exit: {
+        code: 130,
+        signal: 'SIGINT',
+      },
+    },
   };
 
   const clientParsed = parseClientEnvelope(JSON.parse(encodeStreamEnvelope(client).trim()));
@@ -896,12 +896,12 @@ void test('protocol parsers cover remaining guard branches', () => {
     {
       kind: 'command',
       commandId: 'c-guard',
-      command: null
+      command: null,
     },
     {
       kind: 'command',
       commandId: 'c-guard',
-      command: {}
+      command: {},
     },
     {
       kind: 'command',
@@ -910,8 +910,8 @@ void test('protocol parsers cover remaining guard branches', () => {
         type: 'pty.start',
         sessionId: 's-guard',
         args: [],
-        initialCols: 80
-      }
+        initialCols: 80,
+      },
     },
     {
       kind: 'command',
@@ -922,8 +922,8 @@ void test('protocol parsers cover remaining guard branches', () => {
         args: [],
         initialCols: 80,
         initialRows: 24,
-        env: 3
-      }
+        env: 3,
+      },
     },
     {
       kind: 'command',
@@ -934,8 +934,8 @@ void test('protocol parsers cover remaining guard branches', () => {
         args: [],
         initialCols: 80,
         initialRows: 24,
-        terminalForegroundHex: 10
-      }
+        terminalForegroundHex: 10,
+      },
     },
     {
       kind: 'command',
@@ -946,13 +946,13 @@ void test('protocol parsers cover remaining guard branches', () => {
         args: [],
         initialCols: 80,
         initialRows: 24,
-        terminalBackgroundHex: 10
-      }
+        terminalBackgroundHex: 10,
+      },
     },
     {
       kind: 'mystery-kind',
-      sessionId: 's-guard'
-    }
+      sessionId: 's-guard',
+    },
   ];
 
   for (const value of extraInvalidClient) {
@@ -961,46 +961,46 @@ void test('protocol parsers cover remaining guard branches', () => {
 
   const extraInvalidServer: unknown[] = [
     {
-      kind: 5
+      kind: 5,
     },
     {
       kind: 'command.completed',
       commandId: 9,
-      result: {}
+      result: {},
     },
     {
       kind: 'command.failed',
       commandId: 9,
-      error: 'bad'
+      error: 'bad',
     },
     {
       kind: 'pty.output',
       cursor: 1,
-      chunkBase64: 'abc'
+      chunkBase64: 'abc',
     },
     {
       kind: 'pty.exit',
       exit: {
         code: 0,
-        signal: null
-      }
+        signal: null,
+      },
     },
     {
       kind: 'pty.event',
       sessionId: 's-guard',
-      event: null
+      event: null,
     },
     {
       kind: 'pty.event',
       sessionId: 's-guard',
-      event: {}
+      event: {},
     },
     {
       kind: 'pty.event',
       sessionId: 's-guard',
       event: {
-        type: 'notify'
-      }
+        type: 'notify',
+      },
     },
     {
       kind: 'pty.event',
@@ -1009,22 +1009,22 @@ void test('protocol parsers cover remaining guard branches', () => {
         type: 'unknown-event',
         record: {
           ts: new Date(0).toISOString(),
-          payload: {}
-        }
-      }
+          payload: {},
+        },
+      },
     },
     {
       kind: 'pty.exit',
       sessionId: 's-guard',
       exit: {
         code: null,
-        signal: 9
-      }
+        signal: 9,
+      },
     },
     {
       kind: 'mystery-kind',
-      sessionId: 's-guard'
-    }
+      sessionId: 's-guard',
+    },
   ];
 
   for (const value of extraInvalidServer) {

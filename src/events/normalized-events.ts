@@ -110,7 +110,7 @@ export function createNormalizedEvent(
   scope: EventScope,
   payload: EventPayload,
   clock?: () => Date,
-  idFactory?: () => string
+  idFactory?: () => string,
 ): NormalizedEventEnvelope {
   return {
     schemaVersion: '1',
@@ -119,6 +119,6 @@ export function createNormalizedEvent(
     type,
     ts: nowIsoString(clock),
     scope,
-    payload
+    payload,
   };
 }

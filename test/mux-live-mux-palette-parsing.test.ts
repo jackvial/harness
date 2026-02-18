@@ -21,7 +21,7 @@ void test('extractOscColorReplies parses foreground/background/indexed colors', 
     '\u001b]4;7;rgb:ff/00/80\u0007',
     '\u001b]4;999;rgb:ff/ff/ff\u0007',
     '\u001b]4;x;rgb:ff/ff/ff\u0007',
-    'tail'
+    'tail',
   ].join('');
   const extracted = extractOscColorReplies(payload);
 

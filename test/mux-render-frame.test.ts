@@ -5,7 +5,7 @@ import {
   buildRenderRows,
   cursorStyleEqual,
   cursorStyleToDecscusr,
-  renderCanonicalFrameAnsi
+  renderCanonicalFrameAnsi,
 } from '../src/mux/render-frame.ts';
 
 void test('mux render frame builds pane rows with status footer and fallback padding', () => {
@@ -16,7 +16,7 @@ void test('mux render frame builds pane rows with status footer and fallback pad
       leftCols: 4,
       rightCols: 6,
       separatorCol: 5,
-      rightStartCol: 6
+      rightStartCol: 6,
     },
     ['LEFT'],
     [],
@@ -27,15 +27,15 @@ void test('mux render frame builds pane rows with status footer and fallback pad
       renderMaxMs: 3.4,
       outputHandleAvgMs: 0.6,
       outputHandleMaxMs: 0.9,
-      eventLoopP95Ms: 12.2
-    }
+      eventLoopP95Ms: 12.2,
+    },
   );
 
   assert.equal(rows.length, 3);
   assert.equal((rows[0] ?? '').includes('\u001b[5G\u001b[0;38;5;240m│\u001b[0m\u001b[6G'), true);
   assert.equal(
     (rows[1] ?? '').includes('    \u001b[0m\u001b[5G\u001b[0;38;5;240m│\u001b[0m\u001b[6G      '),
-    true
+    true,
   );
   assert.equal((rows[2] ?? '').length, 20);
   assert.equal((rows[2] ?? '').startsWith('[mux] fps=6.3'), true);
@@ -49,7 +49,7 @@ void test('mux render frame applies modal overlays with clipping and sparse rows
   applyModalOverlay(rows, {
     left: 2,
     top: -1,
-    rows: overlayRows
+    rows: overlayRows,
   });
 
   assert.equal(rows[0], 'row0\u001b[3GA');
@@ -65,7 +65,7 @@ void test('mux render frame appends debug detail text while preserving perf foot
       leftCols: 6,
       rightCols: 10,
       separatorCol: 7,
-      rightStartCol: 8
+      rightStartCol: 8,
     },
     ['LEFT'],
     ['RIGHT'],
@@ -76,9 +76,9 @@ void test('mux render frame appends debug detail text while preserving perf foot
       renderMaxMs: 0,
       outputHandleAvgMs: 0,
       outputHandleMaxMs: 0,
-      eventLoopP95Ms: 0
+      eventLoopP95Ms: 0,
     },
-    '[dbg] codex resume thread-123 --yolo'
+    '[dbg] codex resume thread-123 --yolo',
   );
 
   assert.equal(rows.length, 2);
@@ -95,7 +95,7 @@ void test('mux render frame handles defined right rows and sparse target rows', 
       leftCols: 6,
       rightCols: 8,
       separatorCol: 7,
-      rightStartCol: 8
+      rightStartCol: 8,
     },
     ['L'],
     ['RIGHT'],
@@ -106,8 +106,8 @@ void test('mux render frame handles defined right rows and sparse target rows', 
       renderMaxMs: 4,
       outputHandleAvgMs: 5,
       outputHandleMaxMs: 6,
-      eventLoopP95Ms: 7
-    }
+      eventLoopP95Ms: 7,
+    },
   );
   assert.equal((combined[0] ?? '').includes('RIGHT'), true);
 
@@ -115,7 +115,7 @@ void test('mux render frame handles defined right rows and sparse target rows', 
   applyModalOverlay(sparseRows, {
     left: 0,
     top: 0,
-    rows: ['overlay']
+    rows: ['overlay'],
   });
   assert.equal(sparseRows[0], '\u001b[1Goverlay');
 });
@@ -132,16 +132,13 @@ void test('mux render frame cursor style helpers cover all DEC style sequences',
   assert.equal(
     cursorStyleEqual(
       { shape: 'underline', blinking: true },
-      { shape: 'underline', blinking: true }
+      { shape: 'underline', blinking: true },
     ),
-    true
+    true,
   );
   assert.equal(
-    cursorStyleEqual(
-      { shape: 'underline', blinking: true },
-      { shape: 'bar', blinking: true }
-    ),
-    false
+    cursorStyleEqual({ shape: 'underline', blinking: true }, { shape: 'bar', blinking: true }),
+    false,
   );
 });
 
@@ -151,7 +148,7 @@ void test('mux render frame renders canonical output with visible and hidden cur
     { shape: 'block', blinking: false },
     true,
     1,
-    3
+    3,
   );
   assert.equal(visible.startsWith('\u001b[?25l\u001b[H\u001b[2J'), true);
   assert.equal(visible.includes('\u001b[2 q'), true);
@@ -159,13 +156,7 @@ void test('mux render frame renders canonical output with visible and hidden cur
   assert.equal(visible.includes('\u001b[2;1H\u001b[2KB'), true);
   assert.equal(visible.endsWith('\u001b[?25h\u001b[2;4H'), true);
 
-  const hidden = renderCanonicalFrameAnsi(
-    ['Z'],
-    { shape: 'bar', blinking: true },
-    false,
-    0,
-    0
-  );
+  const hidden = renderCanonicalFrameAnsi(['Z'], { shape: 'bar', blinking: true }, false, 0, 0);
   assert.equal(hidden.includes('\u001b[5 q'), true);
   assert.equal(hidden.endsWith('\u001b[?25l'), true);
 
@@ -175,7 +166,7 @@ void test('mux render frame renders canonical output with visible and hidden cur
     { shape: 'block', blinking: true },
     false,
     0,
-    0
+    0,
   );
   assert.equal(sparseOutput.includes('\u001b[1;1H\u001b[2K'), true);
 });

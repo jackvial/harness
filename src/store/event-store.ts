@@ -73,7 +73,7 @@ function normalizeRow(value: unknown): EventRow {
     source: asString(row.source, 'source'),
     eventType: asString(row.event_type, 'event_type'),
     ts: asString(row.ts, 'ts'),
-    payloadJson: asString(row.payload_json, 'payload_json')
+    payloadJson: asString(row.payload_json, 'payload_json'),
   };
 }
 
@@ -143,7 +143,7 @@ export class SqliteEventStore {
           event.source,
           event.type,
           event.ts,
-          JSON.stringify(event.payload)
+          JSON.stringify(event.payload),
         );
       }
       this.db.exec('COMMIT');
@@ -157,11 +157,7 @@ export class SqliteEventStore {
     const limit = query.limit ?? 100;
     const afterRowId = query.afterRowId ?? 0;
 
-    const clauses = [
-      'tenant_id = ?',
-      'user_id = ?',
-      'row_id > ?'
-    ];
+    const clauses = ['tenant_id = ?', 'user_id = ?', 'row_id > ?'];
     const args: Array<number | string> = [query.tenantId, query.userId, afterRowId];
 
     if (query.conversationId !== undefined) {
@@ -206,13 +202,13 @@ export class SqliteEventStore {
           workspaceId: normalizedRow.workspaceId,
           worktreeId: normalizedRow.worktreeId,
           conversationId: normalizedRow.conversationId,
-          ...(normalizedRow.turnId === null ? {} : { turnId: normalizedRow.turnId })
+          ...(normalizedRow.turnId === null ? {} : { turnId: normalizedRow.turnId }),
         },
-        payload
+        payload,
       };
       return {
         rowId: normalizedRow.rowId,
-        event
+        event,
       };
     });
   }

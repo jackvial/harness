@@ -109,7 +109,7 @@ function parseArgs(argv: string[]): SnapshotOptions {
 
   if (typeof conversationId !== 'string' || conversationId.length === 0) {
     process.stderr.write(
-      'usage: bun run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]\n'
+      'usage: bun run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]\n',
     );
     process.exit(2);
   }
@@ -126,7 +126,7 @@ function parseArgs(argv: string[]): SnapshotOptions {
     fromNow,
     json,
     clearBetweenFrames,
-    exitOnSessionEnd
+    exitOnSessionEnd,
   };
 }
 
@@ -153,7 +153,7 @@ function printFrame(
   oracle: TerminalSnapshotOracle,
   options: SnapshotOptions,
   lastRowId: number,
-  atTs: string
+  atTs: string,
 ): void {
   const frame = oracle.snapshot();
   const rendered = renderSnapshotText(frame);
@@ -166,8 +166,8 @@ function printFrame(
         rowId: lastRowId,
         ts: atTs,
         frame,
-        screen: rendered
-      })}\n`
+        screen: rendered,
+      })}\n`,
     );
     return;
   }
@@ -176,7 +176,7 @@ function printFrame(
     process.stdout.write('\u001bc');
   }
   process.stdout.write(
-    `[snapshot] conversation=${options.conversationId} rowId=${String(lastRowId)} cursor=${String(frame.cursor.row + 1)},${String(frame.cursor.col + 1)} ts=${atTs}\n`
+    `[snapshot] conversation=${options.conversationId} rowId=${String(lastRowId)} cursor=${String(frame.cursor.row + 1)},${String(frame.cursor.col + 1)} ts=${atTs}\n`,
   );
   process.stdout.write(`${rendered}\n`);
 }
@@ -203,7 +203,7 @@ async function main(): Promise<number> {
         userId: options.userId,
         conversationId: options.conversationId,
         afterRowId: 0,
-        limit: 1_000_000
+        limit: 1_000_000,
       });
       if (baseline.length > 0) {
         lastRowId = baseline[baseline.length - 1]!.rowId;
@@ -211,7 +211,7 @@ async function main(): Promise<number> {
     }
 
     process.stderr.write(
-      `[snapshot] conversation=${options.conversationId} tenant=${options.tenantId} user=${options.userId} db=${options.dbPath} follow=${String(options.follow)} fromNow=${String(options.fromNow)}\n`
+      `[snapshot] conversation=${options.conversationId} tenant=${options.tenantId} user=${options.userId} db=${options.dbPath} follow=${String(options.follow)} fromNow=${String(options.fromNow)}\n`,
     );
 
     while (!stop) {
@@ -222,7 +222,7 @@ async function main(): Promise<number> {
           userId: options.userId,
           conversationId: options.conversationId,
           afterRowId: lastRowId,
-          limit: 500
+          limit: 500,
         });
       } catch (error) {
         if (isSqliteBusyError(error)) {

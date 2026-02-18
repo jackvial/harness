@@ -38,7 +38,7 @@ interface ParsedArgs {
 const DEFAULT_THRESHOLDS: Thresholds = {
   lines: 100,
   functions: 100,
-  branches: 100
+  branches: 100,
 };
 
 const DEFAULT_CONFIG: CoverageCheckConfig = {
@@ -46,7 +46,7 @@ const DEFAULT_CONFIG: CoverageCheckConfig = {
   exclude: [],
   global: DEFAULT_THRESHOLDS,
   perFileDefault: DEFAULT_THRESHOLDS,
-  perFile: {}
+  perFile: {},
 };
 
 function toPosixPath(value: string): string {
@@ -85,7 +85,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   }
   return {
     lcovPath,
-    configPath
+    configPath,
   };
 }
 
@@ -131,7 +131,7 @@ function parseThresholds(value: unknown, context: string, fallback: Thresholds):
   return {
     lines: read('lines'),
     functions: read('functions'),
-    branches: read('branches')
+    branches: read('branches'),
   };
 }
 
@@ -147,10 +147,16 @@ function loadConfig(configPath: string): CoverageCheckConfig {
     throw new Error(`failed to parse ${configPath}: ${message}`);
   }
   const root = asRecord(parsedResult.config, 'coverage config');
-  const include = root.include === undefined ? DEFAULT_CONFIG.include : asStringArray(root.include, 'include');
-  const exclude = root.exclude === undefined ? DEFAULT_CONFIG.exclude : asStringArray(root.exclude, 'exclude');
+  const include =
+    root.include === undefined ? DEFAULT_CONFIG.include : asStringArray(root.include, 'include');
+  const exclude =
+    root.exclude === undefined ? DEFAULT_CONFIG.exclude : asStringArray(root.exclude, 'exclude');
   const global = parseThresholds(root.global, 'global', DEFAULT_CONFIG.global);
-  const perFileDefault = parseThresholds(root.perFileDefault, 'perFileDefault', DEFAULT_CONFIG.perFileDefault);
+  const perFileDefault = parseThresholds(
+    root.perFileDefault,
+    'perFileDefault',
+    DEFAULT_CONFIG.perFileDefault,
+  );
   const perFile: Record<string, Partial<Thresholds>> = {};
   if (root.perFile !== undefined) {
     const entries = asRecord(root.perFile, 'perFile');
@@ -158,7 +164,7 @@ function loadConfig(configPath: string): CoverageCheckConfig {
       perFile[normalizeRelativePath(filePath)] = parseThresholds(
         thresholdValue,
         `perFile.${filePath}`,
-        perFileDefault
+        perFileDefault,
       );
     }
   }
@@ -167,7 +173,7 @@ function loadConfig(configPath: string): CoverageCheckConfig {
     exclude,
     global,
     perFileDefault,
-    perFile
+    perFile,
   };
 }
 
@@ -268,7 +274,7 @@ function createEmptyCoverageRecord(filePath: string): CoverageRecord {
     branchesFound: 0,
     branchesHit: 0,
     uncoveredLines: new Set<number>(),
-    uncoveredBranches: new Set<string>()
+    uncoveredBranches: new Set<string>(),
   };
 }
 
@@ -364,7 +370,7 @@ function thresholdsForFile(filePath: string, config: CoverageCheckConfig): Thres
   return {
     lines: override.lines ?? config.perFileDefault.lines,
     functions: override.functions ?? config.perFileDefault.functions,
-    branches: override.branches ?? config.perFileDefault.branches
+    branches: override.branches ?? config.perFileDefault.branches,
   };
 }
 
@@ -420,14 +426,20 @@ function main(): number {
       deficits.push(`lines ${formatMetric(linesPct)} < ${formatMetric(thresholds.lines)}`);
     }
     if (functionsPct < thresholds.functions) {
-      deficits.push(`functions ${formatMetric(functionsPct)} < ${formatMetric(thresholds.functions)}`);
+      deficits.push(
+        `functions ${formatMetric(functionsPct)} < ${formatMetric(thresholds.functions)}`,
+      );
     }
     if (branchesPct < thresholds.branches) {
       deficits.push(`branches ${formatMetric(branchesPct)} < ${formatMetric(thresholds.branches)}`);
     }
     if (deficits.length > 0) {
-      const uncoveredLineList = [...record.uncoveredLines].sort((left, right) => left - right).join(',');
-      const uncoveredBranchList = [...record.uncoveredBranches].sort((left, right) => left.localeCompare(right)).join(',');
+      const uncoveredLineList = [...record.uncoveredLines]
+        .sort((left, right) => left - right)
+        .join(',');
+      const uncoveredBranchList = [...record.uncoveredBranches]
+        .sort((left, right) => left.localeCompare(right))
+        .join(',');
       perFileFailures.push(
         [
           `per-file threshold failed: ${filePath}`,
@@ -435,8 +447,8 @@ function main(): number {
           `  uncovered lines: ${uncoveredLineList.length > 0 ? uncoveredLineList : '(none reported)'}`,
           `  uncovered branches (line:block:branch): ${
             uncoveredBranchList.length > 0 ? uncoveredBranchList : '(none reported)'
-          }`
-        ].join('\n')
+          }`,
+        ].join('\n'),
       );
     }
   }
@@ -447,31 +459,36 @@ function main(): number {
 
   const globalFailures: string[] = [];
   if (globalLinesPct < config.global.lines) {
-    globalFailures.push(`global lines ${formatMetric(globalLinesPct)} < ${formatMetric(config.global.lines)}`);
+    globalFailures.push(
+      `global lines ${formatMetric(globalLinesPct)} < ${formatMetric(config.global.lines)}`,
+    );
   }
   if (globalFunctionsPct < config.global.functions) {
     globalFailures.push(
-      `global functions ${formatMetric(globalFunctionsPct)} < ${formatMetric(config.global.functions)}`
+      `global functions ${formatMetric(globalFunctionsPct)} < ${formatMetric(config.global.functions)}`,
     );
   }
   if (globalBranchesPct < config.global.branches) {
-    globalFailures.push(`global branches ${formatMetric(globalBranchesPct)} < ${formatMetric(config.global.branches)}`);
+    globalFailures.push(
+      `global branches ${formatMetric(globalBranchesPct)} < ${formatMetric(config.global.branches)}`,
+    );
   }
 
-  const hasFailures = missingFiles.length > 0 || perFileFailures.length > 0 || globalFailures.length > 0;
+  const hasFailures =
+    missingFiles.length > 0 || perFileFailures.length > 0 || globalFailures.length > 0;
   if (!hasFailures) {
     process.stdout.write(
       [
         `coverage check passed for ${targetedFiles.length} files`,
-        `global lines=${formatMetric(globalLinesPct)} functions=${formatMetric(globalFunctionsPct)} branches=${formatMetric(globalBranchesPct)}`
-      ].join('\n') + '\n'
+        `global lines=${formatMetric(globalLinesPct)} functions=${formatMetric(globalFunctionsPct)} branches=${formatMetric(globalBranchesPct)}`,
+      ].join('\n') + '\n',
     );
     return 0;
   }
 
   if (missingFiles.length > 0) {
     process.stderr.write(
-      `files missing from coverage report (${missingFiles.length}):\n${missingFiles.map((filePath) => `  ${filePath}`).join('\n')}\n`
+      `files missing from coverage report (${missingFiles.length}):\n${missingFiles.map((filePath) => `  ${filePath}`).join('\n')}\n`,
     );
   }
   if (globalFailures.length > 0) {

@@ -59,7 +59,8 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
     const visibleTargets = visibleTargetsForState();
     const fallbackConversation = visibleTargets.find(
       (entry): entry is Extract<LeftNavSelection, { kind: 'conversation' }> =>
-        entry.kind === 'conversation' && conversationDirectoryId(entry.sessionId) === target.directoryId,
+        entry.kind === 'conversation' &&
+        conversationDirectoryId(entry.sessionId) === target.directoryId,
     );
     if (fallbackConversation !== undefined) {
       queueControlPlaneOp(async () => {

@@ -6,6 +6,7 @@ type MuxGlobalShortcutAction =
   | 'mux.conversation.critique.open-or-create'
   | 'mux.conversation.next'
   | 'mux.conversation.previous'
+  | 'mux.conversation.interrupt'
   | 'mux.conversation.archive'
   | 'mux.conversation.takeover'
   | 'mux.conversation.delete'
@@ -27,7 +28,9 @@ interface ParsedShortcutBinding {
 
 interface ResolvedMuxShortcutBindings {
   readonly rawByAction: Readonly<Record<MuxGlobalShortcutAction, readonly string[]>>;
-  readonly parsedByAction: Readonly<Record<MuxGlobalShortcutAction, readonly ParsedShortcutBinding[]>>;
+  readonly parsedByAction: Readonly<
+    Record<MuxGlobalShortcutAction, readonly ParsedShortcutBinding[]>
+  >;
 }
 
 const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
@@ -38,14 +41,17 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.conversation.critique.open-or-create',
   'mux.conversation.next',
   'mux.conversation.previous',
+  'mux.conversation.interrupt',
   'mux.conversation.archive',
   'mux.conversation.takeover',
   'mux.conversation.delete',
   'mux.directory.add',
-  'mux.directory.close'
+  'mux.directory.close',
 ];
 
-const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction, readonly string[]>> = {
+const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<
+  Record<MuxGlobalShortcutAction, readonly string[]>
+> = {
   'mux.app.quit': [],
   'mux.app.interrupt-all': ['ctrl+c'],
   'mux.gateway.profile.toggle': ['ctrl+p'],
@@ -53,11 +59,12 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction
   'mux.conversation.critique.open-or-create': ['ctrl+g'],
   'mux.conversation.next': ['ctrl+j'],
   'mux.conversation.previous': ['ctrl+k'],
+  'mux.conversation.interrupt': [],
   'mux.conversation.archive': [],
   'mux.conversation.takeover': ['ctrl+l'],
   'mux.conversation.delete': ['ctrl+x'],
   'mux.directory.add': ['ctrl+o'],
-  'mux.directory.close': ['ctrl+w']
+  'mux.directory.close': ['ctrl+w'],
 };
 
 const KEY_TOKEN_ALIASES = new Map<string, string>([
@@ -72,7 +79,7 @@ const KEY_TOKEN_ALIASES = new Map<string, string>([
   ['shift', 'shift'],
   ['esc', 'escape'],
   ['return', 'enter'],
-  ['spacebar', 'space']
+  ['spacebar', 'space'],
 ]);
 
 function parseNumericPrefix(value: string): number | null {
@@ -89,7 +96,7 @@ function decodeModifiers(modifierCode: number): Omit<KeyStroke, 'key'> | null {
     shift: (mask & 0b0001) !== 0,
     alt: (mask & 0b0010) !== 0,
     ctrl: (mask & 0b0100) !== 0,
-    meta: (mask & 0b1000) !== 0
+    meta: (mask & 0b1000) !== 0,
   };
 }
 
@@ -122,7 +129,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x0d) {
@@ -131,7 +138,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x09) {
@@ -140,7 +147,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x20) {
@@ -149,7 +156,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
 
@@ -159,7 +166,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: true,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
 
@@ -169,7 +176,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: true,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x1d) {
@@ -178,7 +185,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: true,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x1e) {
@@ -187,7 +194,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: true,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
   if (byte === 0x1f) {
@@ -196,7 +203,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: true,
       alt: false,
       shift: false,
-      meta: false
+      meta: false,
     };
   }
 
@@ -209,7 +216,7 @@ function controlByteToKeyStroke(byte: number): KeyStroke | null {
       ctrl: false,
       alt: false,
       shift: isUpper,
-      meta: false
+      meta: false,
     };
   }
 
@@ -247,7 +254,7 @@ function parseKittyKeyboardProtocol(text: string): KeyStroke | null {
 
   return {
     key,
-    ...modifiers
+    ...modifiers,
   };
 }
 
@@ -275,7 +282,7 @@ function parseModifyOtherKeysProtocol(text: string): KeyStroke | null {
 
   return {
     key,
-    ...modifiers
+    ...modifiers,
   };
 }
 
@@ -292,7 +299,7 @@ function parseAltPrefixInput(input: Buffer): KeyStroke | null {
     ctrl: inner.ctrl,
     alt: true,
     shift: inner.shift,
-    meta: inner.meta
+    meta: inner.meta,
   };
 }
 
@@ -458,7 +465,7 @@ function parseShortcutBinding(input: string): ParsedShortcutBinding | null {
     ctrl: false,
     alt: false,
     shift: false,
-    meta: false
+    meta: false,
   };
 
   for (let idx = 0; idx < tokens.length - 1; idx += 1) {
@@ -495,7 +502,7 @@ function parseShortcutBinding(input: string): ParsedShortcutBinding | null {
     'home',
     'end',
     'pageup',
-    'pagedown'
+    'pagedown',
   ]);
   if (key.length !== 1 && !validNamedKeys.has(key)) {
     return null;
@@ -504,9 +511,9 @@ function parseShortcutBinding(input: string): ParsedShortcutBinding | null {
   return {
     stroke: {
       key,
-      ...modifiers
+      ...modifiers,
     },
-    originalText: trimmed
+    originalText: trimmed,
   };
 }
 
@@ -532,39 +539,51 @@ function parseBindingsForAction(rawBindings: readonly string[]): readonly Parsed
 }
 
 function withDefaultBindings(
-  overrides: Readonly<Record<string, readonly string[]> | undefined>
+  overrides: Readonly<Record<string, readonly string[]> | undefined>,
 ): Readonly<Record<MuxGlobalShortcutAction, readonly string[]>> {
   return {
-    'mux.app.quit': overrides?.['mux.app.quit'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.quit'],
+    'mux.app.quit':
+      overrides?.['mux.app.quit'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.quit'],
     'mux.app.interrupt-all':
-      overrides?.['mux.app.interrupt-all'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.interrupt-all'],
+      overrides?.['mux.app.interrupt-all'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.interrupt-all'],
     'mux.gateway.profile.toggle':
       overrides?.['mux.gateway.profile.toggle'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.profile.toggle'],
     'mux.conversation.new':
-      overrides?.['mux.conversation.new'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.new'],
+      overrides?.['mux.conversation.new'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.new'],
     'mux.conversation.critique.open-or-create':
       overrides?.['mux.conversation.critique.open-or-create'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.critique.open-or-create'],
     'mux.conversation.next':
-      overrides?.['mux.conversation.next'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.next'],
+      overrides?.['mux.conversation.next'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.next'],
     'mux.conversation.previous':
-      overrides?.['mux.conversation.previous'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.previous'],
+      overrides?.['mux.conversation.previous'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.previous'],
+    'mux.conversation.interrupt':
+      overrides?.['mux.conversation.interrupt'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.interrupt'],
     'mux.conversation.archive':
-      overrides?.['mux.conversation.archive'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.archive'],
+      overrides?.['mux.conversation.archive'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.archive'],
     'mux.conversation.takeover':
-      overrides?.['mux.conversation.takeover'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.takeover'],
+      overrides?.['mux.conversation.takeover'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.takeover'],
     'mux.conversation.delete':
-      overrides?.['mux.conversation.delete'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.delete'],
+      overrides?.['mux.conversation.delete'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.delete'],
     'mux.directory.add':
       overrides?.['mux.directory.add'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.directory.add'],
     'mux.directory.close':
-      overrides?.['mux.directory.close'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.directory.close']
+      overrides?.['mux.directory.close'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.directory.close'],
   };
 }
 
 export function resolveMuxShortcutBindings(
-  overrides?: Readonly<Record<string, readonly string[]> | undefined>
+  overrides?: Readonly<Record<string, readonly string[]> | undefined>,
 ): ResolvedMuxShortcutBindings {
   const rawByAction = withDefaultBindings(overrides);
   return {
@@ -572,19 +591,24 @@ export function resolveMuxShortcutBindings(
     parsedByAction: {
       'mux.app.quit': parseBindingsForAction(rawByAction['mux.app.quit']),
       'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
-      'mux.gateway.profile.toggle': parseBindingsForAction(rawByAction['mux.gateway.profile.toggle']),
+      'mux.gateway.profile.toggle': parseBindingsForAction(
+        rawByAction['mux.gateway.profile.toggle'],
+      ),
       'mux.conversation.new': parseBindingsForAction(rawByAction['mux.conversation.new']),
       'mux.conversation.critique.open-or-create': parseBindingsForAction(
-        rawByAction['mux.conversation.critique.open-or-create']
+        rawByAction['mux.conversation.critique.open-or-create'],
       ),
       'mux.conversation.next': parseBindingsForAction(rawByAction['mux.conversation.next']),
       'mux.conversation.previous': parseBindingsForAction(rawByAction['mux.conversation.previous']),
+      'mux.conversation.interrupt': parseBindingsForAction(
+        rawByAction['mux.conversation.interrupt'],
+      ),
       'mux.conversation.archive': parseBindingsForAction(rawByAction['mux.conversation.archive']),
       'mux.conversation.takeover': parseBindingsForAction(rawByAction['mux.conversation.takeover']),
       'mux.conversation.delete': parseBindingsForAction(rawByAction['mux.conversation.delete']),
       'mux.directory.add': parseBindingsForAction(rawByAction['mux.directory.add']),
-      'mux.directory.close': parseBindingsForAction(rawByAction['mux.directory.close'])
-    }
+      'mux.directory.close': parseBindingsForAction(rawByAction['mux.directory.close']),
+    },
   };
 }
 
@@ -592,14 +616,14 @@ const DEFAULT_SHORTCUT_BINDINGS = resolveMuxShortcutBindings();
 
 export function firstShortcutText(
   bindings: ResolvedMuxShortcutBindings,
-  action: MuxGlobalShortcutAction
+  action: MuxGlobalShortcutAction,
 ): string {
   return bindings.rawByAction[action][0] ?? '';
 }
 
 export function detectMuxGlobalShortcut(
   input: Buffer,
-  bindings: ResolvedMuxShortcutBindings = DEFAULT_SHORTCUT_BINDINGS
+  bindings: ResolvedMuxShortcutBindings = DEFAULT_SHORTCUT_BINDINGS,
 ): MuxGlobalShortcutAction | null {
   const stroke = decodeInputToKeyStroke(input);
   if (stroke === null) {
@@ -608,7 +632,7 @@ export function detectMuxGlobalShortcut(
 
   for (const action of ACTION_ORDER) {
     const match = bindings.parsedByAction[action].some((binding) =>
-      strokesEqual(binding.stroke, stroke)
+      strokesEqual(binding.stroke, stroke),
     );
     if (match) {
       return action;

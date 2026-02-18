@@ -32,7 +32,10 @@ void test('terminal palette probe resolves when foreground/background/indexed co
     assert.equal(Object.keys(result.indexedHexByCode ?? {}).length, 16);
     assert.equal((result.indexedHexByCode ?? {})[0], '010203');
     assert.equal((result.indexedHexByCode ?? {})[15], '010203');
-    assert.equal(writes.some((value) => value.includes('\u001b]10;?\u0007\u001b]11;?\u0007')), true);
+    assert.equal(
+      writes.some((value) => value.includes('\u001b]10;?\u0007\u001b]11;?\u0007')),
+      true,
+    );
   } finally {
     (process.stdout as unknown as { write: typeof process.stdout.write }).write = originalWrite;
     globalThis.clearTimeout = originalClearTimeout;

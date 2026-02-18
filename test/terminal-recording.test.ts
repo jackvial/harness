@@ -7,7 +7,7 @@ import { test } from 'bun:test';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import {
   createTerminalRecordingWriter,
-  readTerminalRecording
+  readTerminalRecording,
 } from '../src/recording/terminal-recording.ts';
 
 class MemoryStream extends PassThrough {
@@ -49,7 +49,7 @@ void test('terminal recording writer captures distinct frames and enforces inter
         0: '#101112',
         1: 'not-a-color',
         16: '#aabbcc',
-        256: '#ffffff'
+        256: '#ffffff',
       },
       minFrameIntervalMs: 10,
       nowMs: () => {
@@ -57,7 +57,7 @@ void test('terminal recording writer captures distinct frames and enforces inter
         nowIndex += 1;
         return next ?? 120;
       },
-      nowIso: () => '2026-02-14T00:00:00.000Z'
+      nowIso: () => '2026-02-14T00:00:00.000Z',
     });
 
     oracle.ingest('A');
@@ -81,7 +81,7 @@ void test('terminal recording writer captures distinct frames and enforces inter
     assert.deepEqual(parsed.header.ansiPaletteIndexedHex, {
       0: '101112',
       1: '',
-      16: 'aabbcc'
+      16: 'aabbcc',
     });
     assert.equal(parsed.frames.length, 2);
     assert.equal(parsed.frames[0]?.atMs, 0);
@@ -118,10 +118,10 @@ void test('terminal recording parser rejects malformed files and line records', 
           rows: 1,
           cols: 1,
           lines: ['x'],
-          richLines: []
-        }
+          richLines: [],
+        },
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       badHeaderPath,
@@ -132,28 +132,28 @@ void test('terminal recording parser rejects malformed files and line records', 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       nonObjectHeaderPath,
       `${JSON.stringify({
         kind: 'header',
-        header: 1
+        header: 1,
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       missingHeaderFieldsPath,
       `${JSON.stringify({
         kind: 'header',
         header: {
-          schemaVersion: '1'
-        }
+          schemaVersion: '1',
+        },
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(nonObjectLinePath, '1\n', 'utf8');
     writeFileSync(
@@ -165,12 +165,12 @@ void test('terminal recording parser rejects malformed files and line records', 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n${JSON.stringify({
-        kind: 'unexpected'
+        kind: 'unexpected',
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       nonFramePath,
@@ -181,8 +181,8 @@ void test('terminal recording parser rejects malformed files and line records', 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n${JSON.stringify({
         kind: 'header',
         header: {
@@ -190,10 +190,10 @@ void test('terminal recording parser rejects malformed files and line records', 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       badAtMsPath,
@@ -204,8 +204,8 @@ void test('terminal recording parser rejects malformed files and line records', 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n${JSON.stringify({
         kind: 'frame',
         atMs: -1,
@@ -213,10 +213,10 @@ void test('terminal recording parser rejects malformed files and line records', 
           rows: 1,
           cols: 1,
           lines: ['x'],
-          richLines: []
-        }
+          richLines: [],
+        },
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       badFramePath,
@@ -227,8 +227,8 @@ void test('terminal recording parser rejects malformed files and line records', 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n${JSON.stringify({
         kind: 'frame',
         atMs: 1,
@@ -236,10 +236,10 @@ void test('terminal recording parser rejects malformed files and line records', 
           rows: 0,
           cols: 1,
           lines: [],
-          richLines: []
-        }
+          richLines: [],
+        },
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       nonObjectFramePath,
@@ -250,14 +250,14 @@ void test('terminal recording parser rejects malformed files and line records', 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n${JSON.stringify({
         kind: 'frame',
         atMs: 1,
-        frame: 1
+        frame: 1,
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       badFooterPath,
@@ -268,13 +268,13 @@ void test('terminal recording parser rejects malformed files and line records', 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n${JSON.stringify({
         kind: 'footer',
-        finishedAtMs: -1
+        finishedAtMs: -1,
       })}\n`,
-      'utf8'
+      'utf8',
     );
 
     assert.throws(() => {
@@ -334,8 +334,8 @@ void test('terminal recording parser tolerates optional palette variants', () =>
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
           defaultBackgroundHex: '0f1419',
-          ansiPaletteIndexedHex: 1
-        }
+          ansiPaletteIndexedHex: 1,
+        },
       })}\n${JSON.stringify({
         kind: 'frame',
         atMs: 1,
@@ -343,10 +343,10 @@ void test('terminal recording parser tolerates optional palette variants', () =>
           rows: 1,
           cols: 1,
           lines: ['x'],
-          richLines: []
-        }
+          richLines: [],
+        },
       })}\n`,
-      'utf8'
+      'utf8',
     );
     writeFileSync(
       invalidPalettePath,
@@ -361,9 +361,9 @@ void test('terminal recording parser tolerates optional palette variants', () =>
           ansiPaletteIndexedHex: {
             '-1': '#112233',
             foo: '#112233',
-            10: 1
-          }
-        }
+            10: 1,
+          },
+        },
       })}\n${JSON.stringify({
         kind: 'frame',
         atMs: 1,
@@ -371,13 +371,16 @@ void test('terminal recording parser tolerates optional palette variants', () =>
           rows: 1,
           cols: 1,
           lines: ['x'],
-          richLines: []
-        }
+          richLines: [],
+        },
       })}\n`,
-      'utf8'
+      'utf8',
     );
 
-    assert.equal(readTerminalRecording(nonObjectPalettePath).header.ansiPaletteIndexedHex, undefined);
+    assert.equal(
+      readTerminalRecording(nonObjectPalettePath).header.ansiPaletteIndexedHex,
+      undefined,
+    );
     assert.equal(readTerminalRecording(invalidPalettePath).header.ansiPaletteIndexedHex, undefined);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -399,8 +402,8 @@ void test('terminal recording parser supports long JSONL lines without trailing 
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n${JSON.stringify({
         kind: 'frame',
         atMs: 1,
@@ -408,10 +411,10 @@ void test('terminal recording parser supports long JSONL lines without trailing 
           rows: 1,
           cols: 1,
           lines: [longGlyphs],
-          richLines: []
-        }
+          richLines: [],
+        },
       })}`,
-      'utf8'
+      'utf8',
     );
 
     const parsed = readTerminalRecording(recordingPath);
@@ -436,8 +439,8 @@ void test('terminal recording parser ignores blank lines between records', () =>
           source: 'x',
           createdAt: 't',
           defaultForegroundHex: 'd0d7de',
-          defaultBackgroundHex: '0f1419'
-        }
+          defaultBackgroundHex: '0f1419',
+        },
       })}\n\n${JSON.stringify({
         kind: 'frame',
         atMs: 1,
@@ -445,10 +448,10 @@ void test('terminal recording parser ignores blank lines between records', () =>
           rows: 1,
           cols: 1,
           lines: ['x'],
-          richLines: []
-        }
+          richLines: [],
+        },
       })}\n\n`,
-      'utf8'
+      'utf8',
     );
 
     const parsed = readTerminalRecording(recordingPath);
@@ -471,8 +474,8 @@ void test('terminal recording writer drops invalid provided palette entries', as
       defaultForegroundHex: 'd0d7de',
       defaultBackgroundHex: '0f1419',
       ansiPaletteIndexedHex: {
-        999: '#ffffff'
-      }
+        999: '#ffffff',
+      },
     });
     oracle.ingest('x');
     writer.capture(oracle.snapshot());
@@ -497,7 +500,7 @@ void test('terminal recording writer handles stream errors without throwing from
       source: 'memory',
       defaultForegroundHex: 'd0d7de',
       defaultBackgroundHex: '0f1419',
-      createStream: () => stream
+      createStream: () => stream,
     });
 
     stream.emit('error', new Error('broken stream'));
@@ -517,7 +520,7 @@ void test('terminal recording writer close rejects when stream end emits error',
     source: 'end-error',
     defaultForegroundHex: 'd0d7de',
     defaultBackgroundHex: '0f1419',
-    createStream: () => stream
+    createStream: () => stream,
   });
 
   await assert.rejects(writer.close(), /end failed/);
@@ -533,7 +536,7 @@ void test('terminal recording writer default nowMs clock is exercised on capture
       filePath: recordingPath,
       source: 'default-clock',
       defaultForegroundHex: 'd0d7de',
-      defaultBackgroundHex: '0f1419'
+      defaultBackgroundHex: '0f1419',
     });
     oracle.ingest('x');
     assert.equal(writer.capture(oracle.snapshot()), true);

@@ -83,103 +83,103 @@ export interface TaskPaneView {
 
 export const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = formatUiButton({
   label: 'new thread',
-  prefixIcon: '+'
+  prefixIcon: '+',
 });
 export const PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'close project',
-  prefixIcon: '<'
+  prefixIcon: '<',
 });
 export const TASKS_PANE_ADD_TASK_BUTTON_LABEL = formatUiButton({
   label: 'add task',
-  prefixIcon: '+'
+  prefixIcon: '+',
 });
 export const TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL = formatUiButton({
   label: 'add repository',
-  prefixIcon: '+'
+  prefixIcon: '+',
 });
 export const TASKS_PANE_EDIT_REPOSITORY_BUTTON_LABEL = formatUiButton({
   label: 'edit repository',
-  prefixIcon: 'e'
+  prefixIcon: 'e',
 });
 export const TASKS_PANE_ARCHIVE_REPOSITORY_BUTTON_LABEL = formatUiButton({
   label: 'archive repository',
-  prefixIcon: 'x'
+  prefixIcon: 'x',
 });
 export const TASKS_PANE_EDIT_TASK_BUTTON_LABEL = formatUiButton({
   label: 'edit task',
-  prefixIcon: 'e'
+  prefixIcon: 'e',
 });
 export const TASKS_PANE_DELETE_TASK_BUTTON_LABEL = formatUiButton({
   label: 'delete task',
-  prefixIcon: 'x'
+  prefixIcon: 'x',
 });
 export const TASKS_PANE_READY_TASK_BUTTON_LABEL = formatUiButton({
   label: 'mark ready',
-  prefixIcon: 'r'
+  prefixIcon: 'r',
 });
 export const TASKS_PANE_DRAFT_TASK_BUTTON_LABEL = formatUiButton({
   label: 'mark draft',
-  prefixIcon: 'd'
+  prefixIcon: 'd',
 });
 export const TASKS_PANE_COMPLETE_TASK_BUTTON_LABEL = formatUiButton({
   label: 'mark complete',
-  prefixIcon: 'c'
+  prefixIcon: 'c',
 });
 export const TASKS_PANE_REORDER_UP_BUTTON_LABEL = formatUiButton({
   label: 'move up',
-  prefixIcon: '^'
+  prefixIcon: '^',
 });
 export const TASKS_PANE_REORDER_DOWN_BUTTON_LABEL = formatUiButton({
   label: 'move down',
-  prefixIcon: 'v'
+  prefixIcon: 'v',
 });
 export const TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL = formatUiButton({
   label: 'edit ^E',
-  prefixIcon: '✎'
+  prefixIcon: '✎',
 });
 export const TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL = formatUiButton({
   label: 'delete ^?',
-  prefixIcon: '⌫'
+  prefixIcon: '⌫',
 });
 export const TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL = formatUiButton({
   label: 'complete ^S',
-  prefixIcon: '✓'
+  prefixIcon: '✓',
 });
 export const TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL = formatUiButton({
   label: 'draft ^R',
-  prefixIcon: '◇'
+  prefixIcon: '◇',
 });
 export const TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL = formatUiButton({
   label: 'repo edit E',
-  prefixIcon: '✎'
+  prefixIcon: '✎',
 });
 export const TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL = formatUiButton({
   label: 'repo archive X',
-  prefixIcon: '⌫'
+  prefixIcon: '⌫',
 });
 export const CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL = formatUiButton({
   label: 'archive thread',
-  prefixIcon: 'x'
+  prefixIcon: 'x',
 });
 export const NEW_THREAD_MODAL_CODEX_BUTTON = formatUiButton({
   label: 'codex',
-  prefixIcon: '◆'
+  prefixIcon: '◆',
 });
 export const NEW_THREAD_MODAL_CLAUDE_BUTTON = formatUiButton({
   label: 'claude',
-  prefixIcon: '◇'
+  prefixIcon: '◇',
 });
 export const NEW_THREAD_MODAL_CURSOR_BUTTON = formatUiButton({
   label: 'cursor',
-  prefixIcon: '◈'
+  prefixIcon: '◈',
 });
 export const NEW_THREAD_MODAL_TERMINAL_BUTTON = formatUiButton({
   label: 'terminal',
-  prefixIcon: '▣'
+  prefixIcon: '▣',
 });
 export const NEW_THREAD_MODAL_CRITIQUE_BUTTON = formatUiButton({
   label: 'critique',
-  prefixIcon: '▤'
+  prefixIcon: '▤',
 });
 
 const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
@@ -213,7 +213,7 @@ function formatRelativeIsoTime(nowMs: number, value: string | null | undefined):
 }
 
 export function sortedRepositoryList<T extends TaskPaneRepositoryRecord>(
-  repositories: ReadonlyMap<string, T>
+  repositories: ReadonlyMap<string, T>,
 ): readonly T[] {
   return [...repositories.values()]
     .filter((repository) => repository.archivedAt === null)
@@ -244,7 +244,11 @@ export function sortTasksByOrder<T extends TaskPaneTaskRecord>(tasks: readonly T
     }
     const leftCreatedAt = parseIsoTimestampMs(left.createdAt);
     const rightCreatedAt = parseIsoTimestampMs(right.createdAt);
-    if (Number.isFinite(leftCreatedAt) && Number.isFinite(rightCreatedAt) && leftCreatedAt !== rightCreatedAt) {
+    if (
+      Number.isFinite(leftCreatedAt) &&
+      Number.isFinite(rightCreatedAt) &&
+      leftCreatedAt !== rightCreatedAt
+    ) {
       return leftCreatedAt - rightCreatedAt;
     }
     return left.taskId.localeCompare(right.taskId);
@@ -286,12 +290,12 @@ function repositoryRemoteLabel(remoteUrl: string | undefined): string {
   if (match !== null) {
     return `github.com/${match[1] as string}`;
   }
-  return normalized
-    .replace(/^https?:\/\//iu, '')
-    .replace(/\.git$/iu, '');
+  return normalized.replace(/^https?:\/\//iu, '').replace(/\.git$/iu, '');
 }
 
-export function sortTasksForHomePane<T extends TaskPaneTaskRecord>(tasks: readonly T[]): readonly T[] {
+export function sortTasksForHomePane<T extends TaskPaneTaskRecord>(
+  tasks: readonly T[],
+): readonly T[] {
   return [...tasks].sort((left, right) => {
     const statusCompare = taskStatusSortRank(left.status) - taskStatusSortRank(right.status);
     if (statusCompare !== 0) {
@@ -302,14 +306,21 @@ export function sortTasksForHomePane<T extends TaskPaneTaskRecord>(tasks: readon
     }
     const leftCreatedAt = parseIsoTimestampMs(left.createdAt);
     const rightCreatedAt = parseIsoTimestampMs(right.createdAt);
-    if (Number.isFinite(leftCreatedAt) && Number.isFinite(rightCreatedAt) && leftCreatedAt !== rightCreatedAt) {
+    if (
+      Number.isFinite(leftCreatedAt) &&
+      Number.isFinite(rightCreatedAt) &&
+      leftCreatedAt !== rightCreatedAt
+    ) {
       return leftCreatedAt - rightCreatedAt;
     }
     return left.taskId.localeCompare(right.taskId);
   });
 }
 
-function buildProjectPaneWrappedLines(snapshot: ProjectPaneSnapshot, cols: number): readonly ProjectPaneWrappedLine[] {
+function buildProjectPaneWrappedLines(
+  snapshot: ProjectPaneSnapshot,
+  cols: number,
+): readonly ProjectPaneWrappedLine[] {
   const safeCols = Math.max(1, cols);
   const wrapped: ProjectPaneWrappedLine[] = [];
   for (let lineIndex = 0; lineIndex < snapshot.lines.length; lineIndex += 1) {
@@ -318,14 +329,14 @@ function buildProjectPaneWrappedLines(snapshot: ProjectPaneSnapshot, cols: numbe
     for (const segment of segments) {
       wrapped.push({
         text: segment,
-        sourceLineIndex: lineIndex
+        sourceLineIndex: lineIndex,
       });
     }
   }
   if (wrapped.length === 0) {
     wrapped.push({
       text: '',
-      sourceLineIndex: -1
+      sourceLineIndex: -1,
     });
   }
   return wrapped;
@@ -418,10 +429,7 @@ function fillLine(width: number, glyph: string): string {
   return glyph.repeat(width);
 }
 
-function normalizeTaskPaneRow(
-  text: string,
-  cols: number
-): string {
+function normalizeTaskPaneRow(text: string, cols: number): string {
   const innerCols = Math.max(1, cols - 2);
   return `│${padOrTrimDisplay(text, innerCols)}│`;
 }
@@ -433,7 +441,7 @@ export function resolveGoldenModalSize(
     readonly preferredHeight: number;
     readonly minWidth: number;
     readonly maxWidth: number;
-  }
+  },
 ): { width: number; height: number } {
   const safeViewportCols = Math.max(1, Math.floor(viewportCols));
   const safeViewportRows = Math.max(1, Math.floor(viewportRows));
@@ -441,16 +449,13 @@ export function resolveGoldenModalSize(
   const height = Math.max(1, Math.min(Math.floor(options.preferredHeight), maxHeight));
   const maxWidth = Math.max(
     options.minWidth,
-    Math.min(Math.floor(options.maxWidth), Math.max(1, safeViewportCols - 2))
+    Math.min(Math.floor(options.maxWidth), Math.max(1, safeViewportCols - 2)),
   );
   const targetWidth = Math.round(height * GOLDEN_RATIO);
-  const width = Math.max(
-    Math.floor(options.minWidth),
-    Math.min(targetWidth, maxWidth)
-  );
+  const width = Math.max(Math.floor(options.minWidth), Math.min(targetWidth, maxWidth));
   return {
     width,
-    height
+    height,
   };
 }
 
@@ -458,7 +463,7 @@ export function buildProjectPaneSnapshot(directoryId: string, path: string): Pro
   const projectName = basename(path) || path;
   const actionLineIndexByKind = {
     conversationNew: 3,
-    projectClose: 4
+    projectClose: 4,
   } as const;
   return {
     directoryId,
@@ -470,9 +475,9 @@ export function buildProjectPaneSnapshot(directoryId: string, path: string): Pro
       PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL,
       PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL,
       '',
-      ...buildProjectTreeLines(path)
+      ...buildProjectTreeLines(path),
     ],
-    actionLineIndexByKind
+    actionLineIndexByKind,
   };
 }
 
@@ -480,7 +485,7 @@ export function buildProjectPaneRows(
   snapshot: ProjectPaneSnapshot,
   cols: number,
   paneRows: number,
-  scrollTop: number
+  scrollTop: number,
 ): { rows: readonly string[]; top: number } {
   const safeCols = Math.max(1, cols);
   const safeRows = Math.max(1, paneRows);
@@ -491,12 +496,12 @@ export function buildProjectPaneRows(
   while (viewport.length < safeRows) {
     viewport.push({
       text: '',
-      sourceLineIndex: -1
+      sourceLineIndex: -1,
     });
   }
   return {
     rows: viewport.map((row) => padOrTrimDisplay(row.text, safeCols)),
-    top: nextTop
+    top: nextTop,
   };
 }
 
@@ -505,7 +510,7 @@ export function projectPaneActionAtRow(
   cols: number,
   paneRows: number,
   scrollTop: number,
-  rowIndex: number
+  rowIndex: number,
 ): ProjectPaneAction | null {
   const safeRows = Math.max(1, paneRows);
   const wrappedLines = buildProjectPaneWrappedLines(snapshot, cols);
@@ -528,11 +533,11 @@ export function buildTaskPaneSnapshot(
   selectedTaskId: string | null,
   selectedRepositoryId: string | null,
   nowMs: number,
-  notice: string | null
+  notice: string | null,
 ): TaskPaneSnapshot {
   const activeRepositories = sortedRepositoryList(repositories);
   const repositoryNameById = new Map<string, string>(
-    activeRepositories.map((repository) => [repository.repositoryId, repository.name] as const)
+    activeRepositories.map((repository) => [repository.repositoryId, repository.name] as const),
   );
   const orderedTasks = sortTasksForHomePane([...tasks.values()]);
   const activeTasks = orderedTasks.filter((task) => task.status !== 'completed');
@@ -543,7 +548,9 @@ export function buildTaskPaneSnapshot(
     orderedTasks[0]?.taskId ??
     null;
   const effectiveSelectedRepositoryId =
-    (selectedRepositoryId !== null && repositories.has(selectedRepositoryId) ? selectedRepositoryId : null) ??
+    (selectedRepositoryId !== null && repositories.has(selectedRepositoryId)
+      ? selectedRepositoryId
+      : null) ??
     activeRepositories[0]?.repositoryId ??
     null;
   const lines: TaskPaneSnapshotLine[] = [];
@@ -551,13 +558,13 @@ export function buildTaskPaneSnapshot(
     text: string,
     taskId: string | null = null,
     repositoryId: string | null = null,
-    action: TaskPaneAction | null = null
+    action: TaskPaneAction | null = null,
   ): void => {
     lines.push({
       text,
       taskId,
       repositoryId,
-      action
+      action,
     });
   };
 
@@ -565,14 +572,20 @@ export function buildTaskPaneSnapshot(
     push(` NOTICE: ${truncateLabel(notice, 68)}`);
     push('');
   }
-  push(' REPOSITORIES                                          R add  drag prioritize', null, null, 'repository.create');
+  push(
+    ' REPOSITORIES                                          R add  drag prioritize',
+    null,
+    null,
+    'repository.create',
+  );
   push(` ${fillLine(74, '─')}`);
   if (activeRepositories.length === 0) {
     push('   no repositories');
   } else {
     for (const repository of activeRepositories) {
       const selected = repository.repositoryId === effectiveSelectedRepositoryId ? '▸' : ' ';
-      const repositoryName = repository.name.trim().length === 0 ? '(unnamed repository)' : repository.name.trim();
+      const repositoryName =
+        repository.name.trim().length === 0 ? '(unnamed repository)' : repository.name.trim();
       const remoteLabel = repositoryRemoteLabel(repository.remoteUrl);
       const branch = repository.defaultBranch?.trim() ?? '';
       const branchLabel = branch.length === 0 ? 'main' : branch;
@@ -583,7 +596,12 @@ export function buildTaskPaneSnapshot(
     }
   }
   push('');
-  push(' TASKS                                                   A add  E edit  X archive', null, null, 'task.create');
+  push(
+    ' TASKS                                                   A add  E edit  X archive',
+    null,
+    null,
+    'task.create',
+  );
   push(` ${fillLine(74, '─')}`);
   if (orderedTasks.length === 0) {
     push('   no tasks');
@@ -600,10 +618,12 @@ export function buildTaskPaneSnapshot(
   }
   if (completedTasks.length > 0) {
     push('');
-    push(` COMPLETED: ${String(completedTasks.length)}  UPDATED ${formatRelativeIsoTime(nowMs, completedTasks[0]?.updatedAt)}`);
+    push(
+      ` COMPLETED: ${String(completedTasks.length)}  UPDATED ${formatRelativeIsoTime(nowMs, completedTasks[0]?.updatedAt)}`,
+    );
   }
   return {
-    lines
+    lines,
   };
 }
 
@@ -611,7 +631,7 @@ export function buildTaskPaneRows(
   snapshot: TaskPaneSnapshot,
   cols: number,
   paneRows: number,
-  scrollTop: number
+  scrollTop: number,
 ): TaskPaneView {
   const safeCols = Math.max(1, cols);
   const safeRows = Math.max(1, paneRows);
@@ -625,7 +645,7 @@ export function buildTaskPaneRows(
         text: '',
         taskId: null,
         repositoryId: null,
-        action: null
+        action: null,
       });
     }
     return {
@@ -634,7 +654,7 @@ export function buildTaskPaneRows(
       repositoryIds: viewport.map((row) => row.repositoryId),
       actions: viewport.map((row) => row.action),
       actionCells: viewport.map(() => null),
-      top: nextTop
+      top: nextTop,
     };
   }
 
@@ -648,7 +668,7 @@ export function buildTaskPaneRows(
       text: '',
       taskId: null,
       repositoryId: null,
-      action: null
+      action: null,
     });
   }
 
@@ -663,7 +683,7 @@ export function buildTaskPaneRows(
     taskId: string | null = null,
     repositoryId: string | null = null,
     action: TaskPaneAction | null = null,
-    cells: readonly TaskPaneActionCell[] | null = null
+    cells: readonly TaskPaneActionCell[] | null = null,
   ): void => {
     rows.push(padOrTrimDisplay(text, safeCols));
     taskIds.push(taskId);
@@ -676,28 +696,22 @@ export function buildTaskPaneRows(
   const topInner = `─ Home ${fillLine(Math.max(0, innerCols - 7), '─')}`;
   pushRow(`┌${padOrTrimDisplay(topInner, innerCols)}┐`);
   for (const row of viewport) {
-    pushRow(
-      normalizeTaskPaneRow(row.text, safeCols),
-      row.taskId,
-      row.repositoryId,
-      row.action
-    );
+    pushRow(normalizeTaskPaneRow(row.text, safeCols), row.taskId, row.repositoryId, row.action);
   }
   pushRow(`├${fillLine(innerCols, '─')}┤`);
 
-  const repositoryFooterContent =
-    ` ${TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL}`;
+  const repositoryFooterContent = ` ${TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL}`;
   const repositoryFooterInner = padOrTrimDisplay(repositoryFooterContent, innerCols);
   const repositoryFooterCells: TaskPaneActionCell[] = [];
   const repositoryFooterMappings: ReadonlyArray<{ label: string; action: TaskPaneAction }> = [
     {
       label: TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL,
-      action: 'repository.edit'
+      action: 'repository.edit',
     },
     {
       label: TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL,
-      action: 'repository.archive'
-    }
+      action: 'repository.archive',
+    },
   ];
   for (const mapping of repositoryFooterMappings) {
     const start = repositoryFooterInner.indexOf(mapping.label);
@@ -707,32 +721,31 @@ export function buildTaskPaneRows(
     repositoryFooterCells.push({
       startCol: 1 + start,
       endCol: start + mapping.label.length,
-      action: mapping.action
+      action: mapping.action,
     });
   }
   pushRow(`│${repositoryFooterInner}│`, null, null, null, repositoryFooterCells);
 
-  const taskFooterContent =
-    ` ${TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL}`;
+  const taskFooterContent = ` ${TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL}`;
   const taskFooterInner = padOrTrimDisplay(taskFooterContent, innerCols);
   const taskFooterCells: TaskPaneActionCell[] = [];
   const taskFooterMappings: ReadonlyArray<{ label: string; action: TaskPaneAction }> = [
     {
       label: TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL,
-      action: 'task.edit'
+      action: 'task.edit',
     },
     {
       label: TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL,
-      action: 'task.delete'
+      action: 'task.delete',
     },
     {
       label: TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL,
-      action: 'task.complete'
+      action: 'task.complete',
     },
     {
       label: TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL,
-      action: 'task.draft'
-    }
+      action: 'task.draft',
+    },
   ];
   for (const mapping of taskFooterMappings) {
     const start = taskFooterInner.indexOf(mapping.label);
@@ -742,7 +755,7 @@ export function buildTaskPaneRows(
     taskFooterCells.push({
       startCol: 1 + start,
       endCol: start + mapping.label.length,
-      action: mapping.action
+      action: mapping.action,
     });
   }
   pushRow(`│${taskFooterInner}│`, null, null, null, taskFooterCells);
@@ -754,7 +767,7 @@ export function buildTaskPaneRows(
     repositoryIds,
     actions,
     actionCells,
-    top: nextTop
+    top: nextTop,
   };
 }
 
@@ -769,7 +782,7 @@ export function taskPaneActionAtRow(view: TaskPaneView, rowIndex: number): TaskP
 export function taskPaneActionAtCell(
   view: TaskPaneView,
   rowIndex: number,
-  colIndex: number
+  colIndex: number,
 ): TaskPaneAction | null {
   if (view.rows.length === 0) {
     return null;

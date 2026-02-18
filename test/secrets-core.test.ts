@@ -7,7 +7,7 @@ import {
   HARNESS_SECRETS_FILE_PATH,
   loadHarnessSecrets,
   parseHarnessSecretsText,
-  resolveHarnessSecretsPath
+  resolveHarnessSecretsPath,
 } from '../src/config/secrets-core.ts';
 
 void test('parseHarnessSecretsText reads comments, export prefixes, quotes, escapes, and empty values', () => {
@@ -29,7 +29,7 @@ void test('parseHarnessSecretsText reads comments, export prefixes, quotes, esca
     TRIMMED: 'value',
     HASH: 'value#hash',
     UNKNOWN_ESCAPE: 'prefix\\q',
-    EMPTY: ''
+    EMPTY: '',
   });
 });
 
@@ -39,43 +39,40 @@ void test('parseHarnessSecretsText decodes supported double-quote escapes', () =
 });
 
 void test('parseHarnessSecretsText rejects malformed lines and invalid keys', () => {
-  assert.throws(
-    () => parseHarnessSecretsText('ANTHROPIC_API_KEY'),
-    /expected KEY=VALUE/u
-  );
-  assert.throws(
-    () => parseHarnessSecretsText('1BAD_KEY=value'),
-    /invalid secret key/u
-  );
+  assert.throws(() => parseHarnessSecretsText('ANTHROPIC_API_KEY'), /expected KEY=VALUE/u);
+  assert.throws(() => parseHarnessSecretsText('1BAD_KEY=value'), /invalid secret key/u);
 });
 
 void test('parseHarnessSecretsText rejects unterminated and trailing quoted payloads', () => {
   assert.throws(
     () => parseHarnessSecretsText('ANTHROPIC_API_KEY="unterminated'),
-    /unterminated double-quoted value/u
+    /unterminated double-quoted value/u,
   );
   assert.throws(
-    () => parseHarnessSecretsText('ANTHROPIC_API_KEY=\'unterminated'),
-    /unterminated single-quoted value/u
+    () => parseHarnessSecretsText("ANTHROPIC_API_KEY='unterminated"),
+    /unterminated single-quoted value/u,
   );
   assert.throws(
     () => parseHarnessSecretsText('ANTHROPIC_API_KEY="value" trailing'),
-    /unexpected trailing content/u
+    /unexpected trailing content/u,
   );
   assert.throws(
-    () => parseHarnessSecretsText('ANTHROPIC_API_KEY=\'value\' trailing'),
-    /unexpected trailing content/u
+    () => parseHarnessSecretsText("ANTHROPIC_API_KEY='value' trailing"),
+    /unexpected trailing content/u,
   );
   assert.throws(
     () => parseHarnessSecretsText('ANTHROPIC_API_KEY="value\\" # comment'),
-    /invalid escape sequence/u
+    /invalid escape sequence/u,
   );
 });
 
 void test('resolveHarnessSecretsPath defaults to .harness/secrets.env and supports explicit override', () => {
   const cwd = '/tmp/harness';
   assert.equal(resolveHarnessSecretsPath(cwd), resolve(cwd, HARNESS_SECRETS_FILE_PATH));
-  assert.equal(resolveHarnessSecretsPath(cwd, '.config/custom.env'), resolve(cwd, '.config/custom.env'));
+  assert.equal(
+    resolveHarnessSecretsPath(cwd, '.config/custom.env'),
+    resolve(cwd, '.config/custom.env'),
+  );
   assert.equal(resolveHarnessSecretsPath(cwd, '   '), resolve(cwd, HARNESS_SECRETS_FILE_PATH));
 });
 
@@ -84,7 +81,7 @@ void test('loadHarnessSecrets returns unloaded result when file is missing', () 
   const env: NodeJS.ProcessEnv = {};
   const loaded = loadHarnessSecrets({
     cwd: workspace,
-    env
+    env,
   });
   assert.equal(loaded.loaded, false);
   assert.equal(loaded.filePath, resolve(workspace, HARNESS_SECRETS_FILE_PATH));
@@ -100,14 +97,14 @@ void test('loadHarnessSecrets populates env and preserves existing values by def
   writeFileSync(
     join(secretsDir, 'secrets.env'),
     ['ANTHROPIC_API_KEY=from-file', 'EXTRA_TOKEN=extra'].join('\n'),
-    'utf8'
+    'utf8',
   );
   const env: NodeJS.ProcessEnv = {
-    ANTHROPIC_API_KEY: 'from-env'
+    ANTHROPIC_API_KEY: 'from-env',
   };
   const loaded = loadHarnessSecrets({
     cwd: workspace,
-    env
+    env,
   });
 
   assert.equal(loaded.loaded, true);
@@ -122,14 +119,14 @@ void test('loadHarnessSecrets can override existing env values', () => {
   const filePath = join(workspace, 'secrets.env');
   writeFileSync(filePath, 'ANTHROPIC_API_KEY=from-file', 'utf8');
   const env: NodeJS.ProcessEnv = {
-    ANTHROPIC_API_KEY: 'from-env'
+    ANTHROPIC_API_KEY: 'from-env',
   };
 
   const loaded = loadHarnessSecrets({
     cwd: workspace,
     filePath: 'secrets.env',
     env,
-    overrideExisting: true
+    overrideExisting: true,
   });
 
   assert.equal(loaded.loaded, true);
@@ -147,7 +144,7 @@ void test('loadHarnessSecrets can target process.env when env option is omitted'
   try {
     delete process.env[key];
     const loaded = loadHarnessSecrets({
-      filePath
+      filePath,
     });
     assert.equal(loaded.loaded, true);
     assert.deepEqual(loaded.loadedKeys, [key]);

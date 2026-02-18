@@ -88,7 +88,8 @@ export class OutputLoadSampler {
     this.sampleIntervalMs = options.sampleIntervalMs ?? DEFAULT_SAMPLE_INTERVAL_MS;
     this.setIntervalFn = options.setIntervalFn ?? setInterval;
     this.clearIntervalFn = options.clearIntervalFn ?? clearInterval;
-    this.eventLoopDelayMonitor = options.createEventLoopDelayMonitor?.() ?? defaultEventLoopDelayMonitor();
+    this.eventLoopDelayMonitor =
+      options.createEventLoopDelayMonitor?.() ?? defaultEventLoopDelayMonitor();
     this.windowStartedAtMs = this.nowMs();
   }
 

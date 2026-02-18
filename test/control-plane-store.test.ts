@@ -7,7 +7,7 @@ import { DatabaseSync } from '../src/store/sqlite.ts';
 import {
   SqliteControlPlaneStore,
   normalizeStoredConversationRow,
-  normalizeStoredDirectoryRow
+  normalizeStoredDirectoryRow,
 } from '../src/store/control-plane-store.ts';
 
 function tempStorePath(): string {
@@ -24,7 +24,7 @@ void test('control-plane store upserts directories and persists conversations/ru
       tenantId: 'tenant-1',
       userId: 'user-1',
       workspaceId: 'workspace-1',
-      path: '/tmp/workspace-1'
+      path: '/tmp/workspace-1',
     });
     assert.equal(directory.directoryId, 'dir-1');
     assert.equal(directory.archivedAt, null);
@@ -34,7 +34,7 @@ void test('control-plane store upserts directories and persists conversations/ru
       tenantId: 'tenant-1',
       userId: 'user-1',
       workspaceId: 'workspace-1',
-      path: '/tmp/workspace-1'
+      path: '/tmp/workspace-1',
     });
     assert.equal(sameDirectory.directoryId, 'dir-1');
 
@@ -42,7 +42,7 @@ void test('control-plane store upserts directories and persists conversations/ru
       conversationId: 'conversation-1',
       directoryId: 'dir-1',
       title: 'untitled task 1',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     assert.equal(conversation.conversationId, 'conversation-1');
     assert.equal(conversation.runtimeStatus, 'running');
@@ -51,13 +51,13 @@ void test('control-plane store upserts directories and persists conversations/ru
 
     const updatedAdapterState = store.updateConversationAdapterState('conversation-1', {
       codex: {
-        resumeSessionId: 'thread-123'
-      }
+        resumeSessionId: 'thread-123',
+      },
     });
     assert.deepEqual(updatedAdapterState?.adapterState, {
       codex: {
-        resumeSessionId: 'thread-123'
-      }
+        resumeSessionId: 'thread-123',
+      },
     });
     const updatedTitle = store.updateConversationTitle('conversation-1', 'renamed task');
     assert.equal(updatedTitle?.title, 'renamed task');
@@ -68,7 +68,7 @@ void test('control-plane store upserts directories and persists conversations/ru
       attentionReason: 'approval',
       processId: 73001,
       lastEventAt: '2026-02-14T00:00:00.000Z',
-      lastExit: null
+      lastExit: null,
     });
     assert.equal(runtimeUpdated?.runtimeStatus, 'needs-input');
     assert.equal(runtimeUpdated?.runtimeLive, true);
@@ -83,8 +83,8 @@ void test('control-plane store upserts directories and persists conversations/ru
       lastEventAt: '2026-02-14T00:01:00.000Z',
       lastExit: {
         code: 130,
-        signal: 'SIGINT'
-      }
+        signal: 'SIGINT',
+      },
     });
     assert.equal(runtimeExited?.runtimeLastExit?.signal, 'SIGINT');
     assert.equal(runtimeExited?.runtimeLastExit?.code, 130);
@@ -93,7 +93,7 @@ void test('control-plane store upserts directories and persists conversations/ru
       tenantId: 'tenant-1',
       userId: 'user-1',
       workspaceId: 'workspace-1',
-      limit: 10
+      limit: 10,
     });
     assert.equal(listedDirectories.length, 1);
     assert.equal(store.listDirectories({}).length, 1);
@@ -110,7 +110,7 @@ void test('control-plane store upserts directories and persists conversations/ru
       tenantId: 'tenant-1',
       userId: 'user-1',
       workspaceId: 'workspace-1',
-      path: '/tmp/workspace-1'
+      path: '/tmp/workspace-1',
     });
     assert.equal(store.listDirectories({}).length, 1);
 
@@ -119,7 +119,7 @@ void test('control-plane store upserts directories and persists conversations/ru
       tenantId: 'tenant-1',
       userId: 'user-1',
       workspaceId: 'workspace-1',
-      limit: 10
+      limit: 10,
     });
     assert.equal(listedConversations.length, 1);
     assert.equal(listedConversations[0]?.conversationId, 'conversation-1');
@@ -131,9 +131,9 @@ void test('control-plane store upserts directories and persists conversations/ru
     assert.equal(
       store.listConversations({
         directoryId: 'dir-1',
-        includeArchived: true
+        includeArchived: true,
       }).length,
-      1
+      1,
     );
   } finally {
     store.close();
@@ -148,8 +148,8 @@ void test('control-plane store upserts directories and persists conversations/ru
     assert.equal(persistedConversation?.runtimeLastExit?.signal, 'SIGINT');
     assert.deepEqual(persistedConversation?.adapterState, {
       codex: {
-        resumeSessionId: 'thread-123'
-      }
+        resumeSessionId: 'thread-123',
+      },
     });
   } finally {
     reopened.close();
@@ -166,7 +166,7 @@ void test('control-plane store restores archived directory and validates errors'
       tenantId: 'tenant-a',
       userId: 'user-a',
       workspaceId: 'workspace-a',
-      path: '/tmp/dir-a'
+      path: '/tmp/dir-a',
     });
     assert.equal(dir.directoryId, 'dir-a');
 
@@ -174,7 +174,7 @@ void test('control-plane store restores archived directory and validates errors'
       conversationId: 'conversation-a',
       directoryId: 'dir-a',
       title: 'untitled task a',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     assert.equal(conversation.runtimeLive, false);
 
@@ -185,30 +185,32 @@ void test('control-plane store restores archived directory and validates errors'
           conversationId: 'conversation-a',
           directoryId: 'dir-a',
           title: 'dup',
-          agentType: 'codex'
+          agentType: 'codex',
         }),
-      /conversation already exists/
+      /conversation already exists/,
     );
     assert.throws(
-      () =>
-        store.archiveConversation('missing-conversation'),
-      /conversation not found/
+      () => store.archiveConversation('missing-conversation'),
+      /conversation not found/,
     );
-    assert.equal(store.updateConversationRuntime('missing-conversation', {
-      status: 'running',
-      live: true,
-      attentionReason: null,
-      processId: null,
-      lastEventAt: null,
-      lastExit: null
-    }), null);
+    assert.equal(
+      store.updateConversationRuntime('missing-conversation', {
+        status: 'running',
+        live: true,
+        attentionReason: null,
+        processId: null,
+        lastEventAt: null,
+        lastExit: null,
+      }),
+      null,
+    );
     assert.equal(
       store.updateConversationAdapterState('missing-conversation', {
         codex: {
-          resumeSessionId: 'thread-missing'
-        }
+          resumeSessionId: 'thread-missing',
+        },
       }),
-      null
+      null,
     );
     assert.equal(store.updateConversationTitle('missing-conversation', 'x'), null);
 
@@ -219,7 +221,7 @@ void test('control-plane store restores archived directory and validates errors'
       tenantId: 'tenant-a',
       userId: 'user-a',
       workspaceId: 'workspace-a',
-      path: '/tmp/dir-a'
+      path: '/tmp/dir-a',
     });
     assert.equal(restored.directoryId, 'dir-a');
     assert.equal(restored.archivedAt, null);
@@ -231,25 +233,21 @@ void test('control-plane store restores archived directory and validates errors'
           conversationId: 'conversation-archived-directory',
           directoryId: 'dir-a',
           title: 't',
-          agentType: 'codex'
+          agentType: 'codex',
         }),
-      /directory not found/
+      /directory not found/,
     );
 
-    assert.throws(
-      () =>
-        store.archiveDirectory('missing-directory'),
-      /directory not found/
-    );
+    assert.throws(() => store.archiveDirectory('missing-directory'), /directory not found/);
     assert.throws(
       () =>
         store.createConversation({
           conversationId: 'conversation-b',
           directoryId: 'missing-directory',
           title: 't',
-          agentType: 'codex'
+          agentType: 'codex',
         }),
-      /directory not found/
+      /directory not found/,
     );
   } finally {
     store.close();
@@ -264,7 +262,7 @@ void test('control-plane store upsertDirectory updates existing id paths and rej
       tenantId: 'tenant-update',
       userId: 'user-update',
       workspaceId: 'workspace-update',
-      path: '/tmp/update-a'
+      path: '/tmp/update-a',
     });
     assert.equal(created.path, '/tmp/update-a');
     assert.equal(created.archivedAt, null);
@@ -274,7 +272,7 @@ void test('control-plane store upsertDirectory updates existing id paths and rej
       tenantId: 'tenant-update',
       userId: 'user-update',
       workspaceId: 'workspace-update',
-      path: '/tmp/update-a'
+      path: '/tmp/update-a',
     });
     assert.equal(unchanged.directoryId, 'dir-update');
     assert.equal(unchanged.path, '/tmp/update-a');
@@ -284,7 +282,7 @@ void test('control-plane store upsertDirectory updates existing id paths and rej
       tenantId: 'tenant-update',
       userId: 'user-update',
       workspaceId: 'workspace-update',
-      path: '/tmp/update-b'
+      path: '/tmp/update-b',
     });
     assert.equal(moved.directoryId, 'dir-update');
     assert.equal(moved.path, '/tmp/update-b');
@@ -296,7 +294,7 @@ void test('control-plane store upsertDirectory updates existing id paths and rej
       tenantId: 'tenant-update',
       userId: 'user-update',
       workspaceId: 'workspace-update',
-      path: '/tmp/update-b'
+      path: '/tmp/update-b',
     });
     assert.equal(restoredSameId.archivedAt, null);
 
@@ -307,9 +305,9 @@ void test('control-plane store upsertDirectory updates existing id paths and rej
           tenantId: 'tenant-other',
           userId: 'user-update',
           workspaceId: 'workspace-update',
-          path: '/tmp/update-c'
+          path: '/tmp/update-c',
         }),
-      /directory scope mismatch/
+      /directory scope mismatch/,
     );
   } finally {
     store.close();
@@ -324,7 +322,7 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
       tenantId: 'tenant-telemetry',
       userId: 'user-telemetry',
       workspaceId: 'workspace-telemetry',
-      path: '/tmp/telemetry'
+      path: '/tmp/telemetry',
     });
     store.createConversation({
       conversationId: 'conversation-telemetry',
@@ -333,9 +331,9 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
       agentType: 'codex',
       adapterState: {
         codex: {
-          resumeSessionId: 'thread-telemetry'
-        }
-      }
+          resumeSessionId: 'thread-telemetry',
+        },
+      },
     });
 
     const insertedFirst = store.appendTelemetry({
@@ -347,9 +345,9 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
       summary: 'prompt accepted',
       observedAt: '2026-02-15T00:00:00.000Z',
       payload: {
-        a: 1
+        a: 1,
       },
-      fingerprint: 'fingerprint-1'
+      fingerprint: 'fingerprint-1',
     });
     const insertedDuplicate = store.appendTelemetry({
       source: 'otlp-log',
@@ -360,9 +358,9 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
       summary: 'prompt accepted',
       observedAt: '2026-02-15T00:00:00.000Z',
       payload: {
-        a: 1
+        a: 1,
       },
-      fingerprint: 'fingerprint-1'
+      fingerprint: 'fingerprint-1',
     });
     assert.equal(insertedFirst, true);
     assert.equal(insertedDuplicate, false);
@@ -376,9 +374,9 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
       summary: 'from history',
       observedAt: '2026-02-15T00:00:01.000Z',
       payload: {
-        b: 2
+        b: 2,
       },
-      fingerprint: 'fingerprint-2'
+      fingerprint: 'fingerprint-2',
     });
 
     const latest = store.latestTelemetrySummary('conversation-telemetry');
@@ -387,7 +385,7 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
       eventName: 'history.entry',
       severity: null,
       summary: 'from history',
-      observedAt: '2026-02-15T00:00:01.000Z'
+      observedAt: '2026-02-15T00:00:01.000Z',
     });
 
     const listed = store.listTelemetryForSession('conversation-telemetry', 10);
@@ -400,7 +398,7 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
 
     assert.equal(
       store.findConversationIdByCodexThreadId('thread-telemetry'),
-      'conversation-telemetry'
+      'conversation-telemetry',
     );
     store.archiveConversation('conversation-telemetry');
     assert.equal(store.findConversationIdByCodexThreadId('thread-telemetry'), null);
@@ -426,7 +424,7 @@ void test('control-plane telemetry append returns false when sqlite run result i
   internals.db.prepare = ((sql: string) => {
     if (sql.includes('INSERT INTO session_telemetry')) {
       return {
-        run: () => null
+        run: () => null,
       };
     }
     return originalPrepare(sql);
@@ -441,7 +439,7 @@ void test('control-plane telemetry append returns false when sqlite run result i
       summary: null,
       observedAt: '2026-02-15T00:00:00.000Z',
       payload: {},
-      fingerprint: 'fingerprint-non-object-result'
+      fingerprint: 'fingerprint-non-object-result',
     });
     assert.equal(inserted, false);
   } finally {
@@ -462,7 +460,7 @@ void test('control-plane telemetry append returns false when sqlite run changes 
   internals.db.prepare = ((sql: string) => {
     if (sql.includes('INSERT INTO session_telemetry')) {
       return {
-        run: () => ({ changes: 'bad-value' })
+        run: () => ({ changes: 'bad-value' }),
       };
     }
     return originalPrepare(sql);
@@ -477,7 +475,7 @@ void test('control-plane telemetry append returns false when sqlite run changes 
       summary: null,
       observedAt: '2026-02-15T00:00:00.000Z',
       payload: {},
-      fingerprint: 'fingerprint-non-numeric-changes'
+      fingerprint: 'fingerprint-non-numeric-changes',
     });
     assert.equal(inserted, false);
   } finally {
@@ -490,9 +488,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
   assert.throws(
     () =>
       normalizeStoredDirectoryRow({
-        directory_id: 1
+        directory_id: 1,
       }),
-    /expected string for directory_id/
+    /expected string for directory_id/,
   );
 
   assert.throws(() => normalizeStoredConversationRow(null), /expected object row/);
@@ -515,9 +513,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
         runtime_last_event_at: null,
         runtime_last_exit_code: null,
         runtime_last_exit_signal: null,
-        adapter_state_json: '{}'
+        adapter_state_json: '{}',
       }),
-    /runtime_status enum/
+    /runtime_status enum/,
   );
   assert.throws(
     () =>
@@ -538,9 +536,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
         runtime_last_event_at: null,
         runtime_last_exit_code: null,
         runtime_last_exit_signal: null,
-        adapter_state_json: '{}'
+        adapter_state_json: '{}',
       }),
-    /unexpected flag value/
+    /unexpected flag value/,
   );
   assert.throws(
     () =>
@@ -561,9 +559,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
         runtime_last_event_at: null,
         runtime_last_exit_code: null,
         runtime_last_exit_signal: null,
-        adapter_state_json: null
+        adapter_state_json: null,
       }),
-    /adapter_state_json/
+    /adapter_state_json/,
   );
   assert.throws(
     () =>
@@ -584,9 +582,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
         runtime_last_event_at: null,
         runtime_last_exit_code: null,
         runtime_last_exit_signal: null,
-        adapter_state_json: '{}'
+        adapter_state_json: '{}',
       }),
-    /integer flag/
+    /integer flag/,
   );
   assert.throws(
     () =>
@@ -607,9 +605,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
         runtime_last_event_at: null,
         runtime_last_exit_code: null,
         runtime_last_exit_signal: null,
-        adapter_state_json: '{}'
+        adapter_state_json: '{}',
       }),
-    /integer flag/
+    /integer flag/,
   );
   assert.throws(
     () =>
@@ -630,9 +628,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
         runtime_last_event_at: null,
         runtime_last_exit_code: null,
         runtime_last_exit_signal: null,
-        adapter_state_json: '{}'
+        adapter_state_json: '{}',
       }),
-    /finite number/
+    /finite number/,
   );
   assert.throws(
     () =>
@@ -653,9 +651,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
         runtime_last_event_at: null,
         runtime_last_exit_code: null,
         runtime_last_exit_signal: null,
-        adapter_state_json: '{}'
+        adapter_state_json: '{}',
       }),
-    /finite number/
+    /finite number/,
   );
   assert.throws(
     () =>
@@ -676,9 +674,9 @@ void test('control-plane store normalization helpers validate row shapes and fie
         runtime_last_event_at: null,
         runtime_last_exit_code: null,
         runtime_last_exit_signal: 'BROKEN',
-        adapter_state_json: '{}'
+        adapter_state_json: '{}',
       }),
-    /signal name/
+    /signal name/,
   );
   const normalizedSignalOnly = normalizeStoredConversationRow({
     conversation_id: 'c-signal',
@@ -697,14 +695,14 @@ void test('control-plane store normalization helpers validate row shapes and fie
     runtime_last_event_at: null,
     runtime_last_exit_code: null,
     runtime_last_exit_signal: 'SIGTERM',
-    adapter_state_json: '{"codex":{"resumeSessionId":"thread-1"}}'
+    adapter_state_json: '{"codex":{"resumeSessionId":"thread-1"}}',
   });
   assert.equal(normalizedSignalOnly.runtimeLastExit?.code, null);
   assert.equal(normalizedSignalOnly.runtimeLastExit?.signal, 'SIGTERM');
   assert.deepEqual(normalizedSignalOnly.adapterState, {
     codex: {
-      resumeSessionId: 'thread-1'
-    }
+      resumeSessionId: 'thread-1',
+    },
   });
 
   const normalizedCodeOnly = normalizeStoredConversationRow({
@@ -724,7 +722,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
     runtime_last_event_at: null,
     runtime_last_exit_code: 130,
     runtime_last_exit_signal: null,
-    adapter_state_json: '[]'
+    adapter_state_json: '[]',
   });
   assert.equal(normalizedCodeOnly.runtimeLastExit?.code, 130);
   assert.equal(normalizedCodeOnly.runtimeLastExit?.signal, null);
@@ -747,7 +745,7 @@ void test('control-plane store normalization helpers validate row shapes and fie
     runtime_last_event_at: null,
     runtime_last_exit_code: null,
     runtime_last_exit_signal: null,
-    adapter_state_json: '{bad json'
+    adapter_state_json: '{bad json',
   });
   assert.deepEqual(normalizedInvalidAdapterState.adapterState, {});
 });
@@ -790,7 +788,10 @@ void test('control-plane telemetry normalization guards reject invalid rows and 
 
   const reopened = new SqliteControlPlaneStore(storePath);
   try {
-    assert.throws(() => reopened.listTelemetryForSession('conversation-x', 10), /telemetry source enum value/);
+    assert.throws(
+      () => reopened.listTelemetryForSession('conversation-x', 10),
+      /telemetry source enum value/,
+    );
   } finally {
     reopened.close();
   }
@@ -881,7 +882,7 @@ void test('control-plane telemetry normalization guards reject invalid rows and 
   try {
     assert.throws(
       () => reopenedPayload.listTelemetryForSession('conversation-y', 10),
-      /expected string for payload_json/
+      /expected string for payload_json/,
     );
   } finally {
     reopenedPayload.close();
@@ -916,14 +917,14 @@ void test('control-plane store thread-id lookup falls back when json_extract pat
       tenantId: 'tenant-fallback',
       userId: 'user-fallback',
       workspaceId: 'workspace-fallback',
-      path: '/tmp/fallback'
+      path: '/tmp/fallback',
     });
     store.createConversation({
       conversationId: 'conversation-bad-json',
       directoryId: 'dir-fallback',
       title: 'bad json',
       agentType: 'codex',
-      adapterState: {}
+      adapterState: {},
     });
     store.createConversation({
       conversationId: 'conversation-good-json',
@@ -932,9 +933,9 @@ void test('control-plane store thread-id lookup falls back when json_extract pat
       agentType: 'codex',
       adapterState: {
         codex: {
-          resumeSessionId: 'thread-fallback'
-        }
-      }
+          resumeSessionId: 'thread-fallback',
+        },
+      },
     });
   } finally {
     store.close();
@@ -944,11 +945,11 @@ void test('control-plane store thread-id lookup falls back when json_extract pat
   try {
     db.prepare('UPDATE conversations SET adapter_state_json = ? WHERE conversation_id = ?').run(
       '{',
-      'conversation-bad-json'
+      'conversation-bad-json',
     );
     db.prepare('UPDATE conversations SET adapter_state_json = ? WHERE conversation_id = ?').run(
       '{"codex":"not-object"}',
-      'conversation-good-json'
+      'conversation-good-json',
     );
   } finally {
     db.close();
@@ -959,12 +960,12 @@ void test('control-plane store thread-id lookup falls back when json_extract pat
     assert.equal(reopened.findConversationIdByCodexThreadId('thread-fallback'), null);
     reopened.updateConversationAdapterState('conversation-good-json', {
       codex: {
-        resumeSessionId: 'thread-fallback'
-      }
+        resumeSessionId: 'thread-fallback',
+      },
     });
     assert.equal(
       reopened.findConversationIdByCodexThreadId('thread-fallback'),
-      'conversation-good-json'
+      'conversation-good-json',
     );
   } finally {
     reopened.close();
@@ -981,7 +982,7 @@ void test('control-plane store thread-id lookup supports legacy codex.threadId a
       tenantId: 'tenant-legacy-thread-id',
       userId: 'user-legacy-thread-id',
       workspaceId: 'workspace-legacy-thread-id',
-      path: '/tmp/legacy-thread-id'
+      path: '/tmp/legacy-thread-id',
     });
     store.createConversation({
       conversationId: 'conversation-legacy-thread-id',
@@ -990,14 +991,14 @@ void test('control-plane store thread-id lookup supports legacy codex.threadId a
       agentType: 'codex',
       adapterState: {
         codex: {
-          threadId: 'thread-legacy-id'
-        }
-      }
+          threadId: 'thread-legacy-id',
+        },
+      },
     });
 
     assert.equal(
       store.findConversationIdByCodexThreadId('thread-legacy-id'),
-      'conversation-legacy-thread-id'
+      'conversation-legacy-thread-id',
     );
   } finally {
     store.close();
@@ -1012,7 +1013,7 @@ void test('control-plane store supports deleting conversations and rejects missi
       tenantId: 'tenant-delete',
       userId: 'user-delete',
       workspaceId: 'workspace-delete',
-      path: '/tmp/delete'
+      path: '/tmp/delete',
     });
     assert.equal(directory.directoryId, 'directory-delete');
 
@@ -1020,7 +1021,7 @@ void test('control-plane store supports deleting conversations and rejects missi
       conversationId: 'conversation-delete',
       directoryId: directory.directoryId,
       title: 'delete me',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     assert.equal(created.conversationId, 'conversation-delete');
     assert.equal(store.deleteConversation('conversation-delete'), true);
@@ -1050,9 +1051,9 @@ void test('control-plane store rollback guards cover impossible post-write null 
           tenantId: 'tenant-rollback',
           userId: 'user-rollback',
           workspaceId: 'workspace-rollback',
-          path: '/tmp/rollback-directory'
+          path: '/tmp/rollback-directory',
         }),
-      /directory insert failed/
+      /directory insert failed/,
     );
 
     store.getDirectory = originalGetDirectory;
@@ -1061,7 +1062,7 @@ void test('control-plane store rollback guards cover impossible post-write null 
       tenantId: 'tenant-live',
       userId: 'user-live',
       workspaceId: 'workspace-live',
-      path: '/tmp/update-fail-old'
+      path: '/tmp/update-fail-old',
     });
     let updateFailGetDirectoryCalls = 0;
     store.getDirectory = ((directoryId: string) => {
@@ -1080,9 +1081,9 @@ void test('control-plane store rollback guards cover impossible post-write null 
           tenantId: 'tenant-live',
           userId: 'user-live',
           workspaceId: 'workspace-live',
-          path: '/tmp/update-fail-new'
+          path: '/tmp/update-fail-new',
         }),
-      /directory missing after update/
+      /directory missing after update/,
     );
 
     store.getDirectory = originalGetDirectory;
@@ -1091,12 +1092,11 @@ void test('control-plane store rollback guards cover impossible post-write null 
       tenantId: 'tenant-live',
       userId: 'user-live',
       workspaceId: 'workspace-live',
-      path: '/tmp/restore-fail'
+      path: '/tmp/restore-fail',
     });
-    internals.db.prepare('UPDATE directories SET archived_at = ? WHERE directory_id = ?').run(
-      '2026-02-14T00:03:00.000Z',
-      'dir-restore-fail'
-    );
+    internals.db
+      .prepare('UPDATE directories SET archived_at = ? WHERE directory_id = ?')
+      .run('2026-02-14T00:03:00.000Z', 'dir-restore-fail');
     store.getDirectory = ((directoryId: string) => {
       if (directoryId === 'dir-restore-fail') {
         return null;
@@ -1110,9 +1110,9 @@ void test('control-plane store rollback guards cover impossible post-write null 
           tenantId: 'tenant-live',
           userId: 'user-live',
           workspaceId: 'workspace-live',
-          path: '/tmp/restore-fail'
+          path: '/tmp/restore-fail',
         }),
-      /directory missing after restore/
+      /directory missing after restore/,
     );
 
     store.getDirectory = originalGetDirectory;
@@ -1121,7 +1121,7 @@ void test('control-plane store rollback guards cover impossible post-write null 
       tenantId: 'tenant-live',
       userId: 'user-live',
       workspaceId: 'workspace-live',
-      path: '/tmp/live-directory'
+      path: '/tmp/live-directory',
     });
 
     store.getConversation = (() => null) as typeof store.getConversation;
@@ -1131,9 +1131,9 @@ void test('control-plane store rollback guards cover impossible post-write null 
           conversationId: 'conversation-rollback',
           directoryId: 'dir-live',
           title: 'rollback conversation',
-          agentType: 'codex'
+          agentType: 'codex',
         }),
-      /conversation insert failed/
+      /conversation insert failed/,
     );
     assert.equal(store.listConversations({ directoryId: 'dir-live' }).length, 0);
     store.getConversation = originalGetConversation;
@@ -1142,7 +1142,7 @@ void test('control-plane store rollback guards cover impossible post-write null 
       conversationId: 'conversation-live',
       directoryId: 'dir-live',
       title: 'live conversation',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     assert.equal(created.conversationId, 'conversation-live');
 
@@ -1156,7 +1156,7 @@ void test('control-plane store rollback guards cover impossible post-write null 
     }) as typeof store.getConversation;
     assert.throws(
       () => store.archiveConversation('conversation-live'),
-      /conversation missing after archive/
+      /conversation missing after archive/,
     );
 
     store.getConversation = originalGetConversation;
@@ -1172,10 +1172,7 @@ void test('control-plane store rollback guards cover impossible post-write null 
       }
       return originalGetDirectory(directoryId);
     }) as typeof store.getDirectory;
-    assert.throws(
-      () => store.archiveDirectory('dir-live'),
-      /directory missing after archive/
-    );
+    assert.throws(() => store.archiveDirectory('dir-live'), /directory missing after archive/);
   } finally {
     store.close();
   }
@@ -1227,14 +1224,14 @@ void test('control-plane store migrates legacy conversations schema to add adapt
       tenantId: 'tenant-legacy',
       userId: 'user-legacy',
       workspaceId: 'workspace-legacy',
-      path: '/tmp/legacy'
+      path: '/tmp/legacy',
     });
     assert.equal(directory.directoryId, 'dir-legacy');
     const conversation = store.createConversation({
       conversationId: 'conversation-legacy',
       directoryId: 'dir-legacy',
       title: 'legacy upgrade',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     assert.deepEqual(conversation.adapterState, {});
   } finally {
@@ -1243,5 +1240,3 @@ void test('control-plane store migrates legacy conversations schema to add adapt
     rmSync(dirname(storePath), { recursive: true, force: true });
   }
 });
-
-

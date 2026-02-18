@@ -128,11 +128,13 @@ void test('task manager owns ordering, repository filtering, and reorder payload
     ['task-2', 'task-1', 'task-3', 'task-4'],
   );
   assert.deepEqual(
-    manager.tasksForRepository({
-      repositoryId: 'repo-a',
-      sortTasks: sortByOrder,
-      taskRepositoryId: (task) => task.repositoryId,
-    }).map((task) => task.taskId),
+    manager
+      .tasksForRepository({
+        repositoryId: 'repo-a',
+        sortTasks: sortByOrder,
+        taskRepositoryId: (task) => task.repositoryId,
+      })
+      .map((task) => task.taskId),
     ['task-2', 'task-1', 'task-3'],
   );
   assert.deepEqual(

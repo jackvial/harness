@@ -34,16 +34,19 @@ export function selectionPointsEqual(left: SelectionPoint, right: SelectionPoint
   return left.rowAbs === right.rowAbs && left.col === right.col;
 }
 
-export function normalizeSelection(selection: PaneSelection): { start: SelectionPoint; end: SelectionPoint } {
+export function normalizeSelection(selection: PaneSelection): {
+  start: SelectionPoint;
+  end: SelectionPoint;
+} {
   if (compareSelectionPoints(selection.anchor, selection.focus) <= 0) {
     return {
       start: selection.anchor,
-      end: selection.focus
+      end: selection.focus,
     };
   }
   return {
     start: selection.focus,
-    end: selection.anchor
+    end: selection.anchor,
   };
 }
 
@@ -51,22 +54,27 @@ export function clampPanePoint(
   layout: SelectionLayout,
   frame: Pick<TerminalSnapshotFrameCore, 'viewport'>,
   rowAbs: number,
-  col: number
+  col: number,
 ): SelectionPoint {
   const maxRowAbs = Math.max(0, frame.viewport.totalRows - 1);
   return {
     rowAbs: Math.max(0, Math.min(maxRowAbs, rowAbs)),
-    col: Math.max(0, Math.min(layout.rightCols - 1, col))
+    col: Math.max(0, Math.min(layout.rightCols - 1, col)),
   };
 }
 
 export function pointFromMouseEvent(
   layout: SelectionLayout,
   frame: Pick<TerminalSnapshotFrameCore, 'viewport'>,
-  event: { col: number; row: number }
+  event: { col: number; row: number },
 ): SelectionPoint {
   const rowViewport = Math.max(0, Math.min(layout.paneRows - 1, event.row - 1));
-  return clampPanePoint(layout, frame, frame.viewport.top + rowViewport, event.col - layout.rightStartCol);
+  return clampPanePoint(
+    layout,
+    frame,
+    frame.viewport.top + rowViewport,
+    event.col - layout.rightStartCol,
+  );
 }
 
 export function isWheelMouseCode(code: number): boolean {
@@ -121,10 +129,11 @@ interface ReduceConversationMouseSelectionResult {
 }
 
 export function reduceConversationMouseSelection(
-  options: ReduceConversationMouseSelectionOptions
+  options: ReduceConversationMouseSelectionOptions,
 ): ReduceConversationMouseSelectionResult {
   const startSelection = options.isMainPaneTarget && options.isLeftButtonPress;
-  const updateSelection = options.selectionDrag !== null && options.isMainPaneTarget && options.isSelectionDrag;
+  const updateSelection =
+    options.selectionDrag !== null && options.isMainPaneTarget && options.isSelectionDrag;
   const releaseSelection = options.selectionDrag !== null && options.isMouseRelease;
 
   if (startSelection) {
@@ -133,12 +142,12 @@ export function reduceConversationMouseSelection(
       selectionDrag: {
         anchor: options.point,
         focus: options.point,
-        hasDragged: false
+        hasDragged: false,
       },
       pinViewport: true,
       releaseViewportPin: false,
       markDirty: true,
-      consumed: true
+      consumed: true,
     };
   }
 
@@ -149,12 +158,13 @@ export function reduceConversationMouseSelection(
         anchor: options.selectionDrag.anchor,
         focus: options.point,
         hasDragged:
-          options.selectionDrag.hasDragged || !selectionPointsEqual(options.selectionDrag.anchor, options.point)
+          options.selectionDrag.hasDragged ||
+          !selectionPointsEqual(options.selectionDrag.anchor, options.point),
       },
       pinViewport: false,
       releaseViewportPin: false,
       markDirty: true,
-      consumed: true
+      consumed: true,
     };
   }
 
@@ -163,24 +173,25 @@ export function reduceConversationMouseSelection(
       anchor: options.selectionDrag.anchor,
       focus: options.point,
       hasDragged:
-        options.selectionDrag.hasDragged || !selectionPointsEqual(options.selectionDrag.anchor, options.point)
+        options.selectionDrag.hasDragged ||
+        !selectionPointsEqual(options.selectionDrag.anchor, options.point),
     };
     if (finalized.hasDragged) {
       const completedSelection: PaneSelection = {
         anchor: finalized.anchor,
         focus: finalized.focus,
-        text: ''
+        text: '',
       };
       return {
         selection: {
           ...completedSelection,
-          text: options.selectionTextForPane(completedSelection)
+          text: options.selectionTextForPane(completedSelection),
         },
         selectionDrag: null,
         pinViewport: false,
         releaseViewportPin: false,
         markDirty: true,
-        consumed: true
+        consumed: true,
       };
     }
     return {
@@ -189,7 +200,7 @@ export function reduceConversationMouseSelection(
       pinViewport: false,
       releaseViewportPin: true,
       markDirty: true,
-      consumed: true
+      consumed: true,
     };
   }
 
@@ -200,7 +211,7 @@ export function reduceConversationMouseSelection(
       pinViewport: false,
       releaseViewportPin: true,
       markDirty: true,
-      consumed: false
+      consumed: false,
     };
   }
 
@@ -210,7 +221,7 @@ export function reduceConversationMouseSelection(
     pinViewport: false,
     releaseViewportPin: false,
     markDirty: false,
-    consumed: false
+    consumed: false,
   };
 }
 
@@ -232,7 +243,7 @@ function cellGlyphForOverlay(frame: TerminalSnapshotFrameCore, row: number, col:
 export function renderSelectionOverlay(
   layout: SelectionLayout,
   frame: TerminalSnapshotFrameCore,
-  selection: PaneSelection | null
+  selection: PaneSelection | null,
 ): string {
   if (selection === null) {
     return '';
@@ -268,7 +279,7 @@ export function renderSelectionOverlay(
 
 export function selectionVisibleRows(
   frame: Pick<TerminalSnapshotFrameCore, 'viewport' | 'rows'>,
-  selection: PaneSelection | null
+  selection: PaneSelection | null,
 ): readonly number[] {
   if (selection === null) {
     return [];
@@ -290,7 +301,10 @@ export function selectionVisibleRows(
   return rows;
 }
 
-export function mergeUniqueRows(left: readonly number[], right: readonly number[]): readonly number[] {
+export function mergeUniqueRows(
+  left: readonly number[],
+  right: readonly number[],
+): readonly number[] {
   if (left.length === 0) {
     return right;
   }
@@ -307,7 +321,10 @@ export function mergeUniqueRows(left: readonly number[], right: readonly number[
   return [...merged].sort((a, b) => a - b);
 }
 
-export function selectionText(frame: TerminalSnapshotFrameCore, selection: PaneSelection | null): string {
+export function selectionText(
+  frame: TerminalSnapshotFrameCore,
+  selection: PaneSelection | null,
+): string {
   if (selection === null) {
     return '';
   }
@@ -356,7 +373,11 @@ export function isCopyShortcutInput(input: Buffer): boolean {
     let startIndex = text.indexOf(prefix);
     while (startIndex !== -1) {
       let index = startIndex + prefix.length;
-      while (index < text.length && text.charCodeAt(index) >= 0x30 && text.charCodeAt(index) <= 0x39) {
+      while (
+        index < text.length &&
+        text.charCodeAt(index) >= 0x30 &&
+        text.charCodeAt(index) <= 0x39
+      ) {
         index += 1;
       }
       if (index > startIndex + prefix.length && text[index] === 'u') {
@@ -370,7 +391,7 @@ export function isCopyShortcutInput(input: Buffer): boolean {
 
 export function writeTextToClipboard(
   value: string,
-  writer: (payload: string) => unknown = (payload) => process.stdout.write(payload)
+  writer: (payload: string) => unknown = (payload) => process.stdout.write(payload),
 ): boolean {
   if (value.length === 0) {
     return false;

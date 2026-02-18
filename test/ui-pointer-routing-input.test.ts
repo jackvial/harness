@@ -73,7 +73,10 @@ void test('pointer routing input delegates drag, separator, wheel, and move hand
           `release:${options.isMouseRelease}:${options.mainPaneMode}:${options.target}:${options.rowIndex}`,
         );
         options.setHomePaneDragState(null);
-        options.reorderTaskByDrop(options.homePaneDragState?.itemId ?? 'none', options.taskIdAtRow(3) ?? 'none');
+        options.reorderTaskByDrop(
+          options.homePaneDragState?.itemId ?? 'none',
+          options.taskIdAtRow(3) ?? 'none',
+        );
         options.reorderRepositoryByDrop(
           options.homePaneDragState?.itemId ?? 'none',
           options.repositoryIdAtRow(3) ?? 'none',
@@ -180,12 +183,18 @@ void test('pointer routing input default dependencies return false for ineligibl
   });
 
   assert.equal(input.handlePaneDividerDrag({ code: 0, final: 'M', col: 1 }), false);
-  assert.equal(input.handleHomePaneDragRelease({ final: 'M', target: 'right', rowIndex: 0 }), false);
+  assert.equal(
+    input.handleHomePaneDragRelease({ final: 'M', target: 'right', rowIndex: 0 }),
+    false,
+  );
   assert.equal(
     input.handleSeparatorPointerPress({ target: 'left', code: 0, final: 'M', col: 1 }),
     false,
   );
-  assert.equal(input.handleMainPaneWheel({ target: 'left', code: 0 }, () => {}), false);
+  assert.equal(
+    input.handleMainPaneWheel({ target: 'left', code: 0 }, () => {}),
+    false,
+  );
   assert.equal(
     input.handleHomePaneDragMove({ target: 'right', code: 0, final: 'M', rowIndex: 0 }),
     false,

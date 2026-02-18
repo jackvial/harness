@@ -19,7 +19,7 @@ import {
   normalizeTelemetrySource,
   serializeTaskLinear,
   sqliteStatementChanges,
-  uniqueValues
+  uniqueValues,
 } from './control-plane-store-normalize.ts';
 import type {
   ControlPlaneConversationRecord,
@@ -30,7 +30,7 @@ import type {
   ControlPlaneTaskStatus,
   ControlPlaneTelemetryRecord,
   ControlPlaneTelemetrySummary,
-  TaskLinearInput
+  TaskLinearInput,
 } from './control-plane-store-types.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 import type { CodexTelemetrySource } from '../control-plane/codex-telemetry.ts';
@@ -43,7 +43,7 @@ export type {
   ControlPlaneTaskLinearRecord,
   ControlPlaneTaskRecord,
   ControlPlaneTelemetryRecord,
-  ControlPlaneTelemetrySummary
+  ControlPlaneTelemetrySummary,
 } from './control-plane-store-types.ts';
 
 export { normalizeStoredConversationRow, normalizeStoredDirectoryRow };
@@ -203,7 +203,7 @@ export class SqliteControlPlaneStore {
               UPDATE directories
               SET path = ?, archived_at = NULL
               WHERE directory_id = ?
-            `
+            `,
             )
             .run(input.path, input.directoryId);
           const updated = this.getDirectory(input.directoryId);
@@ -221,7 +221,7 @@ export class SqliteControlPlaneStore {
         input.tenantId,
         input.userId,
         input.workspaceId,
-        input.path
+        input.path,
       );
       if (existing !== null) {
         if (existing.archivedAt !== null) {
@@ -231,7 +231,7 @@ export class SqliteControlPlaneStore {
               UPDATE directories
               SET archived_at = NULL
               WHERE directory_id = ?
-            `
+            `,
             )
             .run(existing.directoryId);
           const restored = this.getDirectory(existing.directoryId);
@@ -258,7 +258,7 @@ export class SqliteControlPlaneStore {
             created_at,
             archived_at
           ) VALUES (?, ?, ?, ?, ?, ?, NULL)
-        `
+        `,
         )
         .run(
           input.directoryId,
@@ -266,7 +266,7 @@ export class SqliteControlPlaneStore {
           input.userId,
           input.workspaceId,
           input.path,
-          createdAt
+          createdAt,
         );
       const inserted = this.getDirectory(input.directoryId);
       if (inserted === null) {
@@ -294,7 +294,7 @@ export class SqliteControlPlaneStore {
           archived_at
         FROM directories
         WHERE directory_id = ?
-      `
+      `,
       )
       .get(directoryId);
     if (row === undefined) {
@@ -339,7 +339,7 @@ export class SqliteControlPlaneStore {
         ${where}
         ORDER BY created_at ASC, directory_id ASC
         LIMIT ?
-      `
+      `,
       )
       .all(...args, limit);
     return rows.map((row) => normalizeDirectoryRow(row));
@@ -363,7 +363,7 @@ export class SqliteControlPlaneStore {
           UPDATE directories
           SET archived_at = ?
           WHERE directory_id = ?
-        `
+        `,
         )
         .run(archivedAt, directoryId);
       const archived = this.getDirectory(directoryId);
@@ -413,7 +413,7 @@ export class SqliteControlPlaneStore {
             runtime_last_exit_signal,
             adapter_state_json
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'running', 0, NULL, NULL, NULL, NULL, NULL, ?)
-        `
+        `,
         )
         .run(
           input.conversationId,
@@ -424,7 +424,7 @@ export class SqliteControlPlaneStore {
           input.title,
           input.agentType,
           createdAt,
-          JSON.stringify(input.adapterState ?? {})
+          JSON.stringify(input.adapterState ?? {}),
         );
       const created = this.getConversation(input.conversationId);
       if (created === null) {
@@ -462,7 +462,7 @@ export class SqliteControlPlaneStore {
           adapter_state_json
         FROM conversations
         WHERE conversation_id = ?
-      `
+      `,
       )
       .get(conversationId);
     if (row === undefined) {
@@ -521,7 +521,7 @@ export class SqliteControlPlaneStore {
         ${where}
         ORDER BY created_at ASC, conversation_id ASC
         LIMIT ?
-      `
+      `,
       )
       .all(...args, limit);
     return rows.map((row) => normalizeConversationRow(row));
@@ -541,7 +541,7 @@ export class SqliteControlPlaneStore {
           UPDATE conversations
           SET archived_at = ?
           WHERE conversation_id = ?
-        `
+        `,
         )
         .run(archivedAt, conversationId);
       const archived = this.getConversation(conversationId);
@@ -558,7 +558,7 @@ export class SqliteControlPlaneStore {
 
   updateConversationTitle(
     conversationId: string,
-    title: string
+    title: string,
   ): ControlPlaneConversationRecord | null {
     const existing = this.getConversation(conversationId);
     if (existing === null) {
@@ -570,7 +570,7 @@ export class SqliteControlPlaneStore {
         UPDATE conversations
         SET title = ?
         WHERE conversation_id = ?
-      `
+      `,
       )
       .run(title, conversationId);
     return this.getConversation(conversationId);
@@ -588,7 +588,7 @@ export class SqliteControlPlaneStore {
           `
           DELETE FROM conversations
           WHERE conversation_id = ?
-        `
+        `,
         )
         .run(conversationId);
       this.db.exec('COMMIT');
@@ -601,7 +601,7 @@ export class SqliteControlPlaneStore {
 
   updateConversationAdapterState(
     conversationId: string,
-    adapterState: Record<string, unknown>
+    adapterState: Record<string, unknown>,
   ): ControlPlaneConversationRecord | null {
     const existing = this.getConversation(conversationId);
     if (existing === null) {
@@ -613,7 +613,7 @@ export class SqliteControlPlaneStore {
         UPDATE conversations
         SET adapter_state_json = ?
         WHERE conversation_id = ?
-      `
+      `,
       )
       .run(JSON.stringify(adapterState), conversationId);
     return this.getConversation(conversationId);
@@ -621,7 +621,7 @@ export class SqliteControlPlaneStore {
 
   updateConversationRuntime(
     conversationId: string,
-    update: ConversationRuntimeUpdate
+    update: ConversationRuntimeUpdate,
   ): ControlPlaneConversationRecord | null {
     const existing = this.getConversation(conversationId);
     if (existing === null) {
@@ -640,7 +640,7 @@ export class SqliteControlPlaneStore {
           runtime_last_exit_code = ?,
           runtime_last_exit_signal = ?
         WHERE conversation_id = ?
-      `
+      `,
       )
       .run(
         update.status,
@@ -650,7 +650,7 @@ export class SqliteControlPlaneStore {
         update.lastEventAt,
         update.lastExit?.code ?? null,
         update.lastExit?.signal ?? null,
-        conversationId
+        conversationId,
       );
     return this.getConversation(conversationId);
   }
@@ -673,7 +673,7 @@ export class SqliteControlPlaneStore {
           fingerprint
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(fingerprint) DO NOTHING
-      `
+      `,
       )
       .run(
         input.source,
@@ -685,7 +685,7 @@ export class SqliteControlPlaneStore {
         input.observedAt,
         ingestedAt,
         JSON.stringify(input.payload),
-        input.fingerprint
+        input.fingerprint,
       );
     return sqliteStatementChanges(result) > 0;
   }
@@ -704,7 +704,7 @@ export class SqliteControlPlaneStore {
         WHERE session_id = ?
         ORDER BY observed_at DESC, telemetry_id DESC
         LIMIT 1
-      `
+      `,
       )
       .get(sessionId);
     if (row === undefined) {
@@ -716,7 +716,7 @@ export class SqliteControlPlaneStore {
       eventName: asStringOrNull(asRow.event_name, 'event_name'),
       severity: asStringOrNull(asRow.severity, 'severity'),
       summary: asStringOrNull(asRow.summary, 'summary'),
-      observedAt: asString(asRow.observed_at, 'observed_at')
+      observedAt: asString(asRow.observed_at, 'observed_at'),
     };
   }
 
@@ -740,7 +740,7 @@ export class SqliteControlPlaneStore {
         WHERE session_id = ?
         ORDER BY observed_at DESC, telemetry_id DESC
         LIMIT ?
-      `
+      `,
       )
       .all(sessionId, limit);
     return rows.map((row) => normalizeTelemetryRow(row));
@@ -765,7 +765,7 @@ export class SqliteControlPlaneStore {
             AND archived_at IS NULL
           ORDER BY created_at DESC, conversation_id DESC
           LIMIT 1
-        `
+        `,
         )
         .get(normalized, normalized);
       if (direct !== undefined) {
@@ -778,7 +778,7 @@ export class SqliteControlPlaneStore {
 
     const rows = this.listConversations({
       includeArchived: false,
-      limit: 10000
+      limit: 10000,
     });
     for (let idx = rows.length - 1; idx >= 0; idx -= 1) {
       const conversation = rows[idx]!;
@@ -804,7 +804,7 @@ export class SqliteControlPlaneStore {
     const normalizedRemoteUrl = normalizeNonEmptyLabel(input.remoteUrl, 'remoteUrl');
     const normalizedDefaultBranch = normalizeNonEmptyLabel(
       input.defaultBranch ?? 'main',
-      'defaultBranch'
+      'defaultBranch',
     );
     const metadata = input.metadata ?? {};
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
@@ -830,14 +830,14 @@ export class SqliteControlPlaneStore {
                 metadata_json = ?,
                 archived_at = NULL
               WHERE repository_id = ?
-            `
+            `,
             )
             .run(
               normalizedName,
               normalizedRemoteUrl,
               normalizedDefaultBranch,
               JSON.stringify(metadata),
-              input.repositoryId
+              input.repositoryId,
             );
           const updated = this.getRepository(input.repositoryId);
           if (updated === null) {
@@ -854,7 +854,7 @@ export class SqliteControlPlaneStore {
         input.tenantId,
         input.userId,
         input.workspaceId,
-        normalizedRemoteUrl
+        normalizedRemoteUrl,
       );
       if (existingByScopeUrl !== null) {
         if (
@@ -873,13 +873,13 @@ export class SqliteControlPlaneStore {
                 metadata_json = ?,
                 archived_at = NULL
               WHERE repository_id = ?
-            `
+            `,
             )
             .run(
               normalizedName,
               normalizedDefaultBranch,
               JSON.stringify(metadata),
-              existingByScopeUrl.repositoryId
+              existingByScopeUrl.repositoryId,
             );
           const restored = this.getRepository(existingByScopeUrl.repositoryId);
           if (restored === null) {
@@ -908,7 +908,7 @@ export class SqliteControlPlaneStore {
             created_at,
             archived_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-        `
+        `,
         )
         .run(
           input.repositoryId,
@@ -919,7 +919,7 @@ export class SqliteControlPlaneStore {
           normalizedRemoteUrl,
           normalizedDefaultBranch,
           JSON.stringify(metadata),
-          createdAt
+          createdAt,
         );
       const inserted = this.getRepository(input.repositoryId);
       if (inserted === null) {
@@ -950,7 +950,7 @@ export class SqliteControlPlaneStore {
           archived_at
         FROM repositories
         WHERE repository_id = ?
-      `
+      `,
       )
       .get(repositoryId);
     if (row === undefined) {
@@ -997,7 +997,7 @@ export class SqliteControlPlaneStore {
         ${where}
         ORDER BY created_at ASC, repository_id ASC
         LIMIT ?
-      `
+      `,
       )
       .all(...args, limit);
     return rows.map((row) => normalizeRepositoryRow(row));
@@ -1005,7 +1005,7 @@ export class SqliteControlPlaneStore {
 
   updateRepository(
     repositoryId: string,
-    update: UpdateRepositoryInput
+    update: UpdateRepositoryInput,
   ): ControlPlaneRepositoryRecord | null {
     const existing = this.getRepository(repositoryId);
     if (existing === null) {
@@ -1032,7 +1032,7 @@ export class SqliteControlPlaneStore {
           default_branch = ?,
           metadata_json = ?
         WHERE repository_id = ?
-      `
+      `,
       )
       .run(name, remoteUrl, defaultBranch, JSON.stringify(metadata), repositoryId);
     return this.getRepository(repositoryId);
@@ -1056,7 +1056,7 @@ export class SqliteControlPlaneStore {
           UPDATE repositories
           SET archived_at = ?
           WHERE repository_id = ?
-        `
+        `,
         )
         .run(archivedAt, repositoryId);
       const archived = this.getRepository(repositoryId);
@@ -1110,7 +1110,7 @@ export class SqliteControlPlaneStore {
             created_at,
             updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
-        `
+        `,
         )
         .run(
           input.taskId,
@@ -1123,7 +1123,7 @@ export class SqliteControlPlaneStore {
           serializeTaskLinear(linear),
           orderIndex,
           createdAt,
-          createdAt
+          createdAt,
         );
       const inserted = this.getTask(input.taskId);
       if (inserted === null) {
@@ -1162,7 +1162,7 @@ export class SqliteControlPlaneStore {
           updated_at
         FROM tasks
         WHERE task_id = ?
-      `
+      `,
       )
       .get(taskId);
     if (row === undefined) {
@@ -1222,7 +1222,7 @@ export class SqliteControlPlaneStore {
         ${where}
         ORDER BY order_index ASC, created_at ASC, task_id ASC
         LIMIT ?
-      `
+      `,
       )
       .all(...args, limit);
     return rows.map((row) => normalizeTaskRow(row));
@@ -1235,7 +1235,8 @@ export class SqliteControlPlaneStore {
     }
     const title =
       update.title === undefined ? existing.title : normalizeNonEmptyLabel(update.title, 'title');
-    const description = update.description === undefined ? existing.description : update.description;
+    const description =
+      update.description === undefined ? existing.description : update.description;
     const repositoryId =
       update.repositoryId === undefined ? existing.repositoryId : update.repositoryId;
     const linear =
@@ -1260,7 +1261,7 @@ export class SqliteControlPlaneStore {
           linear_json = ?,
           updated_at = ?
         WHERE task_id = ?
-      `
+      `,
       )
       .run(repositoryId, title, description, serializeTaskLinear(linear), updatedAt, taskId);
     return this.getTask(taskId);
@@ -1278,7 +1279,7 @@ export class SqliteControlPlaneStore {
           `
           DELETE FROM tasks
           WHERE task_id = ?
-        `
+        `,
         )
         .run(taskId);
       this.db.exec('COMMIT');
@@ -1325,7 +1326,7 @@ export class SqliteControlPlaneStore {
             completed_at = NULL,
             updated_at = ?
           WHERE task_id = ?
-        `
+        `,
         )
         .run(
           controllerId,
@@ -1334,7 +1335,7 @@ export class SqliteControlPlaneStore {
           input.baseBranch ?? null,
           claimedAt,
           claimedAt,
-          input.taskId
+          input.taskId,
         );
       const claimed = this.getTask(input.taskId);
       if (claimed === null) {
@@ -1369,7 +1370,7 @@ export class SqliteControlPlaneStore {
             completed_at = ?,
             updated_at = ?
           WHERE task_id = ?
-        `
+        `,
         )
         .run(completedAt, completedAt, taskId);
       const completed = this.getTask(taskId);
@@ -1406,7 +1407,7 @@ export class SqliteControlPlaneStore {
             completed_at = NULL,
             updated_at = ?
           WHERE task_id = ?
-        `
+        `,
         )
         .run(updatedAt, taskId);
       const ready = this.getTask(taskId);
@@ -1443,7 +1444,7 @@ export class SqliteControlPlaneStore {
             completed_at = NULL,
             updated_at = ?
           WHERE task_id = ?
-        `
+        `,
         )
         .run(updatedAt, taskId);
       const drafted = this.getTask(taskId);
@@ -1475,7 +1476,7 @@ export class SqliteControlPlaneStore {
         tenantId: input.tenantId,
         userId: input.userId,
         workspaceId: input.workspaceId,
-        limit: 10000
+        limit: 10000,
       });
       const byId = new Map(existing.map((task) => [task.taskId, task] as const));
       for (const taskId of normalizedOrder) {
@@ -1486,9 +1487,7 @@ export class SqliteControlPlaneStore {
       const orderedSet = new Set(normalizedOrder);
       const finalOrder = [
         ...normalizedOrder,
-        ...existing
-          .map((task) => task.taskId)
-          .filter((taskId) => !orderedSet.has(taskId))
+        ...existing.map((task) => task.taskId).filter((taskId) => !orderedSet.has(taskId)),
       ];
       for (let idx = 0; idx < finalOrder.length; idx += 1) {
         const taskId = finalOrder[idx]!;
@@ -1500,7 +1499,7 @@ export class SqliteControlPlaneStore {
               order_index = ?,
               updated_at = ?
             WHERE task_id = ?
-          `
+          `,
           )
           .run(idx, new Date().toISOString(), taskId);
       }
@@ -1508,7 +1507,7 @@ export class SqliteControlPlaneStore {
         tenantId: input.tenantId,
         userId: input.userId,
         workspaceId: input.workspaceId,
-        limit: 10000
+        limit: 10000,
       });
       this.db.exec('COMMIT');
       return reordered;
@@ -1522,7 +1521,7 @@ export class SqliteControlPlaneStore {
     tenantId: string,
     userId: string,
     workspaceId: string,
-    remoteUrl: string
+    remoteUrl: string,
   ): ControlPlaneRepositoryRecord | null {
     const row = this.db
       .prepare(
@@ -1540,7 +1539,7 @@ export class SqliteControlPlaneStore {
           archived_at
         FROM repositories
         WHERE tenant_id = ? AND user_id = ? AND workspace_id = ? AND remote_url = ?
-      `
+      `,
       )
       .get(tenantId, userId, workspaceId, remoteUrl);
     if (row === undefined) {
@@ -1568,7 +1567,7 @@ export class SqliteControlPlaneStore {
   private assertScopeMatch(
     left: { tenantId: string; userId: string; workspaceId: string },
     right: { tenantId: string; userId: string; workspaceId: string },
-    context: string
+    context: string,
   ): void {
     if (
       left.tenantId !== right.tenantId ||
@@ -1586,7 +1585,7 @@ export class SqliteControlPlaneStore {
         SELECT COALESCE(MAX(order_index), -1) + 1 AS next_order
         FROM tasks
         WHERE tenant_id = ? AND user_id = ? AND workspace_id = ?
-      `
+      `,
       )
       .get(tenantId, userId, workspaceId);
     const asRow = asRecord(row);
@@ -1598,7 +1597,7 @@ export class SqliteControlPlaneStore {
     tenantId: string,
     userId: string,
     workspaceId: string,
-    path: string
+    path: string,
   ): ControlPlaneDirectoryRecord | null {
     const row = this.db
       .prepare(
@@ -1613,7 +1612,7 @@ export class SqliteControlPlaneStore {
           archived_at
         FROM directories
         WHERE tenant_id = ? AND user_id = ? AND workspace_id = ? AND path = ?
-      `
+      `,
       )
       .get(tenantId, userId, workspaceId, path);
     if (row === undefined) {
@@ -1671,7 +1670,7 @@ export class SqliteControlPlaneStore {
     this.ensureColumnExists(
       'conversations',
       'adapter_state_json',
-      `adapter_state_json TEXT NOT NULL DEFAULT '{}'`
+      `adapter_state_json TEXT NOT NULL DEFAULT '{}'`,
     );
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS session_telemetry (
@@ -1745,11 +1744,7 @@ export class SqliteControlPlaneStore {
       CREATE INDEX IF NOT EXISTS idx_tasks_status
       ON tasks (status, updated_at, task_id);
     `);
-    this.ensureColumnExists(
-      'tasks',
-      'linear_json',
-      `linear_json TEXT NOT NULL DEFAULT '{}'`
-    );
+    this.ensureColumnExists('tasks', 'linear_json', `linear_json TEXT NOT NULL DEFAULT '{}'`);
   }
 
   private configureConnection(): void {

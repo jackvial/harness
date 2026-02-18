@@ -1,4 +1,7 @@
-import { renderSnapshotAnsiRow, type TerminalSnapshotFrameCore } from '../../terminal/snapshot-oracle.ts';
+import {
+  renderSnapshotAnsiRow,
+  type TerminalSnapshotFrameCore,
+} from '../../terminal/snapshot-oracle.ts';
 
 interface ConversationPaneLayout {
   readonly rightCols: number;
@@ -6,9 +9,7 @@ interface ConversationPaneLayout {
 }
 
 export class ConversationPane {
-  constructor(
-    private readonly renderRow: typeof renderSnapshotAnsiRow = renderSnapshotAnsiRow,
-  ) {}
+  constructor(private readonly renderRow: typeof renderSnapshotAnsiRow = renderSnapshotAnsiRow) {}
 
   render(frame: TerminalSnapshotFrameCore, layout: ConversationPaneLayout): readonly string[] {
     return Array.from({ length: layout.paneRows }, (_value, row) =>

@@ -30,7 +30,9 @@ void test('startup settled gate forwards clear and signal calls to sequencer', (
 });
 
 void test('startup settled gate ignores scheduled events for non-target sessions', () => {
-  const scheduled: Array<(event: { readonly sessionId: string; readonly gate: string; readonly quietMs: number }) => void> = [];
+  const scheduled: Array<
+    (event: { readonly sessionId: string; readonly gate: string; readonly quietMs: number }) => void
+  > = [];
   const perfCalls: string[] = [];
   const spanCalls: string[] = [];
   const startupSettledGate = new StartupSettledGate({
@@ -66,7 +68,9 @@ void test('startup settled gate ignores scheduled events for non-target sessions
 });
 
 void test('startup settled gate records settled events with glyph fallback and visible glyph count', () => {
-  const scheduled: Array<(event: { readonly sessionId: string; readonly gate: string; readonly quietMs: number }) => void> = [];
+  const scheduled: Array<
+    (event: { readonly sessionId: string; readonly gate: string; readonly quietMs: number }) => void
+  > = [];
   const perfCalls: string[] = [];
   const spanCalls: string[] = [];
   const signalCalls: string[] = [];

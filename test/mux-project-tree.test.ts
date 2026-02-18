@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync
-} from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runInNewContext } from 'node:vm';
@@ -26,9 +20,9 @@ void test('project tree builds sorted hierarchy from git ls-files output', () =>
         'src\\win.ts',
         '',
         '   ',
-        './'
+        './',
       ].join('\0');
-    }
+    },
   });
   assert.deepEqual(capturedArgs, ['ls-files', '--cached', '--others', '--exclude-standard', '-z']);
   assert.deepEqual(lines, [
@@ -40,7 +34,7 @@ void test('project tree builds sorted hierarchy from git ls-files output', () =>
     '│  │  └─ util.ts',
     '│  ├─ index.ts',
     '│  └─ win.ts',
-    '└─ README.md'
+    '└─ README.md',
   ]);
 });
 
@@ -48,7 +42,7 @@ void test('project tree applies depth and entry limits to git-based tree output'
   const lines = buildProjectTreeLines('/workspace/root', {
     maxDepth: 1,
     maxEntries: 2,
-    runGitLsFiles: () => ['a/one.ts', 'b/two.ts', 'readme.md'].join('\0')
+    runGitLsFiles: () => ['a/one.ts', 'b/two.ts', 'readme.md'].join('\0'),
   });
   assert.deepEqual(lines, ['root/', '├─ a/', '├─ b/', '└─ …']);
 });
@@ -56,14 +50,14 @@ void test('project tree applies depth and entry limits to git-based tree output'
 void test('project tree truncation propagates from nested git directories', () => {
   const lines = buildProjectTreeLines('/workspace/root', {
     maxEntries: 2,
-    runGitLsFiles: () => ['a/one.ts', 'a/two.ts', 'b/three.ts'].join('\0')
+    runGitLsFiles: () => ['a/one.ts', 'a/two.ts', 'b/three.ts'].join('\0'),
   });
   assert.deepEqual(lines, ['root/', '├─ a/', '│  ├─ one.ts', '└─ …']);
 });
 
 void test('project tree uses trailing-space recursion prefix when nested directory is last', () => {
   const gitLines = buildProjectTreeLines('/workspace/root', {
-    runGitLsFiles: () => ['a/one.ts'].join('\0')
+    runGitLsFiles: () => ['a/one.ts'].join('\0'),
   });
   assert.deepEqual(gitLines, ['root/', '└─ a/', '   └─ one.ts']);
 
@@ -77,7 +71,7 @@ void test('project tree uses trailing-space recursion prefix when nested directo
         return [{ name: 'one.ts', kind: 'file' }];
       }
       return [];
-    }
+    },
   });
   assert.deepEqual(fsLines, ['root/', '└─ a/', '   └─ one.ts']);
 });
@@ -86,14 +80,14 @@ void test('project tree handles empty git listings and invalid numeric options s
   const lines = buildProjectTreeLines('/workspace/root', {
     maxDepth: -1,
     maxEntries: 0,
-    runGitLsFiles: () => ''
+    runGitLsFiles: () => '',
   });
   assert.deepEqual(lines, ['root/']);
 });
 
 void test('project tree falls back to root path label when basename is empty', () => {
   const lines = buildProjectTreeLines('/', {
-    runGitLsFiles: () => ''
+    runGitLsFiles: () => '',
   });
   assert.deepEqual(lines, ['//']);
 });
@@ -106,10 +100,10 @@ void test('project tree falls back to filesystem reader with skip filters and un
         { name: 'src', kind: 'directory' },
         { name: 'skip-me', kind: 'directory' },
         { name: 'link', kind: 'symlink' },
-        { name: 'readme.md', kind: 'file' }
-      ]
+        { name: 'readme.md', kind: 'file' },
+      ],
     ],
-    ['/workspace/root/skip-me', [{ name: 'nested.txt', kind: 'file' }]]
+    ['/workspace/root/skip-me', [{ name: 'nested.txt', kind: 'file' }]],
   ]);
   const lines = buildProjectTreeLines('/workspace/root', {
     runGitLsFiles: () => null,
@@ -119,20 +113,20 @@ void test('project tree falls back to filesystem reader with skip filters and un
         throw new Error('denied');
       }
       return entriesByPath.get(path) ?? [];
-    }
+    },
   });
   assert.deepEqual(lines, [
     'root/',
     '├─ src/',
     '│  └─ [unreadable: denied]',
     '├─ link@',
-    '└─ readme.md'
+    '└─ readme.md',
   ]);
 
   const filteredBySet = buildProjectTreeLines('/workspace/root', {
     runGitLsFiles: () => null,
     skipNames: new Set<string>(['readme.md']),
-    readDirectoryEntries: (path) => entriesByPath.get(path) ?? []
+    readDirectoryEntries: (path) => entriesByPath.get(path) ?? [],
   });
   assert.equal(filteredBySet.includes('└─ readme.md'), false);
 
@@ -143,7 +137,7 @@ void test('project tree falls back to filesystem reader with skip filters and un
         return runInNewContext('throw "string-error"') as never;
       }
       return [];
-    }
+    },
   });
   assert.deepEqual(nonErrorMessage, ['root/', '└─ [unreadable: string-error]']);
 
@@ -152,7 +146,7 @@ void test('project tree falls back to filesystem reader with skip filters and un
     runGitLsFiles: () => null,
     readDirectoryEntries: () => {
       throw new Error('should-not-read');
-    }
+    },
   });
   assert.deepEqual(depthLimited, ['root/']);
 
@@ -163,11 +157,11 @@ void test('project tree falls back to filesystem reader with skip filters and un
       if (path === '/workspace/root') {
         return [
           { name: 'a', kind: 'directory' },
-          { name: 'b', kind: 'file' }
+          { name: 'b', kind: 'file' },
         ];
       }
       return [];
-    }
+    },
   });
   assert.deepEqual(entryLimited, ['root/', '├─ a/', '└─ …']);
 
@@ -178,17 +172,17 @@ void test('project tree falls back to filesystem reader with skip filters and un
       if (path === '/workspace/root') {
         return [
           { name: 'a', kind: 'directory' },
-          { name: 'z', kind: 'file' }
+          { name: 'z', kind: 'file' },
         ];
       }
       if (path === '/workspace/root/a') {
         return [
           { name: 'one.txt', kind: 'file' },
-          { name: 'two.txt', kind: 'file' }
+          { name: 'two.txt', kind: 'file' },
         ];
       }
       return [];
-    }
+    },
   });
   assert.deepEqual(nestedEntryLimited, ['root/', '├─ a/', '│  ├─ one.txt', '└─ …']);
 });

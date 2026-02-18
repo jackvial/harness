@@ -22,7 +22,7 @@ interface ToggleGatewayProfilerOptions {
   readonly sessionName: string | null;
   readonly profileStateExists?: (profileStatePath: string) => boolean;
   readonly runHarnessProfileCommand?: (
-    input: RunHarnessProfileCommandInput
+    input: RunHarnessProfileCommandInput,
   ) => Promise<RunHarnessProfileCommandResult>;
   readonly harnessScriptPath?: string;
 }
@@ -44,7 +44,10 @@ function firstNonEmptyLine(text: string): string | null {
   return lines[0] ?? null;
 }
 
-export function resolveProfileStatePath(invocationDirectory: string, sessionName: string | null): string {
+export function resolveProfileStatePath(
+  invocationDirectory: string,
+  sessionName: string | null,
+): string {
   if (sessionName === null) {
     return resolve(invocationDirectory, '.harness', 'active-profile.json');
   }
@@ -53,7 +56,7 @@ export function resolveProfileStatePath(invocationDirectory: string, sessionName
 
 export function resolveHarnessProfileCommandArgs(
   action: GatewayProfilerAction,
-  sessionName: string | null
+  sessionName: string | null,
 ): readonly string[] {
   if (sessionName === null) {
     return ['profile', action];
@@ -72,13 +75,17 @@ function summarizeProfileSuccess(action: GatewayProfilerAction, stdout: string):
   return 'profile stopped';
 }
 
-function summarizeProfileFailure(action: GatewayProfilerAction, stderr: string, stdout: string): string {
+function summarizeProfileFailure(
+  action: GatewayProfilerAction,
+  stderr: string,
+  stdout: string,
+): string {
   const detail = firstNonEmptyLine(stderr) ?? firstNonEmptyLine(stdout) ?? 'unknown error';
   return `profile ${action} failed: ${detail}`;
 }
 
 async function runHarnessProfileCommand(
-  input: RunHarnessProfileCommandInput
+  input: RunHarnessProfileCommandInput,
 ): Promise<RunHarnessProfileCommandResult> {
   const commandArgs = resolveHarnessProfileCommandArgs(input.action, input.sessionName);
   const child = spawn(process.execPath, [input.harnessScriptPath, ...commandArgs], {
@@ -104,7 +111,7 @@ async function runHarnessProfileCommand(
       child.once('exit', (exitCode, exitSignal) => {
         resolveExit([exitCode, exitSignal]);
       });
-    }
+    },
   );
 
   const stdout = Buffer.concat(stdoutChunks).toString('utf8');
@@ -121,9 +128,12 @@ async function runHarnessProfileCommand(
 }
 
 export async function toggleGatewayProfiler(
-  options: ToggleGatewayProfilerOptions
+  options: ToggleGatewayProfilerOptions,
 ): Promise<ToggleGatewayProfilerResult> {
-  const profileStatePath = resolveProfileStatePath(options.invocationDirectory, options.sessionName);
+  const profileStatePath = resolveProfileStatePath(
+    options.invocationDirectory,
+    options.sessionName,
+  );
   const isProfileRunning = (options.profileStateExists ?? existsSync)(profileStatePath);
   const action: GatewayProfilerAction = isProfileRunning ? 'stop' : 'start';
   const harnessScriptPath = options.harnessScriptPath ?? DEFAULT_HARNESS_SCRIPT_PATH;

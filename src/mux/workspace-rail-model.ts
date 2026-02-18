@@ -98,7 +98,7 @@ const NEW_THREAD_INLINE_LABEL = '[+ thread]';
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'add project',
-  prefixIcon: '>'
+  prefixIcon: '>',
 });
 const STARTING_TEXT_STALE_MS = 2_000;
 const WORKING_TEXT_STALE_MS = 5_000;
@@ -134,7 +134,7 @@ function parseIsoMs(value: string | null | undefined): number {
 
 function isLastKnownWorkCurrent(
   conversation: WorkspaceRailConversationSummary,
-  nowMs: number
+  nowMs: number,
 ): boolean {
   const lastKnownWorkAtMs = parseIsoMs(conversation.lastKnownWorkAt ?? null);
   if (!Number.isFinite(lastKnownWorkAtMs)) {
@@ -154,7 +154,9 @@ function isLastKnownWorkCurrent(
   return true;
 }
 
-function inferStatusFromLastKnownWork(lastKnownWork: string | null): NormalizedConversationStatus | null {
+function inferStatusFromLastKnownWork(
+  lastKnownWork: string | null,
+): NormalizedConversationStatus | null {
   const normalized = summaryText(lastKnownWork)?.toLowerCase() ?? null;
   if (normalized === null) {
     return null;
@@ -186,7 +188,7 @@ function inferStatusFromLastKnownWork(lastKnownWork: string | null): NormalizedC
 
 function normalizeConversationStatus(
   conversation: WorkspaceRailConversationSummary,
-  nowMs: number
+  nowMs: number,
 ): NormalizedConversationStatus {
   if (conversation.status === 'needs-input') {
     return 'needs-action';
@@ -255,7 +257,7 @@ function statusLineLabel(status: NormalizedConversationStatus): string {
     starting: 'starting',
     working: 'active',
     idle: 'inactive',
-    exited: 'exited'
+    exited: 'exited',
   };
   return labels[status];
 }
@@ -263,7 +265,7 @@ function statusLineLabel(status: NormalizedConversationStatus): string {
 function conversationDetailText(
   conversation: WorkspaceRailConversationSummary,
   normalizedStatus: NormalizedConversationStatus,
-  nowMs: number
+  nowMs: number,
 ): string {
   const lastKnownWork = summaryText(conversation.lastKnownWork);
   if (lastKnownWork !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
@@ -280,14 +282,14 @@ export function projectWorkspaceRailConversation(
   conversation: WorkspaceRailConversationSummary,
   options: {
     readonly nowMs?: number;
-  } = {}
+  } = {},
 ): WorkspaceRailConversationProjection {
   const nowMs = options.nowMs ?? Date.now();
   const normalizedStatus = normalizeConversationStatus(conversation, nowMs);
   return {
     status: normalizedStatus,
     glyph: statusGlyph(normalizedStatus),
-    detailText: conversationDetailText(conversation, normalizedStatus, nowMs)
+    detailText: conversationDetailText(conversation, normalizedStatus, nowMs),
   };
 }
 
@@ -323,7 +325,7 @@ function pushRow(
   directoryKey: string | null = null,
   repositoryId: string | null = null,
   railAction: WorkspaceRailAction | null = null,
-  conversationStatus: NormalizedConversationStatus | null = null
+  conversationStatus: NormalizedConversationStatus | null = null,
 ): void {
   rows.push({
     kind,
@@ -333,11 +335,14 @@ function pushRow(
     directoryKey,
     repositoryId,
     railAction,
-    conversationStatus
+    conversationStatus,
   });
 }
 
-function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly WorkspaceRailViewRow[] {
+function buildContentRows(
+  model: WorkspaceRailModel,
+  nowMs: number,
+): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
   const homeSelectionEnabled = model.homeSelectionEnabled ?? false;
@@ -345,7 +350,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   const repositorySelectionEnabled = model.repositorySelectionEnabled ?? false;
   const collapsedRepositoryGroupIds = new Set(model.collapsedRepositoryGroupIds ?? []);
   const repositoryById = new Map(
-    (model.repositories ?? []).map((repository) => [repository.repositoryId, repository] as const)
+    (model.repositories ?? []).map((repository) => [repository.repositoryId, repository] as const),
   );
   const repositoryGroups = new Map<
     string,
@@ -359,7 +364,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   const ensureRepositoryGroup = (
     repositoryId: string,
     name: string,
-    tracked: boolean
+    tracked: boolean,
   ): {
     readonly name: string;
     readonly tracked: boolean;
@@ -372,7 +377,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
     const created = {
       name,
       tracked,
-      directories: []
+      directories: [],
     };
     repositoryGroups.set(repositoryId, created);
     return created;
@@ -381,13 +386,17 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   for (const directory of model.directories) {
     const repositoryId = directory.repositoryId;
     if (repositoryId === undefined || repositoryId === null || !repositoryById.has(repositoryId)) {
-      ensureRepositoryGroup(UNTRACKED_REPOSITORY_GROUP_ID, UNTRACKED_REPOSITORY_GROUP_ID, false).directories.push(
-        directory
-      );
+      ensureRepositoryGroup(
+        UNTRACKED_REPOSITORY_GROUP_ID,
+        UNTRACKED_REPOSITORY_GROUP_ID,
+        false,
+      ).directories.push(directory);
       continue;
     }
     const repository = repositoryById.get(repositoryId)!;
-    ensureRepositoryGroup(repository.repositoryId, repository.name, true).directories.push(directory);
+    ensureRepositoryGroup(repository.repositoryId, repository.name, true).directories.push(
+      directory,
+    );
   }
 
   const orderedRepositoryGroupIds: string[] = [];
@@ -405,7 +414,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   const activeConversationCountByDirectoryId = new Map<string, number>();
   for (const conversation of model.conversations) {
     const projection = projectWorkspaceRailConversation(conversation, {
-      nowMs
+      nowMs,
     });
     if (
       projection.status !== 'working' &&
@@ -419,16 +428,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   }
 
   if (showTaskPlanningUi) {
-    pushRow(
-      rows,
-      'dir-header',
-      '├─ 🏠 home',
-      homeSelectionEnabled,
-      null,
-      null,
-      null,
-      'home.open'
-    );
+    pushRow(rows, 'dir-header', '├─ 🏠 home', homeSelectionEnabled, null, null, null, 'home.open');
   }
 
   if (orderedRepositoryGroupIds.length === 0) {
@@ -443,9 +443,10 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
       continue;
     }
     const activeProjectCount = group.directories.filter(
-      (directory) => (activeConversationCountByDirectoryId.get(directory.key) ?? 0) > 0
+      (directory) => (activeConversationCountByDirectoryId.get(directory.key) ?? 0) > 0,
     ).length;
-    const repositorySelected = repositorySelectionEnabled && model.activeRepositoryId === repositoryId;
+    const repositorySelected =
+      repositorySelectionEnabled && model.activeRepositoryId === repositoryId;
     const repositoryCollapsed =
       model.repositoriesCollapsed === true || collapsedRepositoryGroupIds.has(repositoryId);
     pushRow(
@@ -458,7 +459,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
       null,
       null,
       repositoryId,
-      'repository.toggle'
+      'repository.toggle',
     );
     if (repositoryCollapsed) {
       continue;
@@ -479,13 +480,17 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
         null,
         directory.key,
         repositoryId,
-        null
+        null,
       );
 
       const conversations = model.conversations.filter(
-        (conversation) => conversation.directoryKey === directory.key
+        (conversation) => conversation.directoryKey === directory.key,
       );
-      for (let conversationIndex = 0; conversationIndex < conversations.length; conversationIndex += 1) {
+      for (
+        let conversationIndex = 0;
+        conversationIndex < conversations.length;
+        conversationIndex += 1
+      ) {
         const conversation = conversations[conversationIndex]!;
         const conversationIsLast = conversationIndex + 1 >= conversations.length;
         const active =
@@ -494,20 +499,20 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
           !repositorySelectionEnabled &&
           conversation.sessionId === model.activeConversationId;
         const projection = projectWorkspaceRailConversation(conversation, {
-          nowMs
+          nowMs,
         });
         pushRow(
           rows,
           'conversation-title',
           `${projectChildPrefix}${conversationIsLast ? '└' : '├'}─ ${projection.glyph} ${conversationDisplayTitle(
-            conversation
+            conversation,
           )}`,
           active,
           conversation.sessionId,
           directory.key,
           repositoryId,
           null,
-          projection.status
+          projection.status,
         );
         pushRow(
           rows,
@@ -518,7 +523,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
           directory.key,
           repositoryId,
           null,
-          projection.status
+          projection.status,
         );
       }
 
@@ -532,7 +537,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
           null,
           directory.key,
           repositoryId,
-          null
+          null,
         );
         pushRow(
           rows,
@@ -542,7 +547,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
           null,
           directory.key,
           repositoryId,
-          null
+          null,
         );
       }
     }
@@ -566,7 +571,7 @@ function shortcutDescriptionRows(shortcutHint: string | undefined): readonly str
       '← collapse repo',
       'ctrl+k ctrl+j expand all repos',
       'ctrl+k ctrl+0 collapse all repos',
-      'ctrl+c quit mux'
+      'ctrl+c quit mux',
     ];
   }
   if (normalized.includes('\n')) {
@@ -583,7 +588,7 @@ function shortcutDescriptionRows(shortcutHint: string | undefined): readonly str
 
 function shortcutRows(
   shortcutHint: string | undefined,
-  shortcutsCollapsed: boolean
+  shortcutsCollapsed: boolean,
 ): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [
     {
@@ -594,8 +599,8 @@ function shortcutRows(
       directoryKey: null,
       repositoryId: null,
       railAction: 'shortcuts.toggle',
-      conversationStatus: null
-    }
+      conversationStatus: null,
+    },
   ];
   if (!shortcutsCollapsed) {
     const descriptions = shortcutDescriptionRows(shortcutHint);
@@ -608,7 +613,7 @@ function shortcutRows(
         directoryKey: null,
         repositoryId: null,
         railAction: null,
-        conversationStatus: null
+        conversationStatus: null,
       });
     }
   }
@@ -617,7 +622,7 @@ function shortcutRows(
 
 export function buildWorkspaceRailViewRows(
   model: WorkspaceRailModel,
-  maxRows: number
+  maxRows: number,
 ): readonly WorkspaceRailViewRow[] {
   const safeRows = Math.max(1, maxRows);
   const nowMs = model.nowMs ?? Date.now();
@@ -639,7 +644,7 @@ export function buildWorkspaceRailViewRows(
       directoryKey: null,
       repositoryId: null,
       railAction: null,
-      conversationStatus: null
+      conversationStatus: null,
     });
   }
   const projectActionRow: WorkspaceRailViewRow = {
@@ -650,7 +655,7 @@ export function buildWorkspaceRailViewRows(
     directoryKey: null,
     repositoryId: null,
     railAction: 'project.add',
-    conversationStatus: null
+    conversationStatus: null,
   };
   const projectActionRowIndex = Math.max(0, contentCapacity - 3);
   rows.splice(projectActionRowIndex, 0, projectActionRow);
@@ -663,7 +668,7 @@ export function buildWorkspaceRailViewRows(
 
 export function conversationIdAtWorkspaceRailRow(
   rows: readonly WorkspaceRailViewRow[],
-  rowIndex: number
+  rowIndex: number,
 ): string | null {
   const row = rows[rowIndex];
   if (row === undefined) {
@@ -674,7 +679,7 @@ export function conversationIdAtWorkspaceRailRow(
 
 export function actionAtWorkspaceRailRow(
   rows: readonly WorkspaceRailViewRow[],
-  rowIndex: number
+  rowIndex: number,
 ): WorkspaceRailAction | null {
   const row = rows[rowIndex];
   if (row === undefined) {
@@ -687,7 +692,7 @@ export function actionAtWorkspaceRailCell(
   rows: readonly WorkspaceRailViewRow[],
   rowIndex: number,
   colIndex: number,
-  paneCols: number | null = null
+  paneCols: number | null = null,
 ): WorkspaceRailAction | null {
   const row = rows[rowIndex];
   if (row === undefined) {
@@ -707,7 +712,10 @@ export function actionAtWorkspaceRailCell(
       ? row.text.lastIndexOf(NEW_THREAD_INLINE_LABEL)
       : Math.max(0, Math.floor(paneCols) - NEW_THREAD_INLINE_LABEL.length);
   const normalizedCol = Math.max(0, Math.floor(colIndex));
-  if (normalizedCol < buttonStart || normalizedCol >= buttonStart + NEW_THREAD_INLINE_LABEL.length) {
+  if (
+    normalizedCol < buttonStart ||
+    normalizedCol >= buttonStart + NEW_THREAD_INLINE_LABEL.length
+  ) {
     return null;
   }
   return 'conversation.new';
@@ -715,7 +723,7 @@ export function actionAtWorkspaceRailCell(
 
 export function projectIdAtWorkspaceRailRow(
   rows: readonly WorkspaceRailViewRow[],
-  rowIndex: number
+  rowIndex: number,
 ): string | null {
   const row = rows[rowIndex];
   if (row === undefined) {
@@ -726,7 +734,7 @@ export function projectIdAtWorkspaceRailRow(
 
 export function repositoryIdAtWorkspaceRailRow(
   rows: readonly WorkspaceRailViewRow[],
-  rowIndex: number
+  rowIndex: number,
 ): string | null {
   const row = rows[rowIndex];
   if (row === undefined) {
@@ -737,7 +745,7 @@ export function repositoryIdAtWorkspaceRailRow(
 
 export function kindAtWorkspaceRailRow(
   rows: readonly WorkspaceRailViewRow[],
-  rowIndex: number
+  rowIndex: number,
 ): WorkspaceRailViewRow['kind'] | null {
   const row = rows[rowIndex];
   if (row === undefined) {

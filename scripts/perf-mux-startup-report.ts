@@ -73,7 +73,7 @@ function parsePerfRecord(line: string): PerfRecord | null {
       type: 'event',
       name,
       'ts-ms': tsMs,
-      attrs: asAttrs(record['attrs'])
+      attrs: asAttrs(record['attrs']),
     };
   }
   if (type === 'span') {
@@ -87,7 +87,7 @@ function parsePerfRecord(line: string): PerfRecord | null {
       name,
       'end-ms': endMs,
       'duration-ns': durationNs,
-      attrs: asAttrs(record['attrs'])
+      attrs: asAttrs(record['attrs']),
     };
   }
   return null;
@@ -112,7 +112,7 @@ function parseArgs(argv: readonly string[]): string {
 function firstEvent(
   records: readonly PerfRecord[],
   name: string,
-  predicate?: (record: PerfEventRecord) => boolean
+  predicate?: (record: PerfEventRecord) => boolean,
 ): PerfEventRecord | null {
   for (const record of records) {
     if (record.type !== 'event' || record.name !== name) {
@@ -129,7 +129,7 @@ function firstEvent(
 function firstSpan(
   records: readonly PerfRecord[],
   name: string,
-  predicate?: (record: PerfSpanRecord) => boolean
+  predicate?: (record: PerfSpanRecord) => boolean,
 ): PerfSpanRecord | null {
   for (const record of records) {
     if (record.type !== 'span' || record.name !== name) {
@@ -178,7 +178,9 @@ function readPerfRecords(filePath: string): readonly PerfRecord[] {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  return lines.map((line) => parsePerfRecord(line)).flatMap((record) => (record === null ? [] : [record]));
+  return lines
+    .map((line) => parsePerfRecord(line))
+    .flatMap((record) => (record === null ? [] : [record]));
 }
 
 function printTimeline(records: readonly PerfRecord[]): number {
@@ -191,14 +193,14 @@ function printTimeline(records: readonly PerfRecord[]): number {
     checkpoints.push({
       name: label,
       atMs: event['ts-ms'],
-      detail
+      detail,
     });
   };
   const pushSpan = (
     name: string,
     label: string,
     predicate?: (record: PerfSpanRecord) => boolean,
-    detailFactory?: (record: PerfSpanRecord) => string
+    detailFactory?: (record: PerfSpanRecord) => string,
   ): void => {
     const span = firstSpan(records, name, predicate);
     if (span === null) {
@@ -207,7 +209,7 @@ function printTimeline(records: readonly PerfRecord[]): number {
     checkpoints.push({
       name: label,
       atMs: span['end-ms'],
-      detail: detailFactory?.(span) ?? ''
+      detail: detailFactory?.(span) ?? '',
     });
   };
 
@@ -227,27 +229,27 @@ function printTimeline(records: readonly PerfRecord[]): number {
   pushSpan(
     'control-plane.command.rtt',
     'protocol.client.command.directory.upsert',
-    (record) => stringAttr(record.attrs, 'type') === 'directory.upsert'
+    (record) => stringAttr(record.attrs, 'type') === 'directory.upsert',
   );
   pushSpan(
     'control-plane.command.rtt',
     'protocol.client.command.conversation.list',
-    (record) => stringAttr(record.attrs, 'type') === 'conversation.list'
+    (record) => stringAttr(record.attrs, 'type') === 'conversation.list',
   );
   pushSpan(
     'control-plane.command.rtt',
     'protocol.client.command.session.list',
-    (record) => stringAttr(record.attrs, 'type') === 'session.list'
+    (record) => stringAttr(record.attrs, 'type') === 'session.list',
   );
   pushSpan(
     'control-plane.command.rtt',
     'protocol.client.command.pty.start',
-    (record) => stringAttr(record.attrs, 'type') === 'pty.start'
+    (record) => stringAttr(record.attrs, 'type') === 'pty.start',
   );
   pushSpan(
     'control-plane.command.rtt',
     'protocol.client.command.pty.attach',
-    (record) => stringAttr(record.attrs, 'type') === 'pty.attach'
+    (record) => stringAttr(record.attrs, 'type') === 'pty.attach',
   );
   pushEvent('mux.startup.ready', 'mux.ready');
   pushEvent('mux.startup.active-first-output', 'mux.active.first-output');
@@ -272,7 +274,7 @@ function printTimeline(records: readonly PerfRecord[]): number {
   for (const checkpoint of checkpoints) {
     const detail = checkpoint.detail.length > 0 ? `  ${checkpoint.detail}` : '';
     process.stdout.write(
-      ` ${formatOffset(base.atMs, checkpoint.atMs)}  ${checkpoint.name.padEnd(42, ' ')}${detail}\n`
+      ` ${formatOffset(base.atMs, checkpoint.atMs)}  ${checkpoint.name.padEnd(42, ' ')}${detail}\n`,
     );
   }
   process.stdout.write('\n');
@@ -284,43 +286,43 @@ function printPhaseDurations(records: readonly PerfRecord[]): void {
     {
       label: 'launch -> daemon-ready',
       start: 'launch.startup.begin',
-      end: 'launch.startup.daemon-ready'
+      end: 'launch.startup.daemon-ready',
     },
     {
       label: 'launch -> mux-ready',
       start: 'launch.startup.begin',
-      end: 'mux.startup.ready'
+      end: 'mux.startup.ready',
     },
     {
       label: 'launch -> first-output',
       start: 'launch.startup.begin',
-      end: 'mux.startup.active-first-output'
+      end: 'mux.startup.active-first-output',
     },
     {
       label: 'launch -> first-visible-paint',
       start: 'launch.startup.begin',
-      end: 'mux.startup.active-first-visible-paint'
+      end: 'mux.startup.active-first-visible-paint',
     },
     {
       label: 'launch -> header-visible',
       start: 'launch.startup.begin',
-      end: 'mux.startup.active-header-visible'
+      end: 'mux.startup.active-header-visible',
     },
     {
       label: 'launch -> settled',
       start: 'launch.startup.begin',
-      end: 'mux.startup.active-settled'
+      end: 'mux.startup.active-settled',
     },
     {
       label: 'protocol connect begin -> ready',
       start: 'control-plane.connect.begin',
-      end: 'control-plane.connect.ready'
+      end: 'control-plane.connect.ready',
     },
     {
       label: 'first-output -> settled',
       start: 'mux.startup.active-first-output',
-      end: 'mux.startup.active-settled'
-    }
+      end: 'mux.startup.active-settled',
+    },
   ];
   process.stdout.write('Phase Durations\n');
   process.stdout.write('---------------\n');
@@ -342,12 +344,17 @@ function printTerminalQuerySummary(records: readonly PerfRecord[]): void {
   if (startupBeginMs === null || settledMs === null || settledMs < startupBeginMs) {
     process.stdout.write('Terminal Query Catalog\n');
     process.stdout.write('----------------------\n');
-    process.stdout.write(' startup window unavailable (missing mux.startup.begin or mux.startup.active-settled)\n\n');
+    process.stdout.write(
+      ' startup window unavailable (missing mux.startup.begin or mux.startup.active-settled)\n\n',
+    );
     return;
   }
 
   const queryEvents = records
-    .filter((record): record is PerfEventRecord => record.type === 'event' && record.name === 'codex.terminal-query')
+    .filter(
+      (record): record is PerfEventRecord =>
+        record.type === 'event' && record.name === 'codex.terminal-query',
+    )
     .filter((record) => record['ts-ms'] >= startupBeginMs && record['ts-ms'] <= settledMs);
 
   const unhandledByPayload = new Map<string, number>();
@@ -366,7 +373,9 @@ function printTerminalQuerySummary(records: readonly PerfRecord[]): void {
 
   process.stdout.write('Terminal Query Catalog (startup -> settled)\n');
   process.stdout.write('-------------------------------------------\n');
-  process.stdout.write(` total=${String(queryEvents.length)} handled=${String(handledCount)} unhandled=${String(queryEvents.length - handledCount)}\n`);
+  process.stdout.write(
+    ` total=${String(queryEvents.length)} handled=${String(handledCount)} unhandled=${String(queryEvents.length - handledCount)}\n`,
+  );
   const entries = [...unhandledByPayload.entries()].sort((left, right) => right[1] - left[1]);
   if (entries.length === 0) {
     process.stdout.write(' unhandled: none\n\n');
@@ -384,17 +393,26 @@ function percentile(values: readonly number[], fraction: number): number | null 
     return null;
   }
   const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * fraction)));
+  const index = Math.max(
+    0,
+    Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * fraction)),
+  );
   return sorted[index] ?? null;
 }
 
 function printRuntimePressureSummary(records: readonly PerfRecord[]): void {
-  const outputSamples = records
-    .filter((record): record is PerfEventRecord => record.type === 'event' && record.name === 'mux.output-load.sample');
-  const opStarts = records
-    .filter((record): record is PerfEventRecord => record.type === 'event' && record.name === 'mux.control-plane.op.start');
-  const flushSpans = records
-    .filter((record): record is PerfSpanRecord => record.type === 'span' && record.name === 'mux.events.flush');
+  const outputSamples = records.filter(
+    (record): record is PerfEventRecord =>
+      record.type === 'event' && record.name === 'mux.output-load.sample',
+  );
+  const opStarts = records.filter(
+    (record): record is PerfEventRecord =>
+      record.type === 'event' && record.name === 'mux.control-plane.op.start',
+  );
+  const flushSpans = records.filter(
+    (record): record is PerfSpanRecord =>
+      record.type === 'span' && record.name === 'mux.events.flush',
+  );
 
   process.stdout.write('Runtime Pressure (Post-Startup)\n');
   process.stdout.write('-------------------------------\n');
@@ -403,23 +421,23 @@ function printRuntimePressureSummary(records: readonly PerfRecord[]): void {
     process.stdout.write(' output-load samples: none\n');
   } else {
     const maxInactiveBytes = Math.max(
-      ...outputSamples.map((event) => numberAttr(event.attrs, 'inactiveBytes') ?? 0)
+      ...outputSamples.map((event) => numberAttr(event.attrs, 'inactiveBytes') ?? 0),
     );
     const maxInactiveChunks = Math.max(
-      ...outputSamples.map((event) => numberAttr(event.attrs, 'inactiveChunks') ?? 0)
+      ...outputSamples.map((event) => numberAttr(event.attrs, 'inactiveChunks') ?? 0),
     );
     const maxSessionsWithOutput = Math.max(
-      ...outputSamples.map((event) => numberAttr(event.attrs, 'sessionsWithOutput') ?? 0)
+      ...outputSamples.map((event) => numberAttr(event.attrs, 'sessionsWithOutput') ?? 0),
     );
     process.stdout.write(
-      ` output-load samples=${String(outputSamples.length)} maxInactiveBytes=${String(maxInactiveBytes)} maxInactiveChunks=${String(maxInactiveChunks)} maxSessionsWithOutput=${String(maxSessionsWithOutput)}\n`
+      ` output-load samples=${String(outputSamples.length)} maxInactiveBytes=${String(maxInactiveBytes)} maxInactiveChunks=${String(maxInactiveChunks)} maxSessionsWithOutput=${String(maxSessionsWithOutput)}\n`,
     );
 
     const tail = outputSamples.slice(-5);
     process.stdout.write(' recent output-load samples:\n');
     for (const sample of tail) {
       process.stdout.write(
-        `  t=${String(sample['ts-ms'])} activeB=${String(numberAttr(sample.attrs, 'activeBytes') ?? 0)} inactiveB=${String(numberAttr(sample.attrs, 'inactiveBytes') ?? 0)} activeC=${String(numberAttr(sample.attrs, 'activeChunks') ?? 0)} inactiveC=${String(numberAttr(sample.attrs, 'inactiveChunks') ?? 0)} render(avg/max)=${(numberAttr(sample.attrs, 'renderAvgMs') ?? 0).toFixed(2)}/${(numberAttr(sample.attrs, 'renderMaxMs') ?? 0).toFixed(2)} outputHandle(avg/max)=${(numberAttr(sample.attrs, 'outputHandleAvgMs') ?? 0).toFixed(2)}/${(numberAttr(sample.attrs, 'outputHandleMaxMs') ?? 0).toFixed(2)} loop(p95/max)=${(numberAttr(sample.attrs, 'eventLoopP95Ms') ?? 0).toFixed(2)}/${(numberAttr(sample.attrs, 'eventLoopMaxMs') ?? 0).toFixed(2)} sessions=${String(numberAttr(sample.attrs, 'sessionsWithOutput') ?? 0)} pendingPersisted=${String(numberAttr(sample.attrs, 'pendingPersistedEvents') ?? 0)} queued(i/b)=${String(numberAttr(sample.attrs, 'interactiveQueued') ?? 0)}/${String(numberAttr(sample.attrs, 'backgroundQueued') ?? 0)}\n`
+        `  t=${String(sample['ts-ms'])} activeB=${String(numberAttr(sample.attrs, 'activeBytes') ?? 0)} inactiveB=${String(numberAttr(sample.attrs, 'inactiveBytes') ?? 0)} activeC=${String(numberAttr(sample.attrs, 'activeChunks') ?? 0)} inactiveC=${String(numberAttr(sample.attrs, 'inactiveChunks') ?? 0)} render(avg/max)=${(numberAttr(sample.attrs, 'renderAvgMs') ?? 0).toFixed(2)}/${(numberAttr(sample.attrs, 'renderMaxMs') ?? 0).toFixed(2)} outputHandle(avg/max)=${(numberAttr(sample.attrs, 'outputHandleAvgMs') ?? 0).toFixed(2)}/${(numberAttr(sample.attrs, 'outputHandleMaxMs') ?? 0).toFixed(2)} loop(p95/max)=${(numberAttr(sample.attrs, 'eventLoopP95Ms') ?? 0).toFixed(2)}/${(numberAttr(sample.attrs, 'eventLoopMaxMs') ?? 0).toFixed(2)} sessions=${String(numberAttr(sample.attrs, 'sessionsWithOutput') ?? 0)} pendingPersisted=${String(numberAttr(sample.attrs, 'pendingPersistedEvents') ?? 0)} queued(i/b)=${String(numberAttr(sample.attrs, 'interactiveQueued') ?? 0)}/${String(numberAttr(sample.attrs, 'backgroundQueued') ?? 0)}\n`,
       );
     }
   }
@@ -434,7 +452,7 @@ function printRuntimePressureSummary(records: readonly PerfRecord[]): void {
     const p95 = percentile(waitMsValues, 0.95);
     const max = waitMsValues.length === 0 ? null : Math.max(...waitMsValues);
     process.stdout.write(
-      ` control-plane ops=${String(opStarts.length)} waitMs.p95=${p95 === null ? 'n/a' : p95.toFixed(0)} waitMs.max=${max === null ? 'n/a' : max.toFixed(0)}\n`
+      ` control-plane ops=${String(opStarts.length)} waitMs.p95=${p95 === null ? 'n/a' : p95.toFixed(0)} waitMs.max=${max === null ? 'n/a' : max.toFixed(0)}\n`,
     );
   }
 
@@ -451,20 +469,22 @@ function printRuntimePressureSummary(records: readonly PerfRecord[]): void {
     const p95 = percentile(durationsMs, 0.95);
     const max = durationsMs.length === 0 ? null : Math.max(...durationsMs);
     process.stdout.write(
-      ` event flushes=${String(flushSpans.length)} durationMs.p95=${p95 === null ? 'n/a' : p95.toFixed(2)} durationMs.max=${max === null ? 'n/a' : max.toFixed(2)}\n`
+      ` event flushes=${String(flushSpans.length)} durationMs.p95=${p95 === null ? 'n/a' : p95.toFixed(2)} durationMs.max=${max === null ? 'n/a' : max.toFixed(2)}\n`,
     );
   }
   process.stdout.write('\n');
 }
 
 function printBackgroundProbeSummary(records: readonly PerfRecord[]): void {
-  const summarize = (name: string): {
+  const summarize = (
+    name: string,
+  ): {
     count: number;
     p95: number | null;
     max: number | null;
   } => {
     const spans = records.filter(
-      (record): record is PerfSpanRecord => record.type === 'span' && record.name === name
+      (record): record is PerfSpanRecord => record.type === 'span' && record.name === name,
     );
     const durationsMs = spans.flatMap((span) => {
       const durationNs = Number(span['duration-ns']);
@@ -476,7 +496,7 @@ function printBackgroundProbeSummary(records: readonly PerfRecord[]): void {
     return {
       count: spans.length,
       p95: percentile(durationsMs, 0.95),
-      max: durationsMs.length === 0 ? null : Math.max(...durationsMs)
+      max: durationsMs.length === 0 ? null : Math.max(...durationsMs),
     };
   };
 
@@ -486,10 +506,10 @@ function printBackgroundProbeSummary(records: readonly PerfRecord[]): void {
   process.stdout.write('Background Probe Spans\n');
   process.stdout.write('----------------------\n');
   process.stdout.write(
-    ` process-usage count=${String(processUsage.count)} p95=${processUsage.p95 === null ? 'n/a' : `${processUsage.p95.toFixed(2)}ms`} max=${processUsage.max === null ? 'n/a' : `${processUsage.max.toFixed(2)}ms`}\n`
+    ` process-usage count=${String(processUsage.count)} p95=${processUsage.p95 === null ? 'n/a' : `${processUsage.p95.toFixed(2)}ms`} max=${processUsage.max === null ? 'n/a' : `${processUsage.max.toFixed(2)}ms`}\n`,
   );
   process.stdout.write(
-    ` git-summary   count=${String(gitSummary.count)} p95=${gitSummary.p95 === null ? 'n/a' : `${gitSummary.p95.toFixed(2)}ms`} max=${gitSummary.max === null ? 'n/a' : `${gitSummary.max.toFixed(2)}ms`}\n`
+    ` git-summary   count=${String(gitSummary.count)} p95=${gitSummary.p95 === null ? 'n/a' : `${gitSummary.p95.toFixed(2)}ms`} max=${gitSummary.max === null ? 'n/a' : `${gitSummary.max.toFixed(2)}ms`}\n`,
   );
   process.stdout.write('\n');
 }
@@ -504,7 +524,9 @@ function printSettleDetails(records: readonly PerfRecord[]): void {
   }
   const gate = stringAttr(settle.attrs, 'gate') ?? 'unknown';
   const glyphCells = numberAttr(settle.attrs, 'glyphCells');
-  process.stdout.write(` gate=${gate} glyphCells=${glyphCells === null ? 'n/a' : String(glyphCells)}\n`);
+  process.stdout.write(
+    ` gate=${gate} glyphCells=${glyphCells === null ? 'n/a' : String(glyphCells)}\n`,
+  );
 }
 
 function main(): number {
@@ -535,7 +557,7 @@ try {
   process.exitCode = main();
 } catch (error: unknown) {
   process.stderr.write(
-    `perf report fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+    `perf report fatal error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );
   process.exitCode = 1;
 }

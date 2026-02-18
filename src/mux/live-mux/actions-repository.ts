@@ -122,7 +122,10 @@ export function queueRepositoryPriorityOrder<TRepository extends RepositoryRecor
   }
   options.queueControlPlaneOp(async () => {
     for (const update of updates) {
-      const repository = await options.updateRepositoryMetadata(update.repositoryId, update.metadata);
+      const repository = await options.updateRepositoryMetadata(
+        update.repositoryId,
+        update.metadata,
+      );
       options.upsertRepository(repository);
     }
     options.syncTaskPaneRepositorySelection();

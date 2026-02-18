@@ -10,7 +10,7 @@ import {
   parseOtlpLogEvents,
   parseOtlpMetricEvents,
   parseOtlpTraceEvents,
-  telemetryFingerprint
+  telemetryFingerprint,
 } from '../src/control-plane/codex-telemetry.ts';
 
 void test('buildCodexTelemetryConfigArgs emits codex -c overrides for logs/metrics/traces/history', () => {
@@ -21,7 +21,7 @@ void test('buildCodexTelemetryConfigArgs emits codex -c overrides for logs/metri
     captureLogs: true,
     captureMetrics: true,
     captureTraces: true,
-    historyPersistence: 'save-all'
+    historyPersistence: 'save-all',
   });
 
   assert.deepEqual(args, [
@@ -34,7 +34,7 @@ void test('buildCodexTelemetryConfigArgs emits codex -c overrides for logs/metri
     '-c',
     'otel.trace_exporter={otlp-http={endpoint="http://127.0.0.1:4318/v1/traces/token%20with%20space",protocol="json"}}',
     '-c',
-    'history.persistence="save-all"'
+    'history.persistence="save-all"',
   ]);
 });
 
@@ -46,7 +46,7 @@ void test('buildCodexTelemetryConfigArgs supports selective capture and disabled
     captureLogs: false,
     captureMetrics: false,
     captureTraces: true,
-    historyPersistence: 'none'
+    historyPersistence: 'none',
   });
   assert.deepEqual(args, [
     '-c',
@@ -54,7 +54,7 @@ void test('buildCodexTelemetryConfigArgs supports selective capture and disabled
     '-c',
     'otel.trace_exporter={otlp-http={endpoint="http://localhost:4000/v1/traces/abc",protocol="json"}}',
     '-c',
-    'history.persistence="none"'
+    'history.persistence="none"',
   ]);
 });
 
@@ -66,13 +66,13 @@ void test('parseOtlpLogEvents parses records, thread ids, summaries, and status 
           resource: {
             attributes: [
               { key: 'service.name', value: { stringValue: 'codex' } },
-              { key: 'build', value: { intValue: '7' } }
-            ]
+              { key: 'build', value: { intValue: '7' } },
+            ],
           },
           scopeLogs: [
             {
               scope: {
-                attributes: [{ key: 'scope.bool', value: { boolValue: true } }]
+                attributes: [{ key: 'scope.bool', value: { boolValue: true } }],
               },
               logRecords: [
                 {
@@ -86,51 +86,51 @@ void test('parseOtlpLogEvents parses records, thread ids, summaries, and status 
                       key: 'kv',
                       value: {
                         kvlistValue: {
-                          values: [{ key: 'inner', value: { doubleValue: 1.2 } }]
-                        }
-                      }
+                          values: [{ key: 'inner', value: { doubleValue: 1.2 } }],
+                        },
+                      },
                     },
                     {
                       key: 'arr',
                       value: {
                         arrayValue: {
-                          values: [{ stringValue: 'a' }, { intValue: '2' }, { boolValue: false }]
-                        }
-                      }
+                          values: [{ stringValue: 'a' }, { intValue: '2' }, { boolValue: false }],
+                        },
+                      },
                     },
-                    { key: 'bytes', value: { bytesValue: 'Ymlu' } }
+                    { key: 'bytes', value: { bytesValue: 'Ymlu' } },
                   ],
                   body: {
-                    stringValue: 'prompt accepted'
-                  }
+                    stringValue: 'prompt accepted',
+                  },
                 },
                 {
                   observedTimeUnixNano: '1700000001000000000',
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.sse_event' } },
                     { key: 'kind', value: { stringValue: 'response.completed' } },
-                    { key: 'session_id', value: { stringValue: 'thread-1' } }
+                    { key: 'session_id', value: { stringValue: 'thread-1' } },
                   ],
                   body: {
                     kvlistValue: {
-                      values: [{ key: 'event', value: { stringValue: 'response.completed' } }]
-                    }
-                  }
+                      values: [{ key: 'event', value: { stringValue: 'response.completed' } }],
+                    },
+                  },
                 },
                 {
                   // malformed attributes/body still result in payload retention
                   attributes: 'bad-shape',
                   body: {
-                    unknown: true
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                    unknown: true,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 3);
@@ -158,30 +158,30 @@ void test('parseOtlpLogEvents falls back to provided timestamp when nanos are mi
                 {
                   timeUnixNano: '0',
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
-                  body: { stringValue: 'prompt submitted' }
+                  body: { stringValue: 'prompt submitted' },
                 },
                 {
                   observedTimeUnixNano: '0',
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
-                  body: { stringValue: 'prompt submitted' }
+                  body: { stringValue: 'prompt submitted' },
                 },
                 {
                   timeUnixNano: '1',
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
-                  body: { stringValue: 'prompt submitted' }
+                  body: { stringValue: 'prompt submitted' },
                 },
                 {
                   timeUnixNano: 9e21,
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
-                  body: { stringValue: 'prompt submitted' }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  body: { stringValue: 'prompt submitted' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(events.length, 4);
   assert.equal(events[0]?.observedAt, '2026-02-15T00:00:00.000Z');
@@ -201,16 +201,16 @@ void test('parseOtlpLogEvents preserves non-numeric intValue attributes as strin
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'custom.event' } },
-                    { key: 'attempt', value: { intValue: 'not-a-number' } }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                    { key: 'attempt', value: { intValue: 'not-a-number' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 1);
@@ -229,16 +229,16 @@ void test('parseOtlpLogEvents preserves malformed intValue payload objects', () 
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'custom.event' } },
-                    { key: 'bad-int', value: { intValue: true } }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                    { key: 'bad-int', value: { intValue: true } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 1);
@@ -255,15 +255,17 @@ void test('parseOtlpLogEvents marks turn metric event names as completed status 
             {
               logRecords: [
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.turn.e2e_duration_ms' } }]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.turn.e2e_duration_ms' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.statusHint, 'completed');
@@ -280,141 +282,149 @@ void test('parseOtlpLogEvents maps codex event families to concise summaries', (
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.conversation_starts' } },
-                    { key: 'model_name', value: { stringValue: 'gpt-5' } }
-                  ]
+                    { key: 'model_name', value: { stringValue: 'gpt-5' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.api_request' } },
                     { key: 'status', value: { stringValue: 'ok' } },
-                    { key: 'duration_ms', value: { stringValue: '123' } }
-                  ]
+                    { key: 'duration_ms', value: { stringValue: '123' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.api_request' } },
-                    { key: 'status', value: { stringValue: 'ok' } }
-                  ]
+                    { key: 'status', value: { stringValue: 'ok' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.api_request' } },
-                    { key: 'duration_ms', value: { stringValue: '9' } }
-                  ]
+                    { key: 'duration_ms', value: { stringValue: '9' } },
+                  ],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.api_request' } }]
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.api_request' } }],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.tool_decision' } },
                     { key: 'decision', value: { stringValue: 'approved' } },
-                    { key: 'tool_name', value: { stringValue: 'shell' } }
-                  ]
+                    { key: 'tool_name', value: { stringValue: 'shell' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.tool_decision' } },
-                    { key: 'decision', value: { stringValue: 'approved' } }
-                  ]
+                    { key: 'decision', value: { stringValue: 'approved' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.tool_decision' } },
-                    { key: 'tool_name', value: { stringValue: 'grep' } }
-                  ]
+                    { key: 'tool_name', value: { stringValue: 'grep' } },
+                  ],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.tool_decision' } }]
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.tool_decision' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.tool_result' } },
                     { key: 'tool_name', value: { stringValue: 'ls' } },
                     { key: 'result', value: { stringValue: 'ok' } },
-                    { key: 'duration_ms', value: { intValue: '5' } }
-                  ]
+                    { key: 'duration_ms', value: { intValue: '5' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.tool_result' } },
                     { key: 'tool_name', value: { stringValue: 'ls' } },
-                    { key: 'result', value: { stringValue: 'ok' } }
-                  ]
+                    { key: 'result', value: { stringValue: 'ok' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.tool_result' } },
                     { key: 'tool_name', value: { stringValue: 'ls' } },
-                    { key: 'duration_ms', value: { intValue: '7' } }
-                  ]
+                    { key: 'duration_ms', value: { intValue: '7' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.tool_result' } },
-                    { key: 'tool_name', value: { stringValue: 'ls' } }
-                  ]
+                    { key: 'tool_name', value: { stringValue: 'ls' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.tool_result' } },
-                    { key: 'result', value: { stringValue: 'failed' } }
-                  ]
+                    { key: 'result', value: { stringValue: 'failed' } },
+                  ],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.tool_result' } }]
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.tool_result' } }],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.websocket_request' } },
-                    { key: 'duration_ms', value: { intValue: '22' } }
-                  ]
+                    { key: 'duration_ms', value: { intValue: '22' } },
+                  ],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.websocket_request' } }]
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.websocket_request' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.websocket_event' } },
                     { key: 'kind', value: { stringValue: 'connected' } },
-                    { key: 'status', value: { stringValue: 'ok' } }
-                  ]
+                    { key: 'status', value: { stringValue: 'ok' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.websocket_event' } },
-                    { key: 'kind', value: { stringValue: 'connected' } }
-                  ]
+                    { key: 'kind', value: { stringValue: 'connected' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.websocket_event' } },
-                    { key: 'status', value: { stringValue: 'ok' } }
-                  ]
+                    { key: 'status', value: { stringValue: 'ok' } },
+                  ],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.websocket_event' } }]
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.websocket_event' } },
+                  ],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }]
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.conversation_starts' } }]
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.conversation_starts' } },
+                  ],
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }],
-                  body: { stringValue: 'response.output_text.delta' }
+                  body: { stringValue: 'response.output_text.delta' },
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 25);
@@ -457,44 +467,44 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'custom.running' } },
-                    { key: 'status', value: { stringValue: 'in progress' } }
+                    { key: 'status', value: { stringValue: 'in progress' } },
                   ],
-                  body: { stringValue: 'x' }
+                  body: { stringValue: 'x' },
                 },
                 {
                   severityText: 'ERROR',
                   attributes: [{ key: 'event.name', value: { stringValue: 'custom.error' } }],
-                  body: { stringValue: 'custom body' }
+                  body: { stringValue: 'custom body' },
                 },
                 {
                   attributes: [],
-                  body: { stringValue: 'turn completed' }
+                  body: { stringValue: 'turn completed' },
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }],
                   body: {
                     wrapper: {
-                      kind: 'response.completed'
-                    }
-                  }
+                      kind: 'response.completed',
+                    },
+                  },
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }],
                   body: [
                     {
                       nested: {
-                        kind: 'needs-input'
-                      }
-                    }
-                  ]
+                        kind: 'needs-input',
+                      },
+                    },
+                  ],
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }],
-                  body: { stringValue: 'stream response.completed' }
+                  body: { stringValue: 'stream response.completed' },
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.user_prompt' } }],
-                  body: { stringValue: `${'x'.repeat(80)}` }
+                  body: { stringValue: `${'x'.repeat(80)}` },
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.api_request' } }],
@@ -504,27 +514,27 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
                         levels: {
                           beyond: {
                             maxDepth: {
-                              status: 'ok'
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
+                              status: 'ok',
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.api_request' } },
-                    { key: 'duration_ms', value: { stringValue: 'not-a-number' } }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                    { key: 'duration_ms', value: { stringValue: 'not-a-number' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 9);
@@ -558,19 +568,19 @@ void test('parseOtlpLogEvents does not infer needs-input from arbitrary payload 
                     {
                       key: 'output',
                       value: {
-                        stringValue: "error: failed to push refs, but this is raw tool output text"
-                      }
-                    }
+                        stringValue: 'error: failed to push refs, but this is raw tool output text',
+                      },
+                    },
                   ],
-                  body: null
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  body: null,
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 1);
@@ -590,20 +600,20 @@ void test('parseOtlpLogEvents only derives needs-input from explicit summary/sta
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.api_request' } },
                     { key: 'kind', value: { stringValue: 'noop' } },
-                    { key: 'status', value: { stringValue: 'failed' } }
-                  ]
+                    { key: 'status', value: { stringValue: 'failed' } },
+                  ],
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }],
-                  body: { stringValue: 'needs-input from summary fallback' }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  body: { stringValue: 'needs-input from summary fallback' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 2);
@@ -621,15 +631,15 @@ void test('parseOtlpLogEvents does not derive needs-input status from severity-o
               logRecords: [
                 {
                   severityText: 'ERROR',
-                  attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 1);
@@ -653,25 +663,25 @@ void test('parseOtlpLifecycleLogEvents keeps lifecycle/high-signal records and d
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.user_prompt' } },
-                    { key: 'thread-id', value: { stringValue: 'thread-life-log' } }
+                    { key: 'thread-id', value: { stringValue: 'thread-life-log' } },
                   ],
-                  body: { stringValue: 'prompt accepted' }
+                  body: { stringValue: 'prompt accepted' },
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }],
-                  body: { stringValue: 'response.in_progress' }
+                  body: { stringValue: 'response.in_progress' },
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }],
-                  body: { stringValue: 'needs-input now' }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  body: { stringValue: 'needs-input now' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 2);
@@ -682,13 +692,39 @@ void test('parseOtlpLifecycleLogEvents keeps lifecycle/high-signal records and d
   assert.equal(events[1]?.statusHint, 'needs-input');
 });
 
+void test('parseOtlpLifecycleLogEvents computes fallback summaries for dropped non-lifecycle events', () => {
+  const events = parseOtlpLifecycleLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'custom.non_lifecycle' } },
+                  ],
+                  body: { stringValue: 'background status line' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    '2026-02-15T00:00:00.000Z',
+  );
+
+  assert.deepEqual(events, []);
+});
+
 void test('parseOtlpLifecycleMetricEvents keeps lifecycle metrics and emits compact payload', () => {
   const events = parseOtlpLifecycleMetricEvents(
     {
       resourceMetrics: [
         {
           resource: {
-            attributes: [{ key: 'thread_id', value: { stringValue: 'thread-life-metric' } }]
+            attributes: [{ key: 'thread_id', value: { stringValue: 'thread-life-metric' } }],
           },
           scopeMetrics: [
             {
@@ -696,22 +732,22 @@ void test('parseOtlpLifecycleMetricEvents keeps lifecycle metrics and emits comp
                 {
                   name: 'codex.turn.e2e_duration_ms',
                   gauge: {
-                    dataPoints: [{ asDouble: 901.2 }]
-                  }
+                    dataPoints: [{ asDouble: 901.2 }],
+                  },
                 },
                 {
                   name: 'custom.metric',
                   gauge: {
-                    dataPoints: [{ asDouble: 12 }]
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                    dataPoints: [{ asDouble: 12 }],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 1);
@@ -732,23 +768,23 @@ void test('parseOtlpLifecycleTraceEvents keeps lifecycle/high-signal spans only'
               spans: [
                 {
                   name: 'codex.turn.e2e_duration_ms',
-                  attributes: [{ key: 'thread-id', value: { stringValue: 'thread-life-trace' } }]
+                  attributes: [{ key: 'thread-id', value: { stringValue: 'thread-life-trace' } }],
                 },
                 {
                   name: 'codex.sse_event',
-                  attributes: [{ key: 'kind', value: { stringValue: 'response.completed' } }]
+                  attributes: [{ key: 'kind', value: { stringValue: 'response.completed' } }],
                 },
                 {
                   name: 'custom.trace',
-                  attributes: [{ key: 'kind', value: { stringValue: 'noop' } }]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  attributes: [{ key: 'kind', value: { stringValue: 'noop' } }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 2);
@@ -768,52 +804,52 @@ void test('parseOtlpLifecycleLogEvents covers text-value and summary fallback br
             {
               logRecords: [
                 {
-                  attributes: [{ key: 'event.name', value: 'codex.turn.e2e_duration_ms' }]
+                  attributes: [{ key: 'event.name', value: 'codex.turn.e2e_duration_ms' }],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.conversation_starts' } },
-                    { key: 'model_name', value: { stringValue: 'gpt-5' } }
-                  ]
+                    { key: 'model_name', value: { stringValue: 'gpt-5' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.conversation_starts' } },
-                    { key: 'model_name', value: { stringValue: '   ' } }
-                  ]
+                    { key: 'model_name', value: { stringValue: '   ' } },
+                  ],
                 },
                 {
                   attributes: [
                     { key: 'event.name', value: { stringValue: 'codex.sse_event' } },
-                    { key: 'kind', value: { stringValue: 'needs-input' } }
-                  ]
+                    { key: 'kind', value: { stringValue: 'needs-input' } },
+                  ],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { boolValue: true } }]
+                  attributes: [{ key: 'event.name', value: { boolValue: true } }],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { intValue: '123' } }]
+                  attributes: [{ key: 'event.name', value: { intValue: '123' } }],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { doubleValue: 1.5 } }]
+                  attributes: [{ key: 'event.name', value: { doubleValue: 1.5 } }],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { bytesValue: 'Ymlu' } }]
+                  attributes: [{ key: 'event.name', value: { bytesValue: 'Ymlu' } }],
                 },
                 {
-                  attributes: [{ key: 'event.name', value: { stringValue: '   ' } }]
+                  attributes: [{ key: 'event.name', value: { stringValue: '   ' } }],
                 },
                 {
                   attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }],
-                  body: { stringValue: 'needs-input now' }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  body: { stringValue: 'needs-input now' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 5);
@@ -834,15 +870,15 @@ void test('parseOtlpLifecycleMetricEvents handles missing points and invalid roo
             {
               metrics: [
                 {
-                  name: 'codex.turn.e2e_duration_ms'
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  name: 'codex.turn.e2e_duration_ms',
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.payload['pointCount'], 0);
@@ -860,7 +896,7 @@ void test('parseOtlpMetricEvents parses metrics and status hints', () => {
       resourceMetrics: [
         {
           resource: {
-            attributes: [{ key: 'thread_id', value: { stringValue: 'thread-m' } }]
+            attributes: [{ key: 'thread_id', value: { stringValue: 'thread-m' } }],
           },
           scopeMetrics: [
             {
@@ -868,36 +904,36 @@ void test('parseOtlpMetricEvents parses metrics and status hints', () => {
                 {
                   name: 'codex.turn.e2e_duration_ms',
                   sum: {
-                    dataPoints: [{}, {}]
-                  }
+                    dataPoints: [{}, {}],
+                  },
                 },
                 {
                   gauge: {
-                    dataPoints: [{}]
-                  }
+                    dataPoints: [{}],
+                  },
                 },
                 {
                   histogram: {
-                    dataPoints: [{}, {}, {}]
-                  }
+                    dataPoints: [{}, {}, {}],
+                  },
                 },
                 {
                   exponentialHistogram: {
-                    dataPoints: [{}]
-                  }
+                    dataPoints: [{}],
+                  },
                 },
                 {
                   summary: {
-                    dataPoints: [{}, {}]
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                    dataPoints: [{}, {}],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(events.length, 5);
   assert.equal(events[0]?.eventName, 'codex.turn.e2e_duration_ms');
@@ -921,16 +957,16 @@ void test('parseOtlpMetricEvents maps codex turn latency metrics to completed st
                 {
                   name: 'codex.turn.e2e_duration_ms',
                   gauge: {
-                    dataPoints: [{ asDouble: 812.4 }]
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                    dataPoints: [{ asDouble: 812.4 }],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.summary, 'turn complete (812ms)');
@@ -948,16 +984,16 @@ void test('parseOtlpMetricEvents maps turn count summary and reads sum-valued po
                 {
                   name: 'codex.conversation.turn.count',
                   summary: {
-                    dataPoints: [null, { sum: 4.8 }]
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                    dataPoints: [null, { sum: 4.8 }],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(events.length, 1);
   assert.equal(events[0]?.summary, 'turn count 5');
@@ -974,7 +1010,7 @@ void test('parseOtlpTraceEvents parses spans and thread ids', () => {
       resourceSpans: [
         {
           resource: {
-            attributes: [{ key: 'service.name', value: { stringValue: 'codex' } }]
+            attributes: [{ key: 'service.name', value: { stringValue: 'codex' } }],
           },
           scopeSpans: [
             {
@@ -982,18 +1018,18 @@ void test('parseOtlpTraceEvents parses spans and thread ids', () => {
                 {
                   name: 'codex.websocket_event',
                   endTimeUnixNano: '1700000005000000000',
-                  attributes: [{ key: 'thread-id', value: { stringValue: 'thread-t' } }]
+                  attributes: [{ key: 'thread-id', value: { stringValue: 'thread-t' } }],
                 },
                 {
-                  attributes: [{ key: 'x', value: { boolValue: true } }]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  attributes: [{ key: 'x', value: { boolValue: true } }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(events.length, 2);
   assert.equal(events[0]?.eventName, 'codex.websocket_event');
@@ -1011,25 +1047,27 @@ void test('parseOtlpTraceEvents covers summary variants for span name, kind, and
               spans: [
                 {
                   name: 'trace.one',
-                  attributes: [{ key: 'status', value: { stringValue: 'ok' } }]
+                  attributes: [{ key: 'status', value: { stringValue: 'ok' } }],
                 },
                 {
                   name: 'trace.two',
-                  attributes: [{ key: 'kind', value: { stringValue: 'response.output_text.delta' } }]
+                  attributes: [
+                    { key: 'kind', value: { stringValue: 'response.output_text.delta' } },
+                  ],
                 },
                 {
-                  attributes: [{ key: 'kind', value: { stringValue: 'response.started' } }]
+                  attributes: [{ key: 'kind', value: { stringValue: 'response.started' } }],
                 },
                 {
-                  attributes: [{ key: 'status', value: { stringValue: 'error' } }]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  attributes: [{ key: 'status', value: { stringValue: 'error' } }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(events.length, 4);
   assert.equal(events[0]?.summary, 'trace.one (ok)');
@@ -1049,9 +1087,9 @@ void test('parseCodexHistoryLine parses history entries and rejects invalid line
       timestamp: '2026-02-15T10:00:00.000Z',
       type: 'user_prompt',
       message: 'hello',
-      session_id: 'thread-h'
+      session_id: 'thread-h',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(parsed, null);
   assert.equal(parsed?.source, 'history');
@@ -1063,10 +1101,10 @@ void test('parseCodexHistoryLine parses history entries and rejects invalid line
   const fallback = parseCodexHistoryLine(
     JSON.stringify({
       entry: {
-        text: 'no timestamp'
-      }
+        text: 'no timestamp',
+      },
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(fallback?.eventName, 'history.entry');
   assert.equal(fallback?.observedAt, '2026-02-15T00:00:00.000Z');
@@ -1080,9 +1118,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: 1771126751,
       type: 'user_prompt',
-      message: 'seconds timestamp'
+      message: 'seconds timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(seconds, null);
   assert.equal(seconds?.observedAt, '2026-02-15T03:39:11.000Z');
@@ -1091,9 +1129,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: 1771126751000,
       type: 'user_prompt',
-      message: 'milliseconds timestamp'
+      message: 'milliseconds timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(milliseconds, null);
   assert.equal(milliseconds?.observedAt, '2026-02-15T03:39:11.000Z');
@@ -1102,9 +1140,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: '1771126751',
       type: 'user_prompt',
-      message: 'seconds as string'
+      message: 'seconds as string',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(secondsString, null);
   assert.equal(secondsString?.observedAt, '2026-02-15T03:39:11.000Z');
@@ -1113,9 +1151,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: 1e15,
       type: 'user_prompt',
-      message: 'microseconds timestamp'
+      message: 'microseconds timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(microseconds, null);
   assert.equal(microseconds?.observedAt, '2001-09-09T01:46:40.000Z');
@@ -1124,9 +1162,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: 1e18,
       type: 'user_prompt',
-      message: 'nanoseconds timestamp'
+      message: 'nanoseconds timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(nanoseconds, null);
   assert.equal(nanoseconds?.observedAt, '2001-09-09T01:46:40.000Z');
@@ -1135,9 +1173,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: 0.0004,
       type: 'user_prompt',
-      message: 'tiny timestamp'
+      message: 'tiny timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(tinyEpoch, null);
   assert.equal(tinyEpoch?.observedAt, '2026-02-15T00:00:00.000Z');
@@ -1146,9 +1184,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: 9e27,
       type: 'user_prompt',
-      message: 'huge timestamp'
+      message: 'huge timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(hugeEpoch, null);
   assert.equal(hugeEpoch?.observedAt, '2026-02-15T00:00:00.000Z');
@@ -1157,9 +1195,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: '   ',
       type: 'user_prompt',
-      message: 'blank timestamp'
+      message: 'blank timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(blankTimestamp, null);
   assert.equal(blankTimestamp?.observedAt, '2026-02-15T00:00:00.000Z');
@@ -1168,9 +1206,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: 0,
       type: 'user_prompt',
-      message: 'non-positive timestamp'
+      message: 'non-positive timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(nonPositiveTimestamp, null);
   assert.equal(nonPositiveTimestamp?.observedAt, '2026-02-15T00:00:00.000Z');
@@ -1179,9 +1217,9 @@ void test('parseCodexHistoryLine normalizes numeric timestamp formats and guards
     JSON.stringify({
       timestamp: -1,
       type: 'user_prompt',
-      message: 'negative timestamp'
+      message: 'negative timestamp',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(negativeTimestamp, null);
   assert.equal(negativeTimestamp?.observedAt, '2026-02-15T00:00:00.000Z');
@@ -1191,9 +1229,9 @@ void test('parseCodexHistoryLine does not derive completed status from summary t
   const parsed = parseCodexHistoryLine(
     JSON.stringify({
       type: 'custom.event',
-      summary: 'turn completed'
+      summary: 'turn completed',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.notEqual(parsed, null);
   assert.equal(parsed?.statusHint, null);
@@ -1204,11 +1242,11 @@ void test('extractCodexThreadId scans nested records and arrays', () => {
     extractCodexThreadId({
       payload: {
         metadata: {
-          session_id: 'thread-nested'
-        }
-      }
+          session_id: 'thread-nested',
+        },
+      },
     }),
-    'thread-nested'
+    'thread-nested',
   );
   assert.equal(extractCodexThreadId({}), null);
   assert.equal(extractCodexThreadId(['x']), null);
@@ -1219,14 +1257,14 @@ void test('extractCodexThreadId scans nested records and arrays', () => {
           context: {
             data: {
               entry: {
-                thread_id: 'too-deep-to-collect'
-              }
-            }
-          }
-        }
-      }
+                thread_id: 'too-deep-to-collect',
+              },
+            },
+          },
+        },
+      },
     }),
-    null
+    null,
   );
 });
 
@@ -1238,8 +1276,8 @@ void test('telemetryFingerprint is deterministic and sensitive to key fields', (
     eventName: 'codex.user_prompt',
     observedAt: '2026-02-15T10:00:00.000Z',
     payload: {
-      hello: 'world'
-    }
+      hello: 'world',
+    },
   });
   const same = telemetryFingerprint({
     source: 'otlp-log',
@@ -1248,8 +1286,8 @@ void test('telemetryFingerprint is deterministic and sensitive to key fields', (
     eventName: 'codex.user_prompt',
     observedAt: '2026-02-15T10:00:00.000Z',
     payload: {
-      hello: 'world'
-    }
+      hello: 'world',
+    },
   });
   const different = telemetryFingerprint({
     source: 'otlp-log',
@@ -1258,8 +1296,8 @@ void test('telemetryFingerprint is deterministic and sensitive to key fields', (
     eventName: 'codex.user_prompt',
     observedAt: '2026-02-15T10:00:00.000Z',
     payload: {
-      hello: 'world'
-    }
+      hello: 'world',
+    },
   });
   assert.equal(base, same);
   assert.notEqual(base, different);
@@ -1270,7 +1308,7 @@ void test('telemetryFingerprint is deterministic and sensitive to key fields', (
     providerThreadId: null,
     eventName: null,
     observedAt: '2026-02-15T10:00:00.000Z',
-    payload: {}
+    payload: {},
   });
   assert.equal(typeof nullable, 'string');
   assert.equal(nullable.length, 40);
@@ -1282,13 +1320,13 @@ void test('codex telemetry parsers tolerate malformed nested payload shapes and 
       resourceLogs: [
         null,
         {
-          scopeLogs: 'bad'
+          scopeLogs: 'bad',
         },
         {
           scopeLogs: [
             null,
             {
-              logRecords: 'bad'
+              logRecords: 'bad',
             },
             {
               logRecords: [
@@ -1299,54 +1337,54 @@ void test('codex telemetry parsers tolerate malformed nested payload shapes and 
                   attributes: [
                     null,
                     {
-                      key: 5
+                      key: 5,
                     },
                     {
                       key: 'raw',
-                      value: 7
+                      value: 7,
                     },
                     {
                       key: 'int-num',
                       value: {
-                        intValue: 9
-                      }
+                        intValue: 9,
+                      },
                     },
                     {
                       key: 'int-string-invalid',
                       value: {
-                        intValue: 'nan'
-                      }
+                        intValue: 'nan',
+                      },
                     },
                     {
                       key: 'kv-weird',
                       value: {
                         kvlistValue: {
-                          values: [null, { key: 5, value: { stringValue: 'x' } }]
-                        }
-                      }
+                          values: [null, { key: 5, value: { stringValue: 'x' } }],
+                        },
+                      },
                     },
                     {
                       key: 'event.name',
                       value: {
-                        stringValue: ''
-                      }
+                        stringValue: '',
+                      },
                     },
                     {
                       key: 'kind',
                       value: {
-                        stringValue: 'needs-input'
-                      }
-                    }
+                        stringValue: 'needs-input',
+                      },
+                    },
                   ],
-                  body: true
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  body: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(malformedLogs.length, 1);
   assert.equal(malformedLogs[0]?.severity, null);
@@ -1355,8 +1393,10 @@ void test('codex telemetry parsers tolerate malformed nested payload shapes and 
   assert.equal(typeof malformedAttributes, 'object');
   assert.ok(malformedAttributes !== null);
   assert.equal(
-    ((malformedAttributes as Record<string, unknown>)['int-string-invalid'] as string).toLowerCase(),
-    'nan'
+    (
+      (malformedAttributes as Record<string, unknown>)['int-string-invalid'] as string
+    ).toLowerCase(),
+    'nan',
   );
 
   const malformedMetrics = parseOtlpMetricEvents(
@@ -1364,22 +1404,22 @@ void test('codex telemetry parsers tolerate malformed nested payload shapes and 
       resourceMetrics: [
         null,
         {
-          scopeMetrics: 'bad'
+          scopeMetrics: 'bad',
         },
         {
           scopeMetrics: [
             null,
             {
-              metrics: 'bad'
+              metrics: 'bad',
             },
             {
-              metrics: [null, {}]
-            }
-          ]
-        }
-      ]
+              metrics: [null, {}],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(malformedMetrics.length, 1);
   assert.equal(malformedMetrics[0]?.summary, 'metric points=0');
@@ -1389,22 +1429,22 @@ void test('codex telemetry parsers tolerate malformed nested payload shapes and 
       resourceSpans: [
         null,
         {
-          scopeSpans: 'bad'
+          scopeSpans: 'bad',
         },
         {
           scopeSpans: [
             null,
             {
-              spans: 'bad'
+              spans: 'bad',
             },
             {
-              spans: [null, { endTimeUnixNano: 1700000000000000000 }]
-            }
-          ]
-        }
-      ]
+              spans: [null, { endTimeUnixNano: 1700000000000000000 }],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(malformedTraces.length, 1);
   assert.equal(malformedTraces[0]?.eventName, null);
@@ -1412,9 +1452,9 @@ void test('codex telemetry parsers tolerate malformed nested payload shapes and 
   assert.equal(
     extractCodexThreadId({
       thread_id: Array.from({ length: 20 }, (_, idx) => `thread-${String(idx)}`),
-      data: 5
+      data: 5,
     }),
-    'thread-0'
+    'thread-0',
   );
 });
 
@@ -1430,31 +1470,31 @@ void test('codex telemetry log summaries and status hints can derive from summar
                   attributes: [
                     {
                       key: 'event.name',
-                      value: { stringValue: 'custom.event' }
+                      value: { stringValue: 'custom.event' },
                     },
                     {
                       key: 'status',
-                      value: { stringValue: 'response.completed' }
-                    }
+                      value: { stringValue: 'response.completed' },
+                    },
                   ],
-                  body: { stringValue: 'custom body' }
+                  body: { stringValue: 'custom body' },
                 },
                 {
                   attributes: [
                     {
                       key: 'event.name',
-                      value: { stringValue: 'custom.event.with.body' }
-                    }
+                      value: { stringValue: 'custom.event.with.body' },
+                    },
                   ],
-                  body: { stringValue: 'detail body' }
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  body: { stringValue: 'detail body' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
 
   assert.equal(events.length, 2);
@@ -1469,9 +1509,9 @@ void test('codex history parsing handles numeric timestamps, fallback timestamps
       timestamp: 1700000000000,
       kind: 'event-kind',
       summary: 7,
-      session_id: 'thread-num'
+      session_id: 'thread-num',
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(numericTs?.observedAt, '2023-11-14T22:13:20.000Z');
   assert.equal(numericTs?.summary, '7');
@@ -1482,10 +1522,10 @@ void test('codex history parsing handles numeric timestamps, fallback timestamps
       timestamp: 'not-a-date',
       type: '',
       entry: {
-        text: null
-      }
+        text: null,
+      },
     }),
-    '2026-02-15T00:00:00.000Z'
+    '2026-02-15T00:00:00.000Z',
   );
   assert.equal(invalidTs?.observedAt, '2026-02-15T00:00:00.000Z');
   assert.equal(invalidTs?.eventName, 'history.entry');

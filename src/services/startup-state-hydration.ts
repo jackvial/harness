@@ -24,10 +24,7 @@ interface StartupStateHydrationServiceOptions<
   readonly gitHydrationEnabled: boolean;
   readonly listDirectoryGitStatuses: () => Promise<readonly TDirectoryGitStatus[]>;
   readonly setDirectoryGitSummary: (directoryId: string, summary: TSummary) => void;
-  readonly setDirectoryRepositorySnapshot: (
-    directoryId: string,
-    snapshot: TSnapshot,
-  ) => void;
+  readonly setDirectoryRepositorySnapshot: (directoryId: string, snapshot: TSnapshot) => void;
   readonly setDirectoryRepositoryAssociation: (
     directoryId: string,
     repositoryId: string | null,

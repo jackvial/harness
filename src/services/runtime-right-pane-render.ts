@@ -15,10 +15,7 @@ interface RuntimeRightPaneLayout {
 }
 
 interface ConversationPaneLike {
-  render(
-    frame: TerminalSnapshotFrameCore,
-    layout: RuntimeRightPaneLayout,
-  ): readonly string[];
+  render(frame: TerminalSnapshotFrameCore, layout: RuntimeRightPaneLayout): readonly string[];
 }
 
 interface HomePaneRenderInput<
@@ -41,9 +38,7 @@ interface HomePaneLike<
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
 > {
-  render(
-    input: HomePaneRenderInput<TRepositoryRecord, TTaskRecord>,
-  ): TaskFocusedPaneView;
+  render(input: HomePaneRenderInput<TRepositoryRecord, TTaskRecord>): TaskFocusedPaneView;
 }
 
 interface ProjectPaneLike {
@@ -119,7 +114,9 @@ export class RuntimeRightPaneRender<
         workspace.projectPaneSnapshot === null ||
         workspace.projectPaneSnapshot.directoryId !== input.activeDirectoryId;
       if (needsSnapshotRefresh) {
-        workspace.projectPaneSnapshot = this.options.refreshProjectPaneSnapshot(input.activeDirectoryId);
+        workspace.projectPaneSnapshot = this.options.refreshProjectPaneSnapshot(
+          input.activeDirectoryId,
+        );
       }
       const view = this.options.projectPane.render({
         layout: input.layout,

@@ -31,7 +31,11 @@ void test('gateway profiler resolves harness command args with optional session 
 });
 
 void test('gateway profiler toggles start when no active profile-state file exists', async () => {
-  const calls: Array<{ action: 'start' | 'stop'; sessionName: string | null; harnessScriptPath: string }> = [];
+  const calls: Array<{
+    action: 'start' | 'stop';
+    sessionName: string | null;
+    harnessScriptPath: string;
+  }> = [];
   const result = await toggleGatewayProfiler({
     invocationDirectory: '/tmp/harness',
     sessionName: 'perf-a',
@@ -44,7 +48,8 @@ void test('gateway profiler toggles start when no active profile-state file exis
         harnessScriptPath: input.harnessScriptPath,
       });
       return {
-        stdout: 'profile started pid=123\nprofile-target: /tmp/harness/.harness/profiles/perf-a/gateway.cpuprofile\n',
+        stdout:
+          'profile started pid=123\nprofile-target: /tmp/harness/.harness/profiles/perf-a/gateway.cpuprofile\n',
         stderr: '',
       };
     },
@@ -77,7 +82,10 @@ void test('gateway profiler toggles stop when active profile-state file exists',
   });
 
   assert.equal(result.action, 'stop');
-  assert.equal(result.message, 'profile: gateway=/tmp/harness/.harness/profiles/gateway.cpuprofile');
+  assert.equal(
+    result.message,
+    'profile: gateway=/tmp/harness/.harness/profiles/gateway.cpuprofile',
+  );
   assert.deepEqual(calls, [{ action: 'stop' }]);
 });
 

@@ -175,7 +175,10 @@ export function handleRepositoryPromptInput(options: HandleRepositoryPromptInput
   }
   queueControlPlaneOp(
     async () => {
-      await upsertRepositoryByRemoteUrl(trimmed, mode === 'edit' ? (repositoryId ?? undefined) : undefined);
+      await upsertRepositoryByRemoteUrl(
+        trimmed,
+        mode === 'edit' ? (repositoryId ?? undefined) : undefined,
+      );
     },
     mode === 'edit' ? 'prompt-edit-repository' : 'prompt-add-repository',
   );

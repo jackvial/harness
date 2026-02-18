@@ -79,8 +79,8 @@ function parseLineValue(rawValue: string, lineNumber: number): string {
     }
     return decodeDoubleQuotedValue(rawValue.slice(1, closingIndex), lineNumber);
   }
-  if (rawValue.startsWith('\'')) {
-    const closingIndex = rawValue.indexOf('\'', 1);
+  if (rawValue.startsWith("'")) {
+    const closingIndex = rawValue.indexOf("'", 1);
     if (closingIndex < 0) {
       throw new Error(`unterminated single-quoted value on line ${String(lineNumber)}`);
     }
@@ -98,7 +98,9 @@ function parseHarnessSecretLine(line: string, lineNumber: number): HarnessSecret
   if (trimmed.length === 0 || trimmed.startsWith('#')) {
     return null;
   }
-  const withoutExport = trimmed.startsWith('export ') ? trimmed.slice('export '.length).trimStart() : trimmed;
+  const withoutExport = trimmed.startsWith('export ')
+    ? trimmed.slice('export '.length).trimStart()
+    : trimmed;
   const equalIndex = withoutExport.indexOf('=');
   if (equalIndex <= 0) {
     throw new Error(`invalid secret entry on line ${String(lineNumber)}: expected KEY=VALUE`);
@@ -110,7 +112,7 @@ function parseHarnessSecretLine(line: string, lineNumber: number): HarnessSecret
   const rawValue = withoutExport.slice(equalIndex + 1).trim();
   return {
     key,
-    value: parseLineValue(rawValue, lineNumber)
+    value: parseLineValue(rawValue, lineNumber),
   };
 }
 
@@ -145,7 +147,7 @@ export function loadHarnessSecrets(options: LoadHarnessSecretsOptions = {}): Loa
       filePath,
       loaded: false,
       loadedKeys: [],
-      skippedKeys: []
+      skippedKeys: [],
     };
   }
   const parsed = parseHarnessSecretsText(readFileSync(filePath, 'utf8'));
@@ -163,6 +165,6 @@ export function loadHarnessSecrets(options: LoadHarnessSecretsOptions = {}): Loa
     filePath,
     loaded: true,
     loadedKeys,
-    skippedKeys
+    skippedKeys,
   };
 }

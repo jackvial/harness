@@ -23,11 +23,7 @@ function createConversation(
 void test('startup visibility counts only visible non-empty glyph cells', () => {
   const startupVisibility = new StartupVisibility();
   const conversation = createConversation([
-    [
-      { glyph: 'A' },
-      { glyph: ' ', continued: false },
-      { glyph: 'B', continued: true },
-    ],
+    [{ glyph: 'A' }, { glyph: ' ', continued: false }, { glyph: 'B', continued: true }],
     [{ glyph: '\t' }, { glyph: 'C' }],
   ]);
 
@@ -37,11 +33,7 @@ void test('startup visibility counts only visible non-empty glyph cells', () => 
 void test('startup visibility detects codex header markers in visible text rows', () => {
   const startupVisibility = new StartupVisibility();
   const conversation = createConversation([
-    [
-      { glyph: 'OpenAI ' },
-      { glyph: 'Codex' },
-      { glyph: '!', continued: true },
-    ],
+    [{ glyph: 'OpenAI ' }, { glyph: 'Codex' }, { glyph: '!', continued: true }],
     [{ glyph: 'model: gpt-5' }, { glyph: '   ' }],
     [{ glyph: 'directory: /tmp/workspace' }],
   ]);

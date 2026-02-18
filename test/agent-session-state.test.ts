@@ -7,7 +7,7 @@ import {
   codexResumeSessionIdFromAdapterState,
   cursorResumeSessionIdFromAdapterState,
   mergeAdapterStateFromSessionEvent,
-  normalizeAdapterState
+  normalizeAdapterState,
 } from '../src/adapters/agent-session-state.ts';
 
 void test('normalizeAdapterState accepts object records and falls back to empty object', () => {
@@ -16,8 +16,8 @@ void test('normalizeAdapterState accepts object records and falls back to empty 
   assert.deepEqual(normalizeAdapterState('x'), {});
   assert.deepEqual(normalizeAdapterState({ codex: { resumeSessionId: 'thread-1' } }), {
     codex: {
-      resumeSessionId: 'thread-1'
-    }
+      resumeSessionId: 'thread-1',
+    },
   });
 });
 
@@ -25,25 +25,25 @@ void test('codexResumeSessionIdFromAdapterState reads canonical and legacy keys'
   assert.equal(codexResumeSessionIdFromAdapterState({}), null);
   assert.equal(
     codexResumeSessionIdFromAdapterState({
-      codex: {}
+      codex: {},
     }),
-    null
+    null,
   );
   assert.equal(
     codexResumeSessionIdFromAdapterState({
       codex: {
-        resumeSessionId: 'thread-canonical'
-      }
+        resumeSessionId: 'thread-canonical',
+      },
     }),
-    'thread-canonical'
+    'thread-canonical',
   );
   assert.equal(
     codexResumeSessionIdFromAdapterState({
       codex: {
-        threadId: 'thread-legacy'
-      }
+        threadId: 'thread-legacy',
+      },
     }),
-    'thread-legacy'
+    'thread-legacy',
   );
 });
 
@@ -51,25 +51,25 @@ void test('claudeResumeSessionIdFromAdapterState reads canonical and legacy keys
   assert.equal(claudeResumeSessionIdFromAdapterState({}), null);
   assert.equal(
     claudeResumeSessionIdFromAdapterState({
-      claude: {}
+      claude: {},
     }),
-    null
+    null,
   );
   assert.equal(
     claudeResumeSessionIdFromAdapterState({
       claude: {
-        resumeSessionId: 'session-canonical'
-      }
+        resumeSessionId: 'session-canonical',
+      },
     }),
-    'session-canonical'
+    'session-canonical',
   );
   assert.equal(
     claudeResumeSessionIdFromAdapterState({
       claude: {
-        sessionId: 'session-legacy'
-      }
+        sessionId: 'session-legacy',
+      },
     }),
-    'session-legacy'
+    'session-legacy',
   );
 });
 
@@ -77,33 +77,33 @@ void test('cursorResumeSessionIdFromAdapterState reads canonical and legacy keys
   assert.equal(cursorResumeSessionIdFromAdapterState({}), null);
   assert.equal(
     cursorResumeSessionIdFromAdapterState({
-      cursor: {}
+      cursor: {},
     }),
-    null
+    null,
   );
   assert.equal(
     cursorResumeSessionIdFromAdapterState({
       cursor: {
-        resumeSessionId: 'cursor-canonical'
-      }
+        resumeSessionId: 'cursor-canonical',
+      },
     }),
-    'cursor-canonical'
+    'cursor-canonical',
   );
   assert.equal(
     cursorResumeSessionIdFromAdapterState({
       cursor: {
-        conversationId: 'cursor-conversation'
-      }
+        conversationId: 'cursor-conversation',
+      },
     }),
-    'cursor-conversation'
+    'cursor-conversation',
   );
   assert.equal(
     cursorResumeSessionIdFromAdapterState({
       cursor: {
-        sessionId: 'cursor-session'
-      }
+        sessionId: 'cursor-session',
+      },
     }),
-    'cursor-session'
+    'cursor-session',
   );
 });
 
@@ -116,12 +116,12 @@ void test('mergeAdapterStateFromSessionEvent returns null for codex session even
         type: 'session-exit',
         exit: {
           code: 0,
-          signal: null
-        }
+          signal: null,
+        },
       },
-      '2026-02-14T00:00:00.000Z'
+      '2026-02-14T00:00:00.000Z',
     ),
-    null
+    null,
   );
 });
 
@@ -136,18 +136,18 @@ void test('mergeAdapterStateFromSessionEvent updates claude session resume id fr
           ts: '2026-02-14T00:00:00.000Z',
           payload: {
             hook_event_name: 'UserPromptSubmit',
-            session_id: 'session-claude-1'
-          }
-        }
+            session_id: 'session-claude-1',
+          },
+        },
       },
-      '2026-02-14T00:00:01.000Z'
+      '2026-02-14T00:00:01.000Z',
     ),
     {
       claude: {
         resumeSessionId: 'session-claude-1',
-        lastObservedAt: '2026-02-14T00:00:01.000Z'
-      }
-    }
+        lastObservedAt: '2026-02-14T00:00:01.000Z',
+      },
+    },
   );
   assert.equal(
     mergeAdapterStateFromSessionEvent(
@@ -155,8 +155,8 @@ void test('mergeAdapterStateFromSessionEvent updates claude session resume id fr
       {
         claude: {
           resumeSessionId: 'session-claude-1',
-          lastObservedAt: '2026-02-14T00:00:01.000Z'
-        }
+          lastObservedAt: '2026-02-14T00:00:01.000Z',
+        },
       },
       {
         type: 'notify',
@@ -164,12 +164,12 @@ void test('mergeAdapterStateFromSessionEvent updates claude session resume id fr
           ts: '2026-02-14T00:00:02.000Z',
           payload: {
             hook_event_name: 'UserPromptSubmit',
-            session_id: 'session-claude-1'
-          }
-        }
-      }
+            session_id: 'session-claude-1',
+          },
+        },
+      },
     ),
-    null
+    null,
   );
 });
 
@@ -184,18 +184,18 @@ void test('mergeAdapterStateFromSessionEvent updates cursor session resume id fr
           ts: '2026-02-14T00:00:00.000Z',
           payload: {
             event: 'beforeSubmitPrompt',
-            conversation_id: 'cursor-conversation-1'
-          }
-        }
+            conversation_id: 'cursor-conversation-1',
+          },
+        },
       },
-      '2026-02-14T00:00:01.000Z'
+      '2026-02-14T00:00:01.000Z',
     ),
     {
       cursor: {
         resumeSessionId: 'cursor-conversation-1',
-        lastObservedAt: '2026-02-14T00:00:01.000Z'
-      }
-    }
+        lastObservedAt: '2026-02-14T00:00:01.000Z',
+      },
+    },
   );
   assert.equal(
     mergeAdapterStateFromSessionEvent(
@@ -203,8 +203,8 @@ void test('mergeAdapterStateFromSessionEvent updates cursor session resume id fr
       {
         cursor: {
           resumeSessionId: 'cursor-conversation-1',
-          lastObservedAt: '2026-02-14T00:00:01.000Z'
-        }
+          lastObservedAt: '2026-02-14T00:00:01.000Z',
+        },
       },
       {
         type: 'notify',
@@ -212,12 +212,12 @@ void test('mergeAdapterStateFromSessionEvent updates cursor session resume id fr
           ts: '2026-02-14T00:00:02.000Z',
           payload: {
             event: 'beforeSubmitPrompt',
-            conversation_id: 'cursor-conversation-1'
-          }
-        }
-      }
+            conversation_id: 'cursor-conversation-1',
+          },
+        },
+      },
     ),
-    null
+    null,
   );
 });
 
@@ -230,12 +230,12 @@ void test('mergeAdapterStateFromSessionEvent ignores unsupported agents and malf
         type: 'session-exit',
         exit: {
           code: 0,
-          signal: null
-        }
+          signal: null,
+        },
       },
-      '2026-02-14T00:00:00.000Z'
+      '2026-02-14T00:00:00.000Z',
     ),
-    null
+    null,
   );
   assert.equal(
     mergeAdapterStateFromSessionEvent(
@@ -245,12 +245,12 @@ void test('mergeAdapterStateFromSessionEvent ignores unsupported agents and malf
         type: 'session-exit',
         exit: {
           code: 0,
-          signal: null
-        }
+          signal: null,
+        },
       },
-      '2026-02-14T00:00:00.000Z'
+      '2026-02-14T00:00:00.000Z',
     ),
-    null
+    null,
   );
   assert.equal(
     mergeAdapterStateFromSessionEvent(
@@ -261,13 +261,13 @@ void test('mergeAdapterStateFromSessionEvent ignores unsupported agents and malf
         record: {
           ts: '2026-02-14T00:00:00.000Z',
           payload: {
-            hook_event_name: 'UserPromptSubmit'
-          }
-        }
+            hook_event_name: 'UserPromptSubmit',
+          },
+        },
       },
-      '2026-02-14T00:00:00.000Z'
+      '2026-02-14T00:00:00.000Z',
     ),
-    null
+    null,
   );
   assert.equal(
     mergeAdapterStateFromSessionEvent(
@@ -278,78 +278,58 @@ void test('mergeAdapterStateFromSessionEvent ignores unsupported agents and malf
         record: {
           ts: '2026-02-14T00:00:00.000Z',
           payload: {
-            event: 'beforeSubmitPrompt'
-          }
-        }
+            event: 'beforeSubmitPrompt',
+          },
+        },
       },
-      '2026-02-14T00:00:01.000Z'
+      '2026-02-14T00:00:01.000Z',
     ),
-    null
+    null,
   );
 });
 
 void test('buildAgentStartArgs injects codex resume and preserves explicit subcommands', () => {
   assert.deepEqual(
-    buildAgentStartArgs(
-      'codex',
-      ['--model', 'gpt-5.3-codex-high'],
-      {
-        codex: {
-          resumeSessionId: 'thread-123'
-        }
-      }
-    ),
-    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high']
+    buildAgentStartArgs('codex', ['--model', 'gpt-5.3-codex-high'], {
+      codex: {
+        resumeSessionId: 'thread-123',
+      },
+    }),
+    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high'],
   );
 
   assert.deepEqual(
-    buildAgentStartArgs(
-      'codex',
-      ['--', 'prompt text'],
-      {
-        codex: {
-          resumeSessionId: 'thread-123'
-        }
-      }
-    ),
-    ['resume', 'thread-123', '--', 'prompt text']
+    buildAgentStartArgs('codex', ['--', 'prompt text'], {
+      codex: {
+        resumeSessionId: 'thread-123',
+      },
+    }),
+    ['resume', 'thread-123', '--', 'prompt text'],
   );
 
   assert.deepEqual(
-    buildAgentStartArgs(
-      'codex',
-      [],
-      {
-        codex: {}
-      }
-    ),
-    []
+    buildAgentStartArgs('codex', [], {
+      codex: {},
+    }),
+    [],
   );
 
   assert.deepEqual(
-    buildAgentStartArgs(
-      'codex',
-      ['resume', '--last'],
-      {
-        codex: {
-          resumeSessionId: 'thread-123'
-        }
-      }
-    ),
-    ['resume', '--last']
+    buildAgentStartArgs('codex', ['resume', '--last'], {
+      codex: {
+        resumeSessionId: 'thread-123',
+      },
+    }),
+    ['resume', '--last'],
   );
 
   assert.deepEqual(
-    buildAgentStartArgs(
-      'claude',
-      ['--print'],
-      {
-        claude: {
-          resumeSessionId: 'session-123'
-        }
-      }
-    ),
-    ['--resume', 'session-123', '--print']
+    buildAgentStartArgs('claude', ['--print'], {
+      claude: {
+        resumeSessionId: 'session-123',
+      },
+    }),
+    ['--resume', 'session-123', '--print'],
   );
 });
 
@@ -359,13 +339,13 @@ void test('buildAgentStartArgs applies configurable codex yolo launch mode for i
       'codex',
       ['--model', 'gpt-5.3-codex-high'],
       {
-        codex: {}
+        codex: {},
       },
       {
-        codexLaunchMode: 'yolo'
-      }
+        codexLaunchMode: 'yolo',
+      },
     ),
-    ['--model', 'gpt-5.3-codex-high', '--yolo']
+    ['--model', 'gpt-5.3-codex-high', '--yolo'],
   );
 
   assert.deepEqual(
@@ -374,14 +354,14 @@ void test('buildAgentStartArgs applies configurable codex yolo launch mode for i
       ['--model', 'gpt-5.3-codex-high', '--yolo'],
       {
         codex: {
-          resumeSessionId: 'thread-123'
-        }
+          resumeSessionId: 'thread-123',
+        },
       },
       {
-        codexLaunchMode: 'yolo'
-      }
+        codexLaunchMode: 'yolo',
+      },
     ),
-    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high', '--yolo']
+    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high', '--yolo'],
   );
 
   assert.deepEqual(
@@ -389,69 +369,53 @@ void test('buildAgentStartArgs applies configurable codex yolo launch mode for i
       'codex',
       ['exec', '--json'],
       {
-        codex: {}
+        codex: {},
       },
       {
-        codexLaunchMode: 'yolo'
-      }
+        codexLaunchMode: 'yolo',
+      },
     ),
-    ['exec', '--json']
+    ['exec', '--json'],
   );
 
   assert.deepEqual(
-    buildAgentStartArgs(
-      'claude',
-      ['--model', 'haiku'],
-      {
-        claude: {}
-      }
-    ),
-    ['--model', 'haiku']
+    buildAgentStartArgs('claude', ['--model', 'haiku'], {
+      claude: {},
+    }),
+    ['--model', 'haiku'],
   );
 
   assert.deepEqual(
-    buildAgentStartArgs(
-      'claude',
-      ['--model', 'sonnet'],
-      {
-        claude: {
-          resumeSessionId: 'session-456'
-        }
-      }
-    ),
-    ['--resume', 'session-456', '--model', 'sonnet']
+    buildAgentStartArgs('claude', ['--model', 'sonnet'], {
+      claude: {
+        resumeSessionId: 'session-456',
+      },
+    }),
+    ['--resume', 'session-456', '--model', 'sonnet'],
   );
 
   assert.deepEqual(
-    buildAgentStartArgs(
-      'claude',
-      ['--resume', 'explicit-session'],
-      {
-        claude: {
-          resumeSessionId: 'session-456'
-        }
-      }
-    ),
-    ['--resume', 'explicit-session']
+    buildAgentStartArgs('claude', ['--resume', 'explicit-session'], {
+      claude: {
+        resumeSessionId: 'session-456',
+      },
+    }),
+    ['--resume', 'explicit-session'],
   );
 
   assert.deepEqual(
-    buildAgentStartArgs(
-      'claude',
-      ['mcp', 'list'],
-      {
-        claude: {
-          resumeSessionId: 'session-456'
-        }
-      }
-    ),
-    ['mcp', 'list']
+    buildAgentStartArgs('claude', ['mcp', 'list'], {
+      claude: {
+        resumeSessionId: 'session-456',
+      },
+    }),
+    ['mcp', 'list'],
   );
 });
 
 void test('buildAgentSessionStartArgs applies codex launch defaults and directory overrides via one abstraction', () => {
   const directoryModes = {
-    '/tmp/standard-mode': 'standard' as const
+    '/tmp/standard-mode': 'standard' as const,
   };
 
   assert.deepEqual(
@@ -460,16 +424,16 @@ void test('buildAgentSessionStartArgs applies codex launch defaults and director
       ['--model', 'gpt-5.3-codex-high'],
       {
         codex: {
-          resumeSessionId: 'thread-123'
-        }
+          resumeSessionId: 'thread-123',
+        },
       },
       {
         directoryPath: '/tmp/yolo-mode',
         codexLaunchDefaultMode: 'yolo',
-        codexLaunchModeByDirectoryPath: directoryModes
-      }
+        codexLaunchModeByDirectoryPath: directoryModes,
+      },
     ),
-    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high', '--yolo']
+    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high', '--yolo'],
   );
 
   assert.deepEqual(
@@ -478,16 +442,16 @@ void test('buildAgentSessionStartArgs applies codex launch defaults and director
       ['--model', 'gpt-5.3-codex-high'],
       {
         codex: {
-          resumeSessionId: 'thread-123'
-        }
+          resumeSessionId: 'thread-123',
+        },
       },
       {
         directoryPath: '/tmp/standard-mode',
         codexLaunchDefaultMode: 'yolo',
-        codexLaunchModeByDirectoryPath: directoryModes
-      }
+        codexLaunchModeByDirectoryPath: directoryModes,
+      },
     ),
-    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high']
+    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high'],
   );
 
   assert.deepEqual(
@@ -498,16 +462,16 @@ void test('buildAgentSessionStartArgs applies codex launch defaults and director
       {
         directoryPath: '/tmp/yolo-mode',
         codexLaunchDefaultMode: 'yolo',
-        codexLaunchModeByDirectoryPath: directoryModes
-      }
+        codexLaunchModeByDirectoryPath: directoryModes,
+      },
     ),
-    ['-lc', 'ls']
+    ['-lc', 'ls'],
   );
 });
 
 void test('buildAgentSessionStartArgs applies claude launch defaults and directory overrides', () => {
   const directoryModes = {
-    '/tmp/claude-standard': 'standard' as const
+    '/tmp/claude-standard': 'standard' as const,
   };
 
   assert.deepEqual(
@@ -518,10 +482,10 @@ void test('buildAgentSessionStartArgs applies claude launch defaults and directo
       {
         directoryPath: '/tmp/claude-yolo',
         claudeLaunchDefaultMode: 'yolo',
-        claudeLaunchModeByDirectoryPath: directoryModes
-      }
+        claudeLaunchModeByDirectoryPath: directoryModes,
+      },
     ),
-    ['--model', 'opus', '--dangerously-skip-permissions']
+    ['--model', 'opus', '--dangerously-skip-permissions'],
   );
 
   assert.deepEqual(
@@ -532,10 +496,10 @@ void test('buildAgentSessionStartArgs applies claude launch defaults and directo
       {
         directoryPath: '  /tmp/claude-standard  ',
         claudeLaunchDefaultMode: 'yolo',
-        claudeLaunchModeByDirectoryPath: directoryModes
-      }
+        claudeLaunchModeByDirectoryPath: directoryModes,
+      },
     ),
-    ['--model', 'opus']
+    ['--model', 'opus'],
   );
 });
 
@@ -546,10 +510,10 @@ void test('buildAgentStartArgs applies configurable claude yolo launch mode', ()
       ['--model', 'opus'],
       {},
       {
-        claudeLaunchMode: 'yolo'
-      }
+        claudeLaunchMode: 'yolo',
+      },
     ),
-    ['--model', 'opus', '--dangerously-skip-permissions']
+    ['--model', 'opus', '--dangerously-skip-permissions'],
   );
 
   assert.deepEqual(
@@ -558,10 +522,10 @@ void test('buildAgentStartArgs applies configurable claude yolo launch mode', ()
       ['--model', 'opus'],
       {},
       {
-        claudeLaunchMode: 'standard'
-      }
+        claudeLaunchMode: 'standard',
+      },
     ),
-    ['--model', 'opus']
+    ['--model', 'opus'],
   );
 
   assert.deepEqual(
@@ -570,21 +534,13 @@ void test('buildAgentStartArgs applies configurable claude yolo launch mode', ()
       ['--dangerously-skip-permissions', '--model', 'opus'],
       {},
       {
-        claudeLaunchMode: 'yolo'
-      }
+        claudeLaunchMode: 'yolo',
+      },
     ),
-    ['--dangerously-skip-permissions', '--model', 'opus']
+    ['--dangerously-skip-permissions', '--model', 'opus'],
   );
 
-  assert.deepEqual(
-    buildAgentStartArgs(
-      'claude',
-      ['--print'],
-      {},
-      {}
-    ),
-    ['--print']
-  );
+  assert.deepEqual(buildAgentStartArgs('claude', ['--print'], {}, {}), ['--print']);
 });
 
 void test('buildAgentStartArgs applies cursor yolo launch mode with conditional trust and resume', () => {
@@ -594,14 +550,14 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       [],
       {
         cursor: {
-          resumeSessionId: 'cursor-session-1'
-        }
+          resumeSessionId: 'cursor-session-1',
+        },
       },
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--resume', 'cursor-session-1', '--yolo']
+    ['--resume', 'cursor-session-1', '--yolo'],
   );
 
   assert.deepEqual(
@@ -610,14 +566,14 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       ['--resume', 'explicit'],
       {
         cursor: {
-          resumeSessionId: 'cursor-session-1'
-        }
+          resumeSessionId: 'cursor-session-1',
+        },
       },
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--resume', 'explicit', '--yolo']
+    ['--resume', 'explicit', '--yolo'],
   );
 
   assert.deepEqual(
@@ -626,14 +582,14 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       ['--print'],
       {
         cursor: {
-          resumeSessionId: 'cursor-session-1'
-        }
+          resumeSessionId: 'cursor-session-1',
+        },
       },
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--resume', 'cursor-session-1', '--print', '--yolo', '--trust']
+    ['--resume', 'cursor-session-1', '--print', '--yolo', '--trust'],
   );
 
   assert.deepEqual(
@@ -642,10 +598,10 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       ['--mode', 'headless'],
       {},
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--mode', 'headless', '--yolo', '--trust']
+    ['--mode', 'headless', '--yolo', '--trust'],
   );
 
   assert.deepEqual(
@@ -654,10 +610,10 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       ['--mode', 'ask'],
       {},
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--mode', 'ask', '--yolo']
+    ['--mode', 'ask', '--yolo'],
   );
 
   assert.deepEqual(
@@ -666,10 +622,10 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       ['--mode=headless'],
       {},
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--mode=headless', '--yolo', '--trust']
+    ['--mode=headless', '--yolo', '--trust'],
   );
 
   assert.deepEqual(
@@ -678,10 +634,10 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       ['--mode=ask'],
       {},
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--mode=ask', '--yolo']
+    ['--mode=ask', '--yolo'],
   );
 
   assert.deepEqual(
@@ -690,10 +646,10 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       ['--trust'],
       {},
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--trust', '--yolo']
+    ['--trust', '--yolo'],
   );
 
   assert.deepEqual(
@@ -702,16 +658,16 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
       ['--force', '--trust'],
       {},
       {
-        cursorLaunchMode: 'yolo'
-      }
+        cursorLaunchMode: 'yolo',
+      },
     ),
-    ['--force', '--trust']
+    ['--force', '--trust'],
   );
 });
 
 void test('buildAgentSessionStartArgs applies cursor launch defaults and directory overrides', () => {
   const directoryModes = {
-    '/tmp/cursor-standard': 'standard' as const
+    '/tmp/cursor-standard': 'standard' as const,
   };
 
   assert.deepEqual(
@@ -720,16 +676,16 @@ void test('buildAgentSessionStartArgs applies cursor launch defaults and directo
       [],
       {
         cursor: {
-          resumeSessionId: 'cursor-session-2'
-        }
+          resumeSessionId: 'cursor-session-2',
+        },
       },
       {
         directoryPath: '/tmp/cursor-yolo',
         cursorLaunchDefaultMode: 'yolo',
-        cursorLaunchModeByDirectoryPath: directoryModes
-      }
+        cursorLaunchModeByDirectoryPath: directoryModes,
+      },
     ),
-    ['--resume', 'cursor-session-2', '--yolo']
+    ['--resume', 'cursor-session-2', '--yolo'],
   );
 
   assert.deepEqual(
@@ -740,9 +696,9 @@ void test('buildAgentSessionStartArgs applies cursor launch defaults and directo
       {
         directoryPath: '/tmp/cursor-standard',
         cursorLaunchDefaultMode: 'yolo',
-        cursorLaunchModeByDirectoryPath: directoryModes
-      }
+        cursorLaunchModeByDirectoryPath: directoryModes,
+      },
     ),
-    []
+    [],
   );
 });

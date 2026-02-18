@@ -27,7 +27,7 @@ function parseArgs(argv: readonly string[]): { filePath: string } {
     throw new Error(`unknown argument: ${arg}`);
   }
   return {
-    filePath: resolve(process.cwd(), filePath)
+    filePath: resolve(process.cwd(), filePath),
   };
 }
 
@@ -75,7 +75,7 @@ function parseSelectorEntry(attrs: Record<string, unknown>): SelectorEntry | nul
     sessionId,
     directoryId,
     title,
-    agentType
+    agentType,
   };
 }
 
@@ -127,7 +127,9 @@ function main(): number {
 
   const latestEntries = entries
     .filter((entry) => entry.version === latestVersion)
-    .sort((left, right) => left.index - right.index || left.sessionId.localeCompare(right.sessionId));
+    .sort(
+      (left, right) => left.index - right.index || left.sessionId.localeCompare(right.sessionId),
+    );
 
   process.stdout.write(`Perf file: ${options.filePath}\n\n`);
   process.stdout.write(`Selector Snapshot v${String(latestVersion)}\n`);
@@ -138,7 +140,7 @@ function main(): number {
   }
   for (const entry of latestEntries) {
     process.stdout.write(
-      `${String(entry.index).padStart(2, ' ')}. [${entry.agentType}] ${entry.title || '(untitled)'}  ${entry.sessionId}  (${entry.directoryId} #${String(entry.directoryIndex)})\n`
+      `${String(entry.index).padStart(2, ' ')}. [${entry.agentType}] ${entry.title || '(untitled)'}  ${entry.sessionId}  (${entry.directoryId} #${String(entry.directoryIndex)})\n`,
     );
   }
   return 0;
@@ -151,7 +153,7 @@ try {
   }
 } catch (error: unknown) {
   process.stderr.write(
-    `selector report error: ${error instanceof Error ? error.message : String(error)}\n`
+    `selector report error: ${error instanceof Error ? error.message : String(error)}\n`,
   );
   process.exitCode = 1;
 }

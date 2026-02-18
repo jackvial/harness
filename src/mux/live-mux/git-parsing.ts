@@ -23,7 +23,7 @@ export function parseGitShortstatCounts(output: string): { additions: number; de
   const deletionsMatch = output.match(/(\d+)\s+deletions?\(-\)/);
   return {
     additions: additionsMatch === null ? 0 : Number.parseInt(additionsMatch[1]!, 10),
-    deletions: deletionsMatch === null ? 0 : Number.parseInt(deletionsMatch[1]!, 10)
+    deletions: deletionsMatch === null ? 0 : Number.parseInt(deletionsMatch[1]!, 10),
   };
 }
 
@@ -102,7 +102,7 @@ export function parseLastCommitLine(output: string): {
   if (trimmed.length === 0) {
     return {
       lastCommitAt: null,
-      shortCommitHash: null
+      shortCommitHash: null,
     };
   }
   const [hashPart = '', tsPart = ''] = trimmed.split('\t');
@@ -110,6 +110,6 @@ export function parseLastCommitLine(output: string): {
   const timestamp = tsPart.trim();
   return {
     lastCommitAt: timestamp.length > 0 ? timestamp : null,
-    shortCommitHash: hash
+    shortCommitHash: hash,
   };
 }

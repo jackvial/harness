@@ -4,14 +4,14 @@ import { test } from 'bun:test';
 import {
   startSingleSessionBroker,
   type BrokerAttachmentHandlers,
-  type BrokerDataEvent
+  type BrokerDataEvent,
 } from '../src/pty/session-broker.ts';
 import type { startPtySession, PtyExit } from '../src/pty/pty_host.ts';
 
 function waitForCondition(
   predicate: () => boolean,
   description: string,
-  timeoutMs = 5000
+  timeoutMs = 5000,
 ): Promise<void> {
   const startedAt = Date.now();
   return new Promise((resolve, reject) => {
@@ -39,7 +39,7 @@ function createAttachmentCollector() {
     },
     onExit: (exit: PtyExit) => {
       lastExit = exit;
-    }
+    },
   };
 
   return {
@@ -59,7 +59,7 @@ function createAttachmentCollector() {
     },
     exit: (): PtyExit | null => {
       return lastExit;
-    }
+    },
   };
 }
 
@@ -74,7 +74,7 @@ class FakePtySession extends EventEmitter {
 
 async function closeBrokerGracefully(
   broker: ReturnType<typeof startSingleSessionBroker>,
-  timeoutMs = 5000
+  timeoutMs = 5000,
 ): Promise<void> {
   const closer = createAttachmentCollector();
   broker.attach(closer.handlers);
@@ -85,7 +85,7 @@ async function closeBrokerGracefully(
 void test('single-session broker supports detach and reattach with cursor replay', async () => {
   const broker = startSingleSessionBroker({
     command: '/bin/cat',
-    commandArgs: []
+    commandArgs: [],
   });
   assert.equal(typeof broker.processId(), 'number');
   try {
@@ -118,10 +118,13 @@ void test('single-session broker supports detach and reattach with cursor replay
 });
 
 void test('single-session broker trims replay backlog to configured byte limit', async () => {
-  const broker = startSingleSessionBroker({
-    command: '/bin/cat',
-    commandArgs: []
-  }, 8);
+  const broker = startSingleSessionBroker(
+    {
+      command: '/bin/cat',
+      commandArgs: [],
+    },
+    8,
+  );
   try {
     const attachment = createAttachmentCollector();
     broker.attach(attachment.handlers);
@@ -147,7 +150,7 @@ void test('single-session broker trims replay backlog to configured byte limit',
 void test('single-session broker immediately notifies newly attached handlers after exit', async () => {
   const broker = startSingleSessionBroker({
     command: '/bin/sh',
-    commandArgs: ['-c', 'exit 7']
+    commandArgs: ['-c', 'exit 7'],
   });
 
   const early = createAttachmentCollector();
@@ -162,7 +165,7 @@ void test('single-session broker immediately notifies newly attached handlers af
 
 void test('single-session broker maps spawn errors to a terminal exit state', async () => {
   const broker = startSingleSessionBroker({
-    helperPath: '/path/that/does/not/exist'
+    helperPath: '/path/that/does/not/exist',
   });
   assert.equal(broker.processId(), null);
 
@@ -171,31 +174,27 @@ void test('single-session broker maps spawn errors to a terminal exit state', as
   await waitForCondition(() => collector.exit() !== null, 'spawn error exit delivery');
   assert.deepEqual(collector.exit(), {
     code: null,
-    signal: null
+    signal: null,
   });
 });
 
 void test('single-session broker suppresses duplicate exit notifications', async () => {
   const fake = new FakePtySession();
-  const broker = startSingleSessionBroker(
-    undefined,
-    undefined,
-    {
-      startSession: () => fake as unknown as ReturnType<typeof startPtySession>
-    }
-  );
+  const broker = startSingleSessionBroker(undefined, undefined, {
+    startSession: () => fake as unknown as ReturnType<typeof startPtySession>,
+  });
 
   const exits: PtyExit[] = [];
   broker.attach({
     onData: () => {},
     onExit: (exit) => {
       exits.push(exit);
-    }
+    },
   });
 
   fake.emit('exit', {
     code: 0,
-    signal: null
+    signal: null,
   } satisfies PtyExit);
   fake.emit('error', new Error('duplicate-terminal-signal'));
 
@@ -203,15 +202,18 @@ void test('single-session broker suppresses duplicate exit notifications', async
   assert.equal(exits.length, 1);
   assert.deepEqual(exits[0], {
     code: 0,
-    signal: null
+    signal: null,
   });
 });
 
 void test('single-session broker truncates oversized chunks to tail backlog window', async () => {
-  const broker = startSingleSessionBroker({
-    command: '/bin/cat',
-    commandArgs: []
-  }, 4);
+  const broker = startSingleSessionBroker(
+    {
+      command: '/bin/cat',
+      commandArgs: [],
+    },
+    4,
+  );
 
   try {
     const live = createAttachmentCollector();
@@ -231,13 +233,9 @@ void test('single-session broker truncates oversized chunks to tail backlog wind
 
 void test('single-session broker evicts oldest backlog entries when cumulative bytes exceed limit', async () => {
   const fake = new FakePtySession();
-  const broker = startSingleSessionBroker(
-    undefined,
-    6,
-    {
-      startSession: () => fake as unknown as ReturnType<typeof startPtySession>
-    }
-  );
+  const broker = startSingleSessionBroker(undefined, 6, {
+    startSession: () => fake as unknown as ReturnType<typeof startPtySession>,
+  });
 
   const live = createAttachmentCollector();
   broker.attach(live.handlers);
@@ -253,7 +251,7 @@ void test('single-session broker evicts oldest backlog entries when cumulative b
 
   fake.emit('exit', {
     code: 0,
-    signal: null
+    signal: null,
   } satisfies PtyExit);
   await waitForCondition(() => replay.exit() !== null, 'eviction path exit');
 });
@@ -264,8 +262,8 @@ void test('single-session broker forwards resize to underlying PTY session', asy
     commandArgs: ['-i'],
     env: {
       ...process.env,
-      PS1: ''
-    }
+      PS1: '',
+    },
   });
 
   try {
@@ -276,7 +274,10 @@ void test('single-session broker forwards resize to underlying PTY session', asy
     broker.write('stty size\n');
     broker.write('exit\n');
 
-    await waitForCondition(() => collector.readText().includes('30 90'), 'resized terminal dimensions');
+    await waitForCondition(
+      () => collector.readText().includes('30 90'),
+      'resized terminal dimensions',
+    );
     await waitForCondition(() => collector.exit() !== null, 'resize test exit');
     assert.equal(collector.exit()?.code, 0);
   } finally {

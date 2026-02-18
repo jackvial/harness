@@ -5,12 +5,12 @@ import process from 'node:process';
 import {
   TerminalSnapshotOracle,
   renderSnapshotAnsiRow,
-  type TerminalSnapshotFrameCore
+  type TerminalSnapshotFrameCore,
 } from '../src/terminal/snapshot-oracle.ts';
 import {
   computeDualPaneLayout,
   diffRenderedRows,
-  padOrTrimDisplay
+  padOrTrimDisplay,
 } from '../src/mux/dual-pane-core.ts';
 
 type Profile = 'line' | 'ansi' | 'mixed';
@@ -118,7 +118,12 @@ function parseIntArg(value: string | undefined, fallback: number, min: number): 
   return parsed;
 }
 
-function parseFloatArg(value: string | undefined, fallback: number, min: number, max: number): number {
+function parseFloatArg(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   if (value === undefined) {
     return fallback;
   }
@@ -268,7 +273,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     fixtureFile,
     seed,
     matrix,
-    json
+    json,
   };
 }
 
@@ -293,7 +298,7 @@ function percentile(values: readonly number[], fraction: number): number {
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(
     sorted.length - 1,
-    Math.max(0, Math.floor((sorted.length - 1) * fraction))
+    Math.max(0, Math.floor((sorted.length - 1) * fraction)),
   );
   return sorted[index]!;
 }
@@ -315,7 +320,7 @@ function summarize(values: readonly number[]): SummaryStats {
     avgMs: average(values),
     p95Ms: percentile(values, 0.95),
     p99Ms: percentile(values, 0.99),
-    maxMs: percentile(values, 1)
+    maxMs: percentile(values, 1),
   };
 }
 
@@ -404,7 +409,7 @@ function makeSyntheticChunkPool(profile: Profile, bytesPerChunk: number): readon
 function buildRenderRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
   frame: TerminalSnapshotFrameCore,
-  activeSessionIndex: number
+  activeSessionIndex: number,
 ): readonly string[] {
   const rows: string[] = [];
   const left = ' '.repeat(layout.leftCols);
@@ -415,8 +420,8 @@ function buildRenderRows(
   rows.push(
     padOrTrimDisplay(
       `[micro] active=session-${String(activeSessionIndex + 1)} pty=live`,
-      layout.cols
-    )
+      layout.cols,
+    ),
   );
   return rows;
 }
@@ -425,7 +430,7 @@ function chooseSessionIndex(
   rng: () => number,
   sessionCount: number,
   activeSessionIndex: number,
-  activeShare: number
+  activeShare: number,
 ): number {
   if (sessionCount <= 1) {
     return activeSessionIndex;
@@ -437,16 +442,12 @@ function chooseSessionIndex(
   return Math.max(0, Math.min(sessionCount - 1, candidate));
 }
 
-function simulateProtocolRoundtrip(
-  chunk: Buffer,
-  sessionId: string,
-  cursor: number
-): Buffer {
+function simulateProtocolRoundtrip(chunk: Buffer, sessionId: string, cursor: number): Buffer {
   const encoded = JSON.stringify({
     kind: 'pty.output',
     sessionId,
     cursor,
-    chunkBase64: chunk.toString('base64')
+    chunkBase64: chunk.toString('base64'),
   });
 
   const parsed = JSON.parse(encoded) as {
@@ -476,8 +477,8 @@ async function runScenario(scenario: Scenario): Promise<HarnessSummary> {
   const parseLayers = Array.from({ length: args.parsePasses }, () =>
     Array.from(
       { length: args.sessions },
-      () => new TerminalSnapshotOracle(layout.rightCols, layout.paneRows)
-    )
+      () => new TerminalSnapshotOracle(layout.rightCols, layout.paneRows),
+    ),
   );
   const activeSessionIndex = 0;
   const outputCursorBySession = Array.from({ length: args.sessions }, () => 0);
@@ -495,7 +496,7 @@ async function runScenario(scenario: Scenario): Promise<HarnessSummary> {
     inactiveChunks: 0,
     renders: 0,
     changedRowsTotal: 0,
-    renderOutputBytes: 0
+    renderOutputBytes: 0,
   };
 
   const outputHandleDurationsMs: number[] = [];
@@ -514,7 +515,7 @@ async function runScenario(scenario: Scenario): Promise<HarnessSummary> {
   let acceptingOutput = true;
 
   const eventLoopMonitor = monitorEventLoopDelay({
-    resolution: 10
+    resolution: 10,
   });
   eventLoopMonitor.enable();
 
@@ -585,7 +586,7 @@ async function runScenario(scenario: Scenario): Promise<HarnessSummary> {
       rng,
       args.sessions,
       activeSessionIndex,
-      args.activeShare
+      args.activeShare,
     );
     const sessionId = `session-${String(sessionIndex + 1)}`;
     const chunk = chunkPool[chunkPoolIndex % chunkPool.length]!;
@@ -599,7 +600,7 @@ async function runScenario(scenario: Scenario): Promise<HarnessSummary> {
       ingestChunk = simulateProtocolRoundtrip(
         chunk,
         sessionId,
-        outputCursorBySession[sessionIndex] ?? 0
+        outputCursorBySession[sessionIndex] ?? 0,
       );
       protocolDurationsMs.push(nsToMs(nowNs() - protocolStartedAtNs));
     }
@@ -680,7 +681,7 @@ async function runScenario(scenario: Scenario): Promise<HarnessSummary> {
       snapshotHash: args.snapshotHash,
       recordingSnapshotPass: args.recordingSnapshotPass,
       profile: args.profile,
-      fixtureFile: args.fixtureFile
+      fixtureFile: args.fixtureFile,
     },
     counters: {
       chunks: counters.chunks,
@@ -689,10 +690,9 @@ async function runScenario(scenario: Scenario): Promise<HarnessSummary> {
       inactiveChunks: counters.inactiveChunks,
       renders: counters.renders,
       changedRowsTotal: counters.changedRowsTotal,
-      changedRowsAvg:
-        counters.renders === 0 ? 0 : counters.changedRowsTotal / counters.renders,
+      changedRowsAvg: counters.renders === 0 ? 0 : counters.changedRowsTotal / counters.renders,
       renderOutputBytes: counters.renderOutputBytes,
-      fps: elapsedMs <= 0 ? 0 : counters.renders / (elapsedMs / 1000)
+      fps: elapsedMs <= 0 ? 0 : counters.renders / (elapsedMs / 1000),
     },
     timings: {
       outputHandle: summarize(outputHandleDurationsMs),
@@ -703,20 +703,20 @@ async function runScenario(scenario: Scenario): Promise<HarnessSummary> {
       diff: summarize(diffDurationsMs),
       renderTotal: summarize(renderDurationsMs),
       recordingSnapshot: summarize(recordingSnapshotDurationsMs),
-      inputDelay: summarize(inputDelayDurationsMs)
+      inputDelay: summarize(inputDelayDurationsMs),
     },
     eventLoopDelayMs: {
       p95: Number(eventLoopMonitor.percentile(95)) / 1e6,
       p99: Number(eventLoopMonitor.percentile(99)) / 1e6,
-      max: Number(eventLoopMonitor.max) / 1e6
-    }
+      max: Number(eventLoopMonitor.max) / 1e6,
+    },
   };
 }
 
 function withOverrides(base: ParsedArgs, overrides: Partial<ParsedArgs>): ParsedArgs {
   return {
     ...base,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -725,7 +725,7 @@ function buildMatrixScenarios(baseArgs: ParsedArgs): readonly Scenario[] {
     durationMs: Math.max(1000, baseArgs.durationMs),
     parsePasses: 1,
     protocolRoundtrip: false,
-    recordingSnapshotPass: false
+    recordingSnapshotPass: false,
   });
 
   return [
@@ -734,33 +734,33 @@ function buildMatrixScenarios(baseArgs: ParsedArgs): readonly Scenario[] {
       args: withOverrides(normalizedBase, {
         parsePasses: 1,
         protocolRoundtrip: false,
-        recordingSnapshotPass: false
-      })
+        recordingSnapshotPass: false,
+      }),
     },
     {
       name: 'double-parse',
       args: withOverrides(normalizedBase, {
         parsePasses: 2,
         protocolRoundtrip: false,
-        recordingSnapshotPass: false
-      })
+        recordingSnapshotPass: false,
+      }),
     },
     {
       name: 'double-parse+protocol',
       args: withOverrides(normalizedBase, {
         parsePasses: 2,
         protocolRoundtrip: true,
-        recordingSnapshotPass: false
-      })
+        recordingSnapshotPass: false,
+      }),
     },
     {
       name: 'triple-parse+recording-snapshot',
       args: withOverrides(normalizedBase, {
         parsePasses: 3,
         protocolRoundtrip: true,
-        recordingSnapshotPass: true
-      })
-    }
+        recordingSnapshotPass: true,
+      }),
+    },
   ];
 }
 
@@ -768,38 +768,42 @@ function printSingleSummary(summary: HarnessSummary): void {
   process.stdout.write('Mux Hot-Path Micro Harness\n');
   process.stdout.write('--------------------------\n');
   process.stdout.write(
-    ` scenario=${summary.scenario} duration=${String(summary.config.durationMs)}ms profile=${summary.config.profile} fixture=${summary.config.fixtureFile ?? 'none'}\n`
+    ` scenario=${summary.scenario} duration=${String(summary.config.durationMs)}ms profile=${summary.config.profile} fixture=${summary.config.fixtureFile ?? 'none'}\n`,
   );
   process.stdout.write(
-    ` layout=${String(summary.config.cols)}x${String(summary.config.rows)} sessions=${String(summary.config.sessions)} activeShare=${summary.config.activeShare.toFixed(2)} parsePasses=${String(summary.config.parsePasses)} protocolRoundtrip=${summary.config.protocolRoundtrip ? 'on' : 'off'} snapshotHash=${summary.config.snapshotHash ? 'on' : 'off'} recordingSnapshotPass=${summary.config.recordingSnapshotPass ? 'on' : 'off'}\n`
+    ` layout=${String(summary.config.cols)}x${String(summary.config.rows)} sessions=${String(summary.config.sessions)} activeShare=${summary.config.activeShare.toFixed(2)} parsePasses=${String(summary.config.parsePasses)} protocolRoundtrip=${summary.config.protocolRoundtrip ? 'on' : 'off'} snapshotHash=${summary.config.snapshotHash ? 'on' : 'off'} recordingSnapshotPass=${summary.config.recordingSnapshotPass ? 'on' : 'off'}\n`,
   );
   process.stdout.write(
-    ` output target: hz=${String(summary.config.outputHz)} chunksPerTick=${String(summary.config.chunksPerTick)} bytesPerChunk=${String(summary.config.bytesPerChunk)}\n`
+    ` output target: hz=${String(summary.config.outputHz)} chunksPerTick=${String(summary.config.chunksPerTick)} bytesPerChunk=${String(summary.config.bytesPerChunk)}\n`,
   );
   process.stdout.write(` input target: hz=${String(summary.config.inputHz)}\n\n`);
 
   process.stdout.write('Counters\n');
   process.stdout.write('--------\n');
   process.stdout.write(
-    ` chunks=${String(summary.counters.chunks)} bytes=${String(summary.counters.bytes)} activeChunks=${String(summary.counters.activeChunks)} inactiveChunks=${String(summary.counters.inactiveChunks)}\n`
+    ` chunks=${String(summary.counters.chunks)} bytes=${String(summary.counters.bytes)} activeChunks=${String(summary.counters.activeChunks)} inactiveChunks=${String(summary.counters.inactiveChunks)}\n`,
   );
   process.stdout.write(
-    ` renders=${String(summary.counters.renders)} fps=${summary.counters.fps.toFixed(2)} changedRows(total/avg)=${String(summary.counters.changedRowsTotal)}/${summary.counters.changedRowsAvg.toFixed(2)} renderOutputBytes=${String(summary.counters.renderOutputBytes)}\n\n`
+    ` renders=${String(summary.counters.renders)} fps=${summary.counters.fps.toFixed(2)} changedRows(total/avg)=${String(summary.counters.changedRowsTotal)}/${summary.counters.changedRowsAvg.toFixed(2)} renderOutputBytes=${String(summary.counters.renderOutputBytes)}\n\n`,
   );
 
   process.stdout.write('Timings (ms)\n');
   process.stdout.write('------------\n');
   process.stdout.write(` output-handle           ${formatStats(summary.timings.outputHandle)}\n`);
-  process.stdout.write(` protocol-roundtrip      ${formatStats(summary.timings.protocolRoundtrip)}\n`);
+  process.stdout.write(
+    ` protocol-roundtrip      ${formatStats(summary.timings.protocolRoundtrip)}\n`,
+  );
   process.stdout.write(` oracle-ingest           ${formatStats(summary.timings.oracleIngest)}\n`);
   process.stdout.write(` snapshot                ${formatStats(summary.timings.snapshot)}\n`);
   process.stdout.write(` row-render              ${formatStats(summary.timings.rowRender)}\n`);
   process.stdout.write(` diff                    ${formatStats(summary.timings.diff)}\n`);
   process.stdout.write(` render-total            ${formatStats(summary.timings.renderTotal)}\n`);
-  process.stdout.write(` recording-snapshot      ${formatStats(summary.timings.recordingSnapshot)}\n`);
+  process.stdout.write(
+    ` recording-snapshot      ${formatStats(summary.timings.recordingSnapshot)}\n`,
+  );
   process.stdout.write(` input-delay             ${formatStats(summary.timings.inputDelay)}\n`);
   process.stdout.write(
-    ` event-loop delay        p95=${formatMs(summary.eventLoopDelayMs.p95)} p99=${formatMs(summary.eventLoopDelayMs.p99)} max=${formatMs(summary.eventLoopDelayMs.max)}\n`
+    ` event-loop delay        p95=${formatMs(summary.eventLoopDelayMs.p95)} p99=${formatMs(summary.eventLoopDelayMs.p99)} max=${formatMs(summary.eventLoopDelayMs.max)}\n`,
   );
 }
 
@@ -807,7 +811,7 @@ function printMatrixSummaries(summaries: readonly HarnessSummary[]): void {
   process.stdout.write('Mux Hot-Path Matrix\n');
   process.stdout.write('-------------------\n');
   process.stdout.write(
-    'scenario                               fps    render.p95  ingest.p95  input.p95  loop.p95\n'
+    'scenario                               fps    render.p95  ingest.p95  input.p95  loop.p95\n',
   );
   for (const summary of summaries) {
     const name = summary.scenario.padEnd(38, ' ');
@@ -838,7 +842,7 @@ async function main(): Promise<number> {
 
   const summary = await runScenario({
     name: 'single',
-    args
+    args,
   });
   if (args.json) {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -856,5 +860,5 @@ void main().then(
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`perf-mux-hotpath-harness failed: ${message}\n`);
     process.exitCode = 1;
-  }
+  },
 );

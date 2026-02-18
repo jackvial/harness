@@ -18,12 +18,12 @@ function makeScope(): {
     userId: 'user-test',
     workspaceId: 'workspace-test',
     directoryId: 'directory-test',
-    conversationId: 'conversation-test'
+    conversationId: 'conversation-test',
   };
 }
 
 async function listenHttpServer(
-  handler: (request: IncomingMessage, response: ServerResponse) => void
+  handler: (request: IncomingMessage, response: ServerResponse) => void,
 ): Promise<{
   readonly baseUrl: string;
   readonly close: () => Promise<void>;
@@ -45,7 +45,7 @@ async function listenHttpServer(
       await new Promise<void>((resolveClose) => {
         server.close(() => resolveClose());
       });
-    }
+    },
   };
 }
 
@@ -56,16 +56,16 @@ function makeConfig(overrides?: Partial<HarnessLifecycleHooksConfig>): HarnessLi
       codex: true,
       claude: true,
       cursor: true,
-      controlPlane: true
+      controlPlane: true,
     },
     peonPing: {
       enabled: false,
       baseUrl: 'http://127.0.0.1:19998',
       timeoutMs: 1200,
-      eventCategoryMap: {}
+      eventCategoryMap: {},
     },
     webhooks: [],
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -79,7 +79,7 @@ interface LifecycleHooksRuntimeInternals {
   normalizeObservedEvent: (
     scope: ReturnType<typeof makeScope>,
     event: StreamObservedEvent,
-    cursor: number
+    cursor: number,
   ) => ReadonlyArray<{
     eventType: string;
     provider: string;
@@ -95,7 +95,7 @@ interface LifecycleHooksRuntimeInternals {
         sessionId: string | null;
       };
       ts: string;
-    }>
+    }>,
   ) => ReadonlyArray<{
     eventType: string;
     context: {
@@ -113,7 +113,7 @@ interface LifecycleHooksRuntimeInternals {
       sessionId: string | null;
       summary: string;
       attributes: Record<string, unknown>;
-    }
+    },
   ) => {
     ts: string;
   };
@@ -130,7 +130,7 @@ function internals(runtime: LifecycleHooksRuntime): LifecycleHooksRuntimeInterna
 
 function makeSessionStatusEvent(
   scope: ReturnType<typeof makeScope>,
-  status: 'running' | 'completed' | 'needs-input' | 'exited'
+  status: 'running' | 'completed' | 'needs-input' | 'exited',
 ): StreamObservedEvent {
   return {
     type: 'session-status',
@@ -142,7 +142,7 @@ function makeSessionStatusEvent(
     directoryId: scope.directoryId,
     conversationId: scope.conversationId,
     telemetry: null,
-    controller: null
+    controller: null,
   };
 }
 
@@ -166,10 +166,10 @@ void test('lifecycle hooks dispatch peon-ping categories from normalized session
         timeoutMs: 1200,
         eventCategoryMap: {
           'turn.started': 'task.acknowledge',
-          'turn.completed': 'task.complete'
-        }
-      }
-    })
+          'turn.completed': 'task.complete',
+        },
+      },
+    }),
   );
   const scope = makeScope();
   const running: StreamObservedEvent = {
@@ -182,11 +182,11 @@ void test('lifecycle hooks dispatch peon-ping categories from normalized session
     directoryId: scope.directoryId,
     conversationId: scope.conversationId,
     telemetry: null,
-    controller: null
+    controller: null,
   };
   const completed: StreamObservedEvent = {
     ...running,
-    status: 'completed'
+    status: 'completed',
   };
   runtime.publish(scope, running, 1);
   runtime.publish(scope, completed, 2);
@@ -218,7 +218,7 @@ void test('lifecycle hooks respect provider filters for codex vs control-plane e
         codex: false,
         claude: true,
         cursor: true,
-        controlPlane: true
+        controlPlane: true,
       },
       webhooks: [
         {
@@ -228,10 +228,10 @@ void test('lifecycle hooks respect provider filters for codex vs control-plane e
           method: 'POST',
           timeoutMs: 1200,
           headers: {},
-          eventTypes: []
-        }
-      ]
-    })
+          eventTypes: [],
+        },
+      ],
+    }),
   );
   const scope = makeScope();
 
@@ -246,13 +246,13 @@ void test('lifecycle hooks respect provider filters for codex vs control-plane e
         severity: null,
         summary: 'prompt submitted',
         observedAt: new Date().toISOString(),
-        statusHint: 'running'
+        statusHint: 'running',
       },
       ts: new Date().toISOString(),
       directoryId: scope.directoryId,
-      conversationId: scope.conversationId
+      conversationId: scope.conversationId,
     },
-    1
+    1,
   );
   runtime.publish(
     scope,
@@ -260,10 +260,10 @@ void test('lifecycle hooks respect provider filters for codex vs control-plane e
       type: 'conversation-created',
       conversation: {
         conversationId: 'conversation-test',
-        createdAt: new Date().toISOString()
-      }
+        createdAt: new Date().toISOString(),
+      },
     },
-    2
+    2,
   );
 
   await runtime.close();
@@ -289,10 +289,10 @@ void test('lifecycle hooks continue processing after connector failures', async 
           method: 'POST',
           timeoutMs: 1200,
           headers: {},
-          eventTypes: []
-        }
-      ]
-    })
+          eventTypes: [],
+        },
+      ],
+    }),
   );
   const scope = makeScope();
   const running: StreamObservedEvent = {
@@ -305,11 +305,11 @@ void test('lifecycle hooks continue processing after connector failures', async 
     directoryId: scope.directoryId,
     conversationId: scope.conversationId,
     telemetry: null,
-    controller: null
+    controller: null,
   };
   const completed: StreamObservedEvent = {
     ...running,
-    status: 'completed'
+    status: 'completed',
   };
   runtime.publish(scope, running, 1);
   runtime.publish(scope, completed, 2);
@@ -328,9 +328,9 @@ void test('lifecycle hooks normalize conversation and session lifecycle variants
     scope,
     {
       type: 'conversation-updated',
-      conversation: {}
+      conversation: {},
     },
-    1
+    1,
   );
   assert.equal(updated[0]?.eventType, 'thread.updated');
   assert.equal(updated[0]?.context.sessionId, null);
@@ -340,9 +340,9 @@ void test('lifecycle hooks normalize conversation and session lifecycle variants
     {
       type: 'conversation-archived',
       conversationId: scope.conversationId,
-      ts: new Date().toISOString()
+      ts: new Date().toISOString(),
     },
-    2
+    2,
   );
   assert.equal(archived[0]?.eventType, 'thread.archived');
 
@@ -351,17 +351,31 @@ void test('lifecycle hooks normalize conversation and session lifecycle variants
     {
       type: 'conversation-deleted',
       conversationId: scope.conversationId,
-      ts: new Date().toISOString()
+      ts: new Date().toISOString(),
     },
-    3
+    3,
   );
   assert.equal(deleted[0]?.eventType, 'thread.deleted');
 
   runtimeInternals.normalizeObservedEvent(scope, makeSessionStatusEvent(scope, 'running'), 4);
-  const needsInput = runtimeInternals.normalizeObservedEvent(scope, makeSessionStatusEvent(scope, 'needs-input'), 5);
-  assert.equal(needsInput.some((event) => event.eventType === 'input.required'), true);
-  const exited = runtimeInternals.normalizeObservedEvent(scope, makeSessionStatusEvent(scope, 'exited'), 6);
-  assert.equal(exited.some((event) => event.eventType === 'session.exited'), true);
+  const needsInput = runtimeInternals.normalizeObservedEvent(
+    scope,
+    makeSessionStatusEvent(scope, 'needs-input'),
+    5,
+  );
+  assert.equal(
+    needsInput.some((event) => event.eventType === 'input.required'),
+    true,
+  );
+  const exited = runtimeInternals.normalizeObservedEvent(
+    scope,
+    makeSessionStatusEvent(scope, 'exited'),
+    6,
+  );
+  assert.equal(
+    exited.some((event) => event.eventType === 'session.exited'),
+    true,
+  );
 
   const sessionExitFailure = runtimeInternals.normalizeObservedEvent(
     scope,
@@ -372,18 +386,18 @@ void test('lifecycle hooks normalize conversation and session lifecycle variants
         type: 'session-exit',
         exit: {
           code: 1,
-          signal: 'SIGTERM'
-        }
+          signal: 'SIGTERM',
+        },
       },
       ts: new Date().toISOString(),
       directoryId: scope.directoryId,
-      conversationId: `${scope.conversationId}-exit`
+      conversationId: `${scope.conversationId}-exit`,
     },
-    7
+    7,
   );
   assert.deepEqual(
     sessionExitFailure.map((event) => event.eventType),
-    ['session.exited', 'turn.failed']
+    ['session.exited', 'turn.failed'],
   );
 
   const notifyIgnored = runtimeInternals.normalizeObservedEvent(
@@ -395,14 +409,14 @@ void test('lifecycle hooks normalize conversation and session lifecycle variants
         type: 'notify',
         record: {
           ts: new Date().toISOString(),
-          payload: { type: 'agent-turn-complete' }
-        }
+          payload: { type: 'agent-turn-complete' },
+        },
       },
       ts: new Date().toISOString(),
       directoryId: scope.directoryId,
-      conversationId: `${scope.conversationId}-notify`
+      conversationId: `${scope.conversationId}-notify`,
     },
-    8
+    8,
   );
   assert.deepEqual(notifyIgnored, []);
 
@@ -410,9 +424,9 @@ void test('lifecycle hooks normalize conversation and session lifecycle variants
     scope,
     {
       type: 'directory-upserted',
-      directory: {}
+      directory: {},
     },
-    9
+    9,
   );
   assert.deepEqual(ignored, []);
 });
@@ -426,7 +440,7 @@ void test('lifecycle hooks normalize codex and claude key events into unified li
     summary: string | null,
     severity: string | null,
     statusHint: 'running' | 'completed' | 'needs-input' | null,
-    source = 'custom'
+    source = 'custom',
   ): StreamObservedEvent => ({
     type: 'session-key-event',
     sessionId: `${scope.conversationId}-${eventName}`,
@@ -436,102 +450,150 @@ void test('lifecycle hooks normalize codex and claude key events into unified li
       severity,
       summary,
       observedAt: new Date().toISOString(),
-      statusHint
+      statusHint,
     },
     ts: new Date().toISOString(),
     directoryId: scope.directoryId,
-    conversationId: scope.conversationId
+    conversationId: scope.conversationId,
   });
 
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('codex.turn.e2e_duration_ms', 'turn complete (14ms)', null, null), 1)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('codex.turn.e2e_duration_ms', 'turn complete (14ms)', null, null),
+        1,
+      )
       .some((event) => event.eventType === 'turn.completed'),
-    true
+    true,
   );
   const defaultSummaryRuntime = new LifecycleHooksRuntime(makeConfig());
   const defaultSummaryInternals = internals(defaultSummaryRuntime);
   assert.equal(
     defaultSummaryInternals
-      .normalizeObservedEvent(scope, telemetryEvent('codex.turn.e2e_duration_ms', null, null, null), 1)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('codex.turn.e2e_duration_ms', null, null, null),
+        1,
+      )
       .some((event) => (event as { summary?: string }).summary === 'turn completed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('claude.pretooluse', 'tool start', null, null), 2)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('claude.pretooluse', 'tool start', null, null),
+        2,
+      )
       .some((event) => event.eventType === 'tool.started' && event.provider === 'claude'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('claude.userpromptsubmit', 'prompt', null, null), 3)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('claude.userpromptsubmit', 'prompt', null, null),
+        3,
+      )
       .some((event) => event.eventType === 'turn.started'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('claude.posttooluse', 'tool completed', null, null), 3)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('claude.posttooluse', 'tool completed', null, null),
+        3,
+      )
       .some((event) => event.eventType === 'tool.completed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('claude.userpromptsubmit.otlp', 'prompt', null, null, 'otlp-log'), 3)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('claude.userpromptsubmit.otlp', 'prompt', null, null, 'otlp-log'),
+        3,
+      )
       .some((event) => event.eventType === 'turn.started' && event.provider === 'claude'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('custom.event', 'turn completed (22ms)', null, null), 3)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('custom.event', 'turn completed (22ms)', null, null),
+        3,
+      )
       .some((event) => event.eventType === 'turn.completed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('codex.tool_result', 'failed tool', 'ERROR', null), 4)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('codex.tool_result', 'failed tool', 'ERROR', null),
+        4,
+      )
       .some((event) => event.eventType === 'tool.failed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
       .normalizeObservedEvent(scope, telemetryEvent('codex.tool_result', 'ok', null, null), 5)
       .some((event) => event.eventType === 'tool.completed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('codex.notification', 'notification', null, null), 6)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('codex.notification', 'notification', null, null),
+        6,
+      )
       .some((event) => event.eventType === 'input.required'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('codex.api_request', 'error upstream', null, null), 7)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('codex.api_request', 'error upstream', null, null),
+        7,
+      )
       .some((event) => event.eventType === 'turn.failed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('codex.api_request.abort', 'request abort', null, null), 7)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('codex.api_request.abort', 'request abort', null, null),
+        7,
+      )
       .some((event) => event.eventType === 'turn.failed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, telemetryEvent('codex.api_request.fatal', 'api request', 'FATAL', null), 7)
+      .normalizeObservedEvent(
+        scope,
+        telemetryEvent('codex.api_request.fatal', 'api request', 'FATAL', null),
+        7,
+      )
       .some((event) => event.eventType === 'turn.failed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
       .normalizeObservedEvent(
         scope,
         telemetryEvent('ignored.event', null, null, 'needs-input', 'otlp-log'),
-        8
+        8,
       )
       .some((event) => event.provider === 'codex'),
-    true
+    true,
   );
 });
 
@@ -542,9 +604,9 @@ void test('lifecycle hooks provider filtering gates claude/cursor/unknown provid
         codex: true,
         claude: false,
         cursor: true,
-        controlPlane: true
-      }
-    })
+        controlPlane: true,
+      },
+    }),
   );
   const cursorDisabled = new LifecycleHooksRuntime(
     makeConfig({
@@ -552,9 +614,9 @@ void test('lifecycle hooks provider filtering gates claude/cursor/unknown provid
         codex: true,
         claude: true,
         cursor: false,
-        controlPlane: true
-      }
-    })
+        controlPlane: true,
+      },
+    }),
   );
   const unknownDisabled = new LifecycleHooksRuntime(
     makeConfig({
@@ -562,9 +624,9 @@ void test('lifecycle hooks provider filtering gates claude/cursor/unknown provid
         codex: false,
         claude: false,
         cursor: false,
-        controlPlane: true
-      }
-    })
+        controlPlane: true,
+      },
+    }),
   );
   const scope = makeScope();
 
@@ -577,14 +639,17 @@ void test('lifecycle hooks provider filtering gates claude/cursor/unknown provid
       severity: null,
       summary: 'tool start',
       observedAt: new Date().toISOString(),
-      statusHint: null
+      statusHint: null,
     },
     ts: new Date().toISOString(),
     directoryId: scope.directoryId,
-    conversationId: scope.conversationId
+    conversationId: scope.conversationId,
   };
   assert.deepEqual(internals(claudeDisabled).normalizeObservedEvent(scope, claudeEvent, 1), []);
-  assert.notEqual(internals(cursorDisabled).normalizeObservedEvent(scope, claudeEvent, 1).length, 0);
+  assert.notEqual(
+    internals(cursorDisabled).normalizeObservedEvent(scope, claudeEvent, 1).length,
+    0,
+  );
 
   const cursorEvent: StreamObservedEvent = {
     ...claudeEvent,
@@ -592,7 +657,7 @@ void test('lifecycle hooks provider filtering gates claude/cursor/unknown provid
       ...claudeEvent.keyEvent,
       eventName: 'cursor.stop',
       summary: 'turn complete',
-    }
+    },
   };
   assert.deepEqual(internals(cursorDisabled).normalizeObservedEvent(scope, cursorEvent, 1.5), []);
 
@@ -601,11 +666,17 @@ void test('lifecycle hooks provider filtering gates claude/cursor/unknown provid
     keyEvent: {
       ...claudeEvent.keyEvent,
       eventName: 'custom.event',
-      statusHint: 'needs-input'
-    }
+      statusHint: 'needs-input',
+    },
   };
-  assert.deepEqual(internals(unknownDisabled).normalizeObservedEvent(scope, unknownProviderEvent, 2), []);
-  assert.notEqual(internals(claudeDisabled).normalizeObservedEvent(scope, unknownProviderEvent, 3).length, 0);
+  assert.deepEqual(
+    internals(unknownDisabled).normalizeObservedEvent(scope, unknownProviderEvent, 2),
+    [],
+  );
+  assert.notEqual(
+    internals(claudeDisabled).normalizeObservedEvent(scope, unknownProviderEvent, 3).length,
+    0,
+  );
 });
 
 void test('lifecycle hooks webhook filter and timeout=0 path are exercised', async () => {
@@ -633,10 +704,10 @@ void test('lifecycle hooks webhook filter and timeout=0 path are exercised', asy
           method: 'GET',
           timeoutMs: 0,
           headers: {},
-          eventTypes: ['turn.completed']
-        }
-      ]
-    })
+          eventTypes: ['turn.completed'],
+        },
+      ],
+    }),
   );
   const scope = makeScope();
   runtime.publish(scope, makeSessionStatusEvent(scope, 'running'), 1);
@@ -661,10 +732,10 @@ void test('lifecycle hooks peon-ping failures are tolerated and unmapped events 
         baseUrl: `${listener.baseUrl}/`,
         timeoutMs: 1200,
         eventCategoryMap: {
-          'turn.started': 'task.acknowledge'
-        }
-      }
-    })
+          'turn.started': 'task.acknowledge',
+        },
+      },
+    }),
   );
   const scope = makeScope();
   runtime.publish(scope, makeSessionStatusEvent(scope, 'running'), 1);
@@ -685,36 +756,36 @@ void test('lifecycle hooks internal queue/dedupe branches remain stable', async 
     close: () => {
       closeCalled = true;
       return Promise.resolve();
-    }
+    },
   });
 
   const deduped = runtimeInternals.dedupeSessionEvents([
     {
       eventType: 'turn.completed',
       context: {
-        sessionId: scope.conversationId
+        sessionId: scope.conversationId,
       },
-      ts: new Date().toISOString()
+      ts: new Date().toISOString(),
     },
     {
       eventType: 'turn.completed',
       context: {
-        sessionId: scope.conversationId
+        sessionId: scope.conversationId,
       },
-      ts: new Date().toISOString()
+      ts: new Date().toISOString(),
     },
     {
       eventType: 'thread.created',
       context: {
-        sessionId: null
+        sessionId: null,
       },
-      ts: 'not-a-date'
-    }
+      ts: 'not-a-date',
+    },
   ]);
   assert.equal(deduped.length, 2);
 
   const observedFunction = Object.assign(() => undefined, {
-    type: 'session-output'
+    type: 'session-output',
   }) as unknown as StreamObservedEvent;
   const builtFromFunction = runtimeInternals.buildLifecycleEvent(
     scope,
@@ -725,8 +796,8 @@ void test('lifecycle hooks internal queue/dedupe branches remain stable', async 
     {
       sessionId: null,
       summary: 'x',
-      attributes: {}
-    }
+      attributes: {},
+    },
   );
   assert.equal(typeof builtFromFunction.ts, 'string');
 
@@ -739,7 +810,7 @@ void test('lifecycle hooks internal queue/dedupe branches remain stable', async 
       chunkBase64: '',
       ts: 'bad-timestamp',
       directoryId: scope.directoryId,
-      conversationId: scope.conversationId
+      conversationId: scope.conversationId,
     },
     10,
     'control-plane',
@@ -747,8 +818,8 @@ void test('lifecycle hooks internal queue/dedupe branches remain stable', async 
     {
       sessionId: scope.conversationId,
       summary: 'x',
-      attributes: {}
-    }
+      attributes: {},
+    },
   );
   assert.equal(typeof builtWithInvalidTs.ts, 'string');
 
@@ -770,9 +841,9 @@ void test('lifecycle hooks internal queue/dedupe branches remain stable', async 
       cursor: index,
       summary: 'prefill',
       context: {
-        sessionId: null
+        sessionId: null,
       },
-      attributes: {}
+      attributes: {},
     });
   }
   runtime.publish(
@@ -780,10 +851,10 @@ void test('lifecycle hooks internal queue/dedupe branches remain stable', async 
     {
       type: 'conversation-created',
       conversation: {
-        conversationId: scope.conversationId
-      }
+        conversationId: scope.conversationId,
+      },
     },
-    11
+    11,
   );
   await runtime.close();
   assert.equal(closeCalled, true);
@@ -794,7 +865,7 @@ void test('lifecycle hooks drain restart branch executes when pending work remai
   const runtimeInternals = internals(runtime);
   runtimeInternals.connectors.splice(0, runtimeInternals.connectors.length, {
     id: 'stub',
-    dispatch: () => Promise.resolve()
+    dispatch: () => Promise.resolve(),
   });
   runtimeInternals.pendingEvents.push({});
   let drainCount = 0;
@@ -814,60 +885,64 @@ void test('lifecycle hooks drain restart branch executes when pending work remai
   assert.equal(drainCount > 1, true);
 });
 
-void test('lifecycle hooks timeout path aborts stalled connector requests', async () => {
-  const sockets = new Set<Socket>();
-  const stalledServer = createServer(() => {
-    // Intentionally keep request open so connector timeout path triggers AbortController.abort().
-  });
-  stalledServer.on('connection', (socket) => {
-    sockets.add(socket);
-    socket.on('close', () => {
-      sockets.delete(socket);
+void test(
+  'lifecycle hooks timeout path aborts stalled connector requests',
+  async () => {
+    const sockets = new Set<Socket>();
+    const stalledServer = createServer(() => {
+      // Intentionally keep request open so connector timeout path triggers AbortController.abort().
     });
-  });
-  await new Promise<void>((resolveListen, rejectListen) => {
-    stalledServer.once('error', rejectListen);
-    stalledServer.listen(0, '127.0.0.1', () => resolveListen());
-  });
-  const address = stalledServer.address();
-  if (address === null || typeof address === 'string') {
-    await new Promise<void>((resolveClose) => {
-      stalledServer.close(() => resolveClose());
+    stalledServer.on('connection', (socket) => {
+      sockets.add(socket);
+      socket.on('close', () => {
+        sockets.delete(socket);
+      });
     });
-    throw new Error('stalled test server missing tcp address');
-  }
-
-  const runtime = new LifecycleHooksRuntime(
-    makeConfig({
-      webhooks: [
-        {
-          name: 'abort-timeout',
-          enabled: true,
-          url: `http://127.0.0.1:${String(address.port)}/timeout`,
-          method: 'POST',
-          timeoutMs: 5,
-          headers: {},
-          eventTypes: []
-        }
-      ]
-    })
-  );
-  const scope = makeScope();
-  try {
-    runtime.publish(scope, makeSessionStatusEvent(scope, 'running'), 1);
-    await new Promise<void>((resolveWait) => {
-      setTimeout(resolveWait, 50);
+    await new Promise<void>((resolveListen, rejectListen) => {
+      stalledServer.once('error', rejectListen);
+      stalledServer.listen(0, '127.0.0.1', () => resolveListen());
     });
-  } finally {
-    for (const socket of sockets) {
-      socket.destroy();
+    const address = stalledServer.address();
+    if (address === null || typeof address === 'string') {
+      await new Promise<void>((resolveClose) => {
+        stalledServer.close(() => resolveClose());
+      });
+      throw new Error('stalled test server missing tcp address');
     }
-    await new Promise<void>((resolveClose) => {
-      stalledServer.close(() => resolveClose());
-    });
-    await runtime.close();
-  }
-}, { timeout: 15000 });
+
+    const runtime = new LifecycleHooksRuntime(
+      makeConfig({
+        webhooks: [
+          {
+            name: 'abort-timeout',
+            enabled: true,
+            url: `http://127.0.0.1:${String(address.port)}/timeout`,
+            method: 'POST',
+            timeoutMs: 5,
+            headers: {},
+            eventTypes: [],
+          },
+        ],
+      }),
+    );
+    const scope = makeScope();
+    try {
+      runtime.publish(scope, makeSessionStatusEvent(scope, 'running'), 1);
+      await new Promise<void>((resolveWait) => {
+        setTimeout(resolveWait, 50);
+      });
+    } finally {
+      for (const socket of sockets) {
+        socket.destroy();
+      }
+      await new Promise<void>((resolveClose) => {
+        stalledServer.close(() => resolveClose());
+      });
+      await runtime.close();
+    }
+  },
+  { timeout: 15000 },
+);
 
 void test('lifecycle hooks no-op when all connectors are disabled', async () => {
   const runtime = new LifecycleHooksRuntime(
@@ -876,7 +951,7 @@ void test('lifecycle hooks no-op when all connectors are disabled', async () => 
         enabled: false,
         baseUrl: 'http://127.0.0.1:19998',
         timeoutMs: 1200,
-        eventCategoryMap: {}
+        eventCategoryMap: {},
       },
       webhooks: [
         {
@@ -886,10 +961,10 @@ void test('lifecycle hooks no-op when all connectors are disabled', async () => 
           method: 'POST',
           timeoutMs: 1200,
           headers: {},
-          eventTypes: []
-        }
-      ]
-    })
+          eventTypes: [],
+        },
+      ],
+    }),
   );
   const scope = makeScope();
   runtime.publish(scope, makeSessionStatusEvent(scope, 'running'), 1);
@@ -916,12 +991,12 @@ void test('lifecycle hooks preserve explicit webhook content-type headers', asyn
           method: 'POST',
           timeoutMs: 1200,
           headers: {
-            'content-type': 'application/x-harness-event'
+            'content-type': 'application/x-harness-event',
           },
-          eventTypes: []
-        }
-      ]
-    })
+          eventTypes: [],
+        },
+      ],
+    }),
   );
   const scope = makeScope();
   runtime.publish(scope, makeSessionStatusEvent(scope, 'running'), 1);
@@ -930,7 +1005,7 @@ void test('lifecycle hooks preserve explicit webhook content-type headers', asyn
   assert.equal(capturedContentTypes.length >= 1, true);
   assert.equal(
     capturedContentTypes.every((value) => value === 'application/x-harness-event'),
-    true
+    true,
   );
 });
 
@@ -951,10 +1026,10 @@ void test('lifecycle hooks publish no-ops for unmapped observed events with acti
           method: 'POST',
           timeoutMs: 1200,
           headers: {},
-          eventTypes: []
-        }
-      ]
-    })
+          eventTypes: [],
+        },
+      ],
+    }),
   );
   const scope = makeScope();
   runtime.publish(
@@ -962,10 +1037,10 @@ void test('lifecycle hooks publish no-ops for unmapped observed events with acti
     {
       type: 'directory-upserted',
       directory: {
-        directoryId: scope.directoryId
-      }
+        directoryId: scope.directoryId,
+      },
     },
-    1
+    1,
   );
   await runtime.close();
   await listener.close();
@@ -984,25 +1059,39 @@ void test('lifecycle hooks session-exit success emits exit without failure', () 
         type: 'session-exit',
         exit: {
           code: 0,
-          signal: null
-        }
+          signal: null,
+        },
       },
       ts: new Date().toISOString(),
       directoryId: scope.directoryId,
-      conversationId: `${scope.conversationId}-success`
+      conversationId: `${scope.conversationId}-success`,
     },
-    1
+    1,
   );
-  assert.deepEqual(events.map((event) => event.eventType), ['session.exited']);
+  assert.deepEqual(
+    events.map((event) => event.eventType),
+    ['session.exited'],
+  );
 });
 
 void test('lifecycle hooks no-op repeated status updates without transitions', () => {
   const runtime = new LifecycleHooksRuntime(makeConfig());
   const scope = makeScope();
   const runtimeInternals = internals(runtime);
-  const first = runtimeInternals.normalizeObservedEvent(scope, makeSessionStatusEvent(scope, 'completed'), 1);
-  const second = runtimeInternals.normalizeObservedEvent(scope, makeSessionStatusEvent(scope, 'completed'), 2);
-  assert.equal(first.some((event) => event.eventType === 'turn.completed'), true);
+  const first = runtimeInternals.normalizeObservedEvent(
+    scope,
+    makeSessionStatusEvent(scope, 'completed'),
+    1,
+  );
+  const second = runtimeInternals.normalizeObservedEvent(
+    scope,
+    makeSessionStatusEvent(scope, 'completed'),
+    2,
+  );
+  assert.equal(
+    first.some((event) => event.eventType === 'turn.completed'),
+    true,
+  );
   assert.deepEqual(second, []);
 });
 
@@ -1014,7 +1103,7 @@ void test('lifecycle hooks startDrainIfNeeded returns early while drain is activ
     dispatch: () =>
       new Promise<void>((resolve) => {
         setTimeout(() => resolve(), 15);
-      })
+      }),
   });
   runtimeInternals.pendingEvents.push({
     schemaVersion: '1',
@@ -1026,9 +1115,9 @@ void test('lifecycle hooks startDrainIfNeeded returns early while drain is activ
     cursor: 1,
     summary: 'slow',
     context: {
-      sessionId: 'session-slow'
+      sessionId: 'session-slow',
     },
-    attributes: {}
+    attributes: {},
   });
   runtimeInternals.startDrainIfNeeded();
   runtimeInternals.startDrainIfNeeded();
@@ -1046,7 +1135,7 @@ void test('lifecycle hooks cover nullish fallback branches for telemetry key eve
   const keyEvent = (
     eventName: string | null,
     summary: string | null,
-    severity: string | null
+    severity: string | null,
   ): StreamObservedEvent => ({
     type: 'session-key-event',
     sessionId: `${scope.conversationId}-${eventName ?? 'none'}`,
@@ -1056,49 +1145,56 @@ void test('lifecycle hooks cover nullish fallback branches for telemetry key eve
       severity,
       summary,
       observedAt: new Date().toISOString(),
-      statusHint: null
+      statusHint: null,
     },
     ts: new Date().toISOString(),
     directoryId: scope.directoryId,
-    conversationId: scope.conversationId
+    conversationId: scope.conversationId,
   });
 
-  assert.deepEqual(runtimeInternals.normalizeObservedEvent(scope, keyEvent(null, null, null), 1), []);
+  assert.deepEqual(
+    runtimeInternals.normalizeObservedEvent(scope, keyEvent(null, null, null), 1),
+    [],
+  );
   assert.equal(
     runtimeInternals
       .normalizeObservedEvent(scope, keyEvent('tool_call', null, null), 2)
       .some((event) => event.eventType === 'tool.started'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
       .normalizeObservedEvent(scope, keyEvent('tool_result', null, null), 3)
       .some((event) => event.eventType === 'tool.completed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
       .normalizeObservedEvent(scope, keyEvent('tool_result', null, 'ERROR'), 31)
       .some((event) => event.eventType === 'tool.failed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
       .normalizeObservedEvent(scope, keyEvent('user_prompt', null, null), 4)
       .some((event) => event.eventType === 'turn.started'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
-      .normalizeObservedEvent(scope, keyEvent('codex.turn.e2e_duration_ms', 'turn complete (7ms)', null), 5)
+      .normalizeObservedEvent(
+        scope,
+        keyEvent('codex.turn.e2e_duration_ms', 'turn complete (7ms)', null),
+        5,
+      )
       .some((event) => event.eventType === 'turn.completed'),
-    true
+    true,
   );
   assert.equal(
     runtimeInternals
       .normalizeObservedEvent(scope, keyEvent('api_request', null, 'ERROR'), 6)
       .some((event) => event.eventType === 'turn.failed'),
-    true
+    true,
   );
 });
 
@@ -1119,19 +1215,19 @@ void test('lifecycle hooks fallback to empty sessionId in failure telemetry and 
           method: 'POST',
           timeoutMs: 1200,
           headers: {},
-          eventTypes: []
-        }
-      ]
-    })
+          eventTypes: [],
+        },
+      ],
+    }),
   );
   const scope = makeScope();
   runtime.publish(
     scope,
     {
       type: 'conversation-updated',
-      conversation: {}
+      conversation: {},
     },
-    1
+    1,
   );
   await runtime.close();
   await listener.close();
@@ -1141,10 +1237,10 @@ void test('lifecycle hooks fallback to empty sessionId in failure telemetry and 
     {
       eventType: 'turn.started',
       context: {
-        sessionId: 'session-invalid-ts'
+        sessionId: 'session-invalid-ts',
       },
-      ts: 'invalid-ts'
-    }
+      ts: 'invalid-ts',
+    },
   ]);
   assert.equal(deduped.length, 1);
 });
@@ -1160,7 +1256,7 @@ void test('lifecycle hooks treat whitespace timestamps as missing', () => {
       chunkBase64: '',
       ts: '   ',
       directoryId: 'directory-test',
-      conversationId: 'conversation-test'
+      conversationId: 'conversation-test',
     },
     1,
     'control-plane',
@@ -1168,8 +1264,8 @@ void test('lifecycle hooks treat whitespace timestamps as missing', () => {
     {
       sessionId: 'session-ts-space',
       summary: 'x',
-      attributes: {}
-    }
+      attributes: {},
+    },
   );
   assert.equal(typeof built.ts, 'string');
 });

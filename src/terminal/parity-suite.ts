@@ -150,7 +150,10 @@ export function runTerminalParityScene(scene: TerminalParityScene): TerminalPari
   const failures: string[] = [];
   const expectations = scene.expectations;
 
-  if (expectations.activeScreen !== undefined && finalFrame.activeScreen !== expectations.activeScreen) {
+  if (
+    expectations.activeScreen !== undefined &&
+    finalFrame.activeScreen !== expectations.activeScreen
+  ) {
     failures.push('active-screen');
   }
   if (expectations.cursor?.row !== undefined && finalFrame.cursor.row !== expectations.cursor.row) {
@@ -159,7 +162,10 @@ export function runTerminalParityScene(scene: TerminalParityScene): TerminalPari
   if (expectations.cursor?.col !== undefined && finalFrame.cursor.col !== expectations.cursor.col) {
     failures.push('cursor-col');
   }
-  if (expectations.cursor?.visible !== undefined && finalFrame.cursor.visible !== expectations.cursor.visible) {
+  if (
+    expectations.cursor?.visible !== undefined &&
+    finalFrame.cursor.visible !== expectations.cursor.visible
+  ) {
     failures.push('cursor-visible');
   }
   if (
@@ -168,10 +174,16 @@ export function runTerminalParityScene(scene: TerminalParityScene): TerminalPari
   ) {
     failures.push('viewport-follow-output');
   }
-  if (expectations.viewport?.topMin !== undefined && finalFrame.viewport.top < expectations.viewport.topMin) {
+  if (
+    expectations.viewport?.topMin !== undefined &&
+    finalFrame.viewport.top < expectations.viewport.topMin
+  ) {
     failures.push('viewport-top-min');
   }
-  if (expectations.viewport?.topMax !== undefined && finalFrame.viewport.top > expectations.viewport.topMax) {
+  if (
+    expectations.viewport?.topMax !== undefined &&
+    finalFrame.viewport.top > expectations.viewport.topMax
+  ) {
     failures.push('viewport-top-max');
   }
 
@@ -210,7 +222,9 @@ export function runTerminalParityScene(scene: TerminalParityScene): TerminalPari
     }
     if (expectedCell.style !== undefined) {
       for (const styleFailure of styleMatches(cell.style, expectedCell.style)) {
-        failures.push(`cell-${String(expectedCell.row)}-${String(expectedCell.col)}-${styleFailure}`);
+        failures.push(
+          `cell-${String(expectedCell.row)}-${String(expectedCell.col)}-${styleFailure}`,
+        );
       }
     }
   }
@@ -221,11 +235,13 @@ export function runTerminalParityScene(scene: TerminalParityScene): TerminalPari
     pass: failures.length === 0,
     failures,
     frameHash: finalFrame.frameHash,
-    finalFrame
+    finalFrame,
   };
 }
 
-export function runTerminalParityMatrix(scenes: readonly TerminalParityScene[]): TerminalParityMatrixResult {
+export function runTerminalParityMatrix(
+  scenes: readonly TerminalParityScene[],
+): TerminalParityMatrixResult {
   const results = scenes.map((scene) => runTerminalParityScene(scene));
   const passedScenes = results.filter((result) => result.pass).length;
   return {
@@ -233,7 +249,7 @@ export function runTerminalParityMatrix(scenes: readonly TerminalParityScene[]):
     totalScenes: scenes.length,
     passedScenes,
     failedScenes: scenes.length - passedScenes,
-    results
+    results,
   };
 }
 
@@ -248,14 +264,14 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
       { kind: 'output', chunk: '\u001b[1;6r' },
       { kind: 'output', chunk: '\u001b[7;1H> chat bar' },
       { kind: 'output', chunk: '\u001b[8;1H? status bar' },
-      { kind: 'output', chunk: '\u001b[6;1Hline-1\nline-2\nline-3\nline-4\nline-5\nline-6' }
+      { kind: 'output', chunk: '\u001b[6;1Hline-1\nline-2\nline-3\nline-4\nline-5\nline-6' },
     ],
     expectations: {
       lines: [
         { row: 6, includes: '> chat bar' },
-        { row: 7, includes: '? status bar' }
-      ]
-    }
+        { row: 7, includes: '? status bar' },
+      ],
+    },
   },
   {
     id: 'codex-footer-background-persistence',
@@ -267,12 +283,12 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
       { kind: 'output', chunk: '\u001b[1;6r' },
       { kind: 'output', chunk: '\u001b[7;1H\u001b[48;2;25;30;36m> prompt\u001b[0m' },
       { kind: 'output', chunk: '\u001b[8;1H\u001b[48;5;236mstatus\u001b[0m' },
-      { kind: 'output', chunk: '\u001b[6;1Hline-1\nline-2\nline-3\nline-4\nline-5\nline-6' }
+      { kind: 'output', chunk: '\u001b[6;1Hline-1\nline-2\nline-3\nline-4\nline-5\nline-6' },
     ],
     expectations: {
       lines: [
         { row: 6, includes: '> prompt' },
-        { row: 7, includes: 'status' }
+        { row: 7, includes: 'status' },
       ],
       cells: [
         {
@@ -284,9 +300,9 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
               kind: 'rgb',
               r: 25,
               g: 30,
-              b: 36
-            }
-          }
+              b: 36,
+            },
+          },
         },
         {
           row: 7,
@@ -295,24 +311,25 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
           style: {
             bg: {
               kind: 'indexed',
-              index: 236
-            }
-          }
-        }
-      ]
-    }
+              index: 236,
+            },
+          },
+        },
+      ],
+    },
   },
   {
     id: 'codex-origin-and-background',
     profile: 'codex',
-    description: 'Origin mode addresses relative to scroll region and true background color is retained.',
+    description:
+      'Origin mode addresses relative to scroll region and true background color is retained.',
     cols: 20,
     rows: 6,
     steps: [
       { kind: 'output', chunk: '\u001b[2;5r' },
       { kind: 'output', chunk: '\u001b[?6h\u001b[1;1H' },
       { kind: 'output', chunk: '\u001b[48;2;10;20;30mX' },
-      { kind: 'output', chunk: '\u001b[?6l\u001b[1;1HY' }
+      { kind: 'output', chunk: '\u001b[?6l\u001b[1;1HY' },
     ],
     expectations: {
       cells: [
@@ -325,17 +342,17 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
               kind: 'rgb',
               r: 10,
               g: 20,
-              b: 30
-            }
-          }
+              b: 30,
+            },
+          },
         },
         {
           row: 0,
           col: 0,
-          glyph: 'Y'
-        }
-      ]
-    }
+          glyph: 'Y',
+        },
+      ],
+    },
   },
   {
     id: 'vim-scroll-reverse-index',
@@ -347,14 +364,14 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
       { kind: 'output', chunk: '\u001b[1;5r' },
       { kind: 'output', chunk: 'a\nb\nc\nd\n' },
       { kind: 'output', chunk: '\u001b[6;1Hstatus' },
-      { kind: 'output', chunk: '\u001b[1;1H\u001bMtop' }
+      { kind: 'output', chunk: '\u001b[1;1H\u001bMtop' },
     ],
     expectations: {
       lines: [
         { row: 0, includes: 'top' },
-        { row: 5, includes: 'status' }
-      ]
-    }
+        { row: 5, includes: 'status' },
+      ],
+    },
   },
   {
     id: 'core-pending-wrap',
@@ -365,23 +382,23 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
     steps: [
       { kind: 'output', chunk: 'abcde' },
       { kind: 'output', chunk: '\u001b[31m' },
-      { kind: 'output', chunk: 'f' }
+      { kind: 'output', chunk: 'f' },
     ],
     expectations: {
       lines: [
         { row: 0, equals: 'abcde' },
-        { row: 1, equals: 'f' }
+        { row: 1, equals: 'f' },
       ],
       cells: [
         {
           row: 1,
           col: 0,
           style: {
-            fg: { kind: 'indexed', index: 1 }
-          }
-        }
-      ]
-    }
+            fg: { kind: 'indexed', index: 1 },
+          },
+        },
+      ],
+    },
   },
   {
     id: 'core-wrap-tab-insert-delete-char',
@@ -395,30 +412,30 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
       { kind: 'output', chunk: 'Z' },
       { kind: 'output', chunk: '\r\tX' },
       { kind: 'output', chunk: '\u001b[2;1Habcdef' },
-      { kind: 'output', chunk: '\u001b[2;3H\u001b[2@\u001b[1P' }
+      { kind: 'output', chunk: '\u001b[2;3H\u001b[2@\u001b[1P' },
     ],
     expectations: {
       lines: [
         { row: 0, equals: 'abcdeZ  X' },
-        { row: 1, includes: 'ab cdef' }
+        { row: 1, includes: 'ab cdef' },
       ],
       cells: [
         {
           row: 0,
           col: 8,
-          glyph: 'X'
+          glyph: 'X',
         },
         {
           row: 1,
           col: 0,
-          glyph: 'a'
+          glyph: 'a',
         },
         {
           row: 1,
           col: 2,
-          glyph: ' '
-        }
-      ]
-    }
-  }
+          glyph: ' ',
+        },
+      ],
+    },
+  },
 ];

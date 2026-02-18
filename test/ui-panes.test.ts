@@ -86,7 +86,10 @@ void test('home pane renders task-focused view from repositories and tasks', () 
   });
   assert.equal(view.rows.length, 8);
   assert.equal(view.selectedRepositoryId, 'repo-1');
-  assert.equal(view.rows.some((row) => row.includes('\u001b[')), true);
+  assert.equal(
+    view.rows.some((row) => row.includes('\u001b[')),
+    true,
+  );
   assert.equal(stripAnsi(view.rows[0] ?? '').length, 40);
 });
 
@@ -108,8 +111,14 @@ void test('home pane renders startup overlay when repositories and tasks are emp
     scrollTop: 0,
   });
   const stripped = view.rows.map((row) => stripAnsi(row));
-  assert.equal(stripped.some((row) => row.includes('GSV Sleeper Service')), true);
-  assert.equal(stripped.some((row) => row.includes('- harness v0.1.0 -')), true);
+  assert.equal(
+    stripped.some((row) => row.includes('GSV Sleeper Service')),
+    true,
+  );
+  assert.equal(
+    stripped.some((row) => row.includes('- harness v0.1.0 -')),
+    true,
+  );
 });
 
 void test('home pane animates background by default', () => {
@@ -190,9 +199,18 @@ void test('home pane can hide task/repository ui while keeping centered home tex
   });
   const strippedRows = view.rows.map((row) => stripAnsi(row));
   assert.equal(view.selectedRepositoryId, null);
-  assert.equal(view.actions.some((action) => action !== null), false);
-  assert.equal(strippedRows.some((row) => row.includes('GSV Sleeper Service')), true);
-  assert.equal(strippedRows.some((row) => row.includes('Wire pane')), false);
+  assert.equal(
+    view.actions.some((action) => action !== null),
+    false,
+  );
+  assert.equal(
+    strippedRows.some((row) => row.includes('GSV Sleeper Service')),
+    true,
+  );
+  assert.equal(
+    strippedRows.some((row) => row.includes('Wire pane')),
+    false,
+  );
 });
 
 void test('project pane renders blank fallback and snapshot rows', () => {

@@ -95,13 +95,18 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const closeProject = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
   const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
-  const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
+  const interruptConversation = firstShortcutText(bindings, 'mux.conversation.interrupt');
+  const quit = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const profile = firstShortcutText(bindings, 'mux.gateway.profile.toggle') || 'ctrl+p';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${profile} profile  ←/→ collapse/expand  ${interrupt} quit`;
+  const interruptHint =
+    interruptConversation.length === 0 ? '' : `  ${interruptConversation} interrupt`;
+  return `${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${profile} profile${interruptHint}  ←/→ collapse/expand  ${quit} quit`;
 }
 
-function conversationSummary(conversation: MuxRailConversationRecord): ConversationRailSessionSummary {
+function conversationSummary(
+  conversation: MuxRailConversationRecord,
+): ConversationRailSessionSummary {
   return {
     sessionId: conversation.sessionId,
     status: conversation.status,
@@ -221,9 +226,10 @@ export function buildRailModel(args: BuildRailModelArgs): WorkspaceRailModel {
   };
 }
 
-export function buildRailRows(
-  args: BuildRailRowsArgs,
-): { ansiRows: readonly string[]; viewRows: ReturnType<typeof buildWorkspaceRailViewRows> } {
+export function buildRailRows(args: BuildRailRowsArgs): {
+  ansiRows: readonly string[];
+  viewRows: ReturnType<typeof buildWorkspaceRailViewRows>;
+} {
   const railModel = buildRailModel(args);
   const viewRows = buildWorkspaceRailViewRows(railModel, args.layout.paneRows);
   return {

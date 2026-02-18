@@ -3,14 +3,14 @@ import { test } from 'bun:test';
 import {
   expandHomePath,
   normalizeWorkspacePathInput,
-  resolveWorkspacePath
+  resolveWorkspacePath,
 } from '../src/mux/workspace-path.ts';
 
 void test('workspace path input normalization trims optional prefix and wrapping quotes', () => {
   assert.equal(normalizeWorkspacePathInput('  ~/dev/ash-1  '), '~/dev/ash-1');
   assert.equal(normalizeWorkspacePathInput('path: ~/dev/ash-1'), '~/dev/ash-1');
   assert.equal(normalizeWorkspacePathInput('PATH: "~/dev/ash-1"'), '~/dev/ash-1');
-  assert.equal(normalizeWorkspacePathInput('path: \'~/dev/ash-1\''), '~/dev/ash-1');
+  assert.equal(normalizeWorkspacePathInput("path: '~/dev/ash-1'"), '~/dev/ash-1');
   assert.equal(normalizeWorkspacePathInput('path: "unterminated'), '"unterminated');
 });
 
@@ -27,19 +27,19 @@ void test('resolveWorkspacePath handles relative home and legacy invocation-pref
   const homeDirectory = '/Users/jmoyers';
   assert.equal(
     resolveWorkspacePath(invocationDirectory, '~/dev/ash-1', homeDirectory),
-    '/Users/jmoyers/dev/ash-1'
+    '/Users/jmoyers/dev/ash-1',
   );
   assert.equal(
     resolveWorkspacePath(
       invocationDirectory,
       '/Users/jmoyers/dev/harness/~/dev/ash-1',
-      homeDirectory
+      homeDirectory,
     ),
-    '/Users/jmoyers/dev/ash-1'
+    '/Users/jmoyers/dev/ash-1',
   );
   assert.equal(
     resolveWorkspacePath(invocationDirectory, '/Users/jmoyers/dev/harness/~', homeDirectory),
-    '/Users/jmoyers'
+    '/Users/jmoyers',
   );
 });
 
@@ -47,10 +47,10 @@ void test('resolveWorkspacePath falls back to invocation-relative resolution wit
   const invocationDirectory = '/Users/jmoyers/dev/harness';
   assert.equal(
     resolveWorkspacePath(invocationDirectory, './subdir', null),
-    '/Users/jmoyers/dev/harness/subdir'
+    '/Users/jmoyers/dev/harness/subdir',
   );
   assert.equal(
     resolveWorkspacePath(invocationDirectory, 'path: "~/dev/ash-1"', null),
-    '/Users/jmoyers/dev/harness/~/dev/ash-1'
+    '/Users/jmoyers/dev/harness/~/dev/ash-1',
   );
 });

@@ -103,7 +103,11 @@ export class RuntimeRenderFlush<
     const selectionOverlay =
       input.rightFrame === null
         ? ''
-        : this.options.renderSelectionOverlay(input.layout, input.rightFrame, input.renderSelection);
+        : this.options.renderSelectionOverlay(
+            input.layout,
+            input.rightFrame,
+            input.renderSelection,
+          );
     const flushResult = this.options.flush({
       layout: input.layout,
       rows,

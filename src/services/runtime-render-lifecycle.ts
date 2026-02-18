@@ -15,10 +15,7 @@ interface RuntimeRenderLifecycleOptions {
   readonly writeStderr: (text: string) => void;
   readonly exitProcess: (code: number) => void;
   readonly setImmediateFn?: (callback: () => void) => void;
-  readonly setTimeoutFn?: (
-    callback: () => void,
-    delayMs: number,
-  ) => ReturnType<typeof setTimeout>;
+  readonly setTimeoutFn?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   readonly clearTimeoutFn?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 

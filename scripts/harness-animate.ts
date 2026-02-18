@@ -13,7 +13,7 @@ const HARNESS_LOGO_LINES = [
   '| |_| | / _ \\ | |_) |  \\| |  _| \\___ \\___ \\',
   '|  _  |/ ___ \\|  _ <| |\\  | |___ ___) |__) |',
   '|_| |_/_/   \\_\\_| \\_\\_| \\_|_____|____/____/',
-  '                 HARNESS'
+  '                 HARNESS',
 ];
 
 interface AnimateOptions {
@@ -61,7 +61,7 @@ function parseAnimateOptions(argv: readonly string[]): AnimateOptions {
     frames: null,
     durationMs: null,
     seed: DEFAULT_SEED,
-    color: true
+    color: true,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!;
@@ -76,7 +76,10 @@ function parseAnimateOptions(argv: readonly string[]): AnimateOptions {
       continue;
     }
     if (arg === '--duration-ms') {
-      options.durationMs = parsePositiveIntFlag(readCliValue(argv, index, '--duration-ms'), '--duration-ms');
+      options.durationMs = parsePositiveIntFlag(
+        readCliValue(argv, index, '--duration-ms'),
+        '--duration-ms',
+      );
       index += 1;
       continue;
     }
@@ -102,8 +105,8 @@ function printUsage(): void {
       '',
       'notes:',
       '  - `harness animate` runs forever until Ctrl+C in a TTY.',
-      '  - In non-TTY mode, provide --frames or --duration-ms to avoid unbounded output.'
-    ].join('\n') + '\n'
+      '  - In non-TTY mode, provide --frames or --duration-ms to avoid unbounded output.',
+    ].join('\n') + '\n',
   );
 }
 
@@ -123,7 +126,7 @@ function createStarField(count: number, random: () => number): StarField {
     x: new Float32Array(count),
     y: new Float32Array(count),
     z: new Float32Array(count),
-    speed: new Float32Array(count)
+    speed: new Float32Array(count),
   };
   for (let index = 0; index < count; index += 1) {
     resetStar(stars, index, random);
@@ -147,7 +150,7 @@ function buildState(width: number, height: number, random: () => number): Tunnel
     height,
     intensity: new Float32Array(width * height),
     chars: new Array<string>(width * height).fill(' '),
-    stars: createStarField(starCount, random)
+    stars: createStarField(starCount, random),
   };
 }
 
@@ -157,7 +160,7 @@ function writePixel(
   height: number,
   x: number,
   y: number,
-  value: number
+  value: number,
 ): void {
   if (x < 0 || y < 0 || x >= width || y >= height) {
     return;
@@ -179,7 +182,8 @@ function drawTunnelLayer(state: TunnelState, elapsedSeconds: number): void {
   for (let layer = 0; layer < layers; layer += 1) {
     const depth = (elapsedSeconds * 0.48 + layer / layers) % 1;
     const radius = Math.pow(depth, 1.45) * maxRadius;
-    const twist = elapsedSeconds * 1.1 + layer * 0.27 + Math.sin(elapsedSeconds + layer * 0.08) * 0.33;
+    const twist =
+      elapsedSeconds * 1.1 + layer * 0.27 + Math.sin(elapsedSeconds + layer * 0.08) * 0.33;
     const samples = Math.max(22, Math.floor(radius * 5.3));
     const brightness = 0.2 + (1 - depth) * 0.85;
 
@@ -233,7 +237,13 @@ function drawStars(state: TunnelState, elapsedSeconds: number, random: () => num
   }
 }
 
-function writeCenteredText(chars: string[], width: number, height: number, row: number, text: string): void {
+function writeCenteredText(
+  chars: string[],
+  width: number,
+  height: number,
+  row: number,
+  text: string,
+): void {
   if (row < 0 || row >= height || text.length === 0) {
     return;
   }
@@ -251,7 +261,7 @@ function drawHarnessLogo(
   chars: string[],
   width: number,
   height: number,
-  elapsedSeconds: number
+  elapsedSeconds: number,
 ): { top: number; bottom: number } {
   const logoWidth = HARNESS_LOGO_LINES.reduce((max, line) => Math.max(max, line.length), 0);
   const panelPaddingX = 2;
@@ -323,11 +333,16 @@ function drawHarnessLogo(
 
   return {
     top: panelTop,
-    bottom: panelBottom
+    bottom: panelBottom,
   };
 }
 
-function renderFrame(state: TunnelState, elapsedSeconds: number, color: boolean, random: () => number): string {
+function renderFrame(
+  state: TunnelState,
+  elapsedSeconds: number,
+  color: boolean,
+  random: () => number,
+): string {
   const { width, height, intensity, chars } = state;
   intensity.fill(0);
   chars.fill(' ');
@@ -404,7 +419,7 @@ export async function runHarnessAnimate(argv: readonly string[]): Promise<number
     let state = buildState(
       Math.max(MIN_WIDTH, process.stdout.columns ?? 0),
       Math.max(MIN_HEIGHT, process.stdout.rows ?? 0),
-      random
+      random,
     );
     let nextFrameAt = Date.now();
 

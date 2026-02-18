@@ -49,7 +49,9 @@ export class TaskPaneSelectionActions<TTaskRecord extends TaskRecordLike> {
   }
 
   syncTaskPaneSelection(): void {
-    const scopedTaskIds = new Set(this.options.selectedRepositoryTasks().map((task) => task.taskId));
+    const scopedTaskIds = new Set(
+      this.options.selectedRepositoryTasks().map((task) => task.taskId),
+    );
     if (
       this.options.workspace.taskPaneSelectedTaskId !== null &&
       !scopedTaskIds.has(this.options.workspace.taskPaneSelectedTaskId)
@@ -79,7 +81,8 @@ export class TaskPaneSelectionActions<TTaskRecord extends TaskRecordLike> {
       }
     }
     if (this.options.workspace.taskPaneSelectedRepositoryId === null) {
-      this.options.workspace.taskPaneSelectedRepositoryId = this.options.activeRepositoryIds()[0] ?? null;
+      this.options.workspace.taskPaneSelectedRepositoryId =
+        this.options.activeRepositoryIds()[0] ?? null;
     }
     this.options.workspace.taskRepositoryDropdownOpen = false;
     this.syncTaskPaneSelectionFocus();
@@ -124,10 +127,7 @@ export class TaskPaneSelectionActions<TTaskRecord extends TaskRecordLike> {
     }
     this.options.workspace.taskPaneSelectedTaskId = taskId;
     this.options.workspace.taskPaneSelectionFocus = 'task';
-    if (
-      taskRecord.repositoryId !== null &&
-      this.options.hasRepository(taskRecord.repositoryId)
-    ) {
+    if (taskRecord.repositoryId !== null && this.options.hasRepository(taskRecord.repositoryId)) {
       this.options.workspace.taskPaneSelectedRepositoryId = taskRecord.repositoryId;
     }
     this.focusTaskComposer(taskId);

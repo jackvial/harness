@@ -65,26 +65,30 @@ void test('command module coverage: repository/task query branches and claim con
       /session is already claimed by operator-a/,
     );
 
-    const repositoryA = (await clientA.sendCommand({
-      type: 'repository.upsert',
-      repositoryId: 'repository-a',
-      tenantId: 'tenant-command-coverage',
-      userId: 'user-command-coverage',
-      workspaceId: 'workspace-command-coverage',
-      name: 'repo-a',
-      remoteUrl: 'https://github.com/example/repo-a',
-      defaultBranch: 'main',
-    }))['repository'] as Record<string, unknown>;
-    const repositoryB = (await clientA.sendCommand({
-      type: 'repository.upsert',
-      repositoryId: 'repository-b',
-      tenantId: 'tenant-command-coverage',
-      userId: 'user-command-coverage',
-      workspaceId: 'workspace-command-coverage',
-      name: 'repo-b',
-      remoteUrl: 'https://github.com/example/repo-b',
-      defaultBranch: 'main',
-    }))['repository'] as Record<string, unknown>;
+    const repositoryA = (
+      await clientA.sendCommand({
+        type: 'repository.upsert',
+        repositoryId: 'repository-a',
+        tenantId: 'tenant-command-coverage',
+        userId: 'user-command-coverage',
+        workspaceId: 'workspace-command-coverage',
+        name: 'repo-a',
+        remoteUrl: 'https://github.com/example/repo-a',
+        defaultBranch: 'main',
+      })
+    )['repository'] as Record<string, unknown>;
+    const repositoryB = (
+      await clientA.sendCommand({
+        type: 'repository.upsert',
+        repositoryId: 'repository-b',
+        tenantId: 'tenant-command-coverage',
+        userId: 'user-command-coverage',
+        workspaceId: 'workspace-command-coverage',
+        name: 'repo-b',
+        remoteUrl: 'https://github.com/example/repo-b',
+        defaultBranch: 'main',
+      })
+    )['repository'] as Record<string, unknown>;
     const repositoryAId = repositoryA['repositoryId'] as string;
     const repositoryBId = repositoryB['repositoryId'] as string;
 
@@ -122,26 +126,30 @@ void test('command module coverage: repository/task query branches and claim con
       /repository not found/,
     );
 
-    const taskA = (await clientA.sendCommand({
-      type: 'task.create',
-      taskId: 'task-coverage-a',
-      tenantId: 'tenant-command-coverage',
-      userId: 'user-command-coverage',
-      workspaceId: 'workspace-command-coverage',
-      repositoryId: repositoryAId,
-      title: 'task-a',
-      description: '',
-    }))['task'] as Record<string, unknown>;
-    const taskB = (await clientA.sendCommand({
-      type: 'task.create',
-      taskId: 'task-coverage-b',
-      tenantId: 'tenant-command-coverage',
-      userId: 'user-command-coverage',
-      workspaceId: 'workspace-command-coverage',
-      repositoryId: repositoryBId,
-      title: 'task-b',
-      description: '',
-    }))['task'] as Record<string, unknown>;
+    const taskA = (
+      await clientA.sendCommand({
+        type: 'task.create',
+        taskId: 'task-coverage-a',
+        tenantId: 'tenant-command-coverage',
+        userId: 'user-command-coverage',
+        workspaceId: 'workspace-command-coverage',
+        repositoryId: repositoryAId,
+        title: 'task-a',
+        description: '',
+      })
+    )['task'] as Record<string, unknown>;
+    const taskB = (
+      await clientA.sendCommand({
+        type: 'task.create',
+        taskId: 'task-coverage-b',
+        tenantId: 'tenant-command-coverage',
+        userId: 'user-command-coverage',
+        workspaceId: 'workspace-command-coverage',
+        repositoryId: repositoryBId,
+        title: 'task-b',
+        description: '',
+      })
+    )['task'] as Record<string, unknown>;
     await clientA.sendCommand({
       type: 'task.ready',
       taskId: taskB['taskId'] as string,

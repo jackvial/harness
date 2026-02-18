@@ -23,7 +23,8 @@ void test('repository prompt open helpers clear modal state and preserve missing
     hasConversationTitleEdit: true,
     stopConversationTitleEdit: () => calls.push('stopConversationTitleEdit'),
     clearConversationTitleEditClickState: () => calls.push('clearConversationTitleEditClickState'),
-    setRepositoryPrompt: (prompt) => calls.push(`setRepositoryPrompt:${prompt.mode}:${prompt.value}`),
+    setRepositoryPrompt: (prompt) =>
+      calls.push(`setRepositoryPrompt:${prompt.mode}:${prompt.value}`),
     markDirty: () => calls.push('markDirty'),
   });
   assert.deepEqual(calls, [
@@ -42,7 +43,8 @@ void test('repository prompt open helpers clear modal state and preserve missing
     hasConversationTitleEdit: false,
     stopConversationTitleEdit: () => calls.push('stopConversationTitleEdit'),
     clearConversationTitleEditClickState: () => calls.push('clearConversationTitleEditClickState'),
-    setRepositoryPrompt: (prompt) => calls.push(`setRepositoryPrompt:${prompt.mode}:${prompt.value}`),
+    setRepositoryPrompt: (prompt) =>
+      calls.push(`setRepositoryPrompt:${prompt.mode}:${prompt.value}`),
     markDirty: () => calls.push('markDirty'),
   });
   assert.equal(calls.includes('stopConversationTitleEdit'), false);
@@ -66,7 +68,8 @@ void test('repository prompt open helpers clear modal state and preserve missing
     hasConversationTitleEdit: true,
     stopConversationTitleEdit: () => calls.push('stopConversationTitleEdit'),
     clearConversationTitleEditClickState: () => calls.push('clearConversationTitleEditClickState'),
-    setRepositoryPrompt: (prompt) => calls.push(`setRepositoryPrompt:${prompt.mode}:${prompt.value}`),
+    setRepositoryPrompt: (prompt) =>
+      calls.push(`setRepositoryPrompt:${prompt.mode}:${prompt.value}`),
     setTaskPaneSelectionFocusRepository: () => calls.push('setTaskPaneSelectionFocusRepository'),
     markDirty: () => calls.push('markDirty'),
   });
@@ -80,7 +83,8 @@ void test('repository prompt open helpers clear modal state and preserve missing
     hasConversationTitleEdit: true,
     stopConversationTitleEdit: () => calls.push('stopConversationTitleEdit'),
     clearConversationTitleEditClickState: () => calls.push('clearConversationTitleEditClickState'),
-    setRepositoryPrompt: (prompt) => calls.push(`setRepositoryPrompt:${prompt.mode}:${prompt.value}`),
+    setRepositoryPrompt: (prompt) =>
+      calls.push(`setRepositoryPrompt:${prompt.mode}:${prompt.value}`),
     setTaskPaneSelectionFocusRepository: () => calls.push('setTaskPaneSelectionFocusRepository'),
     markDirty: () => calls.push('markDirty'),
   });
@@ -158,7 +162,9 @@ void test('repository priority queue and drag reorder logic are deterministic', 
       };
     },
     upsertRepository: (repository) => {
-      calls.push(`upsert:${repository.repositoryId}:${repository.metadata['homePriority'] as number}`);
+      calls.push(
+        `upsert:${repository.repositoryId}:${repository.metadata['homePriority'] as number}`,
+      );
     },
     syncTaskPaneRepositorySelection: () => calls.push('sync'),
     markDirty: () => calls.push('dirty'),
@@ -279,7 +285,12 @@ void test('repository upsert and archive operations validate inputs and sync loc
     syncTaskPaneRepositorySelection: () => syncCalls.push('sync-selection'),
     markDirty: () => syncCalls.push('dirty'),
   });
-  assert.deepEqual(syncCalls, ['upsert:repo-create', 'sync-associations', 'sync-selection', 'dirty']);
+  assert.deepEqual(syncCalls, [
+    'upsert:repo-create',
+    'sync-associations',
+    'sync-selection',
+    'dirty',
+  ]);
 
   syncCalls.length = 0;
   await upsertRepositoryByRemoteUrl<TestRepository>({
@@ -316,7 +327,12 @@ void test('repository upsert and archive operations validate inputs and sync loc
     syncTaskPaneRepositorySelection: () => syncCalls.push('sync-selection'),
     markDirty: () => syncCalls.push('dirty'),
   });
-  assert.deepEqual(syncCalls, ['upsert:repo-update', 'sync-associations', 'sync-selection', 'dirty']);
+  assert.deepEqual(syncCalls, [
+    'upsert:repo-update',
+    'sync-associations',
+    'sync-selection',
+    'dirty',
+  ]);
 
   syncCalls.length = 0;
   await archiveRepositoryById({

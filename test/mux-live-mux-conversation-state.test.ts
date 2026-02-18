@@ -112,11 +112,14 @@ void test('conversation-state launchCommand, debug footer, and compaction helper
   assert.equal(launchCommandForAgent('terminal').length > 0, true);
   assert.equal(launchCommandForAgent('unknown'), 'codex');
 
-  const formatted = formatCommandForDebugBar('bunx', ['critique@latest', '--watch', '', 'hello world', "it's"]);
-  assert.equal(
-    formatted,
-    "bunx critique@latest --watch '' 'hello world' 'it'\"'\"'s'",
-  );
+  const formatted = formatCommandForDebugBar('bunx', [
+    'critique@latest',
+    '--watch',
+    '',
+    'hello world',
+    "it's",
+  ]);
+  assert.equal(formatted, "bunx critique@latest --watch '' 'hello world' 'it'\"'\"'s'");
 
   const conversation = {
     launchCommand: formatted,

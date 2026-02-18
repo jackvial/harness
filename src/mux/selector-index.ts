@@ -49,7 +49,7 @@ function normalizedDirectoryId(directoryId: string | null): string {
 function orderedDirectoryIds(
   directories: ReadonlyMap<string, SelectorIndexDirectory>,
   conversationById: ReadonlyMap<string, SelectorIndexConversation>,
-  orderedSessionIds: readonly string[]
+  orderedSessionIds: readonly string[],
 ): readonly string[] {
   const orderedDirectoryIds: string[] = [...directories.keys()];
   const seenDirectoryIds = new Set(orderedDirectoryIds);
@@ -73,7 +73,7 @@ function orderedDirectoryIds(
 export function buildSelectorIndexEntries(
   directories: ReadonlyMap<string, SelectorIndexDirectory>,
   conversationById: ReadonlyMap<string, SelectorIndexConversation>,
-  orderedSessionIds: readonly string[]
+  orderedSessionIds: readonly string[],
 ): readonly SelectorIndexEntry[] {
   const entries: SelectorIndexEntry[] = [];
   let selectorIndex = 1;
@@ -94,7 +94,7 @@ export function buildSelectorIndexEntries(
         directoryId,
         sessionId: conversation.sessionId,
         title: conversation.title,
-        agentType: conversation.agentType
+        agentType: conversation.agentType,
       });
       selectorIndex += 1;
     }
@@ -105,10 +105,10 @@ export function buildSelectorIndexEntries(
 export function visualConversationOrder(
   directories: ReadonlyMap<string, SelectorIndexDirectory>,
   conversationById: ReadonlyMap<string, SelectorIndexConversation>,
-  orderedSessionIds: readonly string[]
+  orderedSessionIds: readonly string[],
 ): readonly string[] {
   return buildSelectorIndexEntries(directories, conversationById, orderedSessionIds).map(
-    (entry) => entry.sessionId
+    (entry) => entry.sessionId,
   );
 }
 
@@ -118,7 +118,7 @@ export function buildLeftNavSelectorEntries(
   orderedSessionIds: readonly string[],
   options: {
     readonly includeHome?: boolean;
-  } = {}
+  } = {},
 ): readonly LeftNavSelectorEntry[] {
   const entries: LeftNavSelectorEntry[] = [];
   let selectorIndex = 1;
@@ -126,7 +126,7 @@ export function buildLeftNavSelectorEntries(
     entries.push({
       selectorIndex,
       key: 'home',
-      kind: 'home'
+      kind: 'home',
     });
     selectorIndex += 1;
   }
@@ -135,7 +135,7 @@ export function buildLeftNavSelectorEntries(
       selectorIndex,
       key: `directory:${directoryId}`,
       kind: 'directory',
-      directoryId
+      directoryId,
     });
     selectorIndex += 1;
     for (const sessionId of orderedSessionIds) {
@@ -151,7 +151,7 @@ export function buildLeftNavSelectorEntries(
         key: `conversation:${conversation.sessionId}`,
         kind: 'conversation',
         directoryId,
-        sessionId: conversation.sessionId
+        sessionId: conversation.sessionId,
       });
       selectorIndex += 1;
     }

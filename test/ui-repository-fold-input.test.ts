@@ -91,7 +91,9 @@ void test('repository fold input handles tree expand/collapse and selection mapp
     kind: 'project',
     directoryId: 'dir-a',
   });
-  const projectExpandHandled = harness.router.handleRepositoryTreeArrow(Buffer.from('\u001b[C', 'utf8'));
+  const projectExpandHandled = harness.router.handleRepositoryTreeArrow(
+    Buffer.from('\u001b[C', 'utf8'),
+  );
   assert.equal(projectExpandHandled, true);
   assert.deepEqual(harness.calls, ['expand:repo:dir-a', 'select:repo:dir-a']);
   assert.equal(harness.getDirtyCount(), 3);

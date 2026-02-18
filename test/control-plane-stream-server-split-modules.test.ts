@@ -235,10 +235,7 @@ void test('split module coverage: background git polling in-flight and error bra
   const refreshed = failingCtx.gitStatusByDirectoryId.get(directory.directoryId);
   assert.notEqual(refreshed, undefined);
   assert.equal((refreshed?.lastRefreshedAtMs ?? 0) >= 1, true);
-  assert.equal(
-    failingCtx.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId),
-    false,
-  );
+  assert.equal(failingCtx.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId), false);
 });
 
 void test('split module coverage: observed filter repository checks include directory-git-updated events', () => {
