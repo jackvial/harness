@@ -192,6 +192,7 @@ import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-ac
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
 import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
+import { StartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { StartupVisibility } from '../src/services/startup-visibility.ts';
@@ -222,6 +223,9 @@ type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
 type ControlPlaneSessionSummary = NonNullable<
   Awaited<ReturnType<ControlPlaneService['getSessionStatus']>>
 >;
+type ControlPlaneDirectoryGitStatusRecord = Awaited<
+  ReturnType<ControlPlaneService['listDirectoryGitStatuses']>
+>[number];
 
 type ProcessUsageSample = Awaited<ReturnType<typeof readProcessUsageSample>>;
 
@@ -743,31 +747,6 @@ async function main(): Promise<number> {
     repositoryManager.syncWithDirectories((directoryId) => directoryManager.hasDirectory(directoryId));
   };
 
-  const hydrateRepositoryList = async (): Promise<void> => {
-    const rows = await controlPlaneService.listRepositories();
-    repositories.clear();
-    for (const record of rows) {
-      repositories.set(record.repositoryId, record);
-    }
-    syncRepositoryAssociationsWithDirectorySnapshots();
-  };
-
-  const hydrateDirectoryGitStatus = async (): Promise<void> => {
-    if (!configuredMuxGit.enabled) {
-      return;
-    }
-    const rows = await controlPlaneService.listDirectoryGitStatuses();
-    for (const record of rows) {
-      _unsafeDirectoryGitSummaryMap.set(record.directoryId, record.summary);
-      repositoryManager.setDirectoryRepositorySnapshot(record.directoryId, record.repositorySnapshot);
-      repositoryManager.setDirectoryRepositoryAssociation(record.directoryId, record.repositoryId);
-      if (record.repository !== null) {
-        repositoryManager.setRepository(record.repository.repositoryId, record.repository);
-      }
-    }
-    syncRepositoryAssociationsWithDirectorySnapshots();
-  };
-
   const hydratePersistedConversationsForDirectory = async (
     directoryId: string,
   ): Promise<number> => {
@@ -931,26 +910,54 @@ async function main(): Promise<number> {
   const hydrateConversationList = async (): Promise<void> => {
     await conversationStartupHydrationService.hydrateConversationList();
   };
-
-  async function hydrateStartupState(): Promise<void> {
-    await hydrateConversationList();
-    await hydrateRepositoryList();
-    await hydrateTaskPlanningState();
-    await hydrateDirectoryGitStatus();
-    await subscribeTaskPlanningEvents(startupObservedCursor);
-    conversationManager.ensureActiveConversationId();
-    if (conversationManager.activeConversationId !== null) {
-      workspace.selectLeftNavConversation(conversationManager.activeConversationId);
-    }
-    const activeDirectoryId = resolveActiveDirectoryId();
-    if (conversationManager.activeConversationId === null && activeDirectoryId !== null) {
+  const startupStateHydrationService = new StartupStateHydrationService<
+    ControlPlaneRepositoryRecord,
+    GitSummary,
+    GitRepositorySnapshot,
+    ControlPlaneDirectoryGitStatusRecord
+  >({
+    hydrateConversationList,
+    listRepositories: async () => {
+      return await controlPlaneService.listRepositories();
+    },
+    clearRepositories: () => {
+      repositories.clear();
+    },
+    setRepository: (repositoryId, repository) => {
+      repositories.set(repositoryId, repository);
+    },
+    syncRepositoryAssociationsWithDirectorySnapshots,
+    gitHydrationEnabled: configuredMuxGit.enabled,
+    listDirectoryGitStatuses: async () => {
+      return await controlPlaneService.listDirectoryGitStatuses();
+    },
+    setDirectoryGitSummary: (directoryId, summary) => {
+      _unsafeDirectoryGitSummaryMap.set(directoryId, summary);
+    },
+    setDirectoryRepositorySnapshot: (directoryId, snapshot) => {
+      repositoryManager.setDirectoryRepositorySnapshot(directoryId, snapshot);
+    },
+    setDirectoryRepositoryAssociation: (directoryId, repositoryId) => {
+      repositoryManager.setDirectoryRepositoryAssociation(directoryId, repositoryId);
+    },
+    hydrateTaskPlanningState,
+    subscribeTaskPlanningEvents,
+    ensureActiveConversationId: () => {
+      conversationManager.ensureActiveConversationId();
+    },
+    activeConversationId: () => conversationManager.activeConversationId,
+    selectLeftNavConversation: (sessionId) => {
+      workspace.selectLeftNavConversation(sessionId);
+    },
+    resolveActiveDirectoryId,
+    enterProjectPaneForDirectory: (directoryId) => {
       workspace.mainPaneMode = 'project';
       workspace.selectLeftNavProject(
-        activeDirectoryId,
-        repositoryGroupIdForDirectory(activeDirectoryId),
+        directoryId,
+        repositoryGroupIdForDirectory(directoryId),
       );
-    }
-  }
+    },
+  });
 
   const ensureDirectoryGitState = (directoryId: string): void => {
     directoryManager.ensureGitSummary(directoryId, GIT_SUMMARY_LOADING);
@@ -1848,7 +1855,7 @@ async function main(): Promise<number> {
     taskPlanningObservedEvents.apply(observed);
   };
 
-  const subscribeTaskPlanningEvents = async (afterCursor: number | null): Promise<void> => {
+  async function subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {
     if (observedStreamSubscriptionId !== null) {
       return;
     }
@@ -1857,16 +1864,16 @@ async function main(): Promise<number> {
       options.scope,
       afterCursor,
     );
-  };
+  }
 
-  const unsubscribeTaskPlanningEvents = async (): Promise<void> => {
+  async function unsubscribeTaskPlanningEvents(): Promise<void> {
     if (observedStreamSubscriptionId === null) {
       return;
     }
     const subscriptionId = observedStreamSubscriptionId;
     observedStreamSubscriptionId = null;
     await unsubscribeObservedStream(streamClient, subscriptionId);
-  };
+  }
 
   const runtimeConversationActivation = new RuntimeConversationActivation({
     getActiveConversationId: () => conversationManager.activeConversationId,
@@ -3229,7 +3236,7 @@ async function main(): Promise<number> {
     handleRuntimeFatal,
   });
 
-  await hydrateStartupState();
+  await startupStateHydrationService.hydrateStartupState(startupObservedCursor);
 
   runtimeProcessWiring.attach();
 

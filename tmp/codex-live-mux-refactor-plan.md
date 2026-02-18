@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3172 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3182 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1327,8 +1327,24 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3172 non-empty LOC
 
+### Checkpoint BS (2026-02-18): Startup hydration sequencing extracted into class service
+
+- Added `src/services/startup-state-hydration.ts` with class-based `StartupStateHydrationService` to own startup hydration sequencing:
+  - conversation hydration -> repository hydration -> task-planning hydration -> git snapshot hydration
+  - task-planning observed subscription bootstrap ordering
+  - post-hydration active-selection fallback (active conversation first, then project pane)
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate startup boot hydration (`hydrateStartupState`) through `StartupStateHydrationService`.
+- Added `test/services-startup-state-hydration.test.ts` with coverage for:
+  - active-conversation-first selection branch
+  - no-active-conversation project fallback branch
+  - no-active-conversation/no-active-directory no-op selection branch
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3182 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue startup/runtime orchestration extraction before callback-bag cleanup:
-  - extract remaining startup flow orchestration/wiring glue into class services (especially startup state + background queue glue)
+  - extract background persisted-conversation queue orchestration + adjacent startup glue into class services
   - then extract render orchestration seam to start next large runtime LOC drop
