@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3177 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3157 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1358,6 +1358,23 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3177 non-empty LOC
+
+### Checkpoint BU (2026-02-18): Stream envelope routing extracted into class service
+
+- Added `src/services/runtime-envelope-handler.ts` with class-based `RuntimeEnvelopeHandler` to own runtime envelope dispatch for:
+  - `pty.output` ingest, output-load accounting, normalized output enqueue, and active-thread dirty marking
+  - `pty.event` adapter-state merge, normalized session event enqueue, and exit-state handling
+  - `pty.exit` exit-state reconciliation and resize-cache cleanup
+  - `stream.event` fanout into git/task observed reducers
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate `handleEnvelope(...)` through `RuntimeEnvelopeHandler`.
+- Added `test/services-runtime-envelope-handler.test.ts` with coverage for:
+  - output ingest + cursor regression telemetry path
+  - session-exit and pty-exit branches
+  - removed-session short-circuit and stream-event fanout
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3157 non-empty LOC
 
 ### Next focus (yield-first)
 

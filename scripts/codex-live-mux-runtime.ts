@@ -187,6 +187,7 @@ import { RuntimeConversationActions } from '../src/services/runtime-conversation
 import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
 import { RuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
+import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
@@ -2601,107 +2602,67 @@ async function main(): Promise<number> {
     outputLoadSampler.recordRenderSample(renderDurationMs, changedRowCount);
   };
 
-  const handleEnvelope = (envelope: StreamServerEnvelope): void => {
-    if (envelope.kind === 'pty.output') {
-      const outputHandledStartedAtNs = perfNowNs();
-      if (conversationManager.isRemoved(envelope.sessionId)) {
-        return;
-      }
-      const chunk = Buffer.from(envelope.chunkBase64, 'base64');
-      const outputIngest = conversationManager.ingestOutputChunk({
-        sessionId: envelope.sessionId,
-        cursor: envelope.cursor,
+  const runtimeEnvelopeHandler = new RuntimeEnvelopeHandler<
+    ConversationState,
+    ReturnType<typeof mapTerminalOutputToNormalizedEvent>
+  >({
+    perfNowNs,
+    isRemoved: (sessionId) => conversationManager.isRemoved(sessionId),
+    ensureConversation,
+    ingestOutputChunk: (input) => conversationManager.ingestOutputChunk(input),
+    noteGitActivity,
+    recordOutputChunk: (input) => {
+      outputLoadSampler.recordOutputChunk(input.sessionId, input.chunkLength, input.active);
+    },
+    startupOutputChunk: (sessionId, chunkLength) => {
+      startupOutputTracker.onOutputChunk(sessionId, chunkLength);
+    },
+    startupPaintOutputChunk: (sessionId) => {
+      startupPaintTracker.onOutputChunk(sessionId);
+    },
+    recordPerfEvent,
+    mapTerminalOutputToNormalizedEvent: (chunk, scope, makeId) =>
+      mapTerminalOutputToNormalizedEvent(
         chunk,
-        ensureConversation,
-      });
-      const conversation = outputIngest.conversation;
-      noteGitActivity(conversation.directoryId);
-      outputLoadSampler.recordOutputChunk(
-        envelope.sessionId,
-        chunk.length,
-        conversationManager.activeConversationId === envelope.sessionId,
-      );
-      startupOutputTracker.onOutputChunk(envelope.sessionId, chunk.length);
-      startupPaintTracker.onOutputChunk(envelope.sessionId);
-      if (outputIngest.cursorRegressed) {
-        recordPerfEvent('mux.output.cursor-regression', {
-          sessionId: envelope.sessionId,
-          previousCursor: outputIngest.previousCursor,
-          cursor: envelope.cursor,
-        });
-      }
-
-      const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
-      eventPersistence.enqueue(normalized);
-      conversation.lastEventAt = normalized.ts;
-      if (conversationManager.activeConversationId === envelope.sessionId) {
-        markDirty();
-      }
-      const outputHandledDurationMs = Number(perfNowNs() - outputHandledStartedAtNs) / 1e6;
-      outputLoadSampler.recordOutputHandled(outputHandledDurationMs);
-      return;
-    }
-
-    if (envelope.kind === 'pty.event') {
-      if (conversationManager.isRemoved(envelope.sessionId)) {
-        return;
-      }
-      const conversation = ensureConversation(envelope.sessionId);
-      noteGitActivity(conversation.directoryId);
-      const observedAt = observedAtFromSessionEvent(envelope.event);
-      const updatedAdapterState = mergeAdapterStateFromSessionEvent(
-        conversation.agentType,
-        conversation.adapterState,
-        envelope.event,
+        scope as Parameters<typeof mapTerminalOutputToNormalizedEvent>[1],
+        makeId,
+      ),
+    mapSessionEventToNormalizedEvent: (event, scope, makeId) =>
+      mapSessionEventToNormalizedEvent(event as Parameters<typeof mapSessionEventToNormalizedEvent>[0], scope as Parameters<typeof mapSessionEventToNormalizedEvent>[1], makeId),
+    observedAtFromSessionEvent: (event) =>
+      observedAtFromSessionEvent(event as Parameters<typeof observedAtFromSessionEvent>[0]),
+    mergeAdapterStateFromSessionEvent: (agentType, adapterState, event, observedAt) =>
+      mergeAdapterStateFromSessionEvent(
+        agentType,
+        adapterState,
+        event as Parameters<typeof mergeAdapterStateFromSessionEvent>[2],
         observedAt,
-      );
-      if (updatedAdapterState !== null) {
-        conversation.adapterState = updatedAdapterState;
-      }
-      const normalized = mapSessionEventToNormalizedEvent(
-        envelope.event,
-        conversation.scope,
-        idFactory,
-      );
-      if (normalized !== null) {
-        eventPersistence.enqueue(normalized);
-      }
-      if (envelope.event.type === 'session-exit') {
-        exit = envelope.event.exit;
-        conversationManager.markSessionExited({
-          sessionId: envelope.sessionId,
-          exit: envelope.event.exit,
-          exitedAt: new Date().toISOString(),
-        });
-        ptySizeByConversationId.delete(envelope.sessionId);
-      }
-      markDirty();
-      return;
-    }
-
-    if (envelope.kind === 'pty.exit') {
-      if (conversationManager.isRemoved(envelope.sessionId)) {
-        return;
-      }
-      const conversation = conversationManager.get(envelope.sessionId);
-      if (conversation !== undefined) {
-        noteGitActivity(conversation.directoryId);
-        exit = envelope.exit;
-        conversationManager.markSessionExited({
-          sessionId: envelope.sessionId,
-          exit: envelope.exit,
-          exitedAt: new Date().toISOString(),
-        });
-        ptySizeByConversationId.delete(envelope.sessionId);
-      }
-      markDirty();
-      return;
-    }
-
-    if (envelope.kind === 'stream.event') {
-      applyObservedGitStatusEvent(envelope.event);
-      applyObservedTaskPlanningEvent(envelope.event);
-    }
+      ),
+    enqueueEvent: (event) => {
+      eventPersistence.enqueue(event);
+    },
+    activeConversationId: () => conversationManager.activeConversationId,
+    markSessionExited: (input) => {
+      conversationManager.markSessionExited(input);
+    },
+    deletePtySize: (sessionId) => {
+      ptySizeByConversationId.delete(sessionId);
+    },
+    setExit: (nextExit) => {
+      exit = nextExit;
+    },
+    markDirty,
+    nowIso: () => new Date().toISOString(),
+    recordOutputHandled: (durationMs) => {
+      outputLoadSampler.recordOutputHandled(durationMs);
+    },
+    conversationById: (sessionId) => conversationManager.get(sessionId),
+    applyObservedGitStatusEvent,
+    applyObservedTaskPlanningEvent,
+    idFactory,
+  });
+  const handleEnvelope = (envelope: StreamServerEnvelope): void => {
+    runtimeEnvelopeHandler.handleEnvelope(envelope);
   };
 
   const removeEnvelopeListener = streamClient.onEnvelope((envelope) => {
