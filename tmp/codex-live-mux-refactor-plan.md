@@ -1159,3 +1159,27 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3397 non-empty LOC
+
+### Checkpoint BI (2026-02-18): Service extraction continues with render/fatal lifecycle ownership
+
+- Added `src/services/runtime-render-lifecycle.ts` with a class-based `RuntimeRenderLifecycle` that owns:
+  - dirty-mark and render scheduling guard state
+  - guarded render recursion with fatal fallback on render exceptions
+  - runtime fatal lifecycle (`setShuttingDown`, `setStop`, stderr emission, terminal restore, forced-exit timer)
+  - runtime-fatal timer cleanup and render-scheduled reset hooks used by shutdown orchestration
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate:
+  - `markDirty` / `scheduleRender` behavior to `RuntimeRenderLifecycle`
+  - fatal runtime handling to `RuntimeRenderLifecycle.handleRuntimeFatal(...)`
+  - shutdown timer/render-flag cleanup to `RuntimeRenderLifecycle` methods
+- Added `test/services-runtime-render-lifecycle.test.ts` for:
+  - render scheduling recursion behavior
+  - `clearRenderScheduled()` guard-reset behavior
+  - fatal lifecycle and idempotency behavior
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3381 non-empty LOC
+
+### Next focus (yield-first)
+
+- Action-handler bundle extraction (conversation/directory orchestration) is now the top priority before further input-wiring cleanup.

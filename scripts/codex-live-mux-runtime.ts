@@ -186,6 +186,7 @@ import { StartupBackgroundResumeService } from '../src/services/startup-backgrou
 import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
 import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
+import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
@@ -1038,10 +1039,7 @@ async function main(): Promise<number> {
   let stop = false;
   let inputRemainder = '';
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
-  let renderScheduled = false;
   let shuttingDown = false;
-  let runtimeFatal: { origin: string; error: unknown } | null = null;
-  let runtimeFatalExitTimer: NodeJS.Timeout | null = null;
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
@@ -1097,50 +1095,35 @@ async function main(): Promise<number> {
     });
   };
 
+  const runtimeRenderLifecycle = new RuntimeRenderLifecycle({
+    screen,
+    render: () => {
+      render();
+    },
+    isShuttingDown: () => shuttingDown,
+    setShuttingDown: (next) => {
+      shuttingDown = next;
+    },
+    setStop: (next) => {
+      stop = next;
+    },
+    restoreTerminalState: () => {
+      restoreTerminalState(true, inputModeManager.restore);
+    },
+    formatErrorMessage,
+    writeStderr: (text) => process.stderr.write(text),
+    exitProcess: (code) => {
+      process.exit(code);
+    },
+  });
   const handleRuntimeFatal = (origin: string, error: unknown): void => {
-    if (runtimeFatal !== null) {
-      return;
-    }
-    runtimeFatal = {
-      origin,
-      error,
-    };
-    shuttingDown = true;
-    stop = true;
-    screen.clearDirty();
-    process.stderr.write(`[mux] fatal runtime error (${origin}): ${formatErrorMessage(error)}\n`);
-    restoreTerminalState(true, inputModeManager.restore);
-    runtimeFatalExitTimer = setTimeout(() => {
-      process.stderr.write('[mux] fatal runtime error forced exit\n');
-      process.exit(1);
-    }, 1200);
-    runtimeFatalExitTimer.unref?.();
+    runtimeRenderLifecycle.handleRuntimeFatal(origin, error);
   };
-
   const scheduleRender = (): void => {
-    if (shuttingDown || renderScheduled) {
-      return;
-    }
-    renderScheduled = true;
-    setImmediate(() => {
-      renderScheduled = false;
-      try {
-        render();
-        if (screen.isDirty()) {
-          scheduleRender();
-        }
-      } catch (error: unknown) {
-        handleRuntimeFatal('render', error);
-      }
-    });
+    runtimeRenderLifecycle.scheduleRender();
   };
-
   const markDirty = (): void => {
-    if (shuttingDown) {
-      return;
-    }
-    screen.markDirty();
-    scheduleRender();
+    runtimeRenderLifecycle.markDirty();
   };
   const processUsageRefreshService = new ProcessUsageRefreshService<
     ConversationState,
@@ -3495,7 +3478,7 @@ async function main(): Promise<number> {
       }
     },
     clearRenderScheduled: () => {
-      renderScheduled = false;
+      runtimeRenderLifecycle.clearRenderScheduled();
     },
     detachProcessListeners: () => {
       runtimeProcessWiring.detach();
@@ -3509,10 +3492,7 @@ async function main(): Promise<number> {
       }
     },
     clearRuntimeFatalExitTimer: () => {
-      if (runtimeFatalExitTimer !== null) {
-        clearTimeout(runtimeFatalExitTimer);
-        runtimeFatalExitTimer = null;
-      }
+      runtimeRenderLifecycle.clearRuntimeFatalExitTimer();
     },
     waitForControlPlaneDrain,
     controlPlaneClient,
@@ -3538,7 +3518,7 @@ async function main(): Promise<number> {
   }
 
   if (exit === null) {
-    if (runtimeFatal !== null) {
+    if (runtimeRenderLifecycle.hasFatal()) {
       return 1;
     }
     return 0;
