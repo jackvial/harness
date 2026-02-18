@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2967 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2860 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2172 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1646,6 +1646,24 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2967 non-empty LOC (post-rebase onto upstream `main`)
+
+### Checkpoint CK (2026-02-18): Repository action orchestration extracted into class service
+
+- Added `src/services/runtime-repository-actions.ts` with class-based `RuntimeRepositoryActions` to own:
+  - repository prompt lifecycle (`openRepositoryPromptForCreate`, `openRepositoryPromptForEdit`)
+  - repository home-priority reorder queueing and drag/drop ordering transitions
+  - repository upsert/update normalization flow from GitHub remote URL
+  - repository archive flow with local map + selection sync updates
+- Updated `scripts/codex-live-mux-runtime.ts` to remove inline repository action wrappers and delegate to `RuntimeRepositoryActions`.
+- Added `test/services-runtime-repository-actions.test.ts` with branch coverage for:
+  - create/edit prompt state transitions (including title-edit stop and missing repository guard)
+  - no-op vs queued reorder-priority branches and drag/drop guard/success branches
+  - upsert validation + create/update branches
+  - archive repository state/sync branch
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2860 non-empty LOC
 
 ### Next focus (yield-first)
 

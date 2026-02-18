@@ -132,14 +132,6 @@ import {
 } from '../src/mux/live-mux/git-state.ts';
 import { resolveDirectoryForAction as resolveDirectoryForActionFn } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
-import {
-  archiveRepositoryById as archiveRepositoryByIdFn,
-  openRepositoryPromptForCreate as openRepositoryPromptForCreateFn,
-  openRepositoryPromptForEdit as openRepositoryPromptForEditFn,
-  queueRepositoryPriorityOrder as queueRepositoryPriorityOrderFn,
-  reorderRepositoryByDrop as reorderRepositoryByDropFn,
-  upsertRepositoryByRemoteUrl as upsertRepositoryByRemoteUrlFn,
-} from '../src/mux/live-mux/actions-repository.ts';
 import { openNewThreadPrompt as openNewThreadPromptFn } from '../src/mux/live-mux/actions-conversation.ts';
 import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
@@ -169,6 +161,7 @@ import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler
 import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
 import { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.ts';
 import { RuntimeRenderOrchestrator } from '../src/services/runtime-render-orchestrator.ts';
+import { RuntimeRepositoryActions } from '../src/services/runtime-repository-actions.ts';
 import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
@@ -1917,65 +1910,8 @@ async function main(): Promise<number> {
     processUsageRefreshService.deleteSession(sessionId);
   };
 
-  const reorderIdsByMove = (
-    orderedIds: readonly string[],
-    movedId: string,
-    targetId: string,
-  ): readonly string[] | null => {
-    const fromIndex = orderedIds.indexOf(movedId);
-    const targetIndex = orderedIds.indexOf(targetId);
-    if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) {
-      return null;
-    }
-    const reordered = [...orderedIds];
-    const [moved] = reordered.splice(fromIndex, 1);
-    if (moved === undefined) {
-      return null;
-    }
-    reordered.splice(targetIndex, 0, moved);
-    return reordered;
-  };
-
   const applyTaskRecord = (parsed: ControlPlaneTaskRecord): ControlPlaneTaskRecord => {
     return runtimeTaskPaneActions.applyTaskRecord(parsed);
-  };
-
-  const queueRepositoryPriorityOrder = (
-    orderedRepositoryIds: readonly string[],
-    label: string,
-  ): void => {
-    queueRepositoryPriorityOrderFn({
-      orderedRepositoryIds,
-      repositories,
-      queueControlPlaneOp,
-      updateRepositoryMetadata: async (repositoryId, metadata) => {
-        return await controlPlaneService.updateRepository({
-          repositoryId,
-          metadata,
-        });
-      },
-      upsertRepository: (repository) => {
-        repositories.set(repository.repositoryId, repository);
-      },
-      syncTaskPaneRepositorySelection,
-      markDirty,
-      label,
-    });
-  };
-
-  const reorderRepositoryByDrop = (
-    draggedRepositoryId: string,
-    targetRepositoryId: string,
-  ): void => {
-    reorderRepositoryByDropFn({
-      draggedRepositoryId,
-      targetRepositoryId,
-      orderedRepositoryIds: orderedActiveRepositoryRecords().map(
-        (repository) => repository.repositoryId,
-      ),
-      reorderIdsByMove,
-      queueRepositoryPriorityOrder,
-    });
   };
 
   const openNewThreadPrompt = (directoryId: string): void => {
@@ -2003,94 +1939,50 @@ async function main(): Promise<number> {
     });
   };
 
+  const runtimeRepositoryActions = new RuntimeRepositoryActions<ControlPlaneRepositoryRecord>({
+    workspace,
+    repositories,
+    controlPlaneService,
+    normalizeGitHubRemoteUrl,
+    repositoryNameFromGitHubRemoteUrl,
+    createRepositoryId: () => `repository-${randomUUID()}`,
+    stopConversationTitleEdit: () => {
+      stopConversationTitleEdit(true);
+    },
+    syncRepositoryAssociationsWithDirectorySnapshots,
+    syncTaskPaneRepositorySelection,
+    queueControlPlaneOp,
+    markDirty,
+  });
+
+  const reorderRepositoryByDrop = (
+    draggedRepositoryId: string,
+    targetRepositoryId: string,
+  ): void => {
+    runtimeRepositoryActions.reorderRepositoryByDrop(
+      draggedRepositoryId,
+      targetRepositoryId,
+      orderedActiveRepositoryRecords().map((repository) => repository.repositoryId),
+    );
+  };
+
   const openRepositoryPromptForCreate = (): void => {
-    openRepositoryPromptForCreateFn({
-      clearNewThreadPrompt: () => {
-        workspace.newThreadPrompt = null;
-      },
-      clearAddDirectoryPrompt: () => {
-        workspace.addDirectoryPrompt = null;
-      },
-      hasConversationTitleEdit: workspace.conversationTitleEdit !== null,
-      stopConversationTitleEdit: () => {
-        stopConversationTitleEdit(true);
-      },
-      clearConversationTitleEditClickState: () => {
-        workspace.conversationTitleEditClickState = null;
-      },
-      setRepositoryPrompt: (prompt) => {
-        workspace.repositoryPrompt = prompt;
-      },
-      markDirty,
-    });
+    runtimeRepositoryActions.openRepositoryPromptForCreate();
   };
 
   const openRepositoryPromptForEdit = (repositoryId: string): void => {
-    openRepositoryPromptForEditFn({
-      repositoryId,
-      repositories,
-      clearNewThreadPrompt: () => {
-        workspace.newThreadPrompt = null;
-      },
-      clearAddDirectoryPrompt: () => {
-        workspace.addDirectoryPrompt = null;
-      },
-      hasConversationTitleEdit: workspace.conversationTitleEdit !== null,
-      stopConversationTitleEdit: () => {
-        stopConversationTitleEdit(true);
-      },
-      clearConversationTitleEditClickState: () => {
-        workspace.conversationTitleEditClickState = null;
-      },
-      setRepositoryPrompt: (prompt) => {
-        workspace.repositoryPrompt = prompt;
-      },
-      setTaskPaneSelectionFocusRepository: () => {
-        workspace.taskPaneSelectionFocus = 'repository';
-      },
-      markDirty,
-    });
+    runtimeRepositoryActions.openRepositoryPromptForEdit(repositoryId);
   };
 
   const upsertRepositoryByRemoteUrl = async (
     remoteUrl: string,
     existingRepositoryId?: string,
   ): Promise<void> => {
-    await upsertRepositoryByRemoteUrlFn({
-      remoteUrl,
-      existingRepositoryId: existingRepositoryId ?? null,
-      normalizeGitHubRemoteUrl,
-      repositoryNameFromGitHubRemoteUrl,
-      createRepositoryId: () => `repository-${randomUUID()}`,
-      scope: options.scope,
-      createRepository: async (payload) => ({
-        repository: await controlPlaneService.upsertRepository(payload),
-      }),
-      updateRepository: async (payload) => ({
-        repository: await controlPlaneService.updateRepository(payload),
-      }),
-      parseRepositoryRecord,
-      upsertRepository: (repository) => {
-        repositories.set(repository.repositoryId, repository);
-      },
-      syncRepositoryAssociationsWithDirectorySnapshots,
-      syncTaskPaneRepositorySelection,
-      markDirty,
-    });
+    await runtimeRepositoryActions.upsertRepositoryByRemoteUrl(remoteUrl, existingRepositoryId);
   };
 
   const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
-    await archiveRepositoryByIdFn({
-      repositoryId,
-      archiveRepository: (targetRepositoryId) =>
-        controlPlaneService.archiveRepository(targetRepositoryId),
-      deleteRepository: (targetRepositoryId) => {
-        repositories.delete(targetRepositoryId);
-      },
-      syncRepositoryAssociationsWithDirectorySnapshots,
-      syncTaskPaneRepositorySelection,
-      markDirty,
-    });
+    await runtimeRepositoryActions.archiveRepositoryById(repositoryId);
   };
 
   const runtimeTaskPaneActions = new RuntimeTaskPaneActions<ControlPlaneTaskRecord>({
