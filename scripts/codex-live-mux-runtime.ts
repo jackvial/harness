@@ -147,7 +147,6 @@ import {
 import {
   applySummaryToConversation,
   compactDebugText,
-  conversationOrder,
   conversationSummary,
   createConversationState,
   debugFooterForConversation,
@@ -260,6 +259,7 @@ import {
   type RepositoryPromptState,
   type TaskEditorPromptState,
 } from '../src/domain/workspace.ts';
+import { ConversationManager } from '../src/domain/conversations.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -630,13 +630,12 @@ async function main(): Promise<number> {
   const directoryRepositorySnapshotByDirectoryId = new Map<string, GitRepositorySnapshot>();
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
-  const conversations = new Map<string, ConversationState>();
+  const conversationManager = new ConversationManager();
+  const conversations = conversationManager.conversations;
   const tasks = new Map<string, ControlPlaneTaskRecord>();
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
-  const conversationStartInFlight = new Map<string, Promise<ConversationState>>();
-  const removedConversationIds = new Set<string>();
   let activeConversationId: string | null = null;
   let startupFirstPaintTargetSessionId: string | null = null;
   let startupActiveStartCommandSpan: ReturnType<typeof startPerfSpan> | null = null;
@@ -859,7 +858,7 @@ async function main(): Promise<number> {
       adapterState?: Record<string, unknown>;
     },
   ): ConversationState => {
-    const existing = conversations.get(sessionId);
+    const existing = conversationManager.get(sessionId);
     if (existing !== undefined) {
       if (seed?.directoryId !== undefined) {
         existing.directoryId = seed.directoryId;
@@ -875,7 +874,7 @@ async function main(): Promise<number> {
       }
       return existing;
     }
-    removedConversationIds.delete(sessionId);
+    conversationManager.clearRemoved(sessionId);
     const directoryId = seed?.directoryId ?? resolveActiveDirectoryId();
     const state = createConversationState(
       sessionId,
@@ -888,7 +887,7 @@ async function main(): Promise<number> {
       layout.rightCols,
       layout.paneRows,
     );
-    conversations.set(sessionId, state);
+    conversationManager.set(state);
     return state;
   };
 
@@ -896,7 +895,7 @@ async function main(): Promise<number> {
     if (activeConversationId === null) {
       throw new Error('active thread is not set');
     }
-    const state = conversations.get(activeConversationId);
+    const state = conversationManager.get(activeConversationId);
     if (state === undefined) {
       throw new Error(`active thread missing: ${activeConversationId}`);
     }
@@ -912,11 +911,11 @@ async function main(): Promise<number> {
   };
 
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
-    const existing = conversations.get(event.sessionId);
+    const existing = conversationManager.get(event.sessionId);
     const beforeProjection =
       existing === undefined ? null : projectionSnapshotForConversation(existing);
     const updated = applyMuxControlPlaneKeyEvent(event, {
-      removedConversationIds,
+      removedConversationIds: conversationManager.removedConversationIds,
       ensureConversation,
     });
     if (updated === null) {
@@ -1091,13 +1090,13 @@ async function main(): Promise<number> {
   }
 
   const startConversation = async (sessionId: string): Promise<ConversationState> => {
-    const inFlight = conversationStartInFlight.get(sessionId);
+    const inFlight = conversationManager.getStartInFlight(sessionId);
     if (inFlight !== undefined) {
       return await inFlight;
     }
 
     const task = (async (): Promise<ConversationState> => {
-      const existing = conversations.get(sessionId);
+      const existing = conversationManager.get(sessionId);
       const targetConversation = existing ?? ensureConversation(sessionId);
       const agentType = normalizeThreadAgentType(targetConversation.agentType);
       const baseArgsForAgent = agentType === 'codex' ? options.codexArgs : [];
@@ -1194,27 +1193,27 @@ async function main(): Promise<number> {
       return state;
     })();
 
-    conversationStartInFlight.set(sessionId, task);
+    conversationManager.setStartInFlight(sessionId, task);
     try {
       return await task;
     } finally {
-      conversationStartInFlight.delete(sessionId);
+      conversationManager.clearStartInFlight(sessionId);
     }
   };
 
   const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
-    const ordered = conversationOrder(conversations);
+    const ordered = conversationManager.orderedIds();
     let queued = 0;
     for (const sessionId of ordered) {
       if (activeSessionId !== null && sessionId === activeSessionId) {
         continue;
       }
-      const conversation = conversations.get(sessionId);
+      const conversation = conversationManager.get(sessionId);
       if (conversation === undefined || conversation.live) {
         continue;
       }
       queueBackgroundControlPlaneOp(async () => {
-        const latest = conversations.get(sessionId);
+        const latest = conversationManager.get(sessionId);
         if (latest === undefined || latest.live) {
           return;
         }
@@ -1263,8 +1262,9 @@ async function main(): Promise<number> {
     await hydrateDirectoryGitStatus();
     await subscribeTaskPlanningEvents(startupObservedCursor);
     if (activeConversationId === null) {
-      const ordered = conversationOrder(conversations);
+      const ordered = conversationManager.orderedIds();
       activeConversationId = ordered[0] ?? null;
+      conversationManager.activeConversationId = activeConversationId;
     }
     if (activeConversationId !== null) {
       selectLeftNavConversation(activeConversationId);
@@ -1330,7 +1330,7 @@ async function main(): Promise<number> {
   };
 
   const refreshSelectorInstrumentation = (reason: string): void => {
-    const orderedIds = conversationOrder(conversations);
+    const orderedIds = conversationManager.orderedIds();
     const entries = buildSelectorIndexEntries(directories, conversations, orderedIds);
     const hash = entries
       .map(
@@ -1564,7 +1564,7 @@ async function main(): Promise<number> {
       autosaveTaskIds: [...taskAutosaveTimerByTaskId.keys()],
       flushTaskComposerPersist,
       closeLiveSessionsOnClientStop,
-      orderedConversationIds: conversationOrder(conversations),
+      orderedConversationIds: conversationManager.orderedIds(),
       conversations,
       queueControlPlaneOp,
       sendSignal: (sessionId, signal) => {
@@ -2777,6 +2777,7 @@ async function main(): Promise<number> {
       await detachConversation(previousActiveId);
     }
     activeConversationId = sessionId;
+    conversationManager.activeConversationId = sessionId;
     workspace.mainPaneMode = 'conversation';
     selectLeftNavConversation(sessionId);
     workspace.homePaneDragState = null;
@@ -2786,7 +2787,7 @@ async function main(): Promise<number> {
     workspace.projectPaneScrollTop = 0;
     forceFullClear = true;
     previousRows = [];
-    const targetConversation = conversations.get(sessionId);
+    const targetConversation = conversationManager.get(sessionId);
     if (targetConversation?.directoryId !== undefined) {
       noteGitActivity(targetConversation.directoryId);
     }
@@ -2833,9 +2834,7 @@ async function main(): Promise<number> {
     if (conversationTitleEdit?.conversationId === sessionId) {
       stopConversationTitleEdit(false);
     }
-    removedConversationIds.add(sessionId);
-    conversations.delete(sessionId);
-    conversationStartInFlight.delete(sessionId);
+    conversationManager.remove(sessionId);
     ptySizeByConversationId.delete(sessionId);
     processUsageBySessionId.delete(sessionId);
   };
@@ -3258,8 +3257,9 @@ async function main(): Promise<number> {
       activeConversationId,
       setActiveConversationId: (next) => {
         activeConversationId = next;
+        conversationManager.activeConversationId = next;
       },
-      orderedConversationIds: () => conversationOrder(conversations),
+      orderedConversationIds: () => conversationManager.orderedIds(),
       conversationDirectoryId: (targetSessionId) =>
         conversations.get(targetSessionId)?.directoryId ?? null,
       resolveActiveDirectoryId,
@@ -3328,7 +3328,7 @@ async function main(): Promise<number> {
       noteGitActivity,
       hydratePersistedConversationsForDirectory,
       findConversationIdByDirectory: (directoryId) =>
-        conversationOrder(conversations).find((sessionId) => {
+        conversationManager.orderedIds().find((sessionId) => {
           const conversation = conversations.get(sessionId);
           return conversation?.directoryId === directoryId;
         }) ?? null,
@@ -3342,7 +3342,7 @@ async function main(): Promise<number> {
     await closeDirectoryFn({
       directoryId,
       directoriesHas: (targetDirectoryId) => directories.has(targetDirectoryId),
-      orderedConversationIds: () => conversationOrder(conversations),
+      orderedConversationIds: () => conversationManager.orderedIds(),
       conversationDirectoryId: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
       conversationLive: (sessionId) => conversations.get(sessionId)?.live === true,
       closePtySession: async (sessionId) => {
@@ -3362,6 +3362,7 @@ async function main(): Promise<number> {
       activeConversationId,
       setActiveConversationId: (sessionId) => {
         activeConversationId = sessionId;
+        conversationManager.activeConversationId = sessionId;
       },
       archiveDirectory: async (targetDirectoryId) => {
         await streamClient.sendCommand({
@@ -3459,7 +3460,7 @@ async function main(): Promise<number> {
           : null;
     const selectionRows =
       rightFrame === null ? [] : selectionVisibleRows(rightFrame, renderSelection);
-    const orderedIds = conversationOrder(conversations);
+    const orderedIds = conversationManager.orderedIds();
     refreshSelectorInstrumentation('render');
     const rail = buildRailRows({
       layout,
@@ -3715,7 +3716,7 @@ async function main(): Promise<number> {
   const handleEnvelope = (envelope: StreamServerEnvelope): void => {
     if (envelope.kind === 'pty.output') {
       const outputHandledStartedAtNs = perfNowNs();
-      if (removedConversationIds.has(envelope.sessionId)) {
+      if (conversationManager.isRemoved(envelope.sessionId)) {
         return;
       }
       const conversation = ensureConversation(envelope.sessionId);
@@ -3785,7 +3786,7 @@ async function main(): Promise<number> {
     }
 
     if (envelope.kind === 'pty.event') {
-      if (removedConversationIds.has(envelope.sessionId)) {
+      if (conversationManager.isRemoved(envelope.sessionId)) {
         return;
       }
       const conversation = ensureConversation(envelope.sessionId);
@@ -3823,7 +3824,7 @@ async function main(): Promise<number> {
     }
 
     if (envelope.kind === 'pty.exit') {
-      if (removedConversationIds.has(envelope.sessionId)) {
+      if (conversationManager.isRemoved(envelope.sessionId)) {
         return;
       }
       const conversation = conversations.get(envelope.sessionId);
@@ -3858,6 +3859,7 @@ async function main(): Promise<number> {
 
   const initialActiveId = activeConversationId;
   activeConversationId = null;
+  conversationManager.activeConversationId = null;
   startupSequencer.setTargetSession(initialActiveId);
   if (initialActiveId !== null) {
     startupFirstPaintTargetSessionId = initialActiveId;

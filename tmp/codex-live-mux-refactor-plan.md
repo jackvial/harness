@@ -135,15 +135,15 @@ bun run loc:verify:enforce
 
 ## Current State Snapshot
 
-- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4678 LOC).
+- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4676 LOC).
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
 ## Execution Tracker
 
 - [x] Pivot accepted: responsibility-first architecture codified.
-- [~] Phase 1: WorkspaceModel extraction in progress.
-- [ ] Phase 2: ConversationManager extraction.
+- [x] Phase 1: WorkspaceModel extraction completed.
+- [~] Phase 2: ConversationManager extraction in progress.
 - [ ] Phase 3: RepositoryManager + DirectoryManager extraction.
 - [ ] Phase 4: TaskManager extraction.
 - [ ] Phase 5: ControlPlaneService extraction.
@@ -177,3 +177,23 @@ bun run loc:verify:enforce
   - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4674 non-empty LOC
+
+### Checkpoint B (2026-02-18): ConversationManager lifecycle state start
+
+- Added `src/domain/conversations.ts` with a class-based `ConversationManager` that owns:
+  - conversation record map
+  - in-flight start task map
+  - removed conversation id set
+  - active conversation id field (staged for fuller ownership migration)
+- Updated `scripts/codex-live-mux-runtime.ts` to use `ConversationManager` for:
+  - removed-conversation tracking (`clearRemoved`, `isRemoved`, `remove`)
+  - in-flight conversation-start tracking (`getStartInFlight`, `setStartInFlight`, `clearStartInFlight`)
+  - canonical ordered conversation id reads (`orderedIds`)
+  - synchronized active id updates at key assignment points (staged migration)
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4676 non-empty LOC
