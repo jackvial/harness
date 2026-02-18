@@ -107,37 +107,6 @@ function badgeForRuntimeStatus(
   return 'EXIT';
 }
 
-function genericNeedsActionProjection(summary: string | null): WorkProjection | null {
-  const normalized = normalizeText(summary)?.toLowerCase() ?? null;
-  if (normalized === null) {
-    return null;
-  }
-  if (
-    normalized.includes('needs-input') ||
-    normalized.includes('needs input') ||
-    normalized.includes('attention-required') ||
-    normalized.includes('attention required') ||
-    normalized.includes('approval denied')
-  ) {
-    return {
-      text: normalizeText(summary),
-      phaseHint: 'needs-action',
-    };
-  }
-  if (
-    normalized.includes('turn complete') ||
-    normalized.includes('turn completed') ||
-    normalized === 'inactive' ||
-    normalized === 'idle'
-  ) {
-    return {
-      text: normalizeText(summary),
-      phaseHint: 'idle',
-    };
-  }
-  return null;
-}
-
 export abstract class BaseAgentStatusReducer implements AgentStatusReducer {
   abstract readonly agentType: string;
 
@@ -150,9 +119,7 @@ export abstract class BaseAgentStatusReducer implements AgentStatusReducer {
     let workObservedAt = previous?.lastKnownWorkAt ?? null;
 
     if (input.telemetry !== null && eventIsNewer(input.telemetry.observedAt, workObservedAt)) {
-      const projected = this.projectFromTelemetry(input.telemetry) ?? genericNeedsActionProjection(
-        input.telemetry.summary,
-      );
+      const projected = this.projectFromTelemetry(input.telemetry);
       if (projected !== null) {
         workText = projected.text;
         workPhaseHint = projected.phaseHint;

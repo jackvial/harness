@@ -9,8 +9,10 @@ import {
 } from '../src/control-plane/stream-server-background.ts';
 import { eventIncludesRepositoryId } from '../src/control-plane/stream-server-observed-filter.ts';
 import {
+  applySessionKeyEvent,
   handleSessionEvent,
   notifyKeyEventFromPayload,
+  unmappedNotifyKeyEventFromPayload,
 } from '../src/control-plane/stream-server-session-runtime.ts';
 import type {
   ControlPlaneDirectoryRecord,
@@ -324,7 +326,7 @@ void test('split module coverage: session runtime notify mapping covers fallback
     },
     FIXED_TS,
   );
-  assert.equal(fallback?.summary, 'custom_hook');
+  assert.equal(fallback?.summary, null);
 
   const cursorRunning = notifyKeyEventFromPayload(
     'cursor',
@@ -374,7 +376,33 @@ void test('split module coverage: session runtime notify mapping covers fallback
     },
     FIXED_TS,
   );
-  assert.equal(cursorFallbackSummary?.summary, 'custom_cursor_event');
+  assert.equal(cursorFallbackSummary?.summary, null);
+});
+
+void test('split module coverage: unmapped notify payload emits explicit key event record', () => {
+  const unmappedCursor = unmappedNotifyKeyEventFromPayload(
+    'cursor',
+    {
+      someField: 'value',
+      another: true,
+    },
+    FIXED_TS,
+  );
+  assert.equal(unmappedCursor.eventName, 'cursor.notify.unmapped');
+  assert.equal(unmappedCursor.statusHint, null);
+  assert.equal(unmappedCursor.summary, 'notify payload unmapped keys=someField,another');
+
+  const unmappedUnknown = unmappedNotifyKeyEventFromPayload(
+    'unknown',
+    {
+      foo: 'bar',
+    },
+    FIXED_TS,
+  );
+  assert.equal(unmappedUnknown.eventName, 'agent.notify.unmapped');
+
+  const unmappedNoKeys = unmappedNotifyKeyEventFromPayload('codex', {}, FIXED_TS);
+  assert.equal(unmappedNoKeys.summary, 'notify payload unmapped (no keys)');
 });
 
 void test('split module coverage: session runtime handles notify key events without status hints', () => {
@@ -445,6 +473,109 @@ void test('split module coverage: session runtime handles notify key events with
     status: 'running',
     attentionReason: null,
     lastEventAt: FIXED_TS,
+  });
+});
+
+void test('split module coverage: applySessionKeyEvent centralizes status hint handling', () => {
+  const runtimeWrites: Array<Record<string, unknown>> = [];
+  const observedKeyEvents: Array<Record<string, unknown>> = [];
+  const state = {
+    id: 'session-centralized',
+    directoryId: 'directory-1',
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+    agentType: 'cursor',
+    adapterState: {},
+    eventSubscriberConnectionIds: new Set<string>(),
+    status: 'running' as const,
+    statusModel: statusModelFor('running'),
+    attentionReason: null,
+    lastEventAt: null,
+    lastExit: null,
+    exitedAt: null,
+    latestTelemetry: null,
+    session: {
+      write: () => {},
+      resize: () => {},
+      processId: () => 123,
+    },
+  };
+  const ctx: Parameters<typeof applySessionKeyEvent>[0] = {
+    sessions: new Map([[state.id, state]]),
+    connectionCanMutateSession: () => true,
+    destroySession: () => {},
+    deactivateSession: () => {},
+    sendToConnection: () => {},
+    sessionScope: (session) => ({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      workspaceId: session.workspaceId,
+      directoryId: session.directoryId,
+      conversationId: session.id,
+    }),
+    publishObservedEvent: () => {},
+    publishSessionKeyObservedEvent: (_session, keyEvent) => {
+      observedKeyEvents.push({
+        eventName: keyEvent.eventName,
+        statusHint: keyEvent.statusHint,
+      });
+    },
+    refreshSessionStatusModel: () => {},
+    toPublicSessionController: (controller) => controller,
+    stateStore: {
+      updateConversationAdapterState: () => {},
+      updateConversationRuntime: (_conversationId, input) => {
+        runtimeWrites.push({
+          status: input.status,
+          attentionReason: input.attentionReason,
+          lastEventAt: input.lastEventAt,
+        });
+      },
+    },
+  };
+
+  applySessionKeyEvent(
+    ctx,
+    state,
+    {
+      source: 'otlp-log',
+      eventName: 'cursor.beforesubmitprompt',
+      severity: null,
+      summary: 'prompt submitted',
+      observedAt: FIXED_TS,
+      statusHint: 'running',
+    },
+    {
+      applyStatusHint: true,
+    },
+  );
+  applySessionKeyEvent(
+    ctx,
+    state,
+    {
+      source: 'otlp-log',
+      eventName: 'cursor.notification',
+      severity: null,
+      summary: 'ignored hint',
+      observedAt: '2026-02-17T00:00:01.000Z',
+      statusHint: null,
+    },
+    {
+      applyStatusHint: false,
+    },
+  );
+
+  assert.equal(observedKeyEvents.length, 2);
+  assert.deepEqual(runtimeWrites[0], {
+    status: 'running',
+    attentionReason: null,
+    lastEventAt: FIXED_TS,
+  });
+  assert.deepEqual(runtimeWrites[1], {
+    status: 'running',
+    attentionReason: null,
+    lastEventAt: '2026-02-17T00:00:01.000Z',
   });
 });
 

@@ -161,8 +161,8 @@ void test('session status engine handles runtime-only branches for agent reducer
     observedAt: OBSERVED_AT,
     previous: null,
   }));
-  assert.equal(attentionRequired.phase, 'needs-action');
-  assert.equal(attentionRequired.detailText, 'attention required');
+  assert.equal(attentionRequired.phase, 'starting');
+  assert.equal(attentionRequired.detailText, 'starting');
 
   const turnComplete = expectStatusModel(engine.project({
     agentType: 'codex',
@@ -178,8 +178,8 @@ void test('session status engine handles runtime-only branches for agent reducer
     observedAt: '2026-02-18T00:00:01.000Z',
     previous: attentionRequired,
   }));
-  assert.equal(turnComplete.phase, 'idle');
-  assert.equal(turnComplete.lastKnownWork, 'turn complete (100ms)');
+  assert.equal(turnComplete.phase, 'starting');
+  assert.equal(turnComplete.lastKnownWork, null);
 
   const completed = expectStatusModel(engine.project({
     agentType: 'codex',
@@ -352,4 +352,28 @@ void test('base reducer default projection covers idle and exited default detail
   }));
   assert.equal(exitedDefault.phase, 'exited');
   assert.equal(exitedDefault.detailText, 'exited');
+
+  const previousNeedsAction = statusModelFor('running', {
+    phase: 'needs-action',
+    detailText: 'approval required',
+    lastKnownWork: 'approval required',
+    lastKnownWorkAt: '2026-02-18T00:00:12.000Z',
+    phaseHint: 'needs-action',
+    observedAt: '2026-02-18T00:00:12.000Z',
+  });
+  const runningNeedsAction = expectStatusModel(reducer.project({
+    runtimeStatus: 'running',
+    attentionReason: null,
+    telemetry: {
+      source: 'otlp-log',
+      eventName: 'custom.event',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-18T00:00:11.000Z',
+    },
+    observedAt: '2026-02-18T00:00:13.000Z',
+    previous: previousNeedsAction,
+  }));
+  assert.equal(runningNeedsAction.phase, 'needs-action');
+  assert.equal(runningNeedsAction.detailText, 'approval required');
 });

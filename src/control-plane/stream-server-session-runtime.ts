@@ -107,6 +107,10 @@ interface StreamRuntimeContext {
   };
 }
 
+interface ApplySessionKeyEventOptions {
+  readonly applyStatusHint: boolean;
+}
+
 function readTrimmedString(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -374,8 +378,6 @@ export function notifyKeyEventFromPayload(
         hookEventToken.includes('tool'))
     ) {
       normalizedSummary ??= 'tool finished (hook)';
-    } else if (normalizedSummary === null) {
-      normalizedSummary = hookEventNameRaw;
     }
 
     return {
@@ -421,8 +423,6 @@ export function notifyKeyEventFromPayload(
     if (normalizedSummary === null) {
       normalizedSummary = notificationType.length > 0 ? notificationType : hookEventNameRaw;
     }
-  } else if (normalizedSummary === null) {
-    normalizedSummary = hookEventNameRaw;
   }
 
   return {
@@ -433,6 +433,71 @@ export function notifyKeyEventFromPayload(
     observedAt,
     statusHint,
   };
+}
+
+function summarizeUnmappedNotifyPayload(payload: Record<string, unknown>): string {
+  const keys = Object.keys(payload).slice(0, 6);
+  if (keys.length === 0) {
+    return 'notify payload unmapped (no keys)';
+  }
+  return `notify payload unmapped keys=${keys.join(',')}`;
+}
+
+function normalizedAgentTypeForUnmappedEvent(
+  agentType: string,
+): 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique' | 'agent' {
+  if (
+    agentType === 'codex' ||
+    agentType === 'claude' ||
+    agentType === 'cursor' ||
+    agentType === 'terminal' ||
+    agentType === 'critique'
+  ) {
+    return agentType;
+  }
+  return 'agent';
+}
+
+export function unmappedNotifyKeyEventFromPayload(
+  agentType: string,
+  payload: Record<string, unknown>,
+  observedAt: string,
+): StreamSessionKeyEventRecord {
+  const normalizedAgentType = normalizedAgentTypeForUnmappedEvent(agentType);
+  return {
+    source: 'otlp-log',
+    eventName: `${normalizedAgentType}.notify.unmapped`,
+    severity: null,
+    summary: summarizeUnmappedNotifyPayload(payload),
+    observedAt,
+    statusHint: null,
+  };
+}
+
+export function applySessionKeyEvent(
+  ctx: StreamRuntimeContext,
+  state: RuntimeSession,
+  keyEvent: StreamSessionKeyEventRecord,
+  options: ApplySessionKeyEventOptions,
+): void {
+  state.latestTelemetry = {
+    source: keyEvent.source,
+    eventName: keyEvent.eventName,
+    severity: keyEvent.severity,
+    summary: keyEvent.summary,
+    observedAt: keyEvent.observedAt,
+  };
+  ctx.publishSessionKeyObservedEvent(state, keyEvent);
+  if (options.applyStatusHint && keyEvent.statusHint === 'needs-input') {
+    const nextAttentionReason = keyEvent.summary ?? state.attentionReason ?? 'input required';
+    setSessionStatus(ctx, state, 'needs-input', nextAttentionReason, keyEvent.observedAt);
+    return;
+  }
+  if (options.applyStatusHint && keyEvent.statusHint !== null) {
+    setSessionStatus(ctx, state, keyEvent.statusHint, null, keyEvent.observedAt);
+    return;
+  }
+  setSessionStatus(ctx, state, state.status, state.attentionReason, keyEvent.observedAt);
 }
 
 export function handleSessionEvent(
@@ -478,44 +543,12 @@ export function handleSessionEvent(
       ctx.stateStore.updateConversationAdapterState(sessionState.id, mergedAdapterState);
     }
     if (mapped.type === 'notify') {
-      const keyEvent = notifyKeyEventFromPayload(
-        sessionState.agentType,
-        mapped.record.payload,
-        observedAt,
-      );
-      if (keyEvent !== null) {
-        sessionState.latestTelemetry = {
-          source: keyEvent.source,
-          eventName: keyEvent.eventName,
-          severity: keyEvent.severity,
-          summary: keyEvent.summary,
-          observedAt: keyEvent.observedAt,
-        };
-        ctx.publishSessionKeyObservedEvent(sessionState, keyEvent);
-        if (keyEvent.statusHint === 'needs-input') {
-          const nextAttentionReason =
-            keyEvent.summary ?? sessionState.attentionReason ?? 'input required';
-          setSessionStatus(ctx, sessionState, 'needs-input', nextAttentionReason, observedAt);
-        } else if (keyEvent.statusHint !== null) {
-          setSessionStatus(ctx, sessionState, keyEvent.statusHint, null, observedAt);
-        } else {
-          setSessionStatus(
-            ctx,
-            sessionState,
-            sessionState.status,
-            sessionState.attentionReason,
-            observedAt,
-          );
-        }
-      } else {
-        setSessionStatus(
-          ctx,
-          sessionState,
-          sessionState.status,
-          sessionState.attentionReason,
-          observedAt,
-        );
-      }
+      const keyEvent =
+        notifyKeyEventFromPayload(sessionState.agentType, mapped.record.payload, observedAt) ??
+        unmappedNotifyKeyEventFromPayload(sessionState.agentType, mapped.record.payload, observedAt);
+      applySessionKeyEvent(ctx, sessionState, keyEvent, {
+        applyStatusHint: true,
+      });
     }
   }
 

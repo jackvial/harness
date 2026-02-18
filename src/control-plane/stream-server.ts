@@ -70,6 +70,7 @@ import {
   refreshGitStatusForDirectory as refreshStreamServerGitStatusForDirectory,
 } from './stream-server-background.ts';
 import {
+  applySessionKeyEvent as applyRuntimeSessionKeyEvent,
   handleInput as handleRuntimeInput,
   handleResize as handleRuntimeResize,
   handleSessionEvent as handleRuntimeSessionEvent,
@@ -1497,46 +1498,43 @@ export class ControlPlaneStreamServer {
       return;
     }
 
+    const keyEvent: StreamSessionKeyEventRecord = {
+      source: event.source,
+      eventName: event.eventName,
+      severity: event.severity,
+      summary: event.summary,
+      observedAt: event.observedAt,
+      statusHint: event.statusHint,
+    };
     const sessionState = this.sessions.get(resolvedSessionId);
+    let publishedThroughRuntime = false;
     if (sessionState !== undefined) {
-      sessionState.latestTelemetry = this.stateStore.latestTelemetrySummary(resolvedSessionId);
       if (event.providerThreadId !== null) {
         this.updateSessionThreadId(sessionState, event.providerThreadId, event.observedAt);
       }
       const shouldApplyStatusHint =
-        event.statusHint !== null &&
+        keyEvent.statusHint !== null &&
         event.source !== 'history' &&
         sessionState.status !== 'exited' &&
         sessionState.session !== null;
-      if (shouldApplyStatusHint) {
-        if (event.statusHint === 'needs-input') {
-          this.setSessionStatus(sessionState, 'needs-input', null, event.observedAt);
-        } else {
-          this.setSessionStatus(sessionState, event.statusHint, null, event.observedAt);
-        }
-      } else {
-        this.setSessionStatus(
-          sessionState,
-          sessionState.status,
-          sessionState.attentionReason,
-          event.observedAt,
-        );
-      }
+      applyRuntimeSessionKeyEvent(
+        this as unknown as Parameters<typeof applyRuntimeSessionKeyEvent>[0],
+        sessionState,
+        keyEvent,
+        {
+          applyStatusHint: shouldApplyStatusHint,
+        },
+      );
+      publishedThroughRuntime = true;
     }
 
-    const observedScope = this.observedScopeForSessionId(resolvedSessionId);
+    const observedScope =
+      publishedThroughRuntime ? null : this.observedScopeForSessionId(resolvedSessionId);
     if (observedScope !== null) {
       this.publishObservedEvent(observedScope, {
         type: 'session-key-event',
         sessionId: resolvedSessionId,
-        keyEvent: {
-          source: event.source,
-          eventName: event.eventName,
-          severity: event.severity,
-          summary: event.summary,
-          observedAt: event.observedAt,
-          statusHint: event.statusHint,
-        },
+        keyEvent,
         ts: new Date().toISOString(),
         directoryId: observedScope.directoryId,
         conversationId: observedScope.conversationId,
