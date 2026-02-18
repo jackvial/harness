@@ -166,6 +166,7 @@ import { RuntimeTaskPaneActions } from '../src/services/runtime-task-pane-action
 import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
+import { RuntimeModalInput } from '../src/services/runtime-modal-input.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
@@ -180,7 +181,6 @@ import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
-import { InputRouter } from '../src/ui/input.ts';
 import { RepositoryFoldInput } from '../src/ui/repository-fold-input.ts';
 import { LeftNavInput } from '../src/ui/left-nav-input.ts';
 import { LeftRailPointerInput } from '../src/ui/left-rail-pointer-input.ts';
@@ -2182,7 +2182,11 @@ async function main(): Promise<number> {
   await startupOrchestrator.activateInitialConversation(initialActiveId);
   startupOrchestrator.finalizeStartup(initialActiveId);
 
-  const inputRouter = new InputRouter({
+  const runtimeModalInput = new RuntimeModalInput({
+    workspace,
+    conversations: conversationRecords,
+    workspaceActions: runtimeWorkspaceActions,
+    taskEditorActions: runtimeTaskEditorActions,
     isModalDismissShortcut: (rawInput) =>
       detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
     isArchiveConversationShortcut: (rawInput) => {
@@ -2196,43 +2200,10 @@ async function main(): Promise<number> {
     resolveNewThreadPromptAgentByRow,
     stopConversationTitleEdit,
     queueControlPlaneOp,
-    archiveConversation: async (sessionId) => {
-      await runtimeWorkspaceActions.archiveConversation(sessionId);
-    },
-    createAndActivateConversationInDirectory: async (directoryId, agentType) => {
-      await runtimeWorkspaceActions.createAndActivateConversationInDirectory(directoryId, agentType);
-    },
-    addDirectoryByPath: async (rawPath) => {
-      await runtimeWorkspaceActions.addDirectoryByPath(rawPath);
-    },
     normalizeGitHubRemoteUrl,
-    upsertRepositoryByRemoteUrl: async (remoteUrl, existingRepositoryId) => {
-      await runtimeWorkspaceActions.upsertRepositoryByRemoteUrl(remoteUrl, existingRepositoryId);
-    },
     repositoriesHas: (repositoryId) => repositories.has(repositoryId),
     markDirty,
-    conversations: conversationRecords,
     scheduleConversationTitlePersist,
-    getTaskEditorPrompt: () => workspace.taskEditorPrompt,
-    setTaskEditorPrompt: (next) => {
-      workspace.taskEditorPrompt = next;
-    },
-    submitTaskEditorPayload: (payload) => {
-      runtimeTaskEditorActions.submitTaskEditorPayload(payload);
-    },
-    getConversationTitleEdit: () => workspace.conversationTitleEdit,
-    getNewThreadPrompt: () => workspace.newThreadPrompt,
-    setNewThreadPrompt: (prompt) => {
-      workspace.newThreadPrompt = prompt;
-    },
-    getAddDirectoryPrompt: () => workspace.addDirectoryPrompt,
-    setAddDirectoryPrompt: (next) => {
-      workspace.addDirectoryPrompt = next;
-    },
-    getRepositoryPrompt: () => workspace.repositoryPrompt,
-    setRepositoryPrompt: (next) => {
-      workspace.repositoryPrompt = next;
-    },
   });
 
   const leftNavInput = new LeftNavInput({
@@ -2533,7 +2504,7 @@ async function main(): Promise<number> {
   });
   const inputPreflight = new InputPreflight({
     isShuttingDown: () => shuttingDown,
-    routeModalInput: (input) => inputRouter.routeModalInput(input),
+    routeModalInput: (input) => runtimeModalInput.routeModalInput(input),
     handleEscapeInput: (input) => {
       if (workspace.selection !== null || workspace.selectionDrag !== null) {
         workspace.selection = null;

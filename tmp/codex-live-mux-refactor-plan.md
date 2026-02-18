@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2595 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2566 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2173 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1864,6 +1864,22 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (`1007` pass / `0` fail, global lines/functions/branches = `100%`)
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2595 non-empty LOC
+
+### Checkpoint CW (2026-02-18): Modal input router wiring extracted into class service
+
+- Added `src/services/runtime-modal-input.ts` with class-based `RuntimeModalInput` to own modal input wiring between:
+  - `InputRouter`
+  - workspace modal/prompt state
+  - workspace/domain actions (`archiveConversation`, `createAndActivateConversationInDirectory`, directory/repository prompt submit paths)
+  - task editor submit orchestration through `RuntimeTaskEditorActions`
+- Updated `scripts/codex-live-mux-runtime.ts` to replace the large inline `new InputRouter({...})` callback/options bag with a single `RuntimeModalInput` dependency.
+- Added `test/services-runtime-modal-input.test.ts` with coverage for:
+  - full router option wiring (get/set state accessors and delegated action callbacks)
+  - default dependency path (native `InputRouter` constructor fallback)
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1009` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2566 non-empty LOC
 
 ### Next focus (yield-first)
 
