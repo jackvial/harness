@@ -184,12 +184,14 @@ import { StartupBackgroundProbeService } from '../src/services/startup-backgroun
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
 import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
 import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
+import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { StartupVisibility } from '../src/services/startup-visibility.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
+import { DebugFooterNotice } from '../src/ui/debug-footer-notice.ts';
 import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
@@ -1046,7 +1048,9 @@ async function main(): Promise<number> {
   let taskEditorPrompt: TaskEditorPromptState | null = null;
   let conversationTitleEdit: ConversationTitleEditState | null = null;
   let conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
-  let debugFooterNotice: { text: string; expiresAtMs: number } | null = null;
+  const debugFooterNotice = new DebugFooterNotice({
+    ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
+  });
   const modalManager = new ModalManager({
     theme: MUX_MODAL_THEME,
     resolveRepositoryName: (repositoryId) => repositories.get(repositoryId)?.name ?? null,
@@ -1088,29 +1092,6 @@ async function main(): Promise<number> {
       markDirty,
       setStop: (next) => { stop = next; },
     });
-  };
-
-  const setDebugFooterNotice = (text: string): void => {
-    const normalized = text.trim();
-    if (normalized.length === 0) {
-      debugFooterNotice = null;
-      return;
-    }
-    debugFooterNotice = {
-      text: normalized,
-      expiresAtMs: Date.now() + DEBUG_FOOTER_NOTICE_TTL_MS,
-    };
-  };
-
-  const activeDebugFooterNoticeText = (): string | null => {
-    if (debugFooterNotice === null) {
-      return null;
-    }
-    if (Date.now() > debugFooterNotice.expiresAtMs) {
-      debugFooterNotice = null;
-      return null;
-    }
-    return debugFooterNotice.text;
   };
 
   const handleRuntimeFatal = (origin: string, error: unknown): void => {
@@ -2606,13 +2587,13 @@ async function main(): Promise<number> {
           ? `[profile] ${result.message}`
           : `[profile:${muxSessionName}] ${result.message}`;
       workspace.taskPaneNotice = scopedMessage;
-      setDebugFooterNotice(scopedMessage);
+      debugFooterNotice.set(scopedMessage);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       const scopedMessage =
         muxSessionName === null ? `[profile] ${message}` : `[profile:${muxSessionName}] ${message}`;
       workspace.taskPaneNotice = scopedMessage;
-      setDebugFooterNotice(scopedMessage);
+      debugFooterNotice.set(scopedMessage);
     } finally {
       markDirty();
     }
@@ -2769,7 +2750,7 @@ async function main(): Promise<number> {
       !projectPaneActive && !homePaneActive && active !== null
         ? debugFooterForConversation(active)
         : '';
-    const statusNotice = activeDebugFooterNoticeText();
+    const statusNotice = debugFooterNotice.current();
     const statusFooter =
       statusNotice === null || statusNotice.length === 0
         ? baseStatusFooter
@@ -3496,6 +3477,75 @@ async function main(): Promise<number> {
   inputModeManager.enable();
   applyLayout(size, true);
   scheduleRender();
+  const runtimeShutdownService = new RuntimeShutdownService({
+    screen,
+    outputLoadSampler,
+    startupBackgroundProbeService,
+    clearResizeTimer: () => {
+      if (resizeTimer !== null) {
+        clearTimeout(resizeTimer);
+        resizeTimer = null;
+      }
+    },
+    clearPtyResizeTimer: () => {
+      if (ptyResizeTimer !== null) {
+        clearTimeout(ptyResizeTimer);
+        ptyResizeTimer = null;
+      }
+    },
+    persistMuxUiStateNow,
+    clearConversationTitleEditTimer: () => {
+      if (conversationTitleEdit !== null) {
+        clearConversationTitleEditTimer(conversationTitleEdit);
+      }
+    },
+    flushTaskComposerPersist: () => {
+      if (
+        'taskId' in workspace.taskEditorTarget &&
+        typeof workspace.taskEditorTarget.taskId === 'string'
+      ) {
+        flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
+      }
+      for (const taskId of taskManager.autosaveTaskIds()) {
+        flushTaskComposerPersist(taskId);
+      }
+    },
+    clearRenderScheduled: () => {
+      renderScheduled = false;
+    },
+    detachProcessListeners: () => {
+      process.stdin.off('data', onInputSafe);
+      process.stdout.off('resize', onResizeSafe);
+      process.off('SIGINT', requestStop);
+      process.off('SIGTERM', requestStop);
+      process.off('uncaughtException', onUncaughtException);
+      process.off('unhandledRejection', onUnhandledRejection);
+    },
+    removeEnvelopeListener,
+    unsubscribeTaskPlanningEvents,
+    closeKeyEventSubscription: async () => {
+      if (keyEventSubscription !== null) {
+        await keyEventSubscription.close();
+        keyEventSubscription = null;
+      }
+    },
+    clearRuntimeFatalExitTimer: () => {
+      if (runtimeFatalExitTimer !== null) {
+        clearTimeout(runtimeFatalExitTimer);
+        runtimeFatalExitTimer = null;
+      }
+    },
+    waitForControlPlaneDrain,
+    controlPlaneClient,
+    eventPersistence,
+    recordingService,
+    store,
+    restoreTerminalState: () => {
+      restoreTerminalState(true, inputModeManager.restore);
+    },
+    startupShutdownService,
+    shutdownPerfCore,
+  });
 
   try {
     while (!stop) {
@@ -3505,61 +3555,7 @@ async function main(): Promise<number> {
     }
   } finally {
     shuttingDown = true;
-    screen.clearDirty();
-    outputLoadSampler.stop();
-    startupBackgroundProbeService.stop();
-    if (resizeTimer !== null) {
-      clearTimeout(resizeTimer);
-      resizeTimer = null;
-    }
-    if (ptyResizeTimer !== null) {
-      clearTimeout(ptyResizeTimer);
-      ptyResizeTimer = null;
-    }
-    persistMuxUiStateNow();
-    if (conversationTitleEdit !== null) {
-      clearConversationTitleEditTimer(conversationTitleEdit);
-    }
-    if ('taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string') {
-      flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
-    }
-    for (const taskId of taskManager.autosaveTaskIds()) {
-      flushTaskComposerPersist(taskId);
-    }
-    if (renderScheduled) {
-      renderScheduled = false;
-    }
-    process.stdin.off('data', onInputSafe);
-    process.stdout.off('resize', onResizeSafe);
-    process.off('SIGINT', requestStop);
-    process.off('SIGTERM', requestStop);
-    process.off('uncaughtException', onUncaughtException);
-    process.off('unhandledRejection', onUnhandledRejection);
-    removeEnvelopeListener();
-    await unsubscribeTaskPlanningEvents();
-    if (keyEventSubscription !== null) {
-      await keyEventSubscription.close();
-      keyEventSubscription = null;
-    }
-    if (runtimeFatalExitTimer !== null) {
-      clearTimeout(runtimeFatalExitTimer);
-      runtimeFatalExitTimer = null;
-    }
-
-    let recordingCloseError: unknown = null;
-    try {
-      await waitForControlPlaneDrain();
-      await controlPlaneClient.close();
-    } catch {
-      // Best-effort shutdown only.
-    }
-    eventPersistence.flush('shutdown');
-    recordingCloseError = await recordingService.closeWriter();
-    store.close();
-    restoreTerminalState(true, inputModeManager.restore);
-    await recordingService.finalizeAfterShutdown(recordingCloseError);
-    startupShutdownService.finalize();
-    shutdownPerfCore();
+    await runtimeShutdownService.finalize();
   }
 
   if (exit === null) {

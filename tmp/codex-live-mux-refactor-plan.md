@@ -1124,3 +1124,21 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3421 non-empty LOC
+
+### Checkpoint BG (2026-02-18): Service/UI extraction continues with shutdown orchestration + debug-footer notice ownership
+
+- Added `src/services/runtime-shutdown.ts` with a class-based `RuntimeShutdownService` that owns:
+  - ordered runtime shutdown sequencing for listener detach, queue drain/client close, persistence flush, recording/store close, terminal restore, startup finalize, and perf shutdown
+  - best-effort control-plane close behavior (drain/close failure does not block remaining teardown)
+- Added `src/ui/debug-footer-notice.ts` with a class-based `DebugFooterNotice` that owns:
+  - footer-notice text normalization (`trim`)
+  - TTL-based notice expiration and clearing
+  - current notice lookup semantics for render status row
+- Updated `scripts/codex-live-mux-runtime.ts` to:
+  - delegate `finally` teardown flow to `RuntimeShutdownService.finalize()`
+  - delegate debug footer notice state/timing to `DebugFooterNotice`
+- Added `test/services-runtime-shutdown.test.ts` and `test/ui-debug-footer-notice.test.ts` for full branch coverage of new seams.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3420 non-empty LOC
