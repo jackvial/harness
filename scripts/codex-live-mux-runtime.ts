@@ -165,6 +165,7 @@ import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
 import { RuntimeInputPipeline } from '../src/services/runtime-input-pipeline.ts';
 import { RuntimeMainPaneInput } from '../src/services/runtime-main-pane-input.ts';
+import { RuntimeNavigationInput } from '../src/services/runtime-navigation-input.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPane } from '../src/services/runtime-task-pane.ts';
 import { RuntimeModalInput } from '../src/services/runtime-modal-input.ts';
@@ -182,10 +183,7 @@ import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
-import { RepositoryFoldInput } from '../src/ui/repository-fold-input.ts';
-import { LeftNavInput } from '../src/ui/left-nav-input.ts';
 import { LeftRailPointerInput } from '../src/ui/left-rail-pointer-input.ts';
-import { GlobalShortcutInput } from '../src/ui/global-shortcut-input.ts';
 
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
@@ -2199,52 +2197,69 @@ async function main(): Promise<number> {
     scheduleConversationTitlePersist,
   });
 
-  const leftNavInput = new LeftNavInput({
-    getLatestRailRows: () => workspace.latestRailViewRows,
-    getCurrentSelection: () => workspace.leftNavSelection,
-    enterHomePane,
-    firstDirectoryForRepositoryGroup,
-    enterProjectPane,
-    setMainPaneProjectMode: () => {
-      workspace.mainPaneMode = 'project';
-    },
-    selectLeftNavRepository: (repositoryGroupId) => {
-      workspace.selectLeftNavRepository(repositoryGroupId);
-    },
-    markDirty,
-    directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
-    conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
+  const queueCloseDirectoryMouseAction = (directoryId: string, label: string): void => {
+    queueControlPlaneOp(async () => {
+      await runtimeWorkspaceActions.closeDirectory(directoryId);
+    }, label);
+  };
+  const openAddDirectoryPromptFromShortcut = (): void => {
+    workspace.repositoryPrompt = null;
+    workspace.addDirectoryPrompt = {
+      value: '',
+      error: null,
+    };
+    markDirty();
+  };
+  const runtimeNavigationInput = new RuntimeNavigationInput({
+    workspace,
+    shortcutBindings,
+    requestStop,
+    resolveDirectoryForAction,
+    openNewThreadPrompt,
+    openAddDirectoryPrompt: openAddDirectoryPromptFromShortcut,
     queueControlPlaneOp,
-    activateConversation: async (sessionId) => {
-      await runtimeWorkspaceActions.activateConversation(sessionId);
-    },
-    conversationsHas: (sessionId) => conversationManager.has(sessionId),
-  });
-  const repositoryFoldInput = new RepositoryFoldInput({
-    getLeftNavSelection: () => workspace.leftNavSelection,
-    getRepositoryToggleChordPrefixAtMs: () => workspace.repositoryToggleChordPrefixAtMs,
-    setRepositoryToggleChordPrefixAtMs: (value) => {
-      workspace.repositoryToggleChordPrefixAtMs = value;
-    },
+    firstDirectoryForRepositoryGroup,
+    enterHomePane,
+    enterProjectPane,
+    markDirty,
     conversations: conversationRecords,
     repositoryGroupIdForDirectory,
     collapseRepositoryGroup,
     expandRepositoryGroup,
     collapseAllRepositoryGroups,
     expandAllRepositoryGroups,
-    selectLeftNavRepository: (repositoryGroupId) => {
-      workspace.selectLeftNavRepository(repositoryGroupId);
+    directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
+    conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
+    conversationsHas: (sessionId) => conversationManager.has(sessionId),
+    getMainPaneMode: () => workspace.mainPaneMode,
+    getActiveConversationId: () => conversationManager.activeConversationId,
+    getActiveDirectoryId: () => workspace.activeDirectoryId,
+    workspaceActions: {
+      activateConversation: async (sessionId) => {
+        await runtimeWorkspaceActions.activateConversation(sessionId);
+      },
+      openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
+        await runtimeWorkspaceActions.openOrCreateCritiqueConversationInDirectory(directoryId);
+      },
+      toggleGatewayProfiler: async () => {
+        await runtimeWorkspaceActions.toggleGatewayProfiler();
+      },
+      archiveConversation: async (sessionId) => {
+        await runtimeWorkspaceActions.archiveConversation(sessionId);
+      },
+      interruptConversation: async (sessionId) => {
+        await runtimeWorkspaceActions.interruptConversation(sessionId);
+      },
+      takeoverConversation: async (sessionId) => {
+        await runtimeWorkspaceActions.takeoverConversation(sessionId);
+      },
+      closeDirectory: async (directoryId) => {
+        await runtimeWorkspaceActions.closeDirectory(directoryId);
+      },
     },
-    markDirty,
     chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
     collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
-    nowMs: () => Date.now(),
   });
-  const queueCloseDirectoryMouseAction = (directoryId: string, label: string): void => {
-    queueControlPlaneOp(async () => {
-      await runtimeWorkspaceActions.closeDirectory(directoryId);
-    }, label);
-  };
   const leftRailPointerInput = new LeftRailPointerInput({
     getLatestRailRows: () => workspace.latestRailViewRows,
     hasConversationTitleEdit: () => workspace.conversationTitleEdit !== null,
@@ -2369,47 +2384,6 @@ async function main(): Promise<number> {
     markDirty,
     homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
   });
-  const globalShortcutInput = new GlobalShortcutInput({
-    shortcutBindings,
-    requestStop,
-    resolveDirectoryForAction,
-    openNewThreadPrompt,
-    openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
-      await runtimeWorkspaceActions.openOrCreateCritiqueConversationInDirectory(directoryId);
-    },
-    toggleGatewayProfile: async () => {
-      await runtimeWorkspaceActions.toggleGatewayProfiler();
-    },
-    getMainPaneMode: () => workspace.mainPaneMode,
-    getActiveConversationId: () => conversationManager.activeConversationId,
-    conversationsHas: (sessionId) => conversationManager.has(sessionId),
-    queueControlPlaneOp,
-    archiveConversation: async (sessionId) => {
-      await runtimeWorkspaceActions.archiveConversation(sessionId);
-    },
-    interruptConversation: async (sessionId) => {
-      await runtimeWorkspaceActions.interruptConversation(sessionId);
-    },
-    takeoverConversation: async (sessionId) => {
-      await runtimeWorkspaceActions.takeoverConversation(sessionId);
-    },
-    openAddDirectoryPrompt: () => {
-      workspace.repositoryPrompt = null;
-      workspace.addDirectoryPrompt = {
-        value: '',
-        error: null,
-      };
-      markDirty();
-    },
-    getActiveDirectoryId: () => workspace.activeDirectoryId,
-    directoryExists: (directoryId) => directoryManager.hasDirectory(directoryId),
-    closeDirectory: async (directoryId) => {
-      await runtimeWorkspaceActions.closeDirectory(directoryId);
-    },
-    cycleLeftNavSelection: (direction) => {
-      leftNavInput.cycleSelection(direction);
-    },
-  });
   const runtimeInputPipeline = new RuntimeInputPipeline({
     preflight: {
       isShuttingDown: () => shuttingDown,
@@ -2435,10 +2409,8 @@ async function main(): Promise<number> {
       onFocusOut: () => {
         markDirty();
       },
-      handleRepositoryFoldInput: (input) =>
-        repositoryFoldInput.handleRepositoryFoldChords(input) ||
-        repositoryFoldInput.handleRepositoryTreeArrow(input),
-      handleGlobalShortcutInput: (input) => globalShortcutInput.handleInput(input),
+      handleRepositoryFoldInput: (input) => runtimeNavigationInput.handleRepositoryFoldInput(input),
+      handleGlobalShortcutInput: (input) => runtimeNavigationInput.handleGlobalShortcutInput(input),
       handleTaskPaneShortcutInput: (input) =>
         runtimeWorkspaceActions.handleTaskPaneShortcutInput(input),
       handleCopyShortcutInput: (input) => {

@@ -1929,6 +1929,24 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2490 non-empty LOC
 
+### Checkpoint DA (2026-02-18): Navigation/repository-fold/global-shortcut input composition folded into unified class service
+
+- Added `src/services/runtime-navigation-input.ts` with class-based `RuntimeNavigationInput` that composes:
+  - `LeftNavInput`
+  - `RepositoryFoldInput`
+  - `GlobalShortcutInput`
+- Updated `scripts/codex-live-mux-runtime.ts` to replace direct construction/wiring of those three input modules with one `RuntimeNavigationInput` instance:
+  - preflight repository-fold routing now delegates to `runtimeNavigationInput.handleRepositoryFoldInput(...)`
+  - preflight global-shortcut routing now delegates to `runtimeNavigationInput.handleGlobalShortcutInput(...)`
+  - left-nav cycling now delegates to `runtimeNavigationInput.cycleLeftNavSelection(...)`
+- Added `test/services-runtime-navigation-input.test.ts` with strict coverage for:
+  - injected dependency composition/delegation behavior
+  - default dependency path using native input module constructors
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1017` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2462 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
