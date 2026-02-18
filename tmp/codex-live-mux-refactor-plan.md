@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4143 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4120 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -781,3 +781,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4143 non-empty LOC
+
+### Checkpoint AJ (2026-02-18): Phase 8 continues with class-based left-nav input routing
+
+- Added `src/ui/left-nav-input.ts` with a class-based `LeftNavInput` that owns:
+  - visible left-nav target derivation for current rail rows
+  - left-nav target activation routing
+  - left-nav cycle routing and activation delegation
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate left-nav target activation/cycle behavior to `LeftNavInput`, removing inline visible-target/activate/cycle left-nav routing from runtime.
+- Added `test/ui-left-nav-input.test.ts` to cover injected dependency seams plus default dependency activation/empty-cycle paths.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4120 non-empty LOC

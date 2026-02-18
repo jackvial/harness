@@ -96,14 +96,6 @@ import {
 import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
 import {
-  visibleLeftNavTargets,
-  type LeftNavSelection,
-} from '../src/mux/live-mux/left-nav.ts';
-import {
-  activateLeftNavTarget as activateLeftNavTargetFn,
-  cycleLeftNavSelection as cycleLeftNavSelectionFn,
-} from '../src/mux/live-mux/left-nav-activation.ts';
-import {
   firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn,
 } from '../src/mux/live-mux/repository-folding.ts';
 import {
@@ -228,6 +220,7 @@ import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
 import { InputRouter } from '../src/ui/input.ts';
 import { RepositoryFoldInput } from '../src/ui/repository-fold-input.ts';
+import { LeftNavInput } from '../src/ui/left-nav-input.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3649,43 +3642,25 @@ async function main(): Promise<number> {
     });
   };
 
-  const visibleLeftNavTargetsForState = (): readonly LeftNavSelection[] =>
-    visibleLeftNavTargets(latestRailViewRows);
-
-  const activateLeftNavTarget = (
-    target: LeftNavSelection,
-    direction: 'next' | 'previous',
-  ): void => {
-    activateLeftNavTargetFn({
-      target,
-      direction,
-      enterHomePane,
-      firstDirectoryForRepositoryGroup,
-      enterProjectPane,
-      setMainPaneProjectMode: () => {
-        workspace.mainPaneMode = 'project';
-      },
-      selectLeftNavRepository: (repositoryGroupId) => {
-        workspace.selectLeftNavRepository(repositoryGroupId);
-      },
-      markDirty,
-      directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
-      visibleTargetsForState: visibleLeftNavTargetsForState,
-      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
-      queueControlPlaneOp,
-      activateConversation,
-      conversationsHas: (sessionId) => conversationManager.has(sessionId),
-    });
-  };
-
-  const cycleLeftNavSelection = (direction: 'next' | 'previous'): boolean => {
-    return cycleLeftNavSelectionFn({
-      visibleTargets: visibleLeftNavTargetsForState(),
-      currentSelection: workspace.leftNavSelection,
-      direction,
-      activateTarget: activateLeftNavTarget,
-    });
-  };
+  const leftNavInput = new LeftNavInput({
+    getLatestRailRows: () => latestRailViewRows,
+    getCurrentSelection: () => workspace.leftNavSelection,
+    enterHomePane,
+    firstDirectoryForRepositoryGroup,
+    enterProjectPane,
+    setMainPaneProjectMode: () => {
+      workspace.mainPaneMode = 'project';
+    },
+    selectLeftNavRepository: (repositoryGroupId) => {
+      workspace.selectLeftNavRepository(repositoryGroupId);
+    },
+    markDirty,
+    directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
+    conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
+    queueControlPlaneOp,
+    activateConversation,
+    conversationsHas: (sessionId) => conversationManager.has(sessionId),
+  });
   const repositoryFoldInput = new RepositoryFoldInput({
     getLeftNavSelection: () => workspace.leftNavSelection,
     getRepositoryToggleChordPrefixAtMs: () => workspace.repositoryToggleChordPrefixAtMs,
@@ -3780,7 +3755,7 @@ async function main(): Promise<number> {
             : null,
         closeDirectory,
         cycleLeftNavSelection: (direction) => {
-          cycleLeftNavSelection(direction);
+          leftNavInput.cycleSelection(direction);
         },
       })
     ) {
