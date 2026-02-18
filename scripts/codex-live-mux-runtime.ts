@@ -1,4 +1,5 @@
-import { resolve } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import {
@@ -425,6 +426,7 @@ async function main(): Promise<number> {
   let muxRecordingWriter: ReturnType<typeof createTerminalRecordingWriter> | null = null;
   let muxRecordingOracle: TerminalSnapshotOracle | null = null;
   if (options.recordingPath !== null) {
+    mkdirSync(dirname(options.recordingPath), { recursive: true });
     const recordIntervalMs = Math.max(1, Math.floor(1000 / options.recordingFps));
     const recordingWriterOptions: Parameters<typeof createTerminalRecordingWriter>[0] = {
       filePath: options.recordingPath,

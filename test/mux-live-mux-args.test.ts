@@ -27,10 +27,10 @@ void test('parseMuxArgs resolves defaults and positional codex args', () => {
   assert.equal(parsed.controlPlanePort, null);
   assert.equal(parsed.recordingPath, null);
   assert.equal(parsed.recordingGifOutputPath, null);
-  assert.equal(parsed.recordingFps, 15);
+  assert.equal(parsed.recordingFps, 30);
 });
 
-void test('parseMuxArgs reads control-plane and recording flags', () => {
+void test('parseMuxArgs reads control-plane flags and maps --record to .harness/recordings', () => {
   const parsed = parseMuxArgs(
     [
       '--harness-server-host',
@@ -39,21 +39,18 @@ void test('parseMuxArgs reads control-plane and recording flags', () => {
       '7777',
       '--harness-server-token',
       'secret',
-      '--record-fps',
-      '30',
-      '--record-output',
-      './captures/session.gif'
+      '--record'
     ],
     {
       env: {
         ...baseEnv,
-        HARNESS_RECORDING_PATH: './ignored.jsonl',
         HARNESS_EVENTS_DB_PATH: 'custom-events.sqlite',
         HARNESS_CONVERSATION_ID: 'conversation-fixed',
         HARNESS_TURN_ID: 'turn-fixed'
       },
       cwd: '/tmp/cwd',
-      randomId: () => 'unused'
+      randomId: () => 'record-id',
+      nowIso: () => '2026-02-18T12:34:56.789Z'
     }
   );
 
@@ -63,29 +60,51 @@ void test('parseMuxArgs reads control-plane and recording flags', () => {
   assert.equal(parsed.storePath, 'custom-events.sqlite');
   assert.equal(parsed.initialConversationId, 'conversation-fixed');
   assert.equal(parsed.scope.turnId, 'turn-fixed');
-  assert.equal(parsed.recordingGifOutputPath, resolve('/tmp/work', './captures/session.gif'));
-  assert.equal(parsed.recordingPath, resolve('/tmp/work', './captures/session.jsonl'));
+  assert.equal(
+    parsed.recordingGifOutputPath,
+    resolve('/tmp/work', '.harness/recordings/2026-02-18T12-34-56-789Z-record-id.gif')
+  );
+  assert.equal(
+    parsed.recordingPath,
+    resolve('/tmp/work', '.harness/recordings/2026-02-18T12-34-56-789Z-record-id.jsonl')
+  );
   assert.equal(parsed.recordingFps, 30);
 });
 
-void test('parseMuxArgs supports non-gif record output path passthrough', () => {
-  const parsed = parseMuxArgs(['--record-output', './captures/session.jsonl'], {
+void test('parseMuxArgs sanitizes unsafe record tokens and keeps fps capped to 30', () => {
+  const parsed = parseMuxArgs(['--record'], {
     env: baseEnv,
     cwd: '/tmp/cwd',
-    randomId: () => 'id-2'
+    randomId: () => '  ',
+    nowIso: () => '::'
   });
 
-  assert.equal(parsed.recordingGifOutputPath, null);
-  assert.equal(parsed.recordingPath, resolve('/tmp/work', './captures/session.jsonl'));
+  assert.equal(parsed.recordingGifOutputPath, resolve('/tmp/work', '.harness/recordings/---recording.gif'));
+  assert.equal(parsed.recordingPath, resolve('/tmp/work', '.harness/recordings/---recording.jsonl'));
+  assert.equal(parsed.recordingFps, 30);
 });
 
-void test('parseMuxArgs supports explicit record-path flag without record-output rewrite', () => {
-  const parsed = parseMuxArgs(['--record-path', './captures/raw.jsonl'], {
+void test('parseMuxArgs uses default nowIso clock when --record is enabled without override', () => {
+  const parsed = parseMuxArgs(['--record'], {
     env: baseEnv,
-    randomId: () => 'id-2b'
+    randomId: () => 'id-8'
   });
-  assert.equal(parsed.recordingGifOutputPath, null);
-  assert.equal(parsed.recordingPath, resolve('/tmp/work', './captures/raw.jsonl'));
+  assert.match(parsed.recordingPath ?? '', /\/\.harness\/recordings\/.+-id-8\.jsonl$/);
+  assert.match(parsed.recordingGifOutputPath ?? '', /\/\.harness\/recordings\/.+-id-8\.gif$/);
+});
+
+void test('parseMuxArgs rejects deprecated recording flags', () => {
+  assert.throws(() => {
+    void parseMuxArgs(['--record-path', './captures/raw.jsonl'], { env: baseEnv });
+  }, /no longer supported; use --record/);
+
+  assert.throws(() => {
+    void parseMuxArgs(['--record-output', './captures/session.gif'], { env: baseEnv });
+  }, /no longer supported; use --record/);
+
+  assert.throws(() => {
+    void parseMuxArgs(['--record-fps', '120'], { env: baseEnv });
+  }, /no longer supported; use --record/);
 });
 
 void test('parseMuxArgs validates host/port requirements and invalid port values', () => {
@@ -126,26 +145,6 @@ void test('parseMuxArgs enforces required values for each flag', () => {
   assert.throws(() => {
     void parseMuxArgs(['--harness-server-token'], { env: baseEnv });
   }, /missing value for --harness-server-token/);
-
-  assert.throws(() => {
-    void parseMuxArgs(['--record-path'], { env: baseEnv });
-  }, /missing value for --record-path/);
-
-  assert.throws(() => {
-    void parseMuxArgs(['--record-output'], { env: baseEnv });
-  }, /missing value for --record-output/);
-
-  assert.throws(() => {
-    void parseMuxArgs(['--record-fps'], { env: baseEnv });
-  }, /missing value for --record-fps/);
-});
-
-void test('parseMuxArgs keeps minimum recording fps at 1', () => {
-  const parsed = parseMuxArgs(['--record-fps', '0'], {
-    env: baseEnv,
-    randomId: () => 'id-3'
-  });
-  assert.equal(parsed.recordingFps, 1);
 });
 
 void test('parseMuxArgs falls back through INIT_CWD and cwd defaults when invoke cwd is absent', () => {
@@ -166,19 +165,6 @@ void test('parseMuxArgs falls back through INIT_CWD and cwd defaults when invoke
   });
   assert.equal(fromCwd.invocationDirectory, '/tmp/from-cwd');
   assert.equal(fromCwd.scope.workspaceId, 'from-cwd');
-});
-
-void test('parseMuxArgs ignores empty recording env paths', () => {
-  const parsed = parseMuxArgs([], {
-    env: {
-      ...baseEnv,
-      HARNESS_RECORDING_PATH: '',
-      HARNESS_RECORD_OUTPUT: ''
-    },
-    randomId: () => 'id-6'
-  });
-  assert.equal(parsed.recordingPath, '');
-  assert.equal(parsed.recordingGifOutputPath, null);
 });
 
 void test('parseMuxArgs uses default random id factory when randomId is omitted', () => {

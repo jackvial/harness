@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import type { EventScope } from '../../events/normalized-events.ts';
-import { parsePositiveInt } from './startup-utils.ts';
+
+const DEFAULT_RECORDING_FPS = 30;
+const RECORDINGS_DIR_RELATIVE_PATH = '.harness/recordings';
 
 interface MuxOptions {
   codexArgs: string[];
@@ -21,20 +23,29 @@ interface ParseMuxArgsOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly cwd?: string;
   readonly randomId?: () => string;
+  readonly nowIso?: () => string;
+}
+
+function sanitizeFileToken(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return 'recording';
+  }
+  const normalized = trimmed.replace(/[^A-Za-z0-9._-]/g, '-');
+  return normalized.length > 0 ? normalized : 'recording';
 }
 
 export function parseMuxArgs(argv: string[], options: ParseMuxArgsOptions = {}): MuxOptions {
   const env = options.env ?? process.env;
   const cwd = options.cwd ?? process.cwd();
   const randomId = options.randomId ?? randomUUID;
+  const nowIso = options.nowIso ?? (() => new Date().toISOString());
 
   const codexArgs: string[] = [];
   let controlPlaneHost = env.HARNESS_CONTROL_PLANE_HOST ?? null;
   let controlPlanePortRaw = env.HARNESS_CONTROL_PLANE_PORT ?? null;
   let controlPlaneAuthToken = env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
-  let recordingPath = env.HARNESS_RECORDING_PATH ?? null;
-  let recordingOutputPath = env.HARNESS_RECORD_OUTPUT ?? null;
-  let recordingFps = parsePositiveInt(env.HARNESS_RECORDING_FPS, 15);
+  let recordEnabled = false;
   const invocationDirectory = env.HARNESS_INVOKE_CWD ?? env.INIT_CWD ?? cwd;
 
   for (let idx = 0; idx < argv.length; idx += 1) {
@@ -69,34 +80,13 @@ export function parseMuxArgs(argv: string[], options: ParseMuxArgsOptions = {}):
       continue;
     }
 
-    if (arg === '--record-path') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --record-path');
-      }
-      recordingPath = value;
-      idx += 1;
+    if (arg === '--record') {
+      recordEnabled = true;
       continue;
     }
 
-    if (arg === '--record-output') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --record-output');
-      }
-      recordingOutputPath = value;
-      idx += 1;
-      continue;
-    }
-
-    if (arg === '--record-fps') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --record-fps');
-      }
-      recordingFps = parsePositiveInt(value, recordingFps);
-      idx += 1;
-      continue;
+    if (arg === '--record-path' || arg === '--record-output' || arg === '--record-fps') {
+      throw new Error(`${arg} is no longer supported; use --record`);
     }
 
     codexArgs.push(arg);
@@ -115,23 +105,15 @@ export function parseMuxArgs(argv: string[], options: ParseMuxArgsOptions = {}):
     throw new Error('both control-plane host and port must be set together');
   }
 
-  if (recordingPath !== null && recordingPath.length > 0) {
-    recordingPath = resolve(invocationDirectory, recordingPath);
-  }
-  if (recordingOutputPath !== null && recordingOutputPath.length > 0) {
-    recordingOutputPath = resolve(invocationDirectory, recordingOutputPath);
-  }
-
+  let recordingPath: string | null = null;
   let recordingGifOutputPath: string | null = null;
-  if (recordingOutputPath !== null && recordingOutputPath.length > 0) {
-    if (extname(recordingOutputPath).toLowerCase() === '.gif') {
-      recordingGifOutputPath = recordingOutputPath;
-      const fileName = basename(recordingOutputPath, '.gif');
-      const sidecarName = `${fileName}.jsonl`;
-      recordingPath = join(dirname(recordingOutputPath), sidecarName);
-    } else {
-      recordingPath = recordingOutputPath;
-    }
+  if (recordEnabled) {
+    const recordingsDirectoryPath = resolve(invocationDirectory, RECORDINGS_DIR_RELATIVE_PATH);
+    const nowToken = sanitizeFileToken(nowIso().replaceAll(':', '-').replaceAll('.', '-'));
+    const randomToken = sanitizeFileToken(randomId());
+    const stem = `${nowToken}-${randomToken}`;
+    recordingGifOutputPath = join(recordingsDirectoryPath, `${stem}.gif`);
+    recordingPath = join(recordingsDirectoryPath, `${stem}.jsonl`);
   }
 
   const initialConversationId = env.HARNESS_CONVERSATION_ID ?? `conversation-${randomId()}`;
@@ -147,7 +129,7 @@ export function parseMuxArgs(argv: string[], options: ParseMuxArgsOptions = {}):
     controlPlaneAuthToken,
     recordingPath,
     recordingGifOutputPath,
-    recordingFps: Math.max(1, recordingFps),
+    recordingFps: DEFAULT_RECORDING_FPS,
     scope: {
       tenantId: env.HARNESS_TENANT_ID ?? 'tenant-local',
       userId: env.HARNESS_USER_ID ?? 'user-local',

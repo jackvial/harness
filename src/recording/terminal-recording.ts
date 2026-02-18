@@ -1,5 +1,6 @@
-import { createWriteStream, readFileSync, type WriteStream } from 'node:fs';
+import { closeSync, createWriteStream, openSync, readSync, type WriteStream } from 'node:fs';
 import { performance } from 'node:perf_hooks';
+import { TextDecoder } from 'node:util';
 import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 
 interface TerminalRecordingHeader {
@@ -205,42 +206,77 @@ function parseLineRecord(value: unknown): RecordingLineRecord {
 }
 
 export function readTerminalRecording(filePath: string): TerminalRecording {
-  const raw = readFileSync(filePath, 'utf8');
-  const lines = raw.split('\n').filter((line) => line.trim().length > 0);
-  if (lines.length === 0) {
+  const CHUNK_BYTES = 64 * 1024;
+  const fd = openSync(filePath, 'r');
+  const decoder = new TextDecoder();
+  const readBuffer = Buffer.allocUnsafe(CHUNK_BYTES);
+  let remainder = '';
+  let sawNonEmptyLine = false;
+  let header: TerminalRecordingHeader | null = null;
+  const frames: TerminalRecordingFrameSample[] = [];
+  let finishedAtMs: number | null = null;
+
+  const consumeLine = (line: string): void => {
+    if (line.trim().length === 0) {
+      return;
+    }
+    sawNonEmptyLine = true;
+    const parsedJson = JSON.parse(line) as unknown;
+    const parsedLine = parseLineRecord(parsedJson);
+    if (header === null) {
+      if (parsedLine.kind !== 'header') {
+        throw new Error('recording file must start with a header line');
+      }
+      header = parsedLine.header;
+      return;
+    }
+    if (parsedLine.kind === 'frame') {
+      frames.push({
+        atMs: parsedLine.atMs,
+        frame: parsedLine.frame
+      });
+      return;
+    }
+    if (parsedLine.kind === 'footer') {
+      finishedAtMs = parsedLine.finishedAtMs;
+      return;
+    }
+    throw new Error('recording file contains a non-frame line after header');
+  };
+
+  try {
+    while (true) {
+      const bytesRead = readSync(fd, readBuffer, 0, CHUNK_BYTES, null);
+      if (bytesRead <= 0) {
+        break;
+      }
+      const decodedChunk = decoder.decode(readBuffer.subarray(0, bytesRead), {
+        stream: true
+      });
+      let text = remainder + decodedChunk;
+      let newlineIndex = text.indexOf('\n');
+      while (newlineIndex !== -1) {
+        consumeLine(text.slice(0, newlineIndex));
+        text = text.slice(newlineIndex + 1);
+        newlineIndex = text.indexOf('\n');
+      }
+      remainder = text;
+    }
+
+    remainder += decoder.decode();
+    if (remainder.length > 0) {
+      consumeLine(remainder);
+    }
+  } finally {
+    closeSync(fd);
+  }
+
+  if (!sawNonEmptyLine) {
     throw new Error('recording file is empty');
   }
 
-  const parsed = lines.map((line) => {
-    const parsedJson = JSON.parse(line) as unknown;
-    return parseLineRecord(parsedJson);
-  });
-
-  const first = parsed[0]!;
-  if (first.kind !== 'header') {
-    throw new Error('recording file must start with a header line');
-  }
-
-  const frames: TerminalRecordingFrameSample[] = [];
-  let finishedAtMs: number | null = null;
-  for (let idx = 1; idx < parsed.length; idx += 1) {
-    const line = parsed[idx]!;
-    if (line.kind === 'frame') {
-      frames.push({
-        atMs: line.atMs,
-        frame: line.frame
-      });
-      continue;
-    }
-    if (line.kind === 'footer') {
-      finishedAtMs = line.finishedAtMs;
-      continue;
-    }
-    throw new Error('recording file contains a non-frame line after header');
-  }
-
   return {
-    header: first.header,
+    header: header!,
     frames,
     finishedAtMs
   };

@@ -384,6 +384,81 @@ void test('terminal recording parser tolerates optional palette variants', () =>
   }
 });
 
+void test('terminal recording parser supports long JSONL lines without trailing newline', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'harness-recording-long-lines-'));
+  const recordingPath = join(tempDir, 'long-lines.jsonl');
+  const longGlyphs = 'x'.repeat(300_000);
+
+  try {
+    writeFileSync(
+      recordingPath,
+      `${JSON.stringify({
+        kind: 'header',
+        header: {
+          schemaVersion: '1',
+          source: 'x',
+          createdAt: 't',
+          defaultForegroundHex: 'd0d7de',
+          defaultBackgroundHex: '0f1419'
+        }
+      })}\n${JSON.stringify({
+        kind: 'frame',
+        atMs: 1,
+        frame: {
+          rows: 1,
+          cols: 1,
+          lines: [longGlyphs],
+          richLines: []
+        }
+      })}`,
+      'utf8'
+    );
+
+    const parsed = readTerminalRecording(recordingPath);
+    assert.equal(parsed.frames.length, 1);
+    assert.equal(parsed.frames[0]?.frame.lines[0], longGlyphs);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+void test('terminal recording parser ignores blank lines between records', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'harness-recording-blank-lines-'));
+  const recordingPath = join(tempDir, 'blank-lines.jsonl');
+
+  try {
+    writeFileSync(
+      recordingPath,
+      `\n${JSON.stringify({
+        kind: 'header',
+        header: {
+          schemaVersion: '1',
+          source: 'x',
+          createdAt: 't',
+          defaultForegroundHex: 'd0d7de',
+          defaultBackgroundHex: '0f1419'
+        }
+      })}\n\n${JSON.stringify({
+        kind: 'frame',
+        atMs: 1,
+        frame: {
+          rows: 1,
+          cols: 1,
+          lines: ['x'],
+          richLines: []
+        }
+      })}\n\n`,
+      'utf8'
+    );
+
+    const parsed = readTerminalRecording(recordingPath);
+    assert.equal(parsed.frames.length, 1);
+    assert.equal(parsed.frames[0]?.atMs, 1);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 void test('terminal recording writer drops invalid provided palette entries', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'harness-recording-palette-writer-'));
   const recordingPath = join(tempDir, 'recording.jsonl');

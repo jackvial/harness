@@ -1255,8 +1255,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - takeover-aware interaction so humans can explicitly claim/take over sessions currently controlled by automation
     - first-party styled rail rendering built from low-level terminal UI primitives rather than framework-driven VDOM
     - per-conversation thread-id correlation keeps status routing correct when multiple sessions run concurrently
-    - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
-    - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
+    - optional terminal-frame recording is enabled via `--record` and writes a JSONL sidecar plus GIF artifact under `.harness/recordings/` at shutdown
+    - mux recording capture cadence defaults to 30 FPS max to bound hot-path overhead for long runs
     - startup performance spans/events for startup and conversation launch (`mux.startup.*`, `mux.conversation.start`) through `perf-core`
     - explicit startup checkpoints for active-session process startup, first PTY output, first visible paint, header-visible gate, and settled quiet-period (`mux.startup.active-start-command`, `mux.startup.active-first-output`, `mux.startup.active-first-visible-paint`, `mux.startup.active-header-visible`, `mux.startup.active-settle-gate`, `mux.startup.active-settled`)
     - runtime output-load checkpoints (`mux.output-load.sample`) attribute active vs inactive output pressure, render cost, and event-loop lag to diagnose interactivity starvation
