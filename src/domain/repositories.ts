@@ -7,15 +7,27 @@ export class RepositoryManager<TRepositoryRecord, TRepositorySnapshot> {
 
   constructor() {}
 
-  unsafeMutableRepositories(): Map<string, TRepositoryRecord> {
+  mutableRepositories(): Map<string, TRepositoryRecord> {
     return this.repositories;
   }
 
-  unsafeMutableDirectoryAssociations(): Map<string, string> {
+  readonlyRepositories(): ReadonlyMap<string, TRepositoryRecord> {
+    return this.repositories;
+  }
+
+  mutableDirectoryAssociations(): Map<string, string> {
     return this.repositoryAssociationByDirectoryId;
   }
 
-  unsafeMutableDirectorySnapshots(): Map<string, TRepositorySnapshot> {
+  readonlyDirectoryAssociations(): ReadonlyMap<string, string> {
+    return this.repositoryAssociationByDirectoryId;
+  }
+
+  mutableDirectorySnapshots(): Map<string, TRepositorySnapshot> {
+    return this.directoryRepositorySnapshotByDirectoryId;
+  }
+
+  readonlyDirectorySnapshots(): ReadonlyMap<string, TRepositorySnapshot> {
     return this.directoryRepositorySnapshotByDirectoryId;
   }
 

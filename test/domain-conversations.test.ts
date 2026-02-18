@@ -47,7 +47,7 @@ void test('conversation manager map helpers and active-state operations are stab
   assert.equal(manager.has('session-a'), true);
   assert.equal(manager.size(), 1);
   assert.equal([...manager.values()].length, 1);
-  assert.equal(manager.readonlyMap().get('session-a'), state);
+  assert.equal(manager.readonlyConversations().get('session-a'), state);
   assert.equal(manager.directoryIdOf('session-a'), 'dir-a');
   assert.equal(manager.directoryIdOf('missing'), null);
   assert.equal(manager.isLive('session-a'), true);

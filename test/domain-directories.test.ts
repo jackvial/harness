@@ -34,8 +34,10 @@ void test('directory manager syncs git summaries to directory lifecycle', () => 
   manager.syncGitSummariesWithDirectories(loadingSummary);
 
   const summaries = manager.mutableGitSummaries();
+  const readonlySummaries = manager.readonlyGitSummaries();
   assert.deepEqual(summaries.get('dir-a'), { branch: 'main' });
   assert.deepEqual(summaries.get('dir-b'), loadingSummary);
+  assert.deepEqual(readonlySummaries.get('dir-b'), loadingSummary);
 
   manager.deleteDirectory('dir-b');
   manager.syncGitSummariesWithDirectories(loadingSummary);
@@ -64,6 +66,7 @@ void test('directory manager exercises all public methods for strict function co
   const loadingSummary: TestSummary = { branch: '(loading)' };
 
   void manager.readonlyDirectories();
+  void manager.readonlyGitSummaries();
   void manager.mutableGitSummaries();
   assert.equal(manager.hasDirectory('missing'), false);
   assert.equal(manager.getDirectory('missing'), undefined);

@@ -8,6 +8,10 @@ export class DirectoryManager<TDirectoryRecord, TGitSummary> {
     return this.directoriesById;
   }
 
+  readonlyGitSummaries(): ReadonlyMap<string, TGitSummary> {
+    return this.gitSummaryByDirectoryId;
+  }
+
   mutableGitSummaries(): Map<string, TGitSummary> {
     return this.gitSummaryByDirectoryId;
   }

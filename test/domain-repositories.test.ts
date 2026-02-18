@@ -31,12 +31,16 @@ void test('repository manager sync trims stale directory associations and snapsh
 
   manager.syncWithDirectories((directoryId) => directoryId === 'dir-live');
 
-  const associations = manager.unsafeMutableDirectoryAssociations();
-  const snapshots = manager.unsafeMutableDirectorySnapshots();
+  const associations = manager.mutableDirectoryAssociations();
+  const snapshots = manager.mutableDirectorySnapshots();
+  const readonlyAssociations = manager.readonlyDirectoryAssociations();
+  const readonlySnapshots = manager.readonlyDirectorySnapshots();
   assert.equal(associations.has('dir-live'), true);
   assert.equal(associations.has('dir-stale'), false);
   assert.equal(snapshots.has('dir-live'), true);
   assert.equal(snapshots.has('dir-stale'), false);
+  assert.equal(readonlyAssociations.has('dir-live'), true);
+  assert.equal(readonlySnapshots.has('dir-live'), true);
 });
 
 void test('repository manager repository-map lifecycle helpers remain deterministic', () => {
@@ -44,9 +48,11 @@ void test('repository manager repository-map lifecycle helpers remain determinis
   manager.setRepository('repo-a', { repositoryId: 'repo-a', name: 'Repo A' });
   manager.setRepository('repo-b', { repositoryId: 'repo-b', name: 'Repo B' });
 
-  const repositories = manager.unsafeMutableRepositories();
+  const repositories = manager.mutableRepositories();
+  const readonlyRepositories = manager.readonlyRepositories();
   assert.equal(repositories.size, 2);
   assert.equal(repositories.get('repo-a')?.name, 'Repo A');
+  assert.equal(readonlyRepositories.get('repo-b')?.name, 'Repo B');
 
   manager.clearRepositories();
   assert.equal(repositories.size, 0);

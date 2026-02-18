@@ -117,7 +117,7 @@ export class ConversationManager {
     this.conversationsBySessionId.set(state.sessionId, state);
   }
 
-  readonlyMap(): ReadonlyMap<string, ConversationState> {
+  readonlyConversations(): ReadonlyMap<string, ConversationState> {
     return this.conversationsBySessionId;
   }
 

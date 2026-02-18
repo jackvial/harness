@@ -581,21 +581,21 @@ async function main(): Promise<number> {
   };
   const directoryManager = new DirectoryManager<ControlPlaneDirectoryRecord, GitSummary>();
   directoryManager.setDirectory(persistedDirectory.directoryId, persistedDirectory);
-  const _unsafeDirectoryMap = directoryManager.readonlyDirectories();
-  const _unsafeDirectoryGitSummaryMap = directoryManager.mutableGitSummaries();
+  const directoryRecords = directoryManager.readonlyDirectories();
+  const gitSummaryByDirectoryId = directoryManager.mutableGitSummaries();
   const repositoryManager = new RepositoryManager<
     ControlPlaneRepositoryRecord,
     GitRepositorySnapshot
   >();
-  const repositories = repositoryManager.unsafeMutableRepositories();
+  const repositories = repositoryManager.mutableRepositories();
   const repositoryAssociationByDirectoryId =
-    repositoryManager.unsafeMutableDirectoryAssociations();
+    repositoryManager.mutableDirectoryAssociations();
   const directoryRepositorySnapshotByDirectoryId =
-    repositoryManager.unsafeMutableDirectorySnapshots();
+    repositoryManager.mutableDirectorySnapshots();
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversationManager = new ConversationManager();
-  const _unsafeConversationMap = conversationManager.readonlyMap();
+  const conversationRecords = conversationManager.readonlyConversations();
   const taskManager = new TaskManager<ControlPlaneTaskRecord, TaskComposerBuffer, NodeJS.Timeout>();
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
@@ -620,7 +620,7 @@ async function main(): Promise<number> {
     getConversation: (sessionId) => conversationManager.get(sessionId),
     isShuttingDown: () => shuttingDown,
     refreshProcessUsage: (reason) =>
-      void processUsageRefreshService.refresh(reason, _unsafeConversationMap),
+      void processUsageRefreshService.refresh(reason, conversationRecords),
     queuePersistedConversationsInBackground: (initialActiveId) =>
       queuePersistedConversationsForStartupOrchestrator(initialActiveId),
     hydrateStartupState: async (afterCursor) =>
@@ -640,7 +640,7 @@ async function main(): Promise<number> {
       mainPaneMode: workspace.mainPaneMode,
       activeDirectoryId: workspace.activeDirectoryId,
       activeConversationId: conversationManager.activeConversationId,
-      conversations: _unsafeConversationMap,
+      conversations: conversationRecords,
       directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
     });
   };
@@ -672,7 +672,7 @@ async function main(): Promise<number> {
 
   const firstDirectoryForRepositoryGroup = (repositoryGroupId: string): string | null => {
     return firstDirectoryForRepositoryGroupFn(
-      _unsafeDirectoryMap,
+      directoryRecords,
       repositoryGroupIdForDirectory,
       repositoryGroupId,
     );
@@ -712,8 +712,8 @@ async function main(): Promise<number> {
     }
     sessionProjectionInstrumentation.refreshSelectorSnapshot(
       `event:${event.type}`,
-      _unsafeDirectoryMap,
-      _unsafeConversationMap,
+      directoryRecords,
+      conversationRecords,
       conversationManager.orderedIds(),
     );
     sessionProjectionInstrumentation.recordTransition(event, beforeProjection, updated);
@@ -921,7 +921,7 @@ async function main(): Promise<number> {
       return await controlPlaneService.listDirectoryGitStatuses();
     },
     setDirectoryGitSummary: (directoryId, summary) => {
-      _unsafeDirectoryGitSummaryMap.set(directoryId, summary);
+      gitSummaryByDirectoryId.set(directoryId, summary);
     },
     setDirectoryRepositorySnapshot: (directoryId, snapshot) => {
       repositoryManager.setDirectoryRepositorySnapshot(directoryId, snapshot);
@@ -953,7 +953,7 @@ async function main(): Promise<number> {
   const deleteDirectoryGitState = (directoryId: string): void => {
     deleteDirectoryGitStateFn(
       directoryId,
-      _unsafeDirectoryGitSummaryMap,
+      gitSummaryByDirectoryId,
       directoryRepositorySnapshotByDirectoryId,
       repositoryAssociationByDirectoryId,
     );
@@ -975,7 +975,7 @@ async function main(): Promise<number> {
     const reduced = applyObservedGitStatusEventFn({
       enabled: configuredMuxGit.enabled,
       observed,
-      gitSummaryByDirectoryId: _unsafeDirectoryGitSummaryMap,
+      gitSummaryByDirectoryId: gitSummaryByDirectoryId,
       loadingSummary: GIT_SUMMARY_LOADING,
       directoryRepositorySnapshotByDirectoryId,
       emptyRepositorySnapshot: GIT_REPOSITORY_NONE,
@@ -1044,7 +1044,7 @@ async function main(): Promise<number> {
       flushTaskComposerPersist,
       closeLiveSessionsOnClientStop,
       orderedConversationIds: conversationManager.orderedIds(),
-      conversations: _unsafeConversationMap,
+      conversations: conversationRecords,
       queueControlPlaneOp,
       sendSignal: (sessionId, signal) => {
         streamClient.sendSignal(sessionId, signal);
@@ -1104,8 +1104,8 @@ async function main(): Promise<number> {
   });
   sessionProjectionInstrumentation.refreshSelectorSnapshot(
     'startup',
-    _unsafeDirectoryMap,
-    _unsafeConversationMap,
+    directoryRecords,
+    conversationRecords,
     conversationManager.orderedIds(),
   );
 
@@ -2197,7 +2197,7 @@ async function main(): Promise<number> {
   });
   const runtimeDirectoryActions = new RuntimeDirectoryActions({
     controlPlaneService,
-    conversations: () => _unsafeConversationMap,
+    conversations: () => conversationRecords,
     orderedConversationIds: () => conversationManager.orderedIds(),
     conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
     conversationLive: (sessionId) => conversationManager.isLive(sessionId),
@@ -2436,9 +2436,9 @@ async function main(): Promise<number> {
     repositories,
     repositoryAssociationByDirectoryId,
     directoryRepositorySnapshotByDirectoryId,
-    directories: _unsafeDirectoryMap,
-    conversations: _unsafeConversationMap,
-    gitSummaryByDirectoryId: _unsafeDirectoryGitSummaryMap,
+    directories: directoryRecords,
+    conversations: conversationRecords,
+    gitSummaryByDirectoryId: gitSummaryByDirectoryId,
     processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
     shortcutBindings,
     loadingGitSummary: GIT_SUMMARY_LOADING,
@@ -2594,7 +2594,7 @@ async function main(): Promise<number> {
     upsertRepositoryByRemoteUrl,
     repositoriesHas: (repositoryId) => repositories.has(repositoryId),
     markDirty,
-    conversations: _unsafeConversationMap,
+    conversations: conversationRecords,
     scheduleConversationTitlePersist,
     getTaskEditorPrompt: () => workspace.taskEditorPrompt,
     setTaskEditorPrompt: (next) => {
@@ -2673,7 +2673,7 @@ async function main(): Promise<number> {
     setRepositoryToggleChordPrefixAtMs: (value) => {
       workspace.repositoryToggleChordPrefixAtMs = value;
     },
-    conversations: _unsafeConversationMap,
+    conversations: conversationRecords,
     repositoryGroupIdForDirectory,
     collapseRepositoryGroup,
     expandRepositoryGroup,

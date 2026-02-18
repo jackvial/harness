@@ -1551,6 +1551,30 @@ bun run loc:verify:enforce
 - Validation at checkpoint:
   - `bun run verify`: pass (global lines/functions/branches = 100%)
 
+### Checkpoint CF (2026-02-18): `_unsafe*` manager escape-hatch cleanup and read-projection APIs
+
+- Updated domain manager APIs to remove `_unsafe*` naming and clarify ownership boundaries:
+  - `src/domain/repositories.ts`
+    - renamed `unsafeMutableRepositories()` -> `mutableRepositories()`
+    - renamed `unsafeMutableDirectoryAssociations()` -> `mutableDirectoryAssociations()`
+    - renamed `unsafeMutableDirectorySnapshots()` -> `mutableDirectorySnapshots()`
+    - added read projections: `readonlyRepositories()`, `readonlyDirectoryAssociations()`, `readonlyDirectorySnapshots()`
+  - `src/domain/conversations.ts`
+    - renamed `readonlyMap()` -> `readonlyConversations()`
+  - `src/domain/directories.ts`
+    - added `readonlyGitSummaries()`
+- Updated `scripts/codex-live-mux-runtime.ts` call sites and aliases to align with the new manager API surface:
+  - removed `_unsafe*` local alias naming and switched to neutral domain-owned names
+  - updated mutable/read method calls to the renamed manager APIs
+- Updated tests to cover/consume the new API names and read projections:
+  - `test/domain-conversations.test.ts`
+  - `test/domain-directories.test.ts`
+  - `test/domain-repositories.test.ts`
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2956 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
