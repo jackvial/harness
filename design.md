@@ -188,6 +188,7 @@ Control-plane boundaries:
 - Conversation input forwarding is moving behind a class-based `ConversationInputForwarder` (`src/ui/conversation-input-forwarder.ts`) so runtime delegates parse/token/forward orchestration and controller-gated PTY writes instead of keeping tail routing inline.
 - Input preflight gating is moving behind a class-based `InputPreflight` (`src/ui/input-preflight.ts`) so runtime delegates early shutdown/modal/escape/focus/shortcut gates before forwarding sanitized input.
 - Task-pane shortcut/editor orchestration is moving into a class-based `RuntimeTaskPaneShortcuts` service (`src/services/runtime-task-pane-shortcuts.ts`) so runtime delegates home-editor buffer reads/writes, repository cycle selection, draft-task submit flow, and shortcut handler callback wiring instead of keeping task-pane shortcut lifecycle helpers inline.
+- Task-pane action orchestration is moving into a class-based `RuntimeTaskPaneActions` service (`src/services/runtime-task-pane-actions.ts`) so runtime delegates task action dispatch (`runTaskPaneAction`), drag/drop reorder queueing, and task create/edit prompt transitions instead of keeping callback-heavy task action handlers inline.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

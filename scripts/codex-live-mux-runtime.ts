@@ -34,7 +34,6 @@ import {
   projectPaneActionAtRow,
   sortedRepositoryList,
   sortTasksByOrder,
-  type TaskPaneAction,
 } from '../src/mux/harness-core-ui.ts';
 import {
   taskFocusedPaneActionAtCell,
@@ -141,7 +140,6 @@ import {
   resolveDirectoryForAction as resolveDirectoryForActionFn,
 } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
-import { runTaskPaneAction as runTaskPaneActionFn } from '../src/mux/live-mux/actions-task.ts';
 import {
   archiveRepositoryById as archiveRepositoryByIdFn,
   openRepositoryPromptForCreate as openRepositoryPromptForCreateFn,
@@ -194,6 +192,7 @@ import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-rende
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
+import { RuntimeTaskPaneActions } from '../src/services/runtime-task-pane-actions.ts';
 import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
@@ -1964,43 +1963,6 @@ async function main(): Promise<number> {
     return reordered;
   };
 
-  const queueTaskReorderByIds = (orderedActiveTaskIds: readonly string[], label: string): void => {
-    queueControlPlaneOp(async () => {
-      const tasks = await controlPlaneService.reorderTasks(
-        taskManager.taskReorderPayloadIds({
-          orderedActiveTaskIds,
-          sortTasks: sortTasksByOrder,
-          isCompleted: (task) => task.status === 'completed',
-        }),
-      );
-      applyTaskList(tasks);
-    }, label);
-  };
-
-  const openTaskCreatePrompt = (): void => {
-    if (workspace.taskPaneSelectedRepositoryId === null || !repositories.has(workspace.taskPaneSelectedRepositoryId)) {
-      workspace.taskPaneNotice = 'select a repository first';
-      markDirty();
-      return;
-    }
-    focusDraftComposer();
-    workspace.taskPaneNotice = null;
-    markDirty();
-  };
-
-  const openTaskEditPrompt = (taskId: string): void => {
-    const task = taskManager.getTask(taskId);
-    if (task === undefined) {
-      return;
-    }
-    if (task.repositoryId !== null) {
-      workspace.taskPaneSelectedRepositoryId = task.repositoryId;
-    }
-    focusTaskComposer(task.taskId);
-    workspace.taskPaneNotice = null;
-    markDirty();
-  };
-
   const applyTaskRecord = (parsed: ControlPlaneTaskRecord): ControlPlaneTaskRecord => {
     taskManager.setTask(parsed);
     workspace.taskPaneSelectedTaskId = parsed.taskId;
@@ -2049,24 +2011,6 @@ async function main(): Promise<number> {
     });
   };
 
-  const reorderTaskByDrop = (draggedTaskId: string, targetTaskId: string): void => {
-    const reordered = taskManager.reorderedActiveTaskIdsForDrop({
-      draggedTaskId,
-      targetTaskId,
-      sortTasks: sortTasksByOrder,
-      isCompleted: (task) => task.status === 'completed',
-    });
-    if (reordered === 'cannot-reorder-completed') {
-      workspace.taskPaneNotice = 'cannot reorder completed tasks';
-      markDirty();
-      return;
-    }
-    if (reordered === null) {
-      return;
-    }
-    queueTaskReorderByIds(reordered, 'tasks-reorder-drag');
-  };
-
   const reorderRepositoryByDrop = (
     draggedRepositoryId: string,
     targetRepositoryId: string,
@@ -2081,87 +2025,6 @@ async function main(): Promise<number> {
       queueRepositoryPriorityOrder,
     });
   };
-
-  const runTaskPaneAction = (action: TaskPaneAction): void => {
-    runTaskPaneActionFn({
-      action,
-      openTaskCreatePrompt,
-      openRepositoryPromptForCreate,
-      selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
-      repositoryExists: (repositoryId) => repositories.has(repositoryId),
-      setTaskPaneNotice: (notice) => {
-        workspace.taskPaneNotice = notice;
-      },
-      markDirty,
-      setTaskPaneSelectionFocus: (focus) => {
-        workspace.taskPaneSelectionFocus = focus;
-      },
-      openRepositoryPromptForEdit,
-      queueArchiveRepository: (repositoryId) => {
-        queueControlPlaneOp(async () => {
-          await archiveRepositoryById(repositoryId);
-          syncTaskPaneRepositorySelection();
-        }, 'tasks-archive-repository');
-      },
-      selectedTask: selectedTaskRecord(),
-      openTaskEditPrompt,
-      queueDeleteTask: (taskId) => {
-        queueControlPlaneOp(async () => {
-          clearTaskAutosaveTimer(taskId);
-          await controlPlaneService.deleteTask(taskId);
-          taskManager.deleteTask(taskId);
-          taskManager.deleteTaskComposer(taskId);
-          if (workspace.taskEditorTarget.kind === 'task' && workspace.taskEditorTarget.taskId === taskId) {
-            workspace.taskEditorTarget = {
-              kind: 'draft',
-            };
-          }
-          syncTaskPaneSelection();
-          markDirty();
-        }, 'tasks-delete');
-      },
-      queueTaskReady: (taskId) => {
-        queueControlPlaneOp(async () => {
-          applyTaskRecord(await controlPlaneService.taskReady(taskId));
-        }, 'tasks-ready');
-      },
-      queueTaskDraft: (taskId) => {
-        queueControlPlaneOp(async () => {
-          applyTaskRecord(await controlPlaneService.taskDraft(taskId));
-        }, 'tasks-draft');
-      },
-      queueTaskComplete: (taskId) => {
-        queueControlPlaneOp(async () => {
-          applyTaskRecord(await controlPlaneService.taskComplete(taskId));
-        }, 'tasks-complete');
-      },
-      orderedTaskRecords,
-      queueTaskReorderByIds,
-    });
-  };
-  const runtimeTaskPaneShortcuts = new RuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
-    workspace,
-    taskScreenKeybindings,
-    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
-    activeRepositoryIds,
-    selectRepositoryById,
-    taskComposerForTask,
-    setTaskComposerForTask,
-    scheduleTaskComposerPersist,
-    selectedRepositoryTaskRecords,
-    focusTaskComposer,
-    focusDraftComposer,
-    runTaskPaneAction: (shortcutAction) => {
-      runTaskPaneAction(shortcutAction);
-    },
-    queueControlPlaneOp,
-    createTask: async (payload) => {
-      return await controlPlaneService.createTask(payload);
-    },
-    applyTaskRecord,
-    syncTaskPaneSelection,
-    markDirty,
-  });
 
   const openNewThreadPrompt = (directoryId: string): void => {
     openNewThreadPromptFn({
@@ -2276,6 +2139,71 @@ async function main(): Promise<number> {
       markDirty,
     });
   };
+
+  const runtimeTaskPaneActions = new RuntimeTaskPaneActions<ControlPlaneTaskRecord>({
+    workspace,
+    controlPlaneService,
+    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+    getTask: (taskId) => taskManager.getTask(taskId),
+    taskReorderPayloadIds: (orderedActiveTaskIds) =>
+      taskManager.taskReorderPayloadIds({
+        orderedActiveTaskIds,
+        sortTasks: sortTasksByOrder,
+        isCompleted: (task) => task.status === 'completed',
+      }),
+    reorderedActiveTaskIdsForDrop: (draggedTaskId, targetTaskId) =>
+      taskManager.reorderedActiveTaskIdsForDrop({
+        draggedTaskId,
+        targetTaskId,
+        sortTasks: sortTasksByOrder,
+        isCompleted: (task) => task.status === 'completed',
+      }),
+    clearTaskAutosaveTimer,
+    deleteTask: (taskId) => {
+      taskManager.deleteTask(taskId);
+    },
+    deleteTaskComposer: (taskId) => {
+      taskManager.deleteTaskComposer(taskId);
+    },
+    focusDraftComposer,
+    focusTaskComposer,
+    selectedTask: () => selectedTaskRecord(),
+    orderedTaskRecords,
+    queueControlPlaneOp,
+    applyTaskRecord,
+    applyTaskList: (tasks) => {
+      applyTaskList(tasks);
+    },
+    syncTaskPaneSelection,
+    syncTaskPaneRepositorySelection,
+    openRepositoryPromptForCreate,
+    openRepositoryPromptForEdit,
+    archiveRepositoryById,
+    markDirty,
+  });
+  const runtimeTaskPaneShortcuts = new RuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
+    workspace,
+    taskScreenKeybindings,
+    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+    activeRepositoryIds,
+    selectRepositoryById,
+    taskComposerForTask,
+    setTaskComposerForTask,
+    scheduleTaskComposerPersist,
+    selectedRepositoryTaskRecords,
+    focusTaskComposer,
+    focusDraftComposer,
+    runTaskPaneAction: (shortcutAction) => {
+      runtimeTaskPaneActions.runTaskPaneAction(shortcutAction);
+    },
+    queueControlPlaneOp,
+    createTask: async (payload) => {
+      return await controlPlaneService.createTask(payload);
+    },
+    applyTaskRecord,
+    syncTaskPaneSelection,
+    markDirty,
+  });
 
   const runtimeConversationActions = new RuntimeConversationActions({
     controlPlaneService,
@@ -2928,7 +2856,9 @@ async function main(): Promise<number> {
       taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, rowIndex),
     selectTaskById,
     selectRepositoryById,
-    runTaskPaneAction,
+    runTaskPaneAction: (action) => {
+      runtimeTaskPaneActions.runTaskPaneAction(action);
+    },
     nowMs: () => Date.now(),
     homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
     getTaskEditClickState: () => workspace.taskPaneTaskEditClickState,
@@ -2945,7 +2875,9 @@ async function main(): Promise<number> {
     setHomePaneDragState: (next) => {
       workspace.homePaneDragState = next;
     },
-    openTaskEditPrompt,
+    openTaskEditPrompt: (taskId) => {
+      runtimeTaskPaneActions.openTaskEditPrompt(taskId);
+    },
     openRepositoryPromptForEdit,
     markDirty,
   });
@@ -2963,7 +2895,9 @@ async function main(): Promise<number> {
     taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, index),
     repositoryIdAtRow: (index) =>
       taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, index),
-    reorderTaskByDrop,
+    reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
+      runtimeTaskPaneActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
+    },
     reorderRepositoryByDrop,
     onProjectWheel: (delta) => {
       workspace.projectPaneScrollTop = Math.max(0, workspace.projectPaneScrollTop + delta);

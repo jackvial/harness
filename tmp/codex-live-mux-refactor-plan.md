@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3071 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3009 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1484,9 +1484,30 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3071 non-empty LOC
 
+### Checkpoint CB (2026-02-18): Task-pane action orchestration extracted into class service
+
+- Added `src/services/runtime-task-pane-actions.ts` with class-based `RuntimeTaskPaneActions` to own:
+  - task create/edit prompt transitions (`openTaskCreatePrompt`, `openTaskEditPrompt`)
+  - task reorder queueing payload flow (`queueTaskReorderByIds`)
+  - drag/drop task reorder guard + enqueue flow (`reorderTaskByDrop`)
+  - task action dispatch callback wiring (`runTaskPaneAction`) including delete/status/reorder queue operations
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate task action handlers to `RuntimeTaskPaneActions` from:
+  - home shortcuts (`RuntimeTaskPaneShortcuts`)
+  - home pointer action routing (`MainPanePointerInput`)
+  - home drag-drop routing (`PointerRoutingInput`)
+- Added `test/services-runtime-task-pane-actions.test.ts` with branch coverage for:
+  - task create/edit prompt branches
+  - drag/drop reorder guard/no-op/success branches
+  - default action-dispatch callback wiring paths (repository edit + task reorder)
+  - injected action-dispatch callback wiring path across delete/status/archive/reorder operations
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3009 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue startup/runtime orchestration extraction before callback-bag cleanup:
-  - extract action-handler consolidation slice (conversation/directory/task orchestration bundles)
-  - then perform callback-bag reduction pass for input/router modules
+  - continue action-handler consolidation on remaining non-task orchestration bundles
+  - start callback-bag reduction pass for input/router modules (`InputRouter`, pointer handlers)
   - perform a small runtime cleanup pass to collapse temporary type-heavy wiring now that render seams are in place
