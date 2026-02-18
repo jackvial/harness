@@ -120,8 +120,6 @@ import {
   renderSelectionOverlay,
   selectionText,
   selectionVisibleRows,
-  type PaneSelectionDrag,
-  type PaneSelection,
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
 import {
@@ -152,14 +150,10 @@ import { RuntimeControlPlaneOps } from '../src/services/runtime-control-plane-op
 import { RuntimeControlActions } from '../src/services/runtime-control-actions.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
-import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
-import { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.ts';
-import { RuntimeRenderOrchestrator } from '../src/services/runtime-render-orchestrator.ts';
+import { RuntimeRenderPipeline } from '../src/services/runtime-render-pipeline.ts';
 import { RuntimeRepositoryActions } from '../src/services/runtime-repository-actions.ts';
 import { RuntimeGitState } from '../src/services/runtime-git-state.ts';
 import { RuntimeLayoutResize } from '../src/services/runtime-layout-resize.ts';
-import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
-import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
@@ -1923,165 +1917,133 @@ async function main(): Promise<number> {
     }
   };
 
-  const runtimeRenderFlush = new RuntimeRenderFlush<
+  const runtimeRenderPipeline = new RuntimeRenderPipeline<
     ConversationState,
-    ReturnType<TerminalSnapshotOracle['snapshotWithoutHash']>,
-    PaneSelection,
-    typeof layout,
-    NonNullable<ReturnType<typeof buildCurrentModalOverlay>>,
-    ReturnType<OutputLoadSampler['currentStatusRow']>
-  >({
-    perfNowNs,
-    statusFooterForConversation: (conversation) => debugFooterForConversation(conversation),
-    currentStatusNotice: () => debugFooterNotice.current(),
-    currentStatusRow: () => outputLoadSampler.currentStatusRow(),
-    buildRenderRows: (renderLayout, railRows, rightRows, statusRow, statusFooter) =>
-      buildRenderRows(renderLayout, railRows, rightRows, statusRow, statusFooter),
-    buildModalOverlay: () => buildCurrentModalOverlay(),
-    applyModalOverlay: (rows, overlay) => {
-      applyModalOverlay(rows, overlay);
-    },
-    renderSelectionOverlay: (renderLayout, frame, renderSelection) =>
-      renderSelectionOverlay(renderLayout, frame, renderSelection),
-    flush: ({ layout: renderLayout, rows, rightFrame, selectionRows, selectionOverlay }) =>
-      screen.flush({
-        layout: renderLayout,
-        rows,
-        rightFrame,
-        selectionRows,
-        selectionOverlay,
-        validateAnsi,
-      }),
-    onFlushOutput: ({ activeConversation, rightFrame, rows, flushResult, changedRowCount }) => {
-      startupOrchestrator.onRenderFlush({
-        activeConversation,
-        activeConversationId: conversationManager.activeConversationId,
-        rightFrameVisible: rightFrame !== null,
-        changedRowCount,
-      });
-      if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
-        const recordingCursorStyle: ScreenCursorStyle =
-          rightFrame === null ? { shape: 'block', blinking: false } : rightFrame.cursor.style;
-        const recordingCursorRow = rightFrame === null ? 0 : rightFrame.cursor.row;
-        const recordingCursorCol =
-          rightFrame === null
-            ? layout.rightStartCol - 1
-            : layout.rightStartCol + rightFrame.cursor.col - 1;
-        const canonicalFrame = renderCanonicalFrameAnsi(
-          rows,
-          recordingCursorStyle,
-          flushResult.shouldShowCursor,
-          recordingCursorRow,
-          recordingCursorCol,
-        );
-        muxRecordingOracle.ingest(canonicalFrame);
-        try {
-          muxRecordingWriter.capture(muxRecordingOracle.snapshot());
-        } catch {
-          // Recording failures must never break live interaction.
-        }
-      }
-    },
-    recordRenderSample: (durationMs, changedRowCount) => {
-      outputLoadSampler.recordRenderSample(durationMs, changedRowCount);
-    },
-  });
-
-  const runtimeRightPaneRender = new RuntimeRightPaneRender<
     ControlPlaneRepositoryRecord,
-    ControlPlaneTaskRecord
-  >({
-    workspace,
-    repositories,
-    taskManager,
-    conversationPane,
-    homePane,
-    projectPane,
-    refreshProjectPaneSnapshot: (directoryId) => {
-      refreshProjectPaneSnapshot(directoryId);
-      return workspace.projectPaneSnapshot;
-    },
-    emptyTaskPaneView: () => ({
-      rows: [],
-      taskIds: [],
-      repositoryIds: [],
-      actions: [],
-      actionCells: [],
-      top: 0,
-      selectedRepositoryId: null,
-    }),
-  });
-  const runtimeLeftRailRender = new RuntimeLeftRailRender<
+    ControlPlaneTaskRecord,
     ControlPlaneDirectoryRecord,
-    ConversationState,
-    ControlPlaneRepositoryRecord,
     GitRepositorySnapshot,
     GitSummary,
     ProcessUsageSample,
     ReturnType<typeof resolveMuxShortcutBindings>,
-    ReturnType<typeof buildWorkspaceRailViewRows>
+    ReturnType<typeof buildWorkspaceRailViewRows>,
+    NonNullable<ReturnType<typeof buildCurrentModalOverlay>>,
+    ReturnType<OutputLoadSampler['currentStatusRow']>
   >({
-    leftRailPane,
-    sessionProjectionInstrumentation,
-    workspace,
-    repositoryManager,
-    repositories,
-    repositoryAssociationByDirectoryId,
-    directoryRepositorySnapshotByDirectoryId,
-    directories: directoryRecords,
-    conversations: conversationRecords,
-    gitSummaryByDirectoryId: gitSummaryByDirectoryId,
-    processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
-    shortcutBindings,
-    loadingGitSummary: GIT_SUMMARY_LOADING,
-    activeConversationId: () => conversationManager.activeConversationId,
-    orderedConversationIds: () => conversationManager.orderedIds(),
-  });
-  const runtimeRenderState = new RuntimeRenderState<
-    ConversationState,
-    ReturnType<TerminalSnapshotOracle['snapshotWithoutHash']>
-  >({
-    workspace,
-    hasDirectory: (directoryId) => directoryManager.hasDirectory(directoryId),
-    activeConversationId: () => conversationManager.activeConversationId,
-    activeConversation: () => conversationManager.getActiveConversation(),
-    snapshotFrame: (conversation) => conversation.oracle.snapshotWithoutHash(),
-    selectionVisibleRows,
-  });
-  const runtimeRenderOrchestrator = new RuntimeRenderOrchestrator<
-    typeof layout,
-    ConversationState,
-    ReturnType<TerminalSnapshotOracle['snapshotWithoutHash']>,
-    PaneSelection,
-    PaneSelectionDrag,
-    ReturnType<typeof buildWorkspaceRailViewRows>
-  >({
+    renderFlush: {
+      perfNowNs,
+      statusFooterForConversation: (conversation) => debugFooterForConversation(conversation),
+      currentStatusNotice: () => debugFooterNotice.current(),
+      currentStatusRow: () => outputLoadSampler.currentStatusRow(),
+      buildRenderRows: (renderLayout, railRows, rightRows, statusRow, statusFooter) =>
+        buildRenderRows(renderLayout, railRows, rightRows, statusRow, statusFooter),
+      buildModalOverlay: () => buildCurrentModalOverlay(),
+      applyModalOverlay: (rows, overlay) => {
+        applyModalOverlay(rows, overlay);
+      },
+      renderSelectionOverlay: (renderLayout, frame, renderSelection) =>
+        renderSelectionOverlay(renderLayout, frame, renderSelection),
+      flush: ({ layout: renderLayout, rows, rightFrame, selectionRows, selectionOverlay }) =>
+        screen.flush({
+          layout: renderLayout,
+          rows,
+          rightFrame,
+          selectionRows,
+          selectionOverlay,
+          validateAnsi,
+        }),
+      onFlushOutput: ({ activeConversation, rightFrame, rows, flushResult, changedRowCount }) => {
+        startupOrchestrator.onRenderFlush({
+          activeConversation,
+          activeConversationId: conversationManager.activeConversationId,
+          rightFrameVisible: rightFrame !== null,
+          changedRowCount,
+        });
+        if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
+          const recordingCursorStyle: ScreenCursorStyle =
+            rightFrame === null ? { shape: 'block', blinking: false } : rightFrame.cursor.style;
+          const recordingCursorRow = rightFrame === null ? 0 : rightFrame.cursor.row;
+          const recordingCursorCol =
+            rightFrame === null
+              ? layout.rightStartCol - 1
+              : layout.rightStartCol + rightFrame.cursor.col - 1;
+          const canonicalFrame = renderCanonicalFrameAnsi(
+            rows,
+            recordingCursorStyle,
+            flushResult.shouldShowCursor,
+            recordingCursorRow,
+            recordingCursorCol,
+          );
+          muxRecordingOracle.ingest(canonicalFrame);
+          try {
+            muxRecordingWriter.capture(muxRecordingOracle.snapshot());
+          } catch {
+            // Recording failures must never break live interaction.
+          }
+        }
+      },
+      recordRenderSample: (durationMs, changedRowCount) => {
+        outputLoadSampler.recordRenderSample(durationMs, changedRowCount);
+      },
+    },
+    rightPaneRender: {
+      workspace,
+      repositories,
+      taskManager,
+      conversationPane,
+      homePane,
+      projectPane,
+      refreshProjectPaneSnapshot: (directoryId) => {
+        refreshProjectPaneSnapshot(directoryId);
+        return workspace.projectPaneSnapshot;
+      },
+      emptyTaskPaneView: () => ({
+        rows: [],
+        taskIds: [],
+        repositoryIds: [],
+        actions: [],
+        actionCells: [],
+        top: 0,
+        selectedRepositoryId: null,
+      }),
+    },
+    leftRailRender: {
+      leftRailPane,
+      sessionProjectionInstrumentation,
+      workspace,
+      repositoryManager,
+      repositories,
+      repositoryAssociationByDirectoryId,
+      directoryRepositorySnapshotByDirectoryId,
+      directories: directoryRecords,
+      conversations: conversationRecords,
+      gitSummaryByDirectoryId: gitSummaryByDirectoryId,
+      processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
+      shortcutBindings,
+      loadingGitSummary: GIT_SUMMARY_LOADING,
+      activeConversationId: () => conversationManager.activeConversationId,
+      orderedConversationIds: () => conversationManager.orderedIds(),
+    },
+    renderState: {
+      workspace,
+      hasDirectory: (directoryId) => directoryManager.hasDirectory(directoryId),
+      activeConversationId: () => conversationManager.activeConversationId,
+      activeConversation: () => conversationManager.getActiveConversation(),
+      snapshotFrame: (conversation) => conversation.oracle.snapshotWithoutHash(),
+      selectionVisibleRows,
+    },
     isScreenDirty: () => screen.isDirty(),
     clearDirty: () => {
       screen.clearDirty();
     },
-    prepareRenderState: (renderSelection, renderSelectionDrag) =>
-      runtimeRenderState.prepareRenderState(renderSelection, renderSelectionDrag),
-    renderLeftRail: (renderLayout) => runtimeLeftRailRender.render(renderLayout),
     setLatestRailViewRows: (rows) => {
       workspace.latestRailViewRows = rows;
-    },
-    renderRightRows: (input) =>
-      runtimeRightPaneRender.renderRightRows({
-        layout: input.layout,
-        rightFrame: input.rightFrame,
-        homePaneActive: input.homePaneActive,
-        projectPaneActive: input.projectPaneActive,
-        activeDirectoryId: input.activeDirectoryId,
-      }),
-    flushRender: (input) => {
-      runtimeRenderFlush.flushRender(input);
     },
     activeDirectoryId: () => workspace.activeDirectoryId,
   });
 
   const render = (): void => {
-    runtimeRenderOrchestrator.render({
+    runtimeRenderPipeline.render({
       shuttingDown,
       layout,
       selection: workspace.selection,

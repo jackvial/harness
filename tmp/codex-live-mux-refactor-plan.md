@@ -5,6 +5,16 @@ Owner: codex + jmoyers
 Last updated: 2026-02-18
 Delete this file after the refactor is complete.
 
+## Latest Checkpoint
+
+- Extracted a consolidated `RuntimeRenderPipeline` service that composes right-pane render, left-rail render, render-state prep, and flush orchestration behind one runtime-facing entrypoint.
+- Rewired runtime render wiring to instantiate the pipeline once and delegate `render()` calls through the pipeline.
+- Added dedicated coverage tests for pipeline composition and both render-state branches (null-state clear-dirty path and non-null flush path).
+- Verification status:
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass
+  - `bun run loc:verify:enforce`: fail (known over-limit files remain)
+
 ## Why This Plan Changed
 
 The previous approach extracted helpers but did not change ownership boundaries enough. This plan pivots to responsibility-first decomposition so state and behavior move together.
