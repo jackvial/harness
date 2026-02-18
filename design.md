@@ -134,6 +134,9 @@ Control-plane boundaries:
 - Protocol envelope parsing (`src/control-plane/stream-protocol.ts`) is kept focused on envelope shape validation and event normalization; it no longer embeds the full command parser implementation.
 - Mux runtime state ownership is being centralized behind a class-based `WorkspaceModel` (`src/domain/workspace.ts`) so mutable UI/session state is grouped by responsibility rather than threaded as free locals.
 - Conversation lifecycle state ownership is being centralized behind a class-based `ConversationManager` (`src/domain/conversations.ts`) so start-in-flight, removal, and ordering concerns are not spread across runtime locals.
+- Repository and directory runtime state ownership is being centralized behind class-based `RepositoryManager` and `DirectoryManager` modules (`src/domain/repositories.ts`, `src/domain/directories.ts`) so association/fold/git-summary concerns are manager-owned rather than free runtime maps.
+- Task runtime state ownership is being centralized behind a class-based `TaskManager` (`src/domain/tasks.ts`) that now owns task records, composer buffers, autosave timers, and task reorder semantics.
+- Control-plane parsing/wrapping is beginning to move into a class-based service layer (`src/services/control-plane.ts`) so runtime callsites consume validated domain records instead of duplicating command parsing.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4580 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4498 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -148,7 +148,7 @@ bun run loc:verify:enforce
 - [~] Phase 2: ConversationManager extraction in progress.
 - [~] Phase 3: RepositoryManager + DirectoryManager extraction in progress.
 - [x] Phase 4: TaskManager extraction.
-- [ ] Phase 5: ControlPlaneService extraction.
+- [~] Phase 5: ControlPlaneService extraction.
 - [ ] Phase 6: Screen extraction.
 - [ ] Phase 7: Pane extraction.
 - [ ] Phase 8: ModalManager + InputRouter extraction.
@@ -618,3 +618,25 @@ bun run loc:verify:enforce
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4580 non-empty LOC
+
+### Checkpoint AA (2026-02-18): ControlPlaneService extraction start for task/repository flows
+
+- Started Phase 5 with a class-based `ControlPlaneService` under `src/services/control-plane.ts`.
+- Added service-owned command wrappers + parsing for:
+  - `repository.list`
+  - `task.list`
+  - `task.create`
+  - `task.update`
+  - `task.ready`
+  - `task.draft`
+  - `task.complete`
+  - `task.reorder`
+  - `task.delete`
+- Updated `scripts/codex-live-mux-runtime.ts` to route task/repository planning operations through `ControlPlaneService` instead of issuing/parsing raw stream commands at runtime callsites.
+- Added `test/services-control-plane.test.ts` with success + malformed-payload coverage for all service methods.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4498 non-empty LOC

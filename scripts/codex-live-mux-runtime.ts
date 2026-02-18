@@ -256,6 +256,7 @@ import {
 import { RepositoryManager } from '../src/domain/repositories.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
+import { ControlPlaneService } from '../src/services/control-plane.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -572,6 +573,11 @@ async function main(): Promise<number> {
   });
   controlPlaneOpenSpan.end();
   const streamClient = controlPlaneClient.client;
+  const controlPlaneService = new ControlPlaneService(streamClient, {
+    tenantId: options.scope.tenantId,
+    userId: options.scope.userId,
+    workspaceId: options.scope.workspaceId,
+  });
   const startupObservedCursor = await readObservedStreamCursorBaseline(streamClient, options.scope);
   const directoryUpsertSpan = startPerfSpan('mux.startup.directory-upsert');
   const directoryResult = await streamClient.sendCommand({
@@ -2345,17 +2351,13 @@ async function main(): Promise<number> {
       return;
     }
     queueControlPlaneOp(async () => {
-      const result = await streamClient.sendCommand({
-        type: 'task.update',
+      const parsed = await controlPlaneService.updateTask({
         taskId,
         repositoryId: task.repositoryId,
         title: fields.title,
         description: fields.description,
       });
-      const parsed = applyTaskFromCommandResult(result);
-      if (parsed === null) {
-        throw new Error('control-plane task.update returned malformed task record');
-      }
+      applyTaskRecord(parsed);
       const persistedText =
         parsed.description.length === 0 ? parsed.title : `${parsed.title}\n${parsed.description}`;
       const latestBuffer = taskManager.getTaskComposer(taskId);
@@ -2524,43 +2526,14 @@ async function main(): Promise<number> {
   };
 
   async function hydrateTaskPlanningState(): Promise<void> {
-    const repositoriesResult = await streamClient.sendCommand({
-      type: 'repository.list',
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-    });
-    const repositoriesRaw = repositoriesResult['repositories'];
-    if (!Array.isArray(repositoriesRaw)) {
-      throw new Error('control-plane repository.list returned malformed repositories');
-    }
     repositories.clear();
-    for (const value of repositoriesRaw) {
-      const repository = parseRepositoryRecord(value);
-      if (repository === null) {
-        throw new Error('control-plane repository.list returned malformed repository record');
-      }
+    for (const repository of await controlPlaneService.listRepositories()) {
       repositories.set(repository.repositoryId, repository);
     }
     syncTaskPaneRepositorySelection();
 
-    const tasksResult = await streamClient.sendCommand({
-      type: 'task.list',
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-      limit: 1000,
-    });
-    const tasksRaw = tasksResult['tasks'];
-    if (!Array.isArray(tasksRaw)) {
-      throw new Error('control-plane task.list returned malformed tasks');
-    }
     taskManager.clearTasks();
-    for (const value of tasksRaw) {
-      const task = parseTaskRecord(value);
-      if (task === null) {
-        throw new Error('control-plane task.list returned malformed task record');
-      }
+    for (const task of await controlPlaneService.listTasks(1000)) {
       taskManager.setTask(task);
     }
     syncTaskPaneSelection();
@@ -2737,20 +2710,14 @@ async function main(): Promise<number> {
 
   const queueTaskReorderByIds = (orderedActiveTaskIds: readonly string[], label: string): void => {
     queueControlPlaneOp(async () => {
-      const result = await streamClient.sendCommand({
-        type: 'task.reorder',
-        tenantId: options.scope.tenantId,
-        userId: options.scope.userId,
-        workspaceId: options.scope.workspaceId,
-        orderedTaskIds: [
-          ...taskManager.taskReorderPayloadIds({
-            orderedActiveTaskIds,
-            sortTasks: sortTasksByOrder,
-            isCompleted: (task) => task.status === 'completed',
-          }),
-        ],
-      });
-      applyTaskListFromCommandResult(result);
+      const tasks = await controlPlaneService.reorderTasks(
+        taskManager.taskReorderPayloadIds({
+          orderedActiveTaskIds,
+          sortTasks: sortTasksByOrder,
+          isCompleted: (task) => task.status === 'completed',
+        }),
+      );
+      applyTaskList(tasks);
     }, label);
   };
 
@@ -2778,13 +2745,7 @@ async function main(): Promise<number> {
     markDirty();
   };
 
-  const applyTaskFromCommandResult = (
-    result: Record<string, unknown>,
-  ): ControlPlaneTaskRecord | null => {
-    const parsed = parseTaskRecord(result['task']);
-    if (parsed === null) {
-      return null;
-    }
+  const applyTaskRecord = (parsed: ControlPlaneTaskRecord): ControlPlaneTaskRecord => {
     taskManager.setTask(parsed);
     workspace.taskPaneSelectedTaskId = parsed.taskId;
     if (parsed.repositoryId !== null && repositories.has(parsed.repositoryId)) {
@@ -2796,17 +2757,9 @@ async function main(): Promise<number> {
     return parsed;
   };
 
-  const applyTaskListFromCommandResult = (result: Record<string, unknown>): boolean => {
-    const raw = result['tasks'];
-    if (!Array.isArray(raw)) {
-      return false;
-    }
+  const applyTaskList = (tasks: readonly ControlPlaneTaskRecord[]): boolean => {
     let changed = false;
-    for (const value of raw) {
-      const parsed = parseTaskRecord(value);
-      if (parsed === null) {
-        continue;
-      }
+    for (const parsed of tasks) {
       taskManager.setTask(parsed);
       changed = true;
     }
@@ -2905,10 +2858,7 @@ async function main(): Promise<number> {
       queueDeleteTask: (taskId) => {
         queueControlPlaneOp(async () => {
           clearTaskAutosaveTimer(taskId);
-          await streamClient.sendCommand({
-            type: 'task.delete',
-            taskId,
-          });
+          await controlPlaneService.deleteTask(taskId);
           taskManager.deleteTask(taskId);
           taskManager.deleteTaskComposer(taskId);
           if (workspace.taskEditorTarget.kind === 'task' && workspace.taskEditorTarget.taskId === taskId) {
@@ -2922,29 +2872,17 @@ async function main(): Promise<number> {
       },
       queueTaskReady: (taskId) => {
         queueControlPlaneOp(async () => {
-          const result = await streamClient.sendCommand({
-            type: 'task.ready',
-            taskId,
-          });
-          applyTaskFromCommandResult(result);
+          applyTaskRecord(await controlPlaneService.taskReady(taskId));
         }, 'tasks-ready');
       },
       queueTaskDraft: (taskId) => {
         queueControlPlaneOp(async () => {
-          const result = await streamClient.sendCommand({
-            type: 'task.draft',
-            taskId,
-          });
-          applyTaskFromCommandResult(result);
+          applyTaskRecord(await controlPlaneService.taskDraft(taskId));
         }, 'tasks-draft');
       },
       queueTaskComplete: (taskId) => {
         queueControlPlaneOp(async () => {
-          const result = await streamClient.sendCommand({
-            type: 'task.complete',
-            taskId,
-          });
-          applyTaskFromCommandResult(result);
+          applyTaskRecord(await controlPlaneService.taskComplete(taskId));
         }, 'tasks-complete');
       },
       orderedTaskRecords,
@@ -3835,34 +3773,21 @@ async function main(): Promise<number> {
     queueControlPlaneOp(async () => {
       try {
         if (payload.mode === 'create') {
-          const result = await streamClient.sendCommand({
-            type: 'task.create',
-            tenantId: options.scope.tenantId,
-            userId: options.scope.userId,
-            workspaceId: options.scope.workspaceId,
+          applyTaskRecord(await controlPlaneService.createTask({
             repositoryId: payload.repositoryId,
             title: payload.title,
             description: payload.description,
-          });
-          const parsed = applyTaskFromCommandResult(result);
-          if (parsed === null) {
-            throw new Error('control-plane task.create returned malformed task record');
-          }
+          }));
         } else {
           if (payload.taskId === null) {
             throw new Error('task edit state missing task id');
           }
-          const result = await streamClient.sendCommand({
-            type: 'task.update',
+          applyTaskRecord(await controlPlaneService.updateTask({
             taskId: payload.taskId,
             repositoryId: payload.repositoryId,
             title: payload.title,
             description: payload.description,
-          });
-          const parsed = applyTaskFromCommandResult(result);
-          if (parsed === null) {
-            throw new Error('control-plane task.update returned malformed task record');
-          }
+          }));
         }
         taskEditorPrompt = null;
         workspace.taskPaneNotice = null;
@@ -3995,19 +3920,12 @@ async function main(): Promise<number> {
       return;
     }
     queueControlPlaneOp(async () => {
-      const result = await streamClient.sendCommand({
-        type: 'task.create',
-        tenantId: options.scope.tenantId,
-        userId: options.scope.userId,
-        workspaceId: options.scope.workspaceId,
+      const parsed = await controlPlaneService.createTask({
         repositoryId,
         title: fields.title,
         description: fields.description,
       });
-      const parsed = applyTaskFromCommandResult(result);
-      if (parsed === null) {
-        throw new Error('control-plane task.create returned malformed task record');
-      }
+      applyTaskRecord(parsed);
       workspace.taskDraftComposer = createTaskComposerBuffer('');
       workspace.taskPaneNotice = null;
       syncTaskPaneSelection();
