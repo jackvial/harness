@@ -181,6 +181,7 @@ import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts'
 import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
+import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
@@ -1996,66 +1997,60 @@ async function main(): Promise<number> {
     await unsubscribeObservedStream(streamClient, subscriptionId);
   };
 
+  const runtimeConversationActivation = new RuntimeConversationActivation({
+    getActiveConversationId: () => conversationManager.activeConversationId,
+    setActiveConversationId: (sessionId) => {
+      conversationManager.setActiveConversationId(sessionId);
+    },
+    isConversationPaneMode: () => workspace.mainPaneMode === 'conversation',
+    enterConversationPaneForActiveSession: (sessionId) => {
+      workspace.mainPaneMode = 'conversation';
+      workspace.selectLeftNavConversation(sessionId);
+      screen.resetFrameCache();
+    },
+    enterConversationPaneForSessionSwitch: (sessionId) => {
+      workspace.mainPaneMode = 'conversation';
+      workspace.selectLeftNavConversation(sessionId);
+      workspace.homePaneDragState = null;
+      workspace.taskPaneTaskEditClickState = null;
+      workspace.taskPaneRepositoryEditClickState = null;
+      workspace.projectPaneSnapshot = null;
+      workspace.projectPaneScrollTop = 0;
+      screen.resetFrameCache();
+    },
+    stopConversationTitleEditForOtherSession: (sessionId) => {
+      if (conversationTitleEdit !== null && conversationTitleEdit.conversationId !== sessionId) {
+        stopConversationTitleEdit(true);
+      }
+    },
+    clearSelectionState: () => {
+      selection = null;
+      selectionDrag = null;
+      releaseViewportPinForSelection();
+    },
+    detachConversation,
+    conversationById: (sessionId) => conversationManager.get(sessionId),
+    noteGitActivity,
+    startConversation,
+    attachConversation,
+    isSessionNotFoundError,
+    isSessionNotLiveError,
+    markSessionUnavailable: (sessionId) => {
+      conversationManager.markSessionUnavailable(sessionId);
+    },
+    schedulePtyResizeImmediate: () => {
+      schedulePtyResize(
+        {
+          cols: layout.rightCols,
+          rows: layout.paneRows,
+        },
+        true,
+      );
+    },
+    markDirty,
+  });
   const activateConversation = async (sessionId: string): Promise<void> => {
-    if (conversationManager.activeConversationId === sessionId) {
-      if (workspace.mainPaneMode !== 'conversation') {
-        workspace.mainPaneMode = 'conversation';
-        workspace.selectLeftNavConversation(sessionId);
-        screen.resetFrameCache();
-        markDirty();
-      }
-      return;
-    }
-    if (conversationTitleEdit !== null && conversationTitleEdit.conversationId !== sessionId) {
-      stopConversationTitleEdit(true);
-    }
-    const previousActiveId = conversationManager.activeConversationId;
-    selection = null;
-    selectionDrag = null;
-    releaseViewportPinForSelection();
-    if (previousActiveId !== null) {
-      await detachConversation(previousActiveId);
-    }
-    conversationManager.setActiveConversationId(sessionId);
-    workspace.mainPaneMode = 'conversation';
-    workspace.selectLeftNavConversation(sessionId);
-    workspace.homePaneDragState = null;
-    workspace.taskPaneTaskEditClickState = null;
-    workspace.taskPaneRepositoryEditClickState = null;
-    workspace.projectPaneSnapshot = null;
-    workspace.projectPaneScrollTop = 0;
-    screen.resetFrameCache();
-    const targetConversation = conversationManager.get(sessionId);
-    if (targetConversation?.directoryId !== undefined) {
-      noteGitActivity(targetConversation.directoryId);
-    }
-    if (
-      targetConversation !== undefined &&
-      !targetConversation.live &&
-      targetConversation.status !== 'exited'
-    ) {
-      await startConversation(sessionId);
-    }
-    if (targetConversation?.status !== 'exited') {
-      try {
-        await attachConversation(sessionId);
-      } catch (error: unknown) {
-        if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
-          throw error;
-        }
-        conversationManager.markSessionUnavailable(sessionId);
-        await startConversation(sessionId);
-        await attachConversation(sessionId);
-      }
-    }
-    schedulePtyResize(
-      {
-        cols: layout.rightCols,
-        rows: layout.paneRows,
-      },
-      true,
-    );
-    markDirty();
+    await runtimeConversationActivation.activateConversation(sessionId);
   };
 
   const removeConversationState = (sessionId: string): void => {

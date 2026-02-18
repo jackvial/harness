@@ -1213,6 +1213,24 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3307 non-empty LOC
 
+### Checkpoint BL (2026-02-18): Action-handler extraction continues with conversation activation lifecycle
+
+- Added `src/services/runtime-conversation-activation.ts` with a class-based `RuntimeConversationActivation` that owns:
+  - active-session short-circuit behavior
+  - session-switch detach/attach orchestration
+  - recoverable attach retry (`session not found` / `session not live`) with `markSessionUnavailable(...)`
+  - post-activation resize + dirty scheduling hooks
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate `activateConversation(...)` to `RuntimeConversationActivation`, removing the inline activation control-flow block.
+- Added `test/services-runtime-conversation-activation.test.ts` with coverage for:
+  - active-session no-op and pane-restore branch
+  - normal session-switch path
+  - recoverable attach retry path
+  - non-recoverable attach error rethrow path
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3302 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue action-handler extraction before wiring cleanup:
