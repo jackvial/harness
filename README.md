@@ -4,25 +4,14 @@ Harness is a terminal-native control plane for agentic coding on your local mach
 
 Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal`, and `critique`, while keeping each thread in project context with one fast TUI and one typed realtime API.
 
-## What You Can Do With It
+## What You Can Do
 
-- Keep many agents running in parallel across multiple CLIs.
-- Retain native CLI ergonomics instead of forcing a custom agent shell.
-- Use extremely fast diff workflows with dedicated `critique` threads.
-- Keep native terminal access for direct command execution and debugging.
-- Switch threads in milliseconds with keyboard-first navigation.
-- Operate at 400+ FPS rendering on local workloads.
-- Automate through a typed realtime control-plane API.
-
-## What You Can Do Today
-
-- Start parallel `codex`, `claude`, `cursor`, `terminal`, and `critique` threads in one workspace.
-- Use project-scoped thread management (create, rename, archive, restore-ready metadata).
-- Track repositories and tasks with full CRUD through the control plane (`repository.*`, `task.*`).
-- Use strict human/agent control semantics (claim, release, takeover).
-- Keep long-running sessions alive in the detached gateway while clients reconnect.
-- Subscribe to typed realtime events for status, output, telemetry, and lifecycle activity.
-- Keep UI responsiveness high under heavy output and rapid thread switching.
+- Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
+- Keep native CLI ergonomics while working from one keyboard-first workspace.
+- Jump between threads in milliseconds, with 400+ FPS rendering under local workloads.
+- Use `critique` threads for very fast diff/review loops, with native terminal access when you need to drop to commands.
+- Keep long-running threads alive in the detached gateway so reconnects do not kill work.
+- Add automation last through the typed realtime API (`projects`, `threads`, `repositories`, `tasks`, subscriptions).
 
 ## Demo
 
