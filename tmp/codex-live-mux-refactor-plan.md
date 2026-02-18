@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4098 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4107 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -807,3 +807,15 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4098 non-empty LOC
+
+### Checkpoint AL (2026-02-18): Phase 8 continues with class-based main-pane pointer click routing
+
+- Added `src/ui/main-pane-pointer-input.ts` with a class-based `MainPanePointerInput` that owns:
+  - project-pane click eligibility + dispatch through `handleProjectPaneActionClick`
+  - home-pane click eligibility + dispatch through `handleHomePanePointerClick`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate project/home right-pane click routing to `MainPanePointerInput`, removing inline `project`/`home` click option assembly from the `onInput` mouse branch.
+- Added `test/ui-main-pane-pointer-input.test.ts` for injected dispatch coverage and default dependency ineligible-click behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4107 non-empty LOC
