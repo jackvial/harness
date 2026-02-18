@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4498 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4441 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -640,3 +640,28 @@ bun run loc:verify:enforce
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4498 non-empty LOC
+
+### Checkpoint AB (2026-02-18): ControlPlaneService expands to directory/conversation metadata flows
+
+- Continued Phase 5 by extending `ControlPlaneService` to cover directory/conversation metadata operations:
+  - `directory.upsert`
+  - `directory.list`
+  - `directory.archive`
+  - `conversation.list`
+  - `conversation.create`
+  - `conversation.update` (title)
+  - `conversation.archive`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate startup and project-metadata command flows through the service:
+  - startup `directory.upsert`
+  - directory hydration + path repair upserts
+  - persisted conversation hydration by directory
+  - conversation title persistence update flow
+  - conversation create/archive callbacks in conversation/directory actions
+  - directory archive callback
+- Expanded `test/services-control-plane.test.ts` with success/malformed coverage for new service methods.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4441 non-empty LOC

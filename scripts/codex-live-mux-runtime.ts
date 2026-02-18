@@ -95,8 +95,6 @@ import {
 import { isUiModalOverlayHit } from '../src/ui/kit.ts';
 import {
   parseDirectoryGitStatusRecord,
-  parseConversationRecord,
-  parseDirectoryRecord,
   parseRepositoryRecord,
   parseSessionControllerRecord,
   parseTaskRecord,
@@ -260,7 +258,7 @@ import { ControlPlaneService } from '../src/services/control-plane.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
-type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
+type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
 
@@ -580,18 +578,10 @@ async function main(): Promise<number> {
   });
   const startupObservedCursor = await readObservedStreamCursorBaseline(streamClient, options.scope);
   const directoryUpsertSpan = startPerfSpan('mux.startup.directory-upsert');
-  const directoryResult = await streamClient.sendCommand({
-    type: 'directory.upsert',
+  const persistedDirectory = await controlPlaneService.upsertDirectory({
     directoryId: `directory-${options.scope.workspaceId}`,
-    tenantId: options.scope.tenantId,
-    userId: options.scope.userId,
-    workspaceId: options.scope.workspaceId,
     path: options.invocationDirectory,
   });
-  const persistedDirectory = parseDirectoryRecord(directoryResult['directory']);
-  if (persistedDirectory === null) {
-    throw new Error('control-plane directory.upsert returned malformed directory record');
-  }
   directoryUpsertSpan.end();
   const workspace = new WorkspaceModel({
     activeDirectoryId: persistedDirectory.directoryId,
@@ -852,34 +842,17 @@ async function main(): Promise<number> {
   };
 
   const hydrateDirectoryList = async (): Promise<void> => {
-    const listed = await streamClient.sendCommand({
-      type: 'directory.list',
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-    });
-    const rows = Array.isArray(listed['directories']) ? listed['directories'] : [];
+    const rows = await controlPlaneService.listDirectories();
     directoryManager.clearDirectories();
     for (const row of rows) {
-      const record = parseDirectoryRecord(row);
-      if (record === null) {
-        continue;
-      }
+      const record = row;
       const normalizedPath = resolveWorkspacePathForMux(options.invocationDirectory, record.path);
       if (normalizedPath !== record.path) {
-        const repairedResult = await streamClient.sendCommand({
-          type: 'directory.upsert',
+        const repairedRecord = await controlPlaneService.upsertDirectory({
           directoryId: record.directoryId,
-          tenantId: record.tenantId,
-          userId: record.userId,
-          workspaceId: record.workspaceId,
           path: normalizedPath,
         });
-        const repairedRecord = parseDirectoryRecord(repairedResult['directory']);
-        directoryManager.setDirectory(
-          record.directoryId,
-          repairedRecord ?? { ...record, path: normalizedPath },
-        );
+        directoryManager.setDirectory(record.directoryId, repairedRecord);
         continue;
       }
       directoryManager.setDirectory(record.directoryId, record);
@@ -944,21 +917,8 @@ async function main(): Promise<number> {
   const hydratePersistedConversationsForDirectory = async (
     directoryId: string,
   ): Promise<number> => {
-    const listedPersisted = await streamClient.sendCommand({
-      type: 'conversation.list',
-      directoryId,
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-    });
-    const persistedRows = Array.isArray(listedPersisted['conversations'])
-      ? listedPersisted['conversations']
-      : [];
-    for (const row of persistedRows) {
-      const record = parseConversationRecord(row);
-      if (record === null) {
-        continue;
-      }
+    const persistedRows = await controlPlaneService.listConversations(directoryId);
+    for (const record of persistedRows) {
       conversationManager.upsertFromPersistedRecord({
         record,
         ensureConversation,
@@ -2054,12 +2014,10 @@ async function main(): Promise<number> {
     markDirty();
     queueControlPlaneOp(async () => {
       try {
-        const result = await streamClient.sendCommand({
-          type: 'conversation.update',
+        const parsed = await controlPlaneService.updateConversationTitle({
           conversationId: edit.conversationId,
           title: titleToPersist,
         });
-        const parsed = parseConversationRecord(result['conversation']);
         const persistedTitle = parsed?.title ?? titleToPersist;
         const latestConversation = conversationManager.get(edit.conversationId);
         const latestEdit = conversationTitleEdit;
@@ -3021,12 +2979,11 @@ async function main(): Promise<number> {
       agentType,
       createConversationId: () => `conversation-${randomUUID()}`,
       createConversationRecord: async (sessionId, targetDirectoryId, targetAgentType) => {
-        await streamClient.sendCommand({
-          type: 'conversation.create',
+        await controlPlaneService.createConversation({
           conversationId: sessionId,
           directoryId: targetDirectoryId,
           title: '',
-          agentType: targetAgentType,
+          agentType: String(targetAgentType),
           adapterState: {},
         });
       },
@@ -3080,10 +3037,7 @@ async function main(): Promise<number> {
       },
       isSessionNotFoundError,
       archiveConversationRecord: async (targetSessionId) => {
-        await streamClient.sendCommand({
-          type: 'conversation.archive',
-          conversationId: targetSessionId,
-        });
+        await controlPlaneService.archiveConversation(targetSessionId);
       },
       isConversationNotFoundError,
       unsubscribeConversationEvents,
@@ -3133,15 +3087,10 @@ async function main(): Promise<number> {
       resolveWorkspacePathForMux: (value) =>
         resolveWorkspacePathForMux(options.invocationDirectory, value),
       upsertDirectory: async (path) => {
-        const directoryResult = await streamClient.sendCommand({
-          type: 'directory.upsert',
+        return await controlPlaneService.upsertDirectory({
           directoryId: `directory-${randomUUID()}`,
-          tenantId: options.scope.tenantId,
-          userId: options.scope.userId,
-          workspaceId: options.scope.workspaceId,
           path,
         });
-        return parseDirectoryRecord(directoryResult['directory']);
       },
       setDirectory: (directory) => {
         directoryManager.setDirectory(directory.directoryId, directory);
@@ -3178,10 +3127,7 @@ async function main(): Promise<number> {
         });
       },
       archiveConversationRecord: async (sessionId) => {
-        await streamClient.sendCommand({
-          type: 'conversation.archive',
-          conversationId: sessionId,
-        });
+        await controlPlaneService.archiveConversation(sessionId);
       },
       unsubscribeConversationEvents,
       removeConversationState,
@@ -3190,10 +3136,7 @@ async function main(): Promise<number> {
         conversationManager.setActiveConversationId(sessionId);
       },
       archiveDirectory: async (targetDirectoryId) => {
-        await streamClient.sendCommand({
-          type: 'directory.archive',
-          directoryId: targetDirectoryId,
-        });
+        await controlPlaneService.archiveDirectory(targetDirectoryId);
       },
       deleteDirectory: (targetDirectoryId) => {
         directoryManager.deleteDirectory(targetDirectoryId);

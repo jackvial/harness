@@ -32,6 +32,33 @@ function repositoryRecord(repositoryId = 'repo-1'): Record<string, unknown> {
   };
 }
 
+function directoryRecord(directoryId = 'dir-1', path = '/tmp/project'): Record<string, unknown> {
+  return {
+    directoryId,
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+    path,
+    createdAt: '2026-02-18T00:00:00.000Z',
+    archivedAt: null,
+  };
+}
+
+function conversationRecord(conversationId = 'conversation-1', directoryId = 'dir-1'): Record<string, unknown> {
+  return {
+    conversationId,
+    directoryId,
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+    title: 'Thread',
+    agentType: 'codex',
+    adapterState: {},
+    runtimeStatus: 'running',
+    runtimeLive: true,
+  };
+}
+
 function taskRecord(
   taskId = 'task-1',
   status: 'draft' | 'ready' | 'in-progress' | 'completed' = 'ready',
@@ -115,6 +142,92 @@ void test('control-plane service sends scoped commands and parses repository/tas
   assert.equal(client.commands[7]?.type, 'task.complete');
   assert.equal(client.commands[8]?.type, 'task.reorder');
   assert.equal(client.commands[9]?.type, 'task.delete');
+});
+
+void test('control-plane service sends directory/conversation commands and parses records', async () => {
+  const client = new MockCommandClient();
+  const service = new ControlPlaneService(client, {
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+  });
+
+  client.results.push(
+    { directory: directoryRecord('dir-upsert', '/tmp/upsert') },
+    { directories: [directoryRecord('dir-list', '/tmp/list')] },
+    { conversations: [conversationRecord('conversation-list', 'dir-list')] },
+    {},
+    { conversation: conversationRecord('conversation-title', 'dir-list') },
+    {},
+    {},
+  );
+
+  assert.equal(
+    (await service.upsertDirectory({ directoryId: 'dir-upsert', path: '/tmp/upsert' })).directoryId,
+    'dir-upsert',
+  );
+  assert.equal((await service.listDirectories())[0]?.directoryId, 'dir-list');
+  assert.equal((await service.listConversations('dir-list'))[0]?.conversationId, 'conversation-list');
+  await service.createConversation({
+    conversationId: 'conversation-create',
+    directoryId: 'dir-list',
+    title: '',
+    agentType: 'codex',
+    adapterState: {},
+  });
+  assert.equal(
+    (await service.updateConversationTitle({
+      conversationId: 'conversation-title',
+      title: 'Renamed',
+    }))?.title,
+    'Thread',
+  );
+  await service.archiveConversation('conversation-title');
+  await service.archiveDirectory('dir-list');
+
+  assert.equal(client.commands[0]?.type, 'directory.upsert');
+  assert.equal(client.commands[1]?.type, 'directory.list');
+  assert.equal(client.commands[2]?.type, 'conversation.list');
+  assert.equal(client.commands[3]?.type, 'conversation.create');
+  assert.equal(client.commands[4]?.type, 'conversation.update');
+  assert.equal(client.commands[5]?.type, 'conversation.archive');
+  assert.equal(client.commands[6]?.type, 'directory.archive');
+});
+
+void test('control-plane service directory/conversation parse helpers handle malformed payloads', async () => {
+  const client = new MockCommandClient();
+  const service = new ControlPlaneService(client, {
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+  });
+
+  client.results.push({ directory: {} });
+  await assert.rejects(
+    () => service.upsertDirectory({ directoryId: 'dir-1', path: '/tmp/one' }),
+    /control-plane directory\.upsert returned malformed directory record/,
+  );
+
+  client.results.push({ directories: {} });
+  assert.deepEqual(await service.listDirectories(), []);
+
+  client.results.push({ directories: [{}] });
+  assert.deepEqual(await service.listDirectories(), []);
+
+  client.results.push({ conversations: {} });
+  assert.deepEqual(await service.listConversations('dir-1'), []);
+
+  client.results.push({ conversations: [{}] });
+  assert.deepEqual(await service.listConversations('dir-1'), []);
+
+  client.results.push({ conversation: {} });
+  assert.equal(
+    await service.updateConversationTitle({
+      conversationId: 'conversation-1',
+      title: 'Renamed',
+    }),
+    null,
+  );
 });
 
 void test('control-plane service rejects malformed repository and task list payloads', async () => {

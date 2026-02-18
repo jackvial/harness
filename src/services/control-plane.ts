@@ -1,5 +1,7 @@
 import type { StreamCommand } from '../control-plane/stream-protocol.ts';
 import {
+  parseConversationRecord,
+  parseDirectoryRecord,
   parseRepositoryRecord,
   parseTaskRecord,
 } from '../mux/live-mux/control-plane-records.ts';
@@ -16,6 +18,8 @@ interface ControlPlaneCommandClient {
 
 type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
+type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
+type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
 
 export class ControlPlaneService {
   constructor(
@@ -43,6 +47,105 @@ export class ControlPlaneService {
       repositories.push(parsed);
     }
     return repositories;
+  }
+
+  async upsertDirectory(input: {
+    directoryId: string;
+    path: string;
+  }): Promise<ControlPlaneDirectoryRecord> {
+    const result = await this.client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: input.directoryId,
+      tenantId: this.scope.tenantId,
+      userId: this.scope.userId,
+      workspaceId: this.scope.workspaceId,
+      path: input.path,
+    });
+    const parsed = parseDirectoryRecord(result['directory']);
+    if (parsed === null) {
+      throw new Error('control-plane directory.upsert returned malformed directory record');
+    }
+    return parsed;
+  }
+
+  async listDirectories(): Promise<readonly ControlPlaneDirectoryRecord[]> {
+    const result = await this.client.sendCommand({
+      type: 'directory.list',
+      tenantId: this.scope.tenantId,
+      userId: this.scope.userId,
+      workspaceId: this.scope.workspaceId,
+    });
+    const rows = Array.isArray(result['directories']) ? result['directories'] : [];
+    const directories: ControlPlaneDirectoryRecord[] = [];
+    for (const row of rows) {
+      const parsed = parseDirectoryRecord(row);
+      if (parsed !== null) {
+        directories.push(parsed);
+      }
+    }
+    return directories;
+  }
+
+  async listConversations(directoryId: string): Promise<readonly ControlPlaneConversationRecord[]> {
+    const result = await this.client.sendCommand({
+      type: 'conversation.list',
+      directoryId,
+      tenantId: this.scope.tenantId,
+      userId: this.scope.userId,
+      workspaceId: this.scope.workspaceId,
+    });
+    const rows = Array.isArray(result['conversations']) ? result['conversations'] : [];
+    const conversations: ControlPlaneConversationRecord[] = [];
+    for (const row of rows) {
+      const parsed = parseConversationRecord(row);
+      if (parsed !== null) {
+        conversations.push(parsed);
+      }
+    }
+    return conversations;
+  }
+
+  async createConversation(input: {
+    conversationId: string;
+    directoryId: string;
+    title: string;
+    agentType: string;
+    adapterState: Record<string, unknown>;
+  }): Promise<void> {
+    await this.client.sendCommand({
+      type: 'conversation.create',
+      conversationId: input.conversationId,
+      directoryId: input.directoryId,
+      title: input.title,
+      agentType: input.agentType,
+      adapterState: input.adapterState,
+    });
+  }
+
+  async updateConversationTitle(input: {
+    conversationId: string;
+    title: string;
+  }): Promise<ControlPlaneConversationRecord | null> {
+    const result = await this.client.sendCommand({
+      type: 'conversation.update',
+      conversationId: input.conversationId,
+      title: input.title,
+    });
+    return parseConversationRecord(result['conversation']);
+  }
+
+  async archiveConversation(conversationId: string): Promise<void> {
+    await this.client.sendCommand({
+      type: 'conversation.archive',
+      conversationId,
+    });
+  }
+
+  async archiveDirectory(directoryId: string): Promise<void> {
+    await this.client.sendCommand({
+      type: 'directory.archive',
+      directoryId,
+    });
   }
 
   async listTasks(limit = 1000): Promise<readonly ControlPlaneTaskRecord[]> {
