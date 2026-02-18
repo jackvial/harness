@@ -189,6 +189,7 @@ import { RuntimeConversationStarter } from '../src/services/runtime-conversation
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
 import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
+import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
@@ -2484,6 +2485,31 @@ async function main(): Promise<number> {
     },
   });
 
+  const runtimeRightPaneRender = new RuntimeRightPaneRender<
+    ControlPlaneRepositoryRecord,
+    ControlPlaneTaskRecord
+  >({
+    workspace,
+    repositories,
+    taskManager,
+    conversationPane,
+    homePane,
+    projectPane,
+    refreshProjectPaneSnapshot: (directoryId) => {
+      refreshProjectPaneSnapshot(directoryId);
+      return workspace.projectPaneSnapshot;
+    },
+    emptyTaskPaneView: () => ({
+      rows: [],
+      taskIds: [],
+      repositoryIds: [],
+      actions: [],
+      actionCells: [],
+      top: 0,
+      selectedRepositoryId: null,
+    }),
+  });
+
   const render = (): void => {
     if (shuttingDown || !screen.isDirty()) {
       return;
@@ -2549,57 +2575,13 @@ async function main(): Promise<number> {
       loadingGitSummary: GIT_SUMMARY_LOADING,
     });
     latestRailViewRows = rail.viewRows;
-    let rightRows: readonly string[] = [];
-    workspace.latestTaskPaneView = {
-      rows: [],
-      taskIds: [],
-      repositoryIds: [],
-      actions: [],
-      actionCells: [],
-      top: 0,
-      selectedRepositoryId: null,
-    };
-    if (rightFrame !== null) {
-      rightRows = conversationPane.render(rightFrame, layout);
-    } else if (homePaneActive) {
-      const view = homePane.render({
-        layout,
-        repositories,
-        tasks: taskManager.readonlyTasks(),
-        selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
-        repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
-        editorTarget: workspace.taskEditorTarget,
-        draftBuffer: workspace.taskDraftComposer,
-        taskBufferById: taskManager.readonlyTaskComposers(),
-        notice: workspace.taskPaneNotice,
-        scrollTop: workspace.taskPaneScrollTop,
-      });
-      workspace.taskPaneSelectedRepositoryId = view.selectedRepositoryId;
-      workspace.taskPaneScrollTop = view.top;
-      workspace.latestTaskPaneView = view;
-      rightRows = view.rows;
-    } else if (projectPaneActive && workspace.activeDirectoryId !== null) {
-      if (workspace.projectPaneSnapshot === null || workspace.projectPaneSnapshot.directoryId !== workspace.activeDirectoryId) {
-        refreshProjectPaneSnapshot(workspace.activeDirectoryId);
-      }
-      if (workspace.projectPaneSnapshot === null) {
-        rightRows = projectPane.render({
-          layout,
-          snapshot: null,
-          scrollTop: workspace.projectPaneScrollTop,
-        }).rows;
-      } else {
-        const view = projectPane.render({
-          layout,
-          snapshot: workspace.projectPaneSnapshot,
-          scrollTop: workspace.projectPaneScrollTop,
-        });
-        workspace.projectPaneScrollTop = view.scrollTop;
-        rightRows = view.rows;
-      }
-    } else {
-      rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
-    }
+    const rightRows = runtimeRightPaneRender.renderRightRows({
+      layout,
+      rightFrame,
+      homePaneActive,
+      projectPaneActive,
+      activeDirectoryId: workspace.activeDirectoryId,
+    });
     runtimeRenderFlush.flushRender({
       layout,
       projectPaneActive,

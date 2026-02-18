@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3168 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3149 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1394,9 +1394,28 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3168 non-empty LOC
 
+### Checkpoint BW (2026-02-18): Right-pane row assembly extracted into class service
+
+- Added `src/services/runtime-right-pane-render.ts` with class-based `RuntimeRightPaneRender` to own right-pane branch rendering:
+  - resets task-pane view snapshot on each render pass
+  - conversation-frame row rendering branch
+  - home-pane row rendering + workspace task-pane selection/scroll/view updates
+  - project-pane row rendering + snapshot refresh + project scroll updates
+  - blank-pane fallback rows
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate right-pane row assembly from `render()` to `RuntimeRightPaneRender.renderRightRows(...)`.
+- Added `test/services-runtime-right-pane-render.test.ts` with branch coverage for:
+  - conversation branch and task-view reset behavior
+  - home branch workspace state updates
+  - project branch snapshot refresh/reuse behavior
+  - blank-row fallback branch
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3149 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue startup/runtime orchestration extraction before callback-bag cleanup:
-  - extract remaining render-row assembly branch (pane/rail build path) into a class service
-  - extract input token-loop orchestration seam to keep runtime trending down
-  - start action-handler consolidation pass (conversation/directory/task orchestration bundles)
+  - extract left-rail render input assembly + selector instrumentation into a class service
+  - extract action-handler consolidation slice (conversation/directory/task orchestration bundles)
+  - then perform callback-bag reduction pass for input/router modules
