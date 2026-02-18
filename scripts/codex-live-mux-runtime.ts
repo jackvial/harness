@@ -168,6 +168,7 @@ import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shor
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
+import { RuntimeWorkspaceActions } from '../src/services/runtime-workspace-actions.ts';
 import { WorkspaceObservedEvents } from '../src/services/workspace-observed-events.ts';
 import { RuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
 import { StartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
@@ -190,7 +191,6 @@ import { InputTokenRouter } from '../src/ui/input-token-router.ts';
 import { ConversationInputForwarder } from '../src/ui/conversation-input-forwarder.ts';
 import { InputPreflight } from '../src/ui/input-preflight.ts';
 
-type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
 type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
@@ -1734,36 +1734,6 @@ async function main(): Promise<number> {
     markDirty,
   });
 
-  const reorderRepositoryByDrop = (
-    draggedRepositoryId: string,
-    targetRepositoryId: string,
-  ): void => {
-    runtimeRepositoryActions.reorderRepositoryByDrop(
-      draggedRepositoryId,
-      targetRepositoryId,
-      orderedActiveRepositoryRecords().map((repository) => repository.repositoryId),
-    );
-  };
-
-  const openRepositoryPromptForCreate = (): void => {
-    runtimeRepositoryActions.openRepositoryPromptForCreate();
-  };
-
-  const openRepositoryPromptForEdit = (repositoryId: string): void => {
-    runtimeRepositoryActions.openRepositoryPromptForEdit(repositoryId);
-  };
-
-  const upsertRepositoryByRemoteUrl = async (
-    remoteUrl: string,
-    existingRepositoryId?: string,
-  ): Promise<void> => {
-    await runtimeRepositoryActions.upsertRepositoryByRemoteUrl(remoteUrl, existingRepositoryId);
-  };
-
-  const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
-    await runtimeRepositoryActions.archiveRepositoryById(repositoryId);
-  };
-
   const runtimeTaskPaneActions = new RuntimeTaskPaneActions<ControlPlaneTaskRecord>({
     workspace,
     controlPlaneService,
@@ -1799,9 +1769,15 @@ async function main(): Promise<number> {
     queueControlPlaneOp,
     syncTaskPaneSelection,
     syncTaskPaneRepositorySelection,
-    openRepositoryPromptForCreate,
-    openRepositoryPromptForEdit,
-    archiveRepositoryById,
+    openRepositoryPromptForCreate: () => {
+      runtimeRepositoryActions.openRepositoryPromptForCreate();
+    },
+    openRepositoryPromptForEdit: (repositoryId) => {
+      runtimeRepositoryActions.openRepositoryPromptForEdit(repositoryId);
+    },
+    archiveRepositoryById: async (repositoryId) => {
+      await runtimeRepositoryActions.archiveRepositoryById(repositoryId);
+    },
     markDirty,
   });
   const runtimeTaskPaneShortcuts = new RuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
@@ -1902,25 +1878,14 @@ async function main(): Promise<number> {
       debugFooterNotice.set(message);
     },
   });
-  const archiveConversation = async (sessionId: string): Promise<void> => {
-    await runtimeDirectoryActions.archiveConversation(sessionId);
-  };
-
-  const interruptConversation = async (sessionId: string): Promise<void> => {
-    await runtimeControlActions.interruptConversation(sessionId);
-  };
-
-  const addDirectoryByPath = async (rawPath: string): Promise<void> => {
-    await runtimeDirectoryActions.addDirectoryByPath(rawPath);
-  };
-
-  const closeDirectory = async (directoryId: string): Promise<void> => {
-    await runtimeDirectoryActions.closeDirectory(directoryId);
-  };
-
-  const toggleGatewayProfiler = async (): Promise<void> => {
-    await runtimeControlActions.toggleGatewayProfiler();
-  };
+  const runtimeWorkspaceActions = new RuntimeWorkspaceActions({
+    conversationActions: conversationLifecycle,
+    directoryActions: runtimeDirectoryActions,
+    repositoryActions: runtimeRepositoryActions,
+    controlActions: runtimeControlActions,
+    orderedActiveRepositoryIds: () =>
+      orderedActiveRepositoryRecords().map((repository) => repository.repositoryId),
+  });
 
   const pinViewportForSelection = (): void => {
     if (workspace.selectionPinnedFollowOutput !== null) {
@@ -2213,16 +2178,19 @@ async function main(): Promise<number> {
     resolveNewThreadPromptAgentByRow,
     stopConversationTitleEdit,
     queueControlPlaneOp,
-    archiveConversation,
-    createAndActivateConversationInDirectory: async (directoryId, agentType) => {
-      await conversationLifecycle.createAndActivateConversationInDirectory(
-        directoryId,
-        String(agentType as ThreadAgentType),
-      );
+    archiveConversation: async (sessionId) => {
+      await runtimeWorkspaceActions.archiveConversation(sessionId);
     },
-    addDirectoryByPath,
+    createAndActivateConversationInDirectory: async (directoryId, agentType) => {
+      await runtimeWorkspaceActions.createAndActivateConversationInDirectory(directoryId, agentType);
+    },
+    addDirectoryByPath: async (rawPath) => {
+      await runtimeWorkspaceActions.addDirectoryByPath(rawPath);
+    },
     normalizeGitHubRemoteUrl,
-    upsertRepositoryByRemoteUrl,
+    upsertRepositoryByRemoteUrl: async (remoteUrl, existingRepositoryId) => {
+      await runtimeWorkspaceActions.upsertRepositoryByRemoteUrl(remoteUrl, existingRepositoryId);
+    },
     repositoriesHas: (repositoryId) => repositories.has(repositoryId),
     markDirty,
     conversations: conversationRecords,
@@ -2301,7 +2269,7 @@ async function main(): Promise<number> {
     conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
     queueControlPlaneOp,
     activateConversation: async (sessionId) => {
-      await conversationLifecycle.activateConversation(sessionId);
+      await runtimeWorkspaceActions.activateConversation(sessionId);
     },
     conversationsHas: (sessionId) => conversationManager.has(sessionId),
   });
@@ -2327,7 +2295,7 @@ async function main(): Promise<number> {
   });
   const queueCloseDirectoryMouseAction = (directoryId: string, label: string): void => {
     queueControlPlaneOp(async () => {
-      await closeDirectory(directoryId);
+      await runtimeWorkspaceActions.closeDirectory(directoryId);
     }, label);
   };
   const leftRailPointerInput = new LeftRailPointerInput({
@@ -2353,7 +2321,7 @@ async function main(): Promise<number> {
     openNewThreadPrompt,
     queueArchiveConversation: (conversationId) => {
       queueControlPlaneOp(async () => {
-        await archiveConversation(conversationId);
+        await runtimeWorkspaceActions.archiveConversation(conversationId);
       }, 'mouse-archive-conversation');
     },
     openAddDirectoryPrompt: () => {
@@ -2363,12 +2331,16 @@ async function main(): Promise<number> {
         error: null,
       };
     },
-    openRepositoryPromptForCreate,
+    openRepositoryPromptForCreate: () => {
+      runtimeWorkspaceActions.openRepositoryPromptForCreate();
+    },
     repositoryExists: (repositoryId) => repositories.has(repositoryId),
-    openRepositoryPromptForEdit,
+    openRepositoryPromptForEdit: (repositoryId) => {
+      runtimeWorkspaceActions.openRepositoryPromptForEdit(repositoryId);
+    },
     queueArchiveRepository: (repositoryId) => {
       queueControlPlaneOp(async () => {
-        await archiveRepositoryById(repositoryId);
+        await runtimeWorkspaceActions.archiveRepositoryById(repositoryId);
       }, 'mouse-archive-repository');
     },
     queueCloseDirectory: (directoryId) =>
@@ -2401,12 +2373,12 @@ async function main(): Promise<number> {
     beginConversationTitleEdit,
     queueActivateConversation: (conversationId) => {
       queueControlPlaneOp(async () => {
-        await conversationLifecycle.activateConversation(conversationId);
+        await runtimeWorkspaceActions.activateConversation(conversationId);
       }, 'mouse-activate-conversation');
     },
     queueActivateConversationAndEdit: (conversationId) => {
       queueControlPlaneOp(async () => {
-        await conversationLifecycle.activateConversation(conversationId);
+        await runtimeWorkspaceActions.activateConversation(conversationId);
         beginConversationTitleEdit(conversationId);
       }, 'mouse-activate-edit-conversation');
     },
@@ -2465,7 +2437,9 @@ async function main(): Promise<number> {
     openTaskEditPrompt: (taskId) => {
       runtimeTaskPaneActions.openTaskEditPrompt(taskId);
     },
-    openRepositoryPromptForEdit,
+    openRepositoryPromptForEdit: (repositoryId) => {
+      runtimeWorkspaceActions.openRepositoryPromptForEdit(repositoryId);
+    },
     markDirty,
   });
   const pointerRoutingInput = new PointerRoutingInput({
@@ -2485,7 +2459,9 @@ async function main(): Promise<number> {
     reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
       runtimeTaskPaneActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
     },
-    reorderRepositoryByDrop,
+    reorderRepositoryByDrop: (draggedRepositoryId, targetRepositoryId) => {
+      runtimeWorkspaceActions.reorderRepositoryByDrop(draggedRepositoryId, targetRepositoryId);
+    },
     onProjectWheel: (delta) => {
       workspace.projectPaneScrollTop = Math.max(0, workspace.projectPaneScrollTop + delta);
     },
@@ -2513,19 +2489,23 @@ async function main(): Promise<number> {
     resolveDirectoryForAction,
     openNewThreadPrompt,
     openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
-      await conversationLifecycle.openOrCreateCritiqueConversationInDirectory(directoryId);
+      await runtimeWorkspaceActions.openOrCreateCritiqueConversationInDirectory(directoryId);
     },
     toggleGatewayProfile: async () => {
-      await toggleGatewayProfiler();
+      await runtimeWorkspaceActions.toggleGatewayProfiler();
     },
     getMainPaneMode: () => workspace.mainPaneMode,
     getActiveConversationId: () => conversationManager.activeConversationId,
     conversationsHas: (sessionId) => conversationManager.has(sessionId),
     queueControlPlaneOp,
-    archiveConversation,
-    interruptConversation,
+    archiveConversation: async (sessionId) => {
+      await runtimeWorkspaceActions.archiveConversation(sessionId);
+    },
+    interruptConversation: async (sessionId) => {
+      await runtimeWorkspaceActions.interruptConversation(sessionId);
+    },
     takeoverConversation: async (sessionId) => {
-      await conversationLifecycle.takeoverConversation(sessionId);
+      await runtimeWorkspaceActions.takeoverConversation(sessionId);
     },
     openAddDirectoryPrompt: () => {
       workspace.repositoryPrompt = null;
@@ -2537,7 +2517,9 @@ async function main(): Promise<number> {
     },
     getActiveDirectoryId: () => workspace.activeDirectoryId,
     directoryExists: (directoryId) => directoryManager.hasDirectory(directoryId),
-    closeDirectory,
+    closeDirectory: async (directoryId) => {
+      await runtimeWorkspaceActions.closeDirectory(directoryId);
+    },
     cycleLeftNavSelection: (direction) => {
       leftNavInput.cycleSelection(direction);
     },
