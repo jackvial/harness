@@ -3155,7 +3155,7 @@ async function main(): Promise<number> {
       directoryId,
       orderedConversationIds: () => conversationManager.orderedIds(),
       conversationById: (sessionId) => {
-        const conversation = conversations.get(sessionId);
+        const conversation = conversationManager.get(sessionId);
         if (conversation === undefined) {
           return null;
         }
