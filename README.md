@@ -4,17 +4,25 @@ Harness is a terminal-native control plane for agentic coding on your local mach
 
 Run multiple coding threads in parallel, keep each thread isolated to its own project context, and stay in control with one fast TUI and one typed realtime API.
 
-## Why Agentic Coders Use It
+## Performance, Keybinds, Programmability
 
-If you run one agent at a time, you serialize work that could run concurrently.
+### Speed
 
-Harness is built for developers who want to:
+- Single-pass terminal query parsing with lazy state reads for CSI probes.
+- Snapshot row reuse to reduce render cost during heavy output and scrolling.
 
-- run many coding threads at once across projects,
-- keep thread context isolated and recoverable,
-- switch instantly between active threads,
-- step in, take over, and hand control back cleanly,
-- script the same system through a typed API.
+### Keybinds
+
+- `ctrl+j` / `ctrl+k` move through navigation targets.
+- `ctrl+g` opens or creates the current project's critique thread.
+- `ctrl+p` toggles gateway profiling.
+- Repository fold controls: `ctrl+k ctrl+j` expands all, `ctrl+k ctrl+0` collapses all.
+
+### Programmability
+
+- Typed realtime API with event subscriptions.
+- Thread/repository/task CRUD through stream commands.
+- Human UI and automation clients use the same control surface.
 
 ## What You Can Do Today
 
