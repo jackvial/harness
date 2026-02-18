@@ -173,6 +173,7 @@ import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-ac
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
 import { WorkspaceObservedEvents } from '../src/services/workspace-observed-events.ts';
+import { RuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
 import { StartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
@@ -1563,133 +1564,33 @@ async function main(): Promise<number> {
     conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
   });
 
+  const runtimeWorkspaceObservedEvents = new RuntimeWorkspaceObservedEvents<StreamObservedEvent>({
+    reducer: workspaceObservedEvents,
+    workspace,
+    orderedConversationIds: () => conversationManager.orderedIds(),
+    conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
+    hasConversation: (sessionId) => conversationManager.has(sessionId),
+    getActiveConversationId: () => conversationManager.activeConversationId,
+    setActiveConversationId: (sessionId) => {
+      conversationManager.setActiveConversationId(sessionId);
+    },
+    hasDirectory: (directoryId) => directoryManager.hasDirectory(directoryId),
+    resolveActiveDirectoryId,
+    unsubscribeConversationEvents,
+    stopConversationTitleEdit: (persistPending) => {
+      stopConversationTitleEdit(persistPending);
+    },
+    enterProjectPane,
+    enterHomePane,
+    queueControlPlaneOp,
+    activateConversation: async (sessionId) => {
+      await activateConversation(sessionId);
+    },
+    markDirty,
+  });
+
   const applyObservedWorkspaceEvent = (observed: StreamObservedEvent): void => {
-    const activeConversationIdBefore = conversationManager.activeConversationId;
-    const leftNavConversationIdBefore =
-      workspace.leftNavSelection.kind === 'conversation'
-        ? workspace.leftNavSelection.sessionId
-        : null;
-    const previousConversationDirectoryById = new Map<string, string | null>();
-    for (const sessionId of conversationManager.orderedIds()) {
-      previousConversationDirectoryById.set(
-        sessionId,
-        conversationManager.directoryIdOf(sessionId),
-      );
-    }
-
-    const reduced = workspaceObservedEvents.apply(observed);
-    if (!reduced.changed) {
-      return;
-    }
-
-    for (const sessionId of reduced.removedConversationIds) {
-      void unsubscribeConversationEvents(sessionId);
-      if (workspace.conversationTitleEdit?.conversationId === sessionId) {
-        stopConversationTitleEdit(false);
-      }
-    }
-
-    for (const directoryId of reduced.removedDirectoryIds) {
-      if (workspace.projectPaneSnapshot?.directoryId === directoryId) {
-        workspace.projectPaneSnapshot = null;
-        workspace.projectPaneScrollTop = 0;
-      }
-    }
-
-    if (
-      workspace.activeDirectoryId !== null &&
-      !directoryManager.hasDirectory(workspace.activeDirectoryId)
-    ) {
-      workspace.activeDirectoryId = resolveActiveDirectoryId();
-    }
-
-    const removedConversationIdSet = new Set(reduced.removedConversationIds);
-    const activateFallbackConversation = (
-      preferredDirectoryId: string | null,
-      label: string,
-    ): boolean => {
-      const ordered = conversationManager.orderedIds();
-      const fallbackConversationId =
-        (preferredDirectoryId === null
-          ? null
-          : (ordered.find(
-              (sessionId) => conversationManager.directoryIdOf(sessionId) === preferredDirectoryId,
-            ) ?? null)) ??
-        ordered[0] ??
-        null;
-      if (fallbackConversationId === null) {
-        return false;
-      }
-      queueControlPlaneOp(async () => {
-        await activateConversation(fallbackConversationId);
-      }, label);
-      return true;
-    };
-    const fallbackToDirectoryOrHome = (): void => {
-      const fallbackDirectoryId = resolveActiveDirectoryId();
-      if (fallbackDirectoryId !== null) {
-        enterProjectPane(fallbackDirectoryId);
-        markDirty();
-        return;
-      }
-      enterHomePane();
-    };
-
-    if (
-      activeConversationIdBefore !== null &&
-      removedConversationIdSet.has(activeConversationIdBefore)
-    ) {
-      conversationManager.setActiveConversationId(null);
-      const preferredDirectoryId =
-        previousConversationDirectoryById.get(activeConversationIdBefore) ?? null;
-      if (
-        !activateFallbackConversation(preferredDirectoryId, 'observed-active-conversation-removed')
-      ) {
-        fallbackToDirectoryOrHome();
-      }
-      markDirty();
-      return;
-    }
-
-    if (
-      leftNavConversationIdBefore !== null &&
-      removedConversationIdSet.has(leftNavConversationIdBefore)
-    ) {
-      const currentActiveId = conversationManager.activeConversationId;
-      if (currentActiveId !== null && conversationManager.has(currentActiveId)) {
-        workspace.selectLeftNavConversation(currentActiveId);
-        markDirty();
-        return;
-      }
-      const preferredDirectoryId =
-        previousConversationDirectoryById.get(leftNavConversationIdBefore) ?? null;
-      if (
-        !activateFallbackConversation(
-          preferredDirectoryId,
-          'observed-selected-conversation-removed',
-        )
-      ) {
-        fallbackToDirectoryOrHome();
-      }
-      markDirty();
-      return;
-    }
-
-    if (
-      workspace.leftNavSelection.kind === 'project' &&
-      !directoryManager.hasDirectory(workspace.leftNavSelection.directoryId)
-    ) {
-      const fallbackDirectoryId = resolveActiveDirectoryId();
-      if (fallbackDirectoryId !== null) {
-        enterProjectPane(fallbackDirectoryId);
-      } else {
-        enterHomePane();
-      }
-      markDirty();
-      return;
-    }
-
-    markDirty();
+    runtimeWorkspaceObservedEvents.apply(observed);
   };
 
   async function subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {

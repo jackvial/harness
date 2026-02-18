@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2737 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2646 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2172 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1699,6 +1699,25 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2737 non-empty LOC
+
+### Checkpoint CN (2026-02-18): Workspace observed-event runtime orchestration extracted into class service
+
+- Added `src/services/runtime-workspace-observed-events.ts` with class-based `RuntimeWorkspaceObservedEvents` to own:
+  - observed workspace-event reduction orchestration
+  - removed conversation/directory side-effect handling
+  - active/selected conversation fallback activation routing
+  - project/home fallback transitions when selected targets disappear
+- Updated `scripts/codex-live-mux-runtime.ts` to remove inline workspace observed-event orchestration and delegate through `RuntimeWorkspaceObservedEvents`.
+- Added `test/services-runtime-workspace-observed-events.test.ts` with coverage for:
+  - no-change early return
+  - active conversation removal with fallback activation
+  - no-fallback removal path to home
+  - selected-conversation removal fallback behaviors
+  - invalid project selection project/home fallback behavior
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2646 non-empty LOC
 
 ### Next focus (yield-first)
 
