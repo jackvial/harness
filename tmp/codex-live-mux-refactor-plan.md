@@ -1197,9 +1197,25 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3355 non-empty LOC
 
+### Checkpoint BK (2026-02-18): Action-handler extraction continues with directory + archive orchestration
+
+- Added `src/services/runtime-directory-actions.ts` with a class-based `RuntimeDirectoryActions` that owns runtime orchestration for:
+  - `archiveConversation(...)` delegation
+  - `addDirectoryByPath(...)` delegation
+  - `closeDirectory(...)` delegation
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate these handlers to `RuntimeDirectoryActions`, removing three more callback-heavy runtime wrappers.
+- Added `test/services-runtime-directory-actions.test.ts` with branch coverage for:
+  - archive flow with live-session close + project fallback
+  - add-directory flow with hydrate + activate-existing-thread
+  - close-directory flow both for invocation reseed and live-thread archive fallback
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3307 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue action-handler extraction before wiring cleanup:
-  - conversation archive/add-directory/close-directory orchestration bundle
+  - conversation/directory lifecycle handlers that still mutate workspace + manager state inline
   - task + selection transition ownership into workspace/task domain methods
   - hydration flow extraction into manager/service-owned methods

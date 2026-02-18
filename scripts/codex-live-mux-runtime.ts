@@ -152,9 +152,6 @@ import {
   upsertRepositoryByRemoteUrl as upsertRepositoryByRemoteUrlFn,
 } from '../src/mux/live-mux/actions-repository.ts';
 import {
-  addDirectoryByPath as addDirectoryByPathFn,
-  archiveConversation as archiveConversationFn,
-  closeDirectory as closeDirectoryFn,
   openNewThreadPrompt as openNewThreadPromptFn,
 } from '../src/mux/live-mux/actions-conversation.ts';
 import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
@@ -184,6 +181,7 @@ import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts'
 import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
+import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
@@ -2407,6 +2405,57 @@ async function main(): Promise<number> {
     muxControllerLabel,
     markDirty,
   });
+  const runtimeDirectoryActions = new RuntimeDirectoryActions({
+    controlPlaneService,
+    conversations: () => _unsafeConversationMap,
+    orderedConversationIds: () => conversationManager.orderedIds(),
+    conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
+    conversationLive: (sessionId) => conversationManager.isLive(sessionId),
+    removeConversationState,
+    unsubscribeConversationEvents,
+    activeConversationId: () => conversationManager.activeConversationId,
+    setActiveConversationId: (sessionId) => {
+      conversationManager.setActiveConversationId(sessionId);
+    },
+    activateConversation,
+    resolveActiveDirectoryId,
+    enterProjectPane,
+    markDirty,
+    isSessionNotFoundError,
+    isConversationNotFoundError,
+    createDirectoryId: () => `directory-${randomUUID()}`,
+    resolveWorkspacePathForMux: (rawPath) =>
+      resolveWorkspacePathForMux(options.invocationDirectory, rawPath),
+    setDirectory: (directory) => {
+      directoryManager.setDirectory(directory.directoryId, directory);
+    },
+    directoryIdOf: (directory) => directory.directoryId,
+    setActiveDirectoryId: (directoryId) => {
+      workspace.activeDirectoryId = directoryId;
+    },
+    syncGitStateWithDirectories,
+    noteGitActivity,
+    hydratePersistedConversationsForDirectory,
+    findConversationIdByDirectory: (directoryId) =>
+      conversationManager.findConversationIdByDirectory(
+        directoryId,
+        conversationManager.orderedIds(),
+      ),
+    directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
+    deleteDirectory: (directoryId) => {
+      directoryManager.deleteDirectory(directoryId);
+    },
+    deleteDirectoryGitState,
+    projectPaneSnapshotDirectoryId: () => workspace.projectPaneSnapshot?.directoryId ?? null,
+    clearProjectPaneSnapshot: () => {
+      workspace.projectPaneSnapshot = null;
+      workspace.projectPaneScrollTop = 0;
+    },
+    directoriesSize: () => directoryManager.directoriesSize(),
+    invocationDirectory: options.invocationDirectory,
+    activeDirectoryId: () => workspace.activeDirectoryId,
+    firstDirectoryId: () => directoryManager.firstDirectoryId(),
+  });
   const createAndActivateConversationInDirectory = async (
     directoryId: string,
     agentType: ThreadAgentType,
@@ -2424,33 +2473,7 @@ async function main(): Promise<number> {
   };
 
   const archiveConversation = async (sessionId: string): Promise<void> => {
-    await archiveConversationFn({
-      sessionId,
-      conversations: _unsafeConversationMap,
-      closePtySession: async (targetSessionId) => {
-        await controlPlaneService.closePtySession(targetSessionId);
-      },
-      removeSession: async (targetSessionId) => {
-        await controlPlaneService.removeSession(targetSessionId);
-      },
-      isSessionNotFoundError,
-      archiveConversationRecord: async (targetSessionId) => {
-        await controlPlaneService.archiveConversation(targetSessionId);
-      },
-      isConversationNotFoundError,
-      unsubscribeConversationEvents,
-      removeConversationState,
-      activeConversationId: conversationManager.activeConversationId,
-      setActiveConversationId: (next) => {
-        conversationManager.setActiveConversationId(next);
-      },
-      orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationDirectoryId: (targetSessionId) => conversationManager.directoryIdOf(targetSessionId),
-      resolveActiveDirectoryId,
-      enterProjectPane,
-      activateConversation,
-      markDirty,
-    });
+    await runtimeDirectoryActions.archiveConversation(sessionId);
   };
 
   const takeoverConversation = async (sessionId: string): Promise<void> => {
@@ -2458,82 +2481,11 @@ async function main(): Promise<number> {
   };
 
   const addDirectoryByPath = async (rawPath: string): Promise<void> => {
-    await addDirectoryByPathFn({
-      rawPath,
-      resolveWorkspacePathForMux: (value) =>
-        resolveWorkspacePathForMux(options.invocationDirectory, value),
-      upsertDirectory: async (path) => {
-        return await controlPlaneService.upsertDirectory({
-          directoryId: `directory-${randomUUID()}`,
-          path,
-        });
-      },
-      setDirectory: (directory) => {
-        directoryManager.setDirectory(directory.directoryId, directory);
-      },
-      directoryIdOf: (directory) => directory.directoryId,
-      setActiveDirectoryId: (directoryId) => {
-        workspace.activeDirectoryId = directoryId;
-      },
-      syncGitStateWithDirectories,
-      noteGitActivity,
-      hydratePersistedConversationsForDirectory,
-      findConversationIdByDirectory: (directoryId) =>
-        conversationManager.findConversationIdByDirectory(
-          directoryId,
-          conversationManager.orderedIds(),
-        ),
-      activateConversation,
-      enterProjectPane,
-      markDirty,
-    });
+    await runtimeDirectoryActions.addDirectoryByPath(rawPath);
   };
 
   const closeDirectory = async (directoryId: string): Promise<void> => {
-    await closeDirectoryFn({
-      directoryId,
-      directoriesHas: (targetDirectoryId) => directoryManager.hasDirectory(targetDirectoryId),
-      orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
-      conversationLive: (sessionId) => conversationManager.isLive(sessionId),
-      closePtySession: async (sessionId) => {
-        await controlPlaneService.closePtySession(sessionId);
-      },
-      archiveConversationRecord: async (sessionId) => {
-        await controlPlaneService.archiveConversation(sessionId);
-      },
-      unsubscribeConversationEvents,
-      removeConversationState,
-      activeConversationId: conversationManager.activeConversationId,
-      setActiveConversationId: (sessionId) => {
-        conversationManager.setActiveConversationId(sessionId);
-      },
-      archiveDirectory: async (targetDirectoryId) => {
-        await controlPlaneService.archiveDirectory(targetDirectoryId);
-      },
-      deleteDirectory: (targetDirectoryId) => {
-        directoryManager.deleteDirectory(targetDirectoryId);
-      },
-      deleteDirectoryGitState,
-      projectPaneSnapshotDirectoryId: workspace.projectPaneSnapshot?.directoryId ?? null,
-      clearProjectPaneSnapshot: () => {
-        workspace.projectPaneSnapshot = null;
-        workspace.projectPaneScrollTop = 0;
-      },
-      directoriesSize: () => directoryManager.directoriesSize(),
-      addDirectoryByPath,
-      invocationDirectory: options.invocationDirectory,
-      activeDirectoryId: workspace.activeDirectoryId,
-      setActiveDirectoryId: (targetDirectoryId) => {
-        workspace.activeDirectoryId = targetDirectoryId;
-      },
-      firstDirectoryId: () => directoryManager.firstDirectoryId(),
-      noteGitActivity,
-      resolveActiveDirectoryId,
-      activateConversation,
-      enterProjectPane,
-      markDirty,
-    });
+    await runtimeDirectoryActions.closeDirectory(directoryId);
   };
 
   const toggleGatewayProfiler = async (): Promise<void> => {
