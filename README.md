@@ -29,7 +29,6 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 
 ```bash
 bun install
-bun run build:ptyd
 bun link
 harness
 ```
