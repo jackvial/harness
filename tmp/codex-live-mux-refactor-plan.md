@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4281 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4286 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -150,7 +150,7 @@ bun run loc:verify:enforce
 - [x] Phase 4: TaskManager extraction.
 - [~] Phase 5: ControlPlaneService extraction.
 - [~] Phase 6: Screen extraction in progress.
-- [ ] Phase 7: Pane extraction.
+- [~] Phase 7: Pane extraction in progress.
 - [ ] Phase 8: ModalManager + InputRouter extraction.
 - [ ] Phase 9: Thin runtime + cleanup + strict gates.
 
@@ -726,3 +726,17 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4281 non-empty LOC
+
+### Checkpoint AF (2026-02-18): Phase 7 start with pane render abstractions
+
+- Started Phase 7 by introducing class-based pane render modules:
+  - `src/ui/panes/conversation.ts` (`ConversationPane`)
+  - `src/ui/panes/home.ts` (`HomePane`)
+  - `src/ui/panes/project.ts` (`ProjectPane`)
+  - `src/ui/panes/left-rail.ts` (`LeftRailPane`)
+- Updated `scripts/codex-live-mux-runtime.ts` render loop to delegate pane rendering to pane classes while preserving existing runtime-owned state transitions.
+- Added `test/ui-panes.test.ts` to validate pane seams and fallback behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4286 non-empty LOC

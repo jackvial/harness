@@ -10,7 +10,7 @@ import {
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import type { StreamObservedEvent, StreamServerEnvelope } from '../src/control-plane/stream-protocol.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
-import { TerminalSnapshotOracle, renderSnapshotAnsiRow } from '../src/terminal/snapshot-oracle.ts';
+import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import { type NormalizedEventEnvelope } from '../src/events/normalized-events.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import {
@@ -32,7 +32,6 @@ import {
   projectWorkspaceRailConversation,
 } from '../src/mux/workspace-rail-model.ts';
 import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
-import { buildRailRows } from '../src/mux/live-mux/rail-layout.ts';
 import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
 import {
   createNewThreadPromptState,
@@ -40,7 +39,6 @@ import {
   resolveNewThreadPromptAgentByRow,
 } from '../src/mux/new-thread-prompt.ts';
 import {
-  buildProjectPaneRows,
   buildProjectPaneSnapshot,
   projectPaneActionAtRow,
   sortedRepositoryList,
@@ -48,7 +46,6 @@ import {
   type TaskPaneAction,
 } from '../src/mux/harness-core-ui.ts';
 import {
-  buildTaskFocusedPaneView,
   taskFocusedPaneActionAtCell,
   taskFocusedPaneActionAtRow,
   taskFocusedPaneRepositoryIdAtRow,
@@ -245,6 +242,10 @@ import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
+import { ConversationPane } from '../src/ui/panes/conversation.ts';
+import { HomePane } from '../src/ui/panes/home.ts';
+import { ProjectPane } from '../src/ui/panes/project.ts';
+import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -1312,6 +1313,10 @@ async function main(): Promise<number> {
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
   const screen = new Screen();
+  const conversationPane = new ConversationPane();
+  const homePane = new HomePane();
+  const projectPane = new ProjectPane();
+  const leftRailPane = new LeftRailPane();
   let stop = false;
   let inputRemainder = '';
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
@@ -3133,7 +3138,7 @@ async function main(): Promise<number> {
       rightFrame === null ? [] : selectionVisibleRows(rightFrame, renderSelection);
     const orderedIds = conversationManager.orderedIds();
     refreshSelectorInstrumentation('render');
-    const rail = buildRailRows({
+    const rail = leftRailPane.render({
       layout,
       repositories,
       repositoryAssociationByDirectoryId,
@@ -3167,11 +3172,10 @@ async function main(): Promise<number> {
       selectedRepositoryId: null,
     };
     if (rightFrame !== null) {
-      rightRows = Array.from({ length: layout.paneRows }, (_value, row) =>
-        renderSnapshotAnsiRow(rightFrame, row, layout.rightCols),
-      );
+      rightRows = conversationPane.render(rightFrame, layout);
     } else if (homePaneActive) {
-      const view = buildTaskFocusedPaneView({
+      const view = homePane.render({
+        layout,
         repositories,
         tasks: taskManager.readonlyTasks(),
         selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
@@ -3180,8 +3184,6 @@ async function main(): Promise<number> {
         draftBuffer: workspace.taskDraftComposer,
         taskBufferById: taskManager.readonlyTaskComposers(),
         notice: workspace.taskPaneNotice,
-        cols: layout.rightCols,
-        rows: layout.paneRows,
         scrollTop: workspace.taskPaneScrollTop,
       });
       workspace.taskPaneSelectedRepositoryId = view.selectedRepositoryId;
@@ -3193,15 +3195,18 @@ async function main(): Promise<number> {
         refreshProjectPaneSnapshot(workspace.activeDirectoryId);
       }
       if (workspace.projectPaneSnapshot === null) {
-        rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
+        rightRows = projectPane.render({
+          layout,
+          snapshot: null,
+          scrollTop: workspace.projectPaneScrollTop,
+        }).rows;
       } else {
-        const view = buildProjectPaneRows(
-          workspace.projectPaneSnapshot,
-          layout.rightCols,
-          layout.paneRows,
-          workspace.projectPaneScrollTop,
-        );
-        workspace.projectPaneScrollTop = view.top;
+        const view = projectPane.render({
+          layout,
+          snapshot: workspace.projectPaneSnapshot,
+          scrollTop: workspace.projectPaneScrollTop,
+        });
+        workspace.projectPaneScrollTop = view.scrollTop;
         rightRows = view.rows;
       }
     } else {
