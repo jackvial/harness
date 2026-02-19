@@ -220,6 +220,37 @@ void test('runtime workspace observed events handles active-conversation removal
   ]);
 });
 
+void test('runtime workspace observed events keeps active-conversation archive fallback scoped to the same project', () => {
+  const harness = createHarness({
+    reduction: {
+      changed: true,
+      removedConversationIds: ['session-1'],
+      removedDirectoryIds: [],
+    },
+    activeConversationId: 'session-1',
+    orderedConversationIds: ['session-1', 'session-2'],
+    conversationDirectoryById: {
+      'session-1': 'directory-a',
+      'session-2': 'directory-b',
+    },
+    existingDirectories: new Set(['directory-a', 'directory-b']),
+    activeDirectoryId: 'directory-a',
+    resolvedActiveDirectoryId: 'directory-a',
+    orderedConversationIdsAfterApply: ['session-2'],
+  });
+
+  harness.service.apply({
+    id: 'event-2b',
+  });
+
+  assert.deepEqual(harness.calls, [
+    'unsubscribeConversationEvents:session-1',
+    'setActiveConversationId:null',
+    'enterProjectPane:directory-a',
+    'markDirty',
+  ]);
+});
+
 void test('runtime workspace observed events falls back to home when active conversation is removed with no replacement', () => {
   const harness = createHarness({
     reduction: {
@@ -310,6 +341,39 @@ void test('runtime workspace observed events handles removed left-nav conversati
     'unsubscribeConversationEvents:session-1',
     'queueControlPlaneOp:observed-selected-conversation-removed',
     'activateConversation:session-3',
+    'markDirty',
+  ]);
+});
+
+void test('runtime workspace observed events keeps selected-conversation archive fallback scoped to the same project', () => {
+  const harness = createHarness({
+    reduction: {
+      changed: true,
+      removedConversationIds: ['session-1'],
+      removedDirectoryIds: [],
+    },
+    activeConversationId: null,
+    orderedConversationIds: ['session-1', 'session-2'],
+    conversationDirectoryById: {
+      'session-1': 'directory-a',
+      'session-2': 'directory-b',
+    },
+    existingConversations: new Set(),
+    leftNavSelection: {
+      kind: 'conversation',
+      sessionId: 'session-1',
+    },
+    resolvedActiveDirectoryId: 'directory-a',
+    orderedConversationIdsAfterApply: ['session-2'],
+  });
+
+  harness.service.apply({
+    id: 'event-5b',
+  });
+
+  assert.deepEqual(harness.calls, [
+    'unsubscribeConversationEvents:session-1',
+    'enterProjectPane:directory-a',
     'markDirty',
   ]);
 });
