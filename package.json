@@ -2,6 +2,10 @@
   "name": "@jmoyers/harness",
   "version": "0.1.4",
   "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jmoyers/harness"
+  },
   "bin": {
     "harness": "scripts/harness-bin.js"
   },
