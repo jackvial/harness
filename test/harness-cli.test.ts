@@ -9,13 +9,14 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseGatewayRecordText } from '../src/cli/gateway-record.ts';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
+import { resolveHarnessConfigPath } from '../src/config/config-core.ts';
 
 interface RunHarnessResult {
   code: number;
@@ -31,6 +32,20 @@ function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string
 
 function createWorkspace(): string {
   return mkdtempSync(join(tmpdir(), 'harness-cli-test-'));
+}
+
+function workspaceXdgConfigHome(workspace: string): string {
+  return join(workspace, '.harness-xdg');
+}
+
+function writeWorkspaceHarnessConfig(workspace: string, config: unknown): string {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
+  };
+  const filePath = resolveHarnessConfigPath(workspace, env);
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, JSON.stringify(config), 'utf8');
+  return filePath;
 }
 
 async function reservePort(): Promise<number> {
@@ -77,6 +92,7 @@ async function runHarness(
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       HARNESS_INVOKE_CWD: cwd,
+      XDG_CONFIG_HOME: workspaceXdgConfigHome(cwd),
       ...extraEnv,
     };
     for (const [key, value] of Object.entries(extraEnv)) {
@@ -599,19 +615,15 @@ void test('harness gateway run applies inspect runtime args from harness config'
   const daemonStubPath = join(workspace, 'daemon-inspect-stub.js');
   const daemonExecArgvPath = join(workspace, '.harness/daemon-exec-argv.json');
   const [gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(2);
-  writeFileSync(
-    join(workspace, 'harness.config.jsonc'),
-    JSON.stringify({
-      debug: {
-        inspect: {
-          enabled: true,
-          gatewayPort: gatewayInspectPort,
-          clientPort: clientInspectPort,
-        },
+  writeWorkspaceHarnessConfig(workspace, {
+    debug: {
+      inspect: {
+        enabled: true,
+        gatewayPort: gatewayInspectPort,
+        clientPort: clientInspectPort,
       },
-    }),
-    'utf8',
-  );
+    },
+  });
   writeFileSync(
     daemonStubPath,
     [
@@ -650,19 +662,15 @@ void test('harness default client applies inspect runtime args to mux process fr
   const muxStubPath = join(workspace, 'mux-inspect-stub.js');
   const muxExecArgvPath = join(workspace, '.harness/mux-exec-argv.json');
   const [gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(2);
-  writeFileSync(
-    join(workspace, 'harness.config.jsonc'),
-    JSON.stringify({
-      debug: {
-        inspect: {
-          enabled: true,
-          gatewayPort: gatewayInspectPort,
-          clientPort: clientInspectPort,
-        },
+  writeWorkspaceHarnessConfig(workspace, {
+    debug: {
+      inspect: {
+        enabled: true,
+        gatewayPort: gatewayInspectPort,
+        clientPort: clientInspectPort,
       },
-    }),
-    'utf8',
-  );
+    },
+  });
   writeFileSync(
     muxStubPath,
     [
@@ -778,19 +786,15 @@ void test('harness profile start/stop writes gateway CPU profile to .harness/pro
   const profileStatePath = join(workspace, `.harness/sessions/${sessionName}/active-profile.json`);
   const gatewayProfilePath = join(workspace, `.harness/profiles/${sessionName}/gateway.cpuprofile`);
   const [gatewayPort, gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(3);
-  writeFileSync(
-    join(workspace, 'harness.config.jsonc'),
-    JSON.stringify({
-      debug: {
-        inspect: {
-          enabled: true,
-          gatewayPort: gatewayInspectPort,
-          clientPort: clientInspectPort,
-        },
+  writeWorkspaceHarnessConfig(workspace, {
+    debug: {
+      inspect: {
+        enabled: true,
+        gatewayPort: gatewayInspectPort,
+        clientPort: clientInspectPort,
       },
-    }),
-    'utf8',
-  );
+    },
+  });
   try {
     const gatewayStart = await runHarness(workspace, [
       '--session',

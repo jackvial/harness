@@ -1,20 +1,24 @@
 import assert from 'node:assert/strict';
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   mkdirSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { test } from 'bun:test';
 import {
   DEFAULT_HARNESS_CONFIG,
+  HARNESS_CONFIG_VERSION,
   HARNESS_CONFIG_FILE_NAME,
   loadHarnessConfig,
   parseHarnessConfigText,
+  resolveHarnessConfigDirectory,
   resolveHarnessConfigPath,
   updateHarnessConfig,
   updateHarnessMuxUiConfig,
@@ -27,6 +31,63 @@ const DEFAULT_UI = {
   theme: null,
 } as const;
 const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
+const TEST_MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+
+function testEnvWithHome(homeDirectory: string): NodeJS.ProcessEnv {
+  return {
+    HOME: homeDirectory,
+    XDG_CONFIG_HOME: undefined,
+  };
+}
+
+void test('parseHarnessConfigText migrates legacy unversioned configs to current config version', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "mux": {
+        "keybindings": {
+          "mux.app.quit": ["ctrl+q"]
+        }
+      }
+    }
+  `);
+  assert.equal(parsed.configVersion, HARNESS_CONFIG_VERSION);
+  assert.deepEqual(parsed.mux.keybindings, {
+    'mux.app.quit': ['ctrl+q'],
+  });
+});
+
+void test('parseHarnessConfigText accepts current configVersion', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "configVersion": ${String(HARNESS_CONFIG_VERSION)},
+      "mux": {
+        "keybindings": {
+          "mux.app.quit": ["ctrl+q"]
+        }
+      }
+    }
+  `);
+  assert.equal(parsed.configVersion, HARNESS_CONFIG_VERSION);
+  assert.deepEqual(parsed.mux.keybindings, {
+    'mux.app.quit': ['ctrl+q'],
+  });
+});
+
+void test('parseHarnessConfigText rejects invalid and unsupported configVersion values', () => {
+  assert.throws(() => parseHarnessConfigText(`{"configVersion":"1"}`), /invalid configVersion/i);
+  assert.throws(() => parseHarnessConfigText('{"configVersion":0}'), /invalid configVersion/i);
+  assert.throws(
+    () => parseHarnessConfigText(`{"configVersion":${String(HARNESS_CONFIG_VERSION + 1)}}`),
+    /unsupported configVersion/i,
+  );
+});
+
+void test('checked-in config template exists and matches default config snapshot', () => {
+  const templatePath = resolve(TEST_MODULE_DIR, '../src/config/harness.config.template.jsonc');
+  assert.equal(existsSync(templatePath), true);
+  const parsedTemplate = parseHarnessConfigText(readFileSync(templatePath, 'utf8'));
+  assert.deepEqual(parsedTemplate, DEFAULT_HARNESS_CONFIG);
+});
 
 void test('parseHarnessConfigText supports jsonc comments and trailing commas', () => {
   const parsed = parseHarnessConfigText(`
@@ -204,24 +265,91 @@ void test('parseHarnessConfigText falls back for invalid root shapes', () => {
   });
 });
 
-void test('resolveHarnessConfigPath uses canonical file name', () => {
-  assert.equal(resolveHarnessConfigPath('/tmp/abc'), `/tmp/abc/${HARNESS_CONFIG_FILE_NAME}`);
+void test('resolveHarnessConfigPath resolves XDG and HOME user config directories', () => {
+  const xdgEnv: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: '/tmp/xdg-home',
+    HOME: '/tmp/home-ignored',
+  };
+  assert.equal(resolveHarnessConfigDirectory('/tmp/cwd', xdgEnv), '/tmp/xdg-home/harness');
+  assert.equal(
+    resolveHarnessConfigPath('/tmp/cwd', xdgEnv),
+    '/tmp/xdg-home/harness/harness.config.jsonc',
+  );
+
+  const homeEnv = testEnvWithHome('/tmp/home-only');
+  assert.equal(resolveHarnessConfigDirectory('/tmp/cwd', homeEnv), '/tmp/home-only/.harness');
+  assert.equal(
+    resolveHarnessConfigPath('/tmp/cwd', homeEnv),
+    '/tmp/home-only/.harness/harness.config.jsonc',
+  );
+
+  const fallbackEnv: NodeJS.ProcessEnv = {
+    HOME: undefined,
+    XDG_CONFIG_HOME: undefined,
+  };
+  assert.equal(
+    resolveHarnessConfigPath('/tmp/cwd', fallbackEnv),
+    '/tmp/cwd/.harness/harness.config.jsonc',
+  );
+
+  const blankEnv: NodeJS.ProcessEnv = {
+    HOME: '   ',
+    XDG_CONFIG_HOME: ' ',
+  };
+  assert.equal(
+    resolveHarnessConfigPath('/tmp/cwd', blankEnv),
+    '/tmp/cwd/.harness/harness.config.jsonc',
+  );
 });
 
-void test('loadHarnessConfig returns default when file is missing', () => {
+void test('loadHarnessConfig bootstraps from template when file is missing', () => {
   const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-missing-'));
+  const env = testEnvWithHome(baseDir);
+  const expectedPath = resolveHarnessConfigPath(baseDir, env);
   const loaded = loadHarnessConfig({
     cwd: baseDir,
+    env,
   });
-  assert.equal(loaded.filePath, join(baseDir, HARNESS_CONFIG_FILE_NAME));
+  assert.equal(loaded.filePath, expectedPath);
   assert.deepEqual(loaded.config, DEFAULT_HARNESS_CONFIG);
   assert.equal(loaded.fromLastKnownGood, false);
   assert.equal(loaded.error, null);
+  assert.equal(existsSync(expectedPath), true);
+  const persisted = parseHarnessConfigText(readFileSync(expectedPath, 'utf8'));
+  assert.deepEqual(persisted, DEFAULT_HARNESS_CONFIG);
+});
+
+void test('loadHarnessConfig falls back atomically when template bootstrap write fails', () => {
+  const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-bootstrap-fail-'));
+  const readOnlyHome = join(baseDir, 'readonly-home');
+  mkdirSync(readOnlyHome, { recursive: true, mode: 0o500 });
+  const env = testEnvWithHome(readOnlyHome);
+  const lastKnownGood: typeof DEFAULT_HARNESS_CONFIG = {
+    ...DEFAULT_HARNESS_CONFIG,
+    debug: {
+      ...DEFAULT_HARNESS_CONFIG.debug,
+      enabled: false,
+    },
+  };
+  try {
+    const loaded = loadHarnessConfig({
+      cwd: baseDir,
+      env,
+      lastKnownGood,
+    });
+    assert.deepEqual(loaded.config, lastKnownGood);
+    assert.equal(loaded.fromLastKnownGood, true);
+    assert.match(loaded.error ?? '', /EACCES|EPERM|permission denied/i);
+  } finally {
+    chmodSync(readOnlyHome, 0o700);
+  }
 });
 
 void test('loadHarnessConfig reads valid config file', () => {
   const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-valid-'));
-  const filePath = join(baseDir, HARNESS_CONFIG_FILE_NAME);
+  const env = testEnvWithHome(baseDir);
+  const filePath = resolveHarnessConfigPath(baseDir, env);
+  mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(
     filePath,
     JSON.stringify({
@@ -241,6 +369,7 @@ void test('loadHarnessConfig reads valid config file', () => {
 
   const loaded = loadHarnessConfig({
     cwd: baseDir,
+    env,
   });
   assert.deepEqual(loaded.config.mux, {
     keybindings: {
@@ -260,11 +389,14 @@ void test('loadHarnessConfig reads valid config file', () => {
 
 void test('loadHarnessConfig falls back atomically on parse errors', () => {
   const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-bad-'));
-  const filePath = join(baseDir, HARNESS_CONFIG_FILE_NAME);
+  const env = testEnvWithHome(baseDir);
+  const filePath = resolveHarnessConfigPath(baseDir, env);
+  mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, '{ "mux": {', 'utf8');
 
   const loaded = loadHarnessConfig({
     cwd: baseDir,
+    env,
     lastKnownGood: {
       ...DEFAULT_HARNESS_CONFIG,
       mux: {
@@ -308,6 +440,23 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
   assert.equal(typeof loaded.error, 'string');
 });
 
+void test('loadHarnessConfig falls back atomically on unsupported configVersion', () => {
+  const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-unsupported-version-'));
+  const env = testEnvWithHome(baseDir);
+  const filePath = resolveHarnessConfigPath(baseDir, env);
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, '{"configVersion":999}', 'utf8');
+
+  const loaded = loadHarnessConfig({
+    cwd: baseDir,
+    env,
+    lastKnownGood: DEFAULT_HARNESS_CONFIG,
+  });
+  assert.deepEqual(loaded.config, DEFAULT_HARNESS_CONFIG);
+  assert.equal(loaded.fromLastKnownGood, true);
+  assert.match(loaded.error ?? '', /unsupported configVersion/i);
+});
+
 void test('loadHarnessConfig supports explicit file path override', () => {
   const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-override-'));
   const filePath = join(baseDir, 'custom.jsonc');
@@ -331,14 +480,19 @@ void test('loadHarnessConfig supports explicit file path override', () => {
 
 void test('loadHarnessConfig resolves defaults from process cwd when options are omitted', () => {
   const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-default-'));
-  const filePath = join(baseDir, HARNESS_CONFIG_FILE_NAME);
+  const filePath = resolve(baseDir, '.harness', HARNESS_CONFIG_FILE_NAME);
+  mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, '{"mux":{"keybindings":{"mux.conversation.next":["ctrl+j"]}}}', 'utf8');
 
   const previousCwd = process.cwd();
+  const previousHome = process.env.HOME;
+  const previousXdg = process.env.XDG_CONFIG_HOME;
   process.chdir(baseDir);
+  process.env.HOME = baseDir;
+  delete process.env.XDG_CONFIG_HOME;
   try {
     const loaded = loadHarnessConfig();
-    assert.equal(loaded.filePath.endsWith(`/${HARNESS_CONFIG_FILE_NAME}`), true);
+    assert.equal(loaded.filePath, filePath);
     assert.deepEqual(loaded.config.mux, {
       keybindings: {
         'mux.conversation.next': ['ctrl+j'],
@@ -348,6 +502,16 @@ void test('loadHarnessConfig resolves defaults from process cwd when options are
     });
   } finally {
     process.chdir(previousCwd);
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    if (previousXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = previousXdg;
+    }
   }
 });
 
@@ -1295,8 +1459,12 @@ void test('updateHarnessConfig writes new config file when absent', () => {
     },
     git: DEFAULT_GIT,
   });
+  assert.equal(updated.configVersion, HARNESS_CONFIG_VERSION);
   const loaded = loadHarnessConfig({ filePath, cwd: baseDir });
   assert.deepEqual(loaded.config.mux, updated.mux);
+  assert.equal(loaded.config.configVersion, HARNESS_CONFIG_VERSION);
+  const persistedRaw = JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+  assert.equal(persistedRaw['configVersion'], HARNESS_CONFIG_VERSION);
 });
 
 void test('updateHarnessConfig cleans temporary file when rename fails', () => {
@@ -1351,8 +1519,11 @@ void test('updateHarnessConfig throws when existing config cannot be parsed', ()
 
 void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', () => {
   const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-ui-cwd-'));
+  const env = testEnvWithHome(baseDir);
+  const filePath = resolveHarnessConfigPath(baseDir, env);
+  mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(
-    join(baseDir, HARNESS_CONFIG_FILE_NAME),
+    filePath,
     JSON.stringify({
       mux: {
         ui: {
@@ -1371,6 +1542,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
     },
     {
       cwd: baseDir,
+      env,
     },
   );
   assert.deepEqual(updated.mux.ui, {

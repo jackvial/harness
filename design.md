@@ -714,6 +714,10 @@ Design constraints:
 ## Configuration Architecture
 
 - Single canonical config file: `harness.config.jsonc`.
+- Config location is user-global with XDG precedence:
+  - `$XDG_CONFIG_HOME/harness/harness.config.jsonc` when `XDG_CONFIG_HOME` is set
+  - `~/.harness/harness.config.jsonc` otherwise
+- Config payloads are explicitly versioned with top-level `configVersion`.
 - JSON-with-comments format (JSONC) is required to allow inline documentation and annotation.
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.
 - No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
@@ -729,7 +733,10 @@ Design constraints:
   - `customThemePath` optionally loads a local OpenCode theme JSON file (`https://opencode.ai/theme.json`) and overrides preset colors when valid
   - invalid custom files or unknown presets must fall back deterministically to a safe preset while keeping mux startup healthy
 - Config lifecycle:
+  - on first run, bootstrap config by copying the checked-in template (`src/config/harness.config.template.jsonc`)
   - parse -> validate -> publish immutable runtime snapshot
+  - unversioned legacy files migrate forward to the current `configVersion`
+  - unknown future `configVersion` values must fail closed and preserve startup health via last-known-good fallback
   - on reload, replace snapshot atomically
   - on invalid config, keep last known good snapshot and emit error events/logs
 - Config values affecting hot paths must be read from in-memory snapshot, never reparsed on critical operations.

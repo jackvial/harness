@@ -194,6 +194,10 @@ function createWorkspace(): string {
   return mkdtempSync(join(tmpdir(), 'harness-mux-startup-'));
 }
 
+function workspaceXdgConfigHome(workspace: string): string {
+  return join(workspace, '.harness-xdg');
+}
+
 function normalizeTerminalOutput(value: string): string {
   const ESC = String.fromCharCode(27);
   const BEL = String.fromCharCode(7);
@@ -231,6 +235,7 @@ async function captureMuxBootOutput(
     env: {
       ...process.env,
       HARNESS_INVOKE_CWD: workspace,
+      XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
       ...(options.extraEnv ?? {}),
     },
   });
@@ -289,6 +294,7 @@ function startInteractiveMuxSession(
     env: {
       ...process.env,
       HARNESS_INVOKE_CWD: workspace,
+      XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
       ...(options.extraEnv ?? {}),
     },
     initialCols: cols,

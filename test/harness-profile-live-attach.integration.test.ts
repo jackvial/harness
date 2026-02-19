@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseGatewayRecordText } from '../src/cli/gateway-record.ts';
+import { resolveHarnessConfigPath } from '../src/config/config-core.ts';
 
 interface RunHarnessResult {
   code: number;
@@ -22,6 +23,20 @@ function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string
 
 function createWorkspace(): string {
   return mkdtempSync(join(tmpdir(), 'harness-profile-live-attach-integration-'));
+}
+
+function workspaceXdgConfigHome(workspace: string): string {
+  return join(workspace, '.harness-xdg');
+}
+
+function writeWorkspaceHarnessConfig(workspace: string, config: unknown): string {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
+  };
+  const filePath = resolveHarnessConfigPath(workspace, env);
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, JSON.stringify(config), 'utf8');
+  return filePath;
 }
 
 async function reservePort(): Promise<number> {
@@ -68,6 +83,7 @@ async function runHarness(
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       HARNESS_INVOKE_CWD: cwd,
+      XDG_CONFIG_HOME: workspaceXdgConfigHome(cwd),
       ...extraEnv,
     };
     for (const [key, value] of Object.entries(extraEnv)) {
@@ -146,19 +162,15 @@ void test('harness profile live-attach integration writes gateway cpuprofile wit
   const defaultRecordPath = join(workspace, '.harness/gateway.json');
   const profileStatePath = join(workspace, `.harness/sessions/${sessionName}/active-profile.json`);
   const gatewayProfilePath = join(workspace, `.harness/profiles/${sessionName}/gateway.cpuprofile`);
-  writeFileSync(
-    join(workspace, 'harness.config.jsonc'),
-    JSON.stringify({
-      debug: {
-        inspect: {
-          enabled: true,
-          gatewayPort: gatewayInspectPort,
-          clientPort: clientInspectPort,
-        },
+  writeWorkspaceHarnessConfig(workspace, {
+    debug: {
+      inspect: {
+        enabled: true,
+        gatewayPort: gatewayInspectPort,
+        clientPort: clientInspectPort,
       },
-    }),
-    'utf8',
-  );
+    },
+  });
 
   let gatewayPid: number | null = null;
   try {

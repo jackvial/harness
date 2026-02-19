@@ -1,0 +1,109 @@
+{
+  "configVersion": 1,
+  "mux": {
+    "keybindings": {},
+    "ui": {
+      "paneWidthPercent": null,
+      "repositoriesCollapsed": false,
+      "shortcutsCollapsed": false,
+      "theme": null,
+    },
+    "git": {
+      "enabled": true,
+      "activePollMs": 1000,
+      "idlePollMs": 5000,
+      "burstPollMs": 400,
+      "burstWindowMs": 2500,
+      "triggerDebounceMs": 180,
+      "maxConcurrency": 1,
+    },
+  },
+  "debug": {
+    "enabled": true,
+    "overwriteArtifactsOnStart": true,
+    "perf": {
+      "enabled": true,
+      "filePath": ".harness/perf-startup.jsonl",
+    },
+    "mux": {
+      "debugPath": ".harness/mux-debug.jsonl",
+      "validateAnsi": false,
+      "resizeMinIntervalMs": 33,
+      "ptyResizeSettleMs": 75,
+      "startupSettleQuietMs": 300,
+      "serverSnapshotModelEnabled": true,
+    },
+    "inspect": {
+      "enabled": false,
+      "gatewayPort": 6499,
+      "clientPort": 6500,
+    },
+  },
+  "codex": {
+    "telemetry": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 0,
+      "logUserPrompt": true,
+      "captureLogs": true,
+      "captureMetrics": true,
+      "captureTraces": true,
+      "captureVerboseEvents": false,
+      "ingestMode": "lifecycle-fast",
+    },
+    "history": {
+      "enabled": true,
+      "filePath": "~/.codex/history.jsonl",
+      "pollMs": 5000,
+    },
+    "launch": {
+      "defaultMode": "yolo",
+      "directoryModes": {},
+    },
+  },
+  "claude": {
+    "launch": {
+      "defaultMode": "yolo",
+      "directoryModes": {},
+    },
+  },
+  "cursor": {
+    "launch": {
+      "defaultMode": "yolo",
+      "directoryModes": {},
+    },
+  },
+  "critique": {
+    "launch": {
+      "defaultArgs": ["--watch"],
+    },
+    "install": {
+      "autoInstall": true,
+      "package": "critique@latest",
+    },
+  },
+  "hooks": {
+    "lifecycle": {
+      "enabled": false,
+      "providers": {
+        "codex": true,
+        "claude": true,
+        "cursor": true,
+        "controlPlane": true,
+      },
+      "peonPing": {
+        "enabled": false,
+        "baseUrl": "http://127.0.0.1:19998",
+        "timeoutMs": 1200,
+        "eventCategoryMap": {
+          "session.started": "session.start",
+          "turn.started": "task.acknowledge",
+          "turn.completed": "task.complete",
+          "turn.failed": "task.error",
+          "input.required": "input.required",
+        },
+      },
+      "webhooks": [],
+    },
+  },
+}

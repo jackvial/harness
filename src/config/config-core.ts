@@ -8,8 +8,18 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const HARNESS_CONFIG_FILE_NAME = 'harness.config.jsonc';
+export const HARNESS_CONFIG_VERSION = 1;
+const LEGACY_UNVERSIONED_HARNESS_CONFIG_VERSION = 0;
+const HARNESS_CONFIG_TEMPLATE_FILE_NAME = 'harness.config.template.jsonc';
+const HARNESS_CONFIG_XDG_DIRECTORY_NAME = 'harness';
+const HARNESS_CONFIG_HOME_DIRECTORY_NAME = '.harness';
+const HARNESS_CONFIG_TEMPLATE_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  HARNESS_CONFIG_TEMPLATE_FILE_NAME,
+);
 
 const HARNESS_LIFECYCLE_EVENT_TYPES = [
   'thread.created',
@@ -191,6 +201,7 @@ interface HarnessHooksConfig {
 }
 
 interface HarnessConfig {
+  readonly configVersion: number;
   readonly mux: HarnessMuxConfig;
   readonly debug: HarnessDebugConfig;
   readonly codex: HarnessCodexConfig;
@@ -208,6 +219,7 @@ interface LoadedHarnessConfig {
 }
 
 export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
+  configVersion: HARNESS_CONFIG_VERSION,
   mux: {
     keybindings: {},
     ui: {
@@ -1190,6 +1202,38 @@ function normalizeLifecycleHooksConfig(input: unknown): HarnessLifecycleHooksCon
   };
 }
 
+function readHarnessConfigVersion(root: Record<string, unknown>): number {
+  const rawVersion = root['configVersion'];
+  if (rawVersion === undefined) {
+    return LEGACY_UNVERSIONED_HARNESS_CONFIG_VERSION;
+  }
+  if (
+    typeof rawVersion !== 'number' ||
+    !Number.isFinite(rawVersion) ||
+    !Number.isInteger(rawVersion) ||
+    rawVersion < 1
+  ) {
+    throw new Error(`invalid configVersion: ${String(rawVersion)}`);
+  }
+  return rawVersion;
+}
+
+function migrateHarnessConfigRoot(root: Record<string, unknown>): Record<string, unknown> {
+  const version = readHarnessConfigVersion(root);
+  if (version > HARNESS_CONFIG_VERSION) {
+    throw new Error(
+      `unsupported configVersion ${String(version)} (max supported ${String(HARNESS_CONFIG_VERSION)})`,
+    );
+  }
+  if (version === LEGACY_UNVERSIONED_HARNESS_CONFIG_VERSION) {
+    return {
+      ...root,
+      configVersion: HARNESS_CONFIG_VERSION,
+    };
+  }
+  return root;
+}
+
 export function parseHarnessConfigText(text: string): HarnessConfig {
   const stripped = stripTrailingCommas(stripJsoncComments(text));
   const parsed = JSON.parse(stripped) as unknown;
@@ -1197,17 +1241,19 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   if (root === null) {
     return DEFAULT_HARNESS_CONFIG;
   }
+  const migratedRoot = migrateHarnessConfigRoot(root);
 
-  const mux = asRecord(root['mux']);
-  const legacyPerf = normalizePerfConfig(root['perf']);
-  const debug = normalizeDebugConfig(root['debug'], legacyPerf);
-  const codex = normalizeCodexConfig(root['codex']);
-  const claude = normalizeClaudeConfig(root['claude']);
-  const cursor = normalizeCursorConfig(root['cursor']);
-  const critique = normalizeCritiqueConfig(root['critique']);
-  const hooks = normalizeLifecycleHooksConfig(asRecord(root['hooks'])?.['lifecycle']);
+  const mux = asRecord(migratedRoot['mux']);
+  const legacyPerf = normalizePerfConfig(migratedRoot['perf']);
+  const debug = normalizeDebugConfig(migratedRoot['debug'], legacyPerf);
+  const codex = normalizeCodexConfig(migratedRoot['codex']);
+  const claude = normalizeClaudeConfig(migratedRoot['claude']);
+  const cursor = normalizeCursorConfig(migratedRoot['cursor']);
+  const critique = normalizeCritiqueConfig(migratedRoot['critique']);
+  const hooks = normalizeLifecycleHooksConfig(asRecord(migratedRoot['hooks'])?.['lifecycle']);
 
   return {
+    configVersion: HARNESS_CONFIG_VERSION,
     mux: {
       keybindings: mux === null ? {} : normalizeKeybindings(mux['keybindings']),
       ui: mux === null ? DEFAULT_HARNESS_CONFIG.mux.ui : normalizeMuxUiConfig(mux['ui']),
@@ -1224,26 +1270,81 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   };
 }
 
-export function resolveHarnessConfigPath(cwd: string): string {
-  return resolve(cwd, HARNESS_CONFIG_FILE_NAME);
+function readNonEmptyEnvPath(value: string | undefined): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  return trimmed;
+}
+
+function readHarnessConfigTemplateText(): string {
+  return readFileSync(HARNESS_CONFIG_TEMPLATE_PATH, 'utf8');
+}
+
+function bootstrapHarnessConfigFile(filePath: string): string | null {
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${randomUUID()}`;
+  try {
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(tempPath, readHarnessConfigTemplateText(), 'utf8');
+    renameSync(tempPath, filePath);
+    return null;
+  } catch (error: unknown) {
+    try {
+      unlinkSync(tempPath);
+    } catch {
+      // Best-effort cleanup only.
+    }
+    return String(error);
+  }
+}
+
+export function resolveHarnessConfigDirectory(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const xdgConfigHome = readNonEmptyEnvPath(env.XDG_CONFIG_HOME);
+  if (xdgConfigHome !== null) {
+    return resolve(xdgConfigHome, HARNESS_CONFIG_XDG_DIRECTORY_NAME);
+  }
+  const homeDirectory = readNonEmptyEnvPath(env.HOME);
+  if (homeDirectory !== null) {
+    return resolve(homeDirectory, HARNESS_CONFIG_HOME_DIRECTORY_NAME);
+  }
+  return resolve(cwd, HARNESS_CONFIG_HOME_DIRECTORY_NAME);
+}
+
+export function resolveHarnessConfigPath(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolve(resolveHarnessConfigDirectory(cwd, env), HARNESS_CONFIG_FILE_NAME);
 }
 
 export function loadHarnessConfig(options?: {
   cwd?: string;
   filePath?: string;
   lastKnownGood?: HarnessConfig;
+  env?: NodeJS.ProcessEnv;
 }): LoadedHarnessConfig {
   const cwd = options?.cwd ?? process.cwd();
-  const filePath = options?.filePath ?? resolveHarnessConfigPath(cwd);
+  const env = options?.env ?? process.env;
+  const filePath = options?.filePath ?? resolveHarnessConfigPath(cwd, env);
   const lastKnownGood = options?.lastKnownGood ?? DEFAULT_HARNESS_CONFIG;
 
   if (!existsSync(filePath)) {
-    return {
-      filePath,
-      config: lastKnownGood,
-      fromLastKnownGood: false,
-      error: null,
-    };
+    const bootstrapError = bootstrapHarnessConfigFile(filePath);
+    if (bootstrapError !== null) {
+      return {
+        filePath,
+        config: lastKnownGood,
+        fromLastKnownGood: true,
+        error: bootstrapError,
+      };
+    }
   }
 
   try {
@@ -1283,12 +1384,17 @@ function roundUiPercent(value: number): number {
 export function updateHarnessConfig(options: {
   cwd?: string;
   filePath?: string;
+  env?: NodeJS.ProcessEnv;
   update: (current: HarnessConfig) => HarnessConfig;
 }): HarnessConfig {
   const cwd = options.cwd ?? process.cwd();
-  const filePath = options.filePath ?? resolveHarnessConfigPath(cwd);
+  const env = options.env ?? process.env;
+  const filePath = options.filePath ?? resolveHarnessConfigPath(cwd, env);
   const current = readCurrentHarnessConfig(filePath);
-  const next = options.update(current);
+  const next = {
+    ...options.update(current),
+    configVersion: HARNESS_CONFIG_VERSION,
+  };
   mkdirSync(dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${randomUUID()}`;
   try {
@@ -1314,11 +1420,13 @@ export function updateHarnessMuxUiConfig(
   options?: {
     cwd?: string;
     filePath?: string;
+    env?: NodeJS.ProcessEnv;
   },
 ): HarnessConfig {
   const updateOptions: {
     cwd?: string;
     filePath?: string;
+    env?: NodeJS.ProcessEnv;
     update: (current: HarnessConfig) => HarnessConfig;
   } = {
     update: (current) => {
@@ -1354,6 +1462,9 @@ export function updateHarnessMuxUiConfig(
   }
   if (options?.filePath !== undefined) {
     updateOptions.filePath = options.filePath;
+  }
+  if (options?.env !== undefined) {
+    updateOptions.env = options.env;
   }
   return updateHarnessConfig(updateOptions);
 }

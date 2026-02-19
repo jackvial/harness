@@ -105,10 +105,18 @@ Key orchestration calls are available in the same client:
 
 Runtime behavior is config-first via `harness.config.jsonc`.
 
+Harness resolves the config file at:
+
+- `$XDG_CONFIG_HOME/harness/harness.config.jsonc` when `XDG_CONFIG_HOME` is set.
+- `~/.harness/harness.config.jsonc` otherwise.
+
+On first run, Harness bootstraps the file from the built-in template.
+
 Example (critique defaults + hotkey override + OpenCode theme selection):
 
 ```jsonc
 {
+  "configVersion": 1,
   "critique": {
     "launch": {
       "defaultArgs": ["--watch"]
