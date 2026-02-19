@@ -2619,17 +2619,23 @@ async function main(): Promise<number> {
 
   const runCritiqueReviewFromCommandMenu = (
     directoryId: string,
-    mode: 'staged' | 'base-branch',
+    mode: 'unstaged' | 'staged' | 'base-branch',
   ): void => {
     queueControlPlaneOp(async () => {
       const agent = resolveCritiqueReviewAgentFromEnvironment();
-      if (mode === 'staged') {
+      if (mode !== 'base-branch') {
         const commandText = buildCritiqueReviewCommand({
-          mode: 'staged',
+          mode,
           agent,
         });
         await runCommandInNewTerminalThread(directoryId, commandText);
-        setCommandNotice(`running critique staged review (${agent ?? 'default'})`);
+        const reviewLabelByMode: Readonly<Record<'unstaged' | 'staged', string>> = {
+          unstaged: 'unstaged',
+          staged: 'staged',
+        };
+        setCommandNotice(
+          `running critique ${reviewLabelByMode[mode]} review (${agent ?? 'default'})`,
+        );
         return;
       }
       const baseBranch = await resolveCritiqueReviewBaseBranchForDirectory(directoryId);
@@ -2653,6 +2659,16 @@ async function main(): Promise<number> {
       return [];
     }
     return [
+      {
+        id: 'critique.review.unstaged',
+        title: 'Critique AI Review: Unstaged Changes',
+        aliases: ['critique unstaged review', 'review unstaged diff', 'ai review unstaged'],
+        keywords: ['critique', 'review', 'unstaged', 'diff', 'ai'],
+        detail: 'runs critique review',
+        run: () => {
+          runCritiqueReviewFromCommandMenu(directoryId, 'unstaged');
+        },
+      },
       {
         id: 'critique.review.staged',
         title: 'Critique AI Review: Staged Changes',

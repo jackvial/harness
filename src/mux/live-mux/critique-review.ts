@@ -9,6 +9,10 @@ interface CritiqueReviewAgentAvailability {
 
 type CritiqueReviewCommandInput =
   | {
+      readonly mode: 'unstaged';
+      readonly agent: CritiqueReviewAgent | null;
+    }
+  | {
       readonly mode: 'staged';
       readonly agent: CritiqueReviewAgent | null;
     }
@@ -54,7 +58,7 @@ export function buildCritiqueReviewCommand(input: CritiqueReviewCommandInput): s
   const tokens = ['critique', 'review'];
   if (input.mode === 'staged') {
     tokens.push('--staged');
-  } else {
+  } else if (input.mode === 'base-branch') {
     const normalizedBaseBranch = normalizeBranchName(input.baseBranch) ?? 'main';
     tokens.push(normalizedBaseBranch, 'HEAD');
   }

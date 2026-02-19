@@ -252,6 +252,7 @@ Pass-through stream invariants:
 - Command menu action execution still uses existing control-plane-backed runtime actions; no privileged side path is introduced.
 - Core shipped actions include:
   - start thread by agent type (`codex`, `claude`, `cursor`, `terminal`, `critique`)
+  - run Critique AI review for unstaged changes (`critique review`) from command menu
   - run Critique AI review for staged changes (`critique review --staged`) from command menu
   - run Critique AI review against base branch (`critique review <base> HEAD`) from command menu
   - close active thread

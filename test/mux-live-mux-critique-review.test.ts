@@ -39,7 +39,14 @@ void test('resolveCritiqueReviewAgent prefers claude then opencode', () => {
   );
 });
 
-void test('buildCritiqueReviewCommand renders staged and base-branch variants with optional agent', () => {
+void test('buildCritiqueReviewCommand renders unstaged staged and base-branch variants with optional agent', () => {
+  assert.equal(
+    buildCritiqueReviewCommand({
+      mode: 'unstaged',
+      agent: 'claude',
+    }),
+    'critique review --agent claude',
+  );
   assert.equal(
     buildCritiqueReviewCommand({
       mode: 'staged',

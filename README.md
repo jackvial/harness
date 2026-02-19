@@ -92,6 +92,7 @@ harness --session my-session
 - Runs with `--watch` by default.
 - Install actions are availability-aware and config-driven (`*.install.command`), opening a terminal thread to run the configured install command when a tool is missing.
 - Global command palette (`ctrl+p` / `cmd+p`) includes:
+  - `Critique AI Review: Unstaged Changes`
   - `Critique AI Review: Staged Changes`
   - `Critique AI Review: Current Branch vs Base`
 - These start a terminal thread and run `critique review ...`, preferring `claude` when available and otherwise using `opencode` when installed.
