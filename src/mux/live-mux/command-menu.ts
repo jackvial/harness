@@ -1,6 +1,6 @@
 export const COMMAND_MENU_MAX_RESULTS = 8;
 
-export type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
+type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
 
 export interface CommandMenuState {
   readonly scope: CommandMenuScope;
@@ -198,6 +198,21 @@ export function resolveCommandMenuMatches<TAction extends CommandMenuActionDescr
     return scored;
   }
   return scored.slice(0, Math.max(0, limit));
+}
+
+export function resolveSelectedCommandMenuActionId<TAction extends CommandMenuActionDescriptor>(
+  actions: readonly TAction[],
+  menu: CommandMenuState | null,
+): string | null {
+  if (menu === null) {
+    return null;
+  }
+  const matches = resolveCommandMenuMatches(actions, menu.query, null);
+  if (matches.length === 0) {
+    return null;
+  }
+  const selectedIndex = clampSelectedIndex(menu.selectedIndex, matches.length);
+  return matches[selectedIndex]?.action.id ?? null;
 }
 
 export function reduceCommandMenuInput(

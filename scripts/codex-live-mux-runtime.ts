@@ -34,11 +34,10 @@ import {
   resolveNewThreadPromptAgentByRow,
 } from '../src/mux/new-thread-prompt.ts';
 import {
-  COMMAND_MENU_MAX_RESULTS,
   CommandMenuRegistry,
   createCommandMenuState,
   filterThemePresetActionsForScope,
-  resolveCommandMenuMatches,
+  resolveSelectedCommandMenuActionId,
   type CommandMenuActionDescriptor,
   type RegisteredCommandMenuAction,
 } from '../src/mux/live-mux/command-menu.ts';
@@ -1635,20 +1634,7 @@ async function main(): Promise<number> {
     return preset.length > 0 ? preset : null;
   };
   const selectedCommandMenuActionId = (): string | null => {
-    const menu = workspace.commandMenu;
-    if (menu === null) {
-      return null;
-    }
-    const matches = resolveCommandMenuMatches(
-      resolveCommandMenuActions(),
-      menu.query,
-      COMMAND_MENU_MAX_RESULTS,
-    );
-    if (matches.length === 0) {
-      return null;
-    }
-    const selectedIndex = Math.max(0, Math.min(matches.length - 1, menu.selectedIndex));
-    return matches[selectedIndex]?.action.id ?? null;
+    return resolveSelectedCommandMenuActionId(resolveCommandMenuActions(), workspace.commandMenu);
   };
   const startThemePickerSession = (): void => {
     const initialThemeConfig =

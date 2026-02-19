@@ -1056,6 +1056,26 @@ void test('modal overlay builders return null for missing state and build overla
     themeOverlayRows.some((row) => row.includes('type to filter themes')),
     true,
   );
+  const pagedCommandMenuOverlay = buildCommandMenuModalOverlay(
+    80,
+    24,
+    {
+      scope: 'all',
+      query: 'action',
+      selectedIndex: 9,
+    },
+    Array.from({ length: 12 }, (_, index) => ({
+      id: `action.${String(index)}`,
+      title: `Action ${String(index).padStart(2, '0')}`,
+    })),
+    theme,
+  );
+  assert.notEqual(pagedCommandMenuOverlay, null);
+  const pagedRows = pagedCommandMenuOverlay?.rows ?? [];
+  assert.equal(
+    pagedRows.some((row) => row.includes('results 9-12 of 12')),
+    true,
+  );
 
   assert.equal(buildNewThreadModalOverlay(80, 24, null, theme), null);
   const newThreadOverlay = buildNewThreadModalOverlay(

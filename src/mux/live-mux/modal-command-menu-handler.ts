@@ -1,4 +1,5 @@
 import {
+  COMMAND_MENU_MAX_RESULTS,
   clampCommandMenuState,
   reduceCommandMenuInput,
   resolveCommandMenuMatches,
@@ -21,6 +22,37 @@ interface HandleCommandMenuInputOptions {
   readonly executeAction: (actionId: string) => void;
   readonly setMenu: (next: CommandMenuState | null) => void;
   readonly markDirty: () => void;
+}
+
+const COMMAND_MENU_BODY_ROW_OFFSET = 2;
+const COMMAND_MENU_ACTION_ROW_START = 2;
+const COMMAND_MENU_PAGE_HEADER_ROWS = 2;
+
+function resolveCommandMenuActionIdByRow(
+  menu: CommandMenuState,
+  actions: readonly CommandMenuActionDescriptor[],
+  overlayTopRowZeroBased: number,
+  rowOneBased: number,
+): string | null {
+  const matches = resolveCommandMenuMatches(actions, menu.query, null);
+  if (matches.length === 0) {
+    return null;
+  }
+  const selectedIndex = clampCommandMenuState(menu, matches.length).selectedIndex;
+  const pageStart = Math.floor(selectedIndex / COMMAND_MENU_MAX_RESULTS) * COMMAND_MENU_MAX_RESULTS;
+  const visibleMatches = matches.slice(pageStart, pageStart + COMMAND_MENU_MAX_RESULTS);
+  const actionStartBodyLine =
+    COMMAND_MENU_ACTION_ROW_START +
+    (matches.length > COMMAND_MENU_MAX_RESULTS ? COMMAND_MENU_PAGE_HEADER_ROWS : 0);
+  const clickedBodyLine = rowOneBased - 1 - (overlayTopRowZeroBased + COMMAND_MENU_BODY_ROW_OFFSET);
+  if (clickedBodyLine < actionStartBodyLine) {
+    return null;
+  }
+  const visibleIndex = clickedBodyLine - actionStartBodyLine;
+  if (visibleIndex < 0 || visibleIndex >= visibleMatches.length) {
+    return null;
+  }
+  return visibleMatches[visibleIndex]?.action.id ?? null;
 }
 
 export function handleCommandMenuInput(options: HandleCommandMenuInputOptions): boolean {
@@ -61,8 +93,24 @@ export function handleCommandMenuInput(options: HandleCommandMenuInputOptions): 
         setMenu(null);
         markDirty();
       },
-      (_col, _row) => {
-        return buildCommandMenuModalOverlay() !== null;
+      (_col, row) => {
+        const overlay = buildCommandMenuModalOverlay();
+        if (overlay === null) {
+          return false;
+        }
+        const selectedActionId = resolveCommandMenuActionIdByRow(
+          menu,
+          resolveActions(),
+          overlay.top,
+          row,
+        );
+        if (selectedActionId === null) {
+          return false;
+        }
+        setMenu(null);
+        executeAction(selectedActionId);
+        markDirty();
+        return true;
       },
     )
   ) {

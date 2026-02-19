@@ -214,3 +214,46 @@ void test('gateway profiler uses stop fallback text when stdout is empty during 
   assert.equal(result.action, 'stop');
   assert.equal(result.message, 'profile stopped');
 });
+
+void test('gateway profiler active-state parser rejects invalid payload fields and accepts valid payload', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-gateway-profiler-active-state-'));
+  const missingPath = join(workspace, 'missing.json');
+  assert.equal(hasActiveProfileState(missingPath), false);
+
+  const profileStatePath = join(workspace, 'active-profile.json');
+  writeFileSync(profileStatePath, '{', 'utf8');
+  assert.equal(hasActiveProfileState(profileStatePath), false);
+
+  const validPayload = {
+    version: 1,
+    mode: 'live-inspect',
+    pid: 123,
+    host: '127.0.0.1',
+    port: 7777,
+    stateDbPath: '/tmp/state.db',
+    profileDir: '/tmp/profiles',
+    gatewayProfilePath: '/tmp/profiles/gateway.cpuprofile',
+    inspectWebSocketUrl: 'ws://127.0.0.1:9229/uuid',
+    startedAt: '2026-02-19T00:00:00.000Z',
+  };
+  const invalidPayloads: unknown[] = [
+    null,
+    { ...validPayload, version: 2 },
+    { ...validPayload, mode: 'legacy' },
+    { ...validPayload, pid: 0 },
+    { ...validPayload, host: '   ' },
+    { ...validPayload, port: 70000 },
+    { ...validPayload, stateDbPath: '' },
+    { ...validPayload, profileDir: '' },
+    { ...validPayload, gatewayProfilePath: '' },
+    { ...validPayload, inspectWebSocketUrl: '' },
+    { ...validPayload, startedAt: '' },
+  ];
+  for (const payload of invalidPayloads) {
+    writeFileSync(profileStatePath, JSON.stringify(payload), 'utf8');
+    assert.equal(hasActiveProfileState(profileStatePath), false);
+  }
+
+  writeFileSync(profileStatePath, JSON.stringify(validPayload), 'utf8');
+  assert.equal(hasActiveProfileState(profileStatePath), true);
+});

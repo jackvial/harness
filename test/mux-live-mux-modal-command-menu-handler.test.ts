@@ -221,3 +221,137 @@ void test('command menu handler down-arrow navigation moves beyond first result 
   assert.equal(handledSubmit, true);
   assert.deepEqual(executed, ['action.9']);
 });
+
+void test('command menu handler mouse click executes clicked action row', () => {
+  let menu: CommandMenuState | null = createCommandMenuState();
+  const actions = [
+    { id: 'start.cursor', title: 'Start Cursor thread' },
+    { id: 'start.codex', title: 'Start Codex thread' },
+  ];
+  const executed: string[] = [];
+  let dirtyCount = 0;
+
+  const handled = handleCommandMenuInput({
+    input: Buffer.from('\u001b[<0;8;6M', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) =>
+      onInsidePointerPress?.(8, 6) === true,
+    buildCommandMenuModalOverlay: () => ({ top: 1 }),
+    resolveActions: () => actions,
+    executeAction: (actionId: string) => {
+      executed.push(actionId);
+    },
+    setMenu: (next) => {
+      menu = next;
+    },
+    markDirty: () => {
+      dirtyCount += 1;
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(menu, null);
+  assert.deepEqual(executed, ['start.codex']);
+  assert.equal(dirtyCount, 1);
+});
+
+void test('command menu handler mouse click resolves paged rows for thread-start menu', () => {
+  let menu: CommandMenuState | null = {
+    scope: 'thread-start',
+    query: 'action',
+    selectedIndex: 9,
+  };
+  const actions = Array.from({ length: 12 }, (_, index) => ({
+    id: `action.${String(index)}`,
+    title: `Action ${String(index).padStart(2, '0')}`,
+  }));
+  const executed: string[] = [];
+
+  const handled = handleCommandMenuInput({
+    input: Buffer.from('\u001b[<0;8;9M', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) =>
+      onInsidePointerPress?.(8, 9) === true,
+    buildCommandMenuModalOverlay: () => ({ top: 1 }),
+    resolveActions: () => actions,
+    executeAction: (actionId: string) => {
+      executed.push(actionId);
+    },
+    setMenu: (next) => {
+      menu = next;
+    },
+    markDirty: () => {},
+  });
+
+  assert.equal(handled, true);
+  assert.equal(menu, null);
+  assert.deepEqual(executed, ['action.9']);
+});
+
+void test('command menu handler mouse click guards overlay, empty matches, and out-of-range rows', () => {
+  const executed: string[] = [];
+  const setMenuCalls: string[] = [];
+  const common = {
+    input: Buffer.from('\u001b[<0;8;6M', 'utf8'),
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    executeAction: (actionId: string) => {
+      executed.push(actionId);
+    },
+    setMenu: (next: CommandMenuState | null) => {
+      setMenuCalls.push(next === null ? 'null' : 'set');
+    },
+    markDirty: () => {},
+  };
+
+  assert.equal(
+    handleCommandMenuInput({
+      menu: createCommandMenuState(),
+      dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) => {
+        assert.equal(onInsidePointerPress?.(8, 6), false);
+        return true;
+      },
+      buildCommandMenuModalOverlay: () => null,
+      resolveActions: () => [{ id: 'start.codex', title: 'Start Codex thread' }],
+      ...common,
+    }),
+    true,
+  );
+
+  assert.equal(
+    handleCommandMenuInput({
+      menu: createCommandMenuState({
+        query: 'missing',
+      }),
+      dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) => {
+        assert.equal(onInsidePointerPress?.(8, 6), false);
+        return true;
+      },
+      buildCommandMenuModalOverlay: () => ({ top: 1 }),
+      resolveActions: () => [{ id: 'start.codex', title: 'Start Codex thread' }],
+      ...common,
+    }),
+    true,
+  );
+
+  assert.equal(
+    handleCommandMenuInput({
+      menu: createCommandMenuState(),
+      dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) => {
+        assert.equal(onInsidePointerPress?.(8, 40), false);
+        return true;
+      },
+      buildCommandMenuModalOverlay: () => ({ top: 1 }),
+      resolveActions: () => [{ id: 'start.codex', title: 'Start Codex thread' }],
+      ...common,
+    }),
+    true,
+  );
+
+  assert.deepEqual(executed, []);
+  assert.deepEqual(setMenuCalls, []);
+});
