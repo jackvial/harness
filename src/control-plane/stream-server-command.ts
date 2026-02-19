@@ -802,26 +802,24 @@ export function executeStreamServerCommand(
     const tenantId = command.tenantId ?? DEFAULT_TENANT_ID;
     const userId = command.userId ?? DEFAULT_USER_ID;
     const workspaceId = command.workspaceId ?? DEFAULT_WORKSPACE_ID;
-    const policy =
-      ctx.stateStore.getAutomationPolicy({
-        tenantId,
-        userId,
-        workspaceId,
-        scope: command.scope,
-        scopeId: command.scope === 'global' ? null : (command.scopeId ?? null),
-      }) ??
-      {
-        policyId: `policy-default-${command.scope}`,
-        tenantId,
-        userId,
-        workspaceId,
-        scope: command.scope,
-        scopeId: command.scope === 'global' ? null : (command.scopeId ?? null),
-        automationEnabled: true,
-        frozen: false,
-        createdAt: new Date(0).toISOString(),
-        updatedAt: new Date(0).toISOString(),
-      };
+    const policy = ctx.stateStore.getAutomationPolicy({
+      tenantId,
+      userId,
+      workspaceId,
+      scope: command.scope,
+      scopeId: command.scope === 'global' ? null : (command.scopeId ?? null),
+    }) ?? {
+      policyId: `policy-default-${command.scope}`,
+      tenantId,
+      userId,
+      workspaceId,
+      scope: command.scope,
+      scopeId: command.scope === 'global' ? null : (command.scopeId ?? null),
+      automationEnabled: true,
+      frozen: false,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    };
     return {
       policy,
     };
@@ -1556,9 +1554,7 @@ export function executeStreamServerCommand(
         directoryId: directory.directoryId,
         availability: result.availability.availability,
         reason:
-          result.task === null
-            ? (result.availability.reason ?? 'no ready task available')
-            : null,
+          result.task === null ? (result.availability.reason ?? 'no ready task available') : null,
         settings: result.availability.settings,
         repositoryId: result.availability.repositoryId,
       };

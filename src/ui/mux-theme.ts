@@ -305,7 +305,11 @@ function asThemeDocument(value: unknown): OpenCodeThemeDocument | null {
     return null;
   }
   const record = value as Record<string, unknown>;
-  if (record['theme'] === null || typeof record['theme'] !== 'object' || Array.isArray(record['theme'])) {
+  if (
+    record['theme'] === null ||
+    typeof record['theme'] !== 'object' ||
+    Array.isArray(record['theme'])
+  ) {
     return null;
   }
   return {
@@ -386,7 +390,10 @@ function uiStyle(fgHex: string, bgHex: string | null, bold = false): UiStyle {
   };
 }
 
-function resolveThemeDocumentFromFile(path: string, readFile: (path: string) => string): OpenCodeThemeDocument {
+function resolveThemeDocumentFromFile(
+  path: string,
+  readFile: (path: string) => string,
+): OpenCodeThemeDocument {
   const content = readFile(path);
   let parsed: unknown;
   try {

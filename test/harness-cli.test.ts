@@ -916,14 +916,13 @@ void test('harness status-timeline start/stop writes and clears active state for
     `.harness/status-timelines/${sessionName}/status-timeline.log`,
   );
   try {
-    const startResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'status-timeline',
-    ]);
+    const startResult = await runHarness(workspace, ['--session', sessionName, 'status-timeline']);
     assert.equal(startResult.code, 0);
     assert.equal(startResult.stdout.includes('status timeline started'), true);
-    assert.equal(startResult.stdout.includes(`status-timeline-target: ${statusTimelineOutputPath}`), true);
+    assert.equal(
+      startResult.stdout.includes(`status-timeline-target: ${statusTimelineOutputPath}`),
+      true,
+    );
     assert.equal(existsSync(statusTimelineStatePath), true);
     assert.equal(existsSync(statusTimelineOutputPath), true);
     assert.equal(readFileSync(statusTimelineOutputPath, 'utf8'), '');
@@ -992,7 +991,10 @@ void test('harness status-timeline stop fails when there is no active status tim
       'stop',
     ]);
     assert.equal(stopResult.code, 1);
-    assert.equal(stopResult.stderr.includes('no active status timeline run for this session'), true);
+    assert.equal(
+      stopResult.stderr.includes('no active status timeline run for this session'),
+      true,
+    );
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
@@ -1038,7 +1040,10 @@ void test('harness render-trace start/stop writes and clears active state for th
     workspace,
     `.harness/sessions/${sessionName}/active-render-trace.json`,
   );
-  const renderTraceOutputPath = join(workspace, `.harness/render-traces/${sessionName}/render-trace.log`);
+  const renderTraceOutputPath = join(
+    workspace,
+    `.harness/render-traces/${sessionName}/render-trace.log`,
+  );
   try {
     const startResult = await runHarness(workspace, [
       '--session',
@@ -1049,7 +1054,10 @@ void test('harness render-trace start/stop writes and clears active state for th
     ]);
     assert.equal(startResult.code, 0);
     assert.equal(startResult.stdout.includes('render trace started'), true);
-    assert.equal(startResult.stdout.includes(`render-trace-target: ${renderTraceOutputPath}`), true);
+    assert.equal(
+      startResult.stdout.includes(`render-trace-target: ${renderTraceOutputPath}`),
+      true,
+    );
     assert.equal(startResult.stdout.includes('render-trace-conversation-id: session-1'), true);
     assert.equal(existsSync(renderTraceStatePath), true);
     assert.equal(existsSync(renderTraceOutputPath), true);
@@ -1062,7 +1070,10 @@ void test('harness render-trace start/stop writes and clears active state for th
       'stop',
     ]);
     assert.equal(stopResult.code, 0);
-    assert.equal(stopResult.stdout.includes(`render trace stopped: ${renderTraceOutputPath}`), true);
+    assert.equal(
+      stopResult.stdout.includes(`render trace stopped: ${renderTraceOutputPath}`),
+      true,
+    );
     assert.equal(existsSync(renderTraceStatePath), false);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
@@ -1083,7 +1094,10 @@ void test('harness render-trace rejects duplicate start and validates stop/optio
       'start',
     ]);
     assert.equal(duplicateStartResult.code, 1);
-    assert.equal(duplicateStartResult.stderr.includes('render trace already running; stop it first'), true);
+    assert.equal(
+      duplicateStartResult.stderr.includes('render trace already running; stop it first'),
+      true,
+    );
 
     const stopResult = await runHarness(workspace, [
       '--session',
@@ -1117,7 +1131,10 @@ void test('harness render-trace stop and subcommand validation errors are explic
 
     const badSubcommandResult = await runHarness(workspace, ['render-trace', 'bogus']);
     assert.equal(badSubcommandResult.code, 1);
-    assert.equal(badSubcommandResult.stderr.includes('unknown render-trace subcommand: bogus'), true);
+    assert.equal(
+      badSubcommandResult.stderr.includes('unknown render-trace subcommand: bogus'),
+      true,
+    );
 
     const badOptionResult = await runHarness(workspace, [
       'render-trace',
@@ -1126,7 +1143,10 @@ void test('harness render-trace stop and subcommand validation errors are explic
       '',
     ]);
     assert.equal(badOptionResult.code, 1);
-    assert.equal(badOptionResult.stderr.includes('invalid --conversation-id value: empty string'), true);
+    assert.equal(
+      badOptionResult.stderr.includes('invalid --conversation-id value: empty string'),
+      true,
+    );
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

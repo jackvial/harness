@@ -50,6 +50,8 @@ interface RuntimeRailInputOptions {
   readonly getMainPaneMode: () => MainPaneMode;
   readonly getActiveConversationId: () => string | null;
   readonly getActiveDirectoryId: () => string | null;
+  readonly forwardInterruptAllToActiveConversation?: (input: Buffer) => boolean;
+  readonly interruptAllDoubleTapWindowMs?: number;
   readonly repositoriesHas: (repositoryId: string) => boolean;
   readonly chordTimeoutMs: number;
   readonly collapseAllChordPrefix: Buffer;
@@ -93,7 +95,7 @@ export class RuntimeRailInput {
       dependencies.createLeftRailPointerInput ??
       ((leftRailOptions: LeftRailPointerInputOptions) => new LeftRailPointerInput(leftRailOptions));
 
-    this.navigationInput = createRuntimeNavigationInput({
+    const runtimeNavigationOptions: RuntimeNavigationInputOptions = {
       workspace: options.workspace,
       shortcutBindings: options.shortcutBindings,
       requestStop: options.requestStop,
@@ -155,7 +157,19 @@ export class RuntimeRailInput {
       chordTimeoutMs: options.chordTimeoutMs,
       collapseAllChordPrefix: options.collapseAllChordPrefix,
       nowMs,
-    });
+      ...(options.forwardInterruptAllToActiveConversation === undefined
+        ? {}
+        : {
+            forwardInterruptAllToActiveConversation:
+              options.forwardInterruptAllToActiveConversation,
+          }),
+      ...(options.interruptAllDoubleTapWindowMs === undefined
+        ? {}
+        : {
+            interruptAllDoubleTapWindowMs: options.interruptAllDoubleTapWindowMs,
+          }),
+    };
+    this.navigationInput = createRuntimeNavigationInput(runtimeNavigationOptions);
 
     this.leftRailPointerInput = createLeftRailPointerInput({
       getLatestRailRows: () => options.workspace.latestRailViewRows,

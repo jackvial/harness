@@ -158,9 +158,7 @@ void test('runtime conversation title edit service stop/begin guard branches pre
 
 void test('runtime conversation title edit service handles persisted update failures and stale state guards', async () => {
   const workspace = createWorkspace();
-  const conversations = new Map<string, ConversationRecord>([
-    ['conversation-a', { title: 'A' }],
-  ]);
+  const conversations = new Map<string, ConversationRecord>([['conversation-a', { title: 'A' }]]);
   const queued: Array<{ label: string; task: () => Promise<void> }> = [];
   let markDirtyCount = 0;
   let scheduledCallback: (() => void) | null = null;

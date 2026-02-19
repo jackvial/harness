@@ -71,7 +71,9 @@ export class ConversationLifecycle<
   private readonly actions: RuntimeConversationActions<TControllerRecord>;
   private readonly titleEdit: RuntimeConversationTitleEditService<TConversation>;
 
-  constructor(options: ConversationLifecycleOptions<TConversation, TSessionSummary, TControllerRecord>) {
+  constructor(
+    options: ConversationLifecycleOptions<TConversation, TSessionSummary, TControllerRecord>,
+  ) {
     this.streamSubscriptions = new RuntimeStreamSubscriptions(options.streamSubscriptions);
     this.starter = new RuntimeConversationStarter({
       ...options.starter,

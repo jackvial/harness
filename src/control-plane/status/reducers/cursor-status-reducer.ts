@@ -12,9 +12,9 @@ export class CursorStatusReducer extends BaseAgentStatusReducer {
     super();
   }
 
-  protected override projectFromTelemetry(telemetry: StreamTelemetrySummary):
-    | { text: string | null; phaseHint: 'needs-action' | 'working' | 'idle' | null }
-    | null {
+  protected override projectFromTelemetry(
+    telemetry: StreamTelemetrySummary,
+  ): { text: string | null; phaseHint: 'needs-action' | 'working' | 'idle' | null } | null {
     const eventName = normalize(telemetry.eventName);
     if (
       eventName === 'cursor.beforesubmitprompt' ||

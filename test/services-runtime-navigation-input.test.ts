@@ -244,7 +244,9 @@ void test('runtime navigation input composes left-nav, fold, and global shortcut
 void test('runtime navigation input default dependency path is usable', () => {
   const calls: string[] = [];
   const workspace = createWorkspace();
-  const runtimeNavigationInput = new RuntimeNavigationInput(createNavigationOptions(workspace, calls));
+  const runtimeNavigationInput = new RuntimeNavigationInput(
+    createNavigationOptions(workspace, calls),
+  );
 
   const cycleResult = runtimeNavigationInput.cycleLeftNavSelection('next');
   const foldResult = runtimeNavigationInput.handleRepositoryFoldInput(Buffer.from([0x0b]));
@@ -324,7 +326,8 @@ void test('runtime navigation input preserves workspace action method context', 
         };
       },
       createGlobalShortcutInput: (globalShortcutOptions) => {
-        capturedGlobalShortcutOptions = globalShortcutOptions as unknown as CapturedGlobalShortcutOptions;
+        capturedGlobalShortcutOptions =
+          globalShortcutOptions as unknown as CapturedGlobalShortcutOptions;
         return {
           handleInput: () => false,
         };

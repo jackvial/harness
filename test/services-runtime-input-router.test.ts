@@ -156,10 +156,7 @@ void test('runtime input router composes modal rail and main-pane routing surfac
     true,
   );
   assert.equal(workspace.commandMenu, null);
-  assert.equal(
-    typeof runtimeInputRouter.handleRepositoryFoldInput(Buffer.from([0x0b])),
-    'boolean',
-  );
+  assert.equal(typeof runtimeInputRouter.handleRepositoryFoldInput(Buffer.from([0x0b])), 'boolean');
   assert.equal(typeof runtimeInputRouter.handleGlobalShortcutInput(Buffer.from('x')), 'boolean');
   const tokenRouter = runtimeInputRouter.inputTokenRouter();
   const routed = tokenRouter.routeTokens({

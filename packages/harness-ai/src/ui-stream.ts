@@ -1,9 +1,4 @@
-import type {
-  AsyncIterableStream,
-  StreamTextPart,
-  ToolSet,
-  UIMessageChunk,
-} from './types.ts';
+import type { AsyncIterableStream, StreamTextPart, ToolSet, UIMessageChunk } from './types.ts';
 import { toAsyncIterableStream } from './async-iterable-stream.ts';
 
 export const UI_MESSAGE_STREAM_HEADERS: Readonly<Record<string, string>> = {
@@ -49,7 +44,11 @@ export function createUIMessageStream<TOOLS extends ToolSet>(
             controller.enqueue({ type: 'start-step' });
             break;
           case 'text-start':
-            controller.enqueue({ type: 'text-start', id: part.id, providerMetadata: part.providerMetadata });
+            controller.enqueue({
+              type: 'text-start',
+              id: part.id,
+              providerMetadata: part.providerMetadata,
+            });
             break;
           case 'text-delta':
             controller.enqueue({
@@ -60,7 +59,11 @@ export function createUIMessageStream<TOOLS extends ToolSet>(
             });
             break;
           case 'text-end':
-            controller.enqueue({ type: 'text-end', id: part.id, providerMetadata: part.providerMetadata });
+            controller.enqueue({
+              type: 'text-end',
+              id: part.id,
+              providerMetadata: part.providerMetadata,
+            });
             break;
           case 'reasoning-start':
             controller.enqueue({
@@ -198,7 +201,9 @@ export function createUIMessageStreamResponse(
   stream: ReadableStream<UIMessageChunk>,
   init?: ResponseInit,
 ): Response {
-  const sseStream = stream.pipeThrough(new JsonToSseTransformStream()).pipeThrough(new TextEncoderStream());
+  const sseStream = stream
+    .pipeThrough(new JsonToSseTransformStream())
+    .pipeThrough(new TextEncoderStream());
   const headers = new Headers(init?.headers ?? {});
   for (const [key, value] of Object.entries(UI_MESSAGE_STREAM_HEADERS)) {
     if (!headers.has(key)) {

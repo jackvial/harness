@@ -455,9 +455,7 @@ function parseStatusTimelineStartCommand(
   };
 }
 
-function parseStatusTimelineStopCommand(
-  argv: readonly string[],
-): ParsedStatusTimelineStopCommand {
+function parseStatusTimelineStopCommand(argv: readonly string[]): ParsedStatusTimelineStopCommand {
   if (argv.length > 0) {
     throw new Error(`unknown status-timeline option: ${argv[0]}`);
   }
@@ -948,10 +946,7 @@ function readActiveStatusTimelineState(statePath: string): ActiveStatusTimelineS
   }
 }
 
-function writeActiveStatusTimelineState(
-  statePath: string,
-  state: ActiveStatusTimelineState,
-): void {
+function writeActiveStatusTimelineState(statePath: string, state: ActiveStatusTimelineState): void {
   mkdirSync(dirname(statePath), { recursive: true });
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 }

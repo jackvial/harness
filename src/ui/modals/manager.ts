@@ -7,7 +7,10 @@ import {
   buildTaskEditorModalOverlay as buildTaskEditorModalOverlayFrame,
 } from '../../mux/live-mux/modal-overlays.ts';
 import { dismissModalOnOutsideClick as dismissModalOnOutsideClickFrame } from '../../mux/live-mux/modal-pointer.ts';
-import type { CommandMenuActionDescriptor, CommandMenuState } from '../../mux/live-mux/command-menu.ts';
+import type {
+  CommandMenuActionDescriptor,
+  CommandMenuState,
+} from '../../mux/live-mux/command-menu.ts';
 import type { createNewThreadPromptState } from '../../mux/new-thread-prompt.ts';
 import type {
   ConversationTitleEditState,

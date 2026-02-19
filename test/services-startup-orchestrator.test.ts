@@ -110,7 +110,10 @@ void test('startup orchestrator activates initial session and forwards startup t
   assert.equal(startupOrchestrator.firstPaintTargetSessionId, 'session-1');
   assert.equal(startedSpans.includes('mux.startup.activate-initial'), true);
   assert.equal(endedSpans.includes('mux.startup.activate-initial'), true);
-  assert.equal(perfEvents.includes('mux.session.first-output:{"sessionId":"session-1","bytes":8}'), true);
+  assert.equal(
+    perfEvents.includes('mux.session.first-output:{"sessionId":"session-1","bytes":8}'),
+    true,
+  );
   assert.equal(
     perfEvents.includes('mux.startup.active-first-output:{"sessionId":"session-1","bytes":8}'),
     true,

@@ -13,8 +13,7 @@ void test('runtime stream subscriptions swallows recoverable conversation subscr
       calls.push(`unsubscribePtyEvents:${sessionId}`);
       throw new Error('not live');
     },
-    isSessionNotFoundError: (error) =>
-      error instanceof Error && error.message === 'not found',
+    isSessionNotFoundError: (error) => error instanceof Error && error.message === 'not found',
     isSessionNotLiveError: (error) => error instanceof Error && error.message === 'not live',
     subscribeObservedStream: async () => 'subscription-1',
     unsubscribeObservedStream: async () => {},
@@ -40,18 +39,12 @@ void test('runtime stream subscriptions rethrows non-recoverable conversation su
     unsubscribeObservedStream: async () => {},
   });
 
-  await assert.rejects(
-    async () => {
-      await subscriptions.subscribeConversationEvents('session-2');
-    },
-    /boom-subscribe/,
-  );
-  await assert.rejects(
-    async () => {
-      await subscriptions.unsubscribeConversationEvents('session-2');
-    },
-    /boom-unsubscribe/,
-  );
+  await assert.rejects(async () => {
+    await subscriptions.subscribeConversationEvents('session-2');
+  }, /boom-subscribe/);
+  await assert.rejects(async () => {
+    await subscriptions.unsubscribeConversationEvents('session-2');
+  }, /boom-unsubscribe/);
 });
 
 void test('runtime stream subscriptions de-dupes task-planning subscribe and clears id on unsubscribe', async () => {

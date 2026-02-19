@@ -68,7 +68,9 @@ export function resolveHarnessRenderTraceCommandArgs(
   conversationId: string | null,
 ): readonly string[] {
   const base =
-    sessionName === null ? ['render-trace', action] : ['--session', sessionName, 'render-trace', action];
+    sessionName === null
+      ? ['render-trace', action]
+      : ['--session', sessionName, 'render-trace', action];
   if (action === 'start' && conversationId !== null) {
     return [...base, '--conversation-id', conversationId];
   }

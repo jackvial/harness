@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { postAnthropicMessagesStream } from '../packages/harness-ai/src/anthropic-client.ts';
 import type { HarnessAnthropicModel } from '../packages/harness-ai/src/types.ts';
-import { createAnthropicResponse, createByteStream, createErrorResponse, collectStream } from './support/harness-ai.ts';
+import {
+  createAnthropicResponse,
+  createByteStream,
+  createErrorResponse,
+  collectStream,
+} from './support/harness-ai.ts';
 
 void test('posts request and parses anthropic stream events', async () => {
   const fetchCalls: Array<{ input: unknown; init?: RequestInit }> = [];
@@ -25,7 +30,11 @@ void test('posts request and parses anthropic stream events', async () => {
         { type: 'ping' },
         {
           type: 'message_start',
-          message: { id: 'm1', model: 'claude-model', usage: { input_tokens: 1, output_tokens: 2 } },
+          message: {
+            id: 'm1',
+            model: 'claude-model',
+            usage: { input_tokens: 1, output_tokens: 2 },
+          },
         },
       ]);
     },

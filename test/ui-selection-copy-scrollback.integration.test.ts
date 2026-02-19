@@ -94,10 +94,8 @@ void test('selection/copy integration includes offscreen rows after drag + scrol
         oracle.scrollViewport(delta);
       },
       snapshotWithoutHash: () => oracle.snapshotWithoutHash(),
-      selectionText: (
-        anchor: PaneSelection['anchor'],
-        focus: PaneSelection['focus'],
-      ): string => oracle.selectionText(anchor, focus),
+      selectionText: (anchor: PaneSelection['anchor'], focus: PaneSelection['focus']): string =>
+        oracle.selectionText(anchor, focus),
     },
   };
 
@@ -113,7 +111,10 @@ void test('selection/copy integration includes offscreen rows after drag + scrol
     snapshotForInput = routed.snapshotForInput ?? oracle.snapshotWithoutHash();
   };
 
-  let anchorCell: { row: number; col: number } | null = lineCellForText(snapshotForInput, 'COPY-LINE-05');
+  let anchorCell: { row: number; col: number } | null = lineCellForText(
+    snapshotForInput,
+    'COPY-LINE-05',
+  );
   for (let index = 0; anchorCell === null && index < 120; index += 1) {
     routeMouse(64, wheelCol, wheelRow, 'M');
     anchorCell = lineCellForText(snapshotForInput, 'COPY-LINE-05');
@@ -123,7 +124,10 @@ void test('selection/copy integration includes offscreen rows after drag + scrol
   const anchorAbsoluteCol = layout.rightStartCol + anchorCell!.col - 1;
   routeMouse(0, anchorAbsoluteCol, anchorCell!.row, 'M');
 
-  let focusCell: { row: number; col: number } | null = lineCellForText(snapshotForInput, 'COPY-LINE-40');
+  let focusCell: { row: number; col: number } | null = lineCellForText(
+    snapshotForInput,
+    'COPY-LINE-40',
+  );
   for (let index = 0; focusCell === null && index < 120; index += 1) {
     routeMouse(65, wheelCol, wheelRow, 'M');
     focusCell = lineCellForText(snapshotForInput, 'COPY-LINE-40');

@@ -545,7 +545,11 @@ export function handleSessionEvent(
     if (mapped.type === 'notify') {
       const keyEvent =
         notifyKeyEventFromPayload(sessionState.agentType, mapped.record.payload, observedAt) ??
-        unmappedNotifyKeyEventFromPayload(sessionState.agentType, mapped.record.payload, observedAt);
+        unmappedNotifyKeyEventFromPayload(
+          sessionState.agentType,
+          mapped.record.payload,
+          observedAt,
+        );
       applySessionKeyEvent(ctx, sessionState, keyEvent, {
         applyStatusHint: true,
       });

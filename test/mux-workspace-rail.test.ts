@@ -31,7 +31,9 @@ function normalizeConversationFixture(
       ? 'needs-action'
       : status === 'exited'
         ? 'exited'
-        : detailLower === 'active' || detailLower === 'working' || detailLower.startsWith('working:')
+        : detailLower === 'active' ||
+            detailLower === 'working' ||
+            detailLower.startsWith('working:')
           ? 'working'
           : detailLower === 'inactive' ||
               detailLower.includes('turn complete') ||
@@ -45,8 +47,7 @@ function normalizeConversationFixture(
     phase,
     lastKnownWork,
     lastKnownWorkAt,
-    phaseHint:
-      phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
+    phaseHint: phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
   };
   if (lastKnownWork !== null || attentionReason !== null) {
     modelOptions.detailText = (lastKnownWork ?? attentionReason) as string;

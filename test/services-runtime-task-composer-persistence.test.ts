@@ -50,7 +50,11 @@ void test('runtime task composer persistence service resolves composer lookup an
     ],
   ]);
   const setCalls: Array<{ taskId: string; buffer: TaskComposerBuffer }> = [];
-  const service = new RuntimeTaskComposerPersistenceService<TaskRecord, TaskComposerBuffer, FakeTimer>({
+  const service = new RuntimeTaskComposerPersistenceService<
+    TaskRecord,
+    TaskComposerBuffer,
+    FakeTimer
+  >({
     getTask: (taskId) => tasks.get(taskId),
     getTaskComposer: (taskId) => composers.get(taskId),
     setTaskComposer: (taskId, buffer) => {
@@ -139,7 +143,11 @@ void test('runtime task composer persistence service clears autosave timers and 
   let scheduledDelay = 0;
   let unrefCount = 0;
 
-  const service = new RuntimeTaskComposerPersistenceService<TaskRecord, TaskComposerBuffer, FakeTimer>({
+  const service = new RuntimeTaskComposerPersistenceService<
+    TaskRecord,
+    TaskComposerBuffer,
+    FakeTimer
+  >({
     getTask: () => task,
     getTaskComposer: (taskId) => composers.get(taskId),
     setTaskComposer: () => {},
@@ -229,7 +237,11 @@ void test('runtime task composer persistence service queues persist operations a
     description: string;
   }> = [];
 
-  const service = new RuntimeTaskComposerPersistenceService<TaskRecord, TaskComposerBuffer, FakeTimer>({
+  const service = new RuntimeTaskComposerPersistenceService<
+    TaskRecord,
+    TaskComposerBuffer,
+    FakeTimer
+  >({
     getTask: (taskId) => (taskId === task.taskId ? task : undefined),
     getTaskComposer: (taskId) => composers.get(taskId),
     setTaskComposer: (taskId, buffer) => {
@@ -338,7 +350,11 @@ void test('runtime task composer persistence service clears timer before flush p
   const cleared: string[] = [];
   const queued: string[] = [];
 
-  const service = new RuntimeTaskComposerPersistenceService<TaskRecord, TaskComposerBuffer, FakeTimer>({
+  const service = new RuntimeTaskComposerPersistenceService<
+    TaskRecord,
+    TaskComposerBuffer,
+    FakeTimer
+  >({
     getTask: () => task,
     getTaskComposer: () => ({
       text: 'Title B',

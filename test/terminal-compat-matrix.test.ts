@@ -82,23 +82,23 @@ void test('terminal compatibility matrix summary is explicit and stable', () => 
     const current = levelCounts.get(entry.levelId) ?? 0;
     levelCounts.set(entry.levelId, current + 1);
   }
-  assert.deepEqual([...levelCounts.entries()], [
-    ['l0-grammar-core', 4],
-    ['l1-screen-state', 4],
-    ['l2-dec-modes', 5],
-    ['l3-query-reply', 4],
-    ['l4-unicode-fidelity', 2],
-    ['l5-external-diff', 2],
-    ['l6-modern-extensions', 4],
-  ]);
+  assert.deepEqual(
+    [...levelCounts.entries()],
+    [
+      ['l0-grammar-core', 4],
+      ['l1-screen-state', 4],
+      ['l2-dec-modes', 5],
+      ['l3-query-reply', 4],
+      ['l4-unicode-fidelity', 2],
+      ['l5-external-diff', 2],
+      ['l6-modern-extensions', 4],
+    ],
+  );
 
   const blockingP0 = TERMINAL_COMPAT_MATRIX.filter(
     (entry) => entry.priority === 'p0-codex-vim' && entry.status !== 'implemented',
   ).map((entry) => entry.id);
-  assert.deepEqual(blockingP0, [
-    'dec-mouse-focus-tracking',
-    'differential-terminal-checkpoints',
-  ]);
+  assert.deepEqual(blockingP0, ['dec-mouse-focus-tracking', 'differential-terminal-checkpoints']);
 });
 
 void test('terminal compatibility matrix locks key feature states', () => {

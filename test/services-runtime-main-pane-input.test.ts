@@ -25,13 +25,15 @@ interface CapturedMainPaneOptions {
   clearTaskPaneNotice(): void;
   setTaskEditClickState(next: { entityId: string; atMs: number } | null): void;
   setRepositoryEditClickState(next: { entityId: string; atMs: number } | null): void;
-  setHomePaneDragState(next: {
-    kind: 'task' | 'repository';
-    itemId: string;
-    startedRowIndex: number;
-    latestRowIndex: number;
-    hasDragged: boolean;
-  } | null): void;
+  setHomePaneDragState(
+    next: {
+      kind: 'task' | 'repository';
+      itemId: string;
+      startedRowIndex: number;
+      latestRowIndex: number;
+      hasDragged: boolean;
+    } | null,
+  ): void;
   openTaskEditPrompt(taskId: string): void;
   openRepositoryPromptForEdit(repositoryId: string): void;
   markDirty(): void;
@@ -90,9 +92,9 @@ function createWorkspace(): WorkspaceModel {
   });
 }
 
-function createMainPaneInputOptions(workspace: WorkspaceModel): ConstructorParameters<
-  typeof RuntimeMainPaneInput
->[0] {
+function createMainPaneInputOptions(
+  workspace: WorkspaceModel,
+): ConstructorParameters<typeof RuntimeMainPaneInput>[0] {
   return {
     workspace,
     leftRailPointerInput: {
@@ -142,7 +144,9 @@ void test('runtime main pane input composes constructors and delegates token rou
         calls.push(`runTaskPaneAction:${action}`);
       },
       openTaskEditPrompt: (
-        taskId: Parameters<RuntimeMainPaneInputOptions['workspaceActions']['openTaskEditPrompt']>[0],
+        taskId: Parameters<
+          RuntimeMainPaneInputOptions['workspaceActions']['openTaskEditPrompt']
+        >[0],
       ) => {
         calls.push(`openTaskEditPrompt:${taskId}`);
       },
@@ -174,7 +178,11 @@ void test('runtime main pane input composes constructors and delegates token rou
         calls.push(`reorderRepositoryByDrop:${draggedRepositoryId}:${targetRepositoryId}`);
       },
     },
-    taskPaneActionAtCell: (_view: WorkspaceModel['latestTaskPaneView'], row: number, col: number) => {
+    taskPaneActionAtCell: (
+      _view: WorkspaceModel['latestTaskPaneView'],
+      row: number,
+      col: number,
+    ) => {
       calls.push(`taskPaneActionAtCell:${row}:${col}`);
       return null;
     },

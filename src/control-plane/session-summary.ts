@@ -231,7 +231,10 @@ function readSessionStatusModel(value: unknown): StreamSessionStatusModel | null
     return undefined;
   }
   const phaseHint =
-    phaseHintRaw === null || phaseHintRaw === 'needs-action' || phaseHintRaw === 'working' || phaseHintRaw === 'idle'
+    phaseHintRaw === null ||
+    phaseHintRaw === 'needs-action' ||
+    phaseHintRaw === 'working' ||
+    phaseHintRaw === 'idle'
       ? phaseHintRaw
       : undefined;
   if (phaseHint === undefined) {

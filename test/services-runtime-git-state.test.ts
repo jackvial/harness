@@ -90,7 +90,10 @@ void test('runtime git state noteGitActivity handles null/missing and existing d
 
   harness.directoryManager.setDirectory('directory-a', { directoryId: 'directory-a' });
   harness.service.noteGitActivity('directory-a');
-  assert.deepEqual(harness.directoryManager.mutableGitSummaries().get('directory-a'), LOADING_SUMMARY);
+  assert.deepEqual(
+    harness.directoryManager.mutableGitSummaries().get('directory-a'),
+    LOADING_SUMMARY,
+  );
 });
 
 void test('runtime git state deleteDirectoryGitState clears git summary, snapshot, and association maps', () => {
@@ -235,10 +238,7 @@ void test('runtime git state applyObservedGitStatusEvent handles parse-null and 
 
   const unchanged = createHarness();
   unchanged.directoryManager.mutableGitSummaries().set('directory-a', LOADING_SUMMARY);
-  unchanged.directoryRepositorySnapshotByDirectoryId.set(
-    'directory-a',
-    EMPTY_REPOSITORY_SNAPSHOT,
-  );
+  unchanged.directoryRepositorySnapshotByDirectoryId.set('directory-a', EMPTY_REPOSITORY_SNAPSHOT);
   unchanged.repositories.set('repo-a', {
     repositoryId: 'repo-a',
     name: 'repo-a',

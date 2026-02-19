@@ -45,8 +45,7 @@ function createConversationState(
     phase,
     lastKnownWork,
     lastKnownWorkAt,
-    phaseHint:
-      phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
+    phaseHint: phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
   };
   if (lastKnownWork !== null) {
     statusModelOptions.detailText = lastKnownWork;
@@ -58,9 +57,7 @@ function createConversationState(
     sessionId,
     directoryId: null,
     status,
-    statusModel:
-      overrides.statusModel ??
-      statusModelFor(status, statusModelOptions),
+    statusModel: overrides.statusModel ?? statusModelFor(status, statusModelOptions),
     attentionReason,
     live: true,
     controller: null,
@@ -76,7 +73,10 @@ function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeConversati
   event: ControlPlaneKeyEvent,
   options: {
     removedConversationIds: ReadonlySet<string>;
-    ensureConversation: (sessionId: string, seed?: { directoryId?: string | null }) => TConversation;
+    ensureConversation: (
+      sessionId: string,
+      seed?: { directoryId?: string | null },
+    ) => TConversation;
   },
 ): TConversation | null {
   if (event.type === 'session-telemetry') {

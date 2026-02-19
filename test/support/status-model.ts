@@ -3,9 +3,7 @@ import type {
   StreamSessionStatusModel,
 } from '../../src/control-plane/stream-protocol.ts';
 
-function phaseForStatus(
-  status: StreamSessionRuntimeStatus,
-): StreamSessionStatusModel['phase'] {
+function phaseForStatus(status: StreamSessionRuntimeStatus): StreamSessionStatusModel['phase'] {
   if (status === 'needs-input') {
     return 'needs-action';
   }
@@ -36,9 +34,7 @@ function glyphForPhase(
   return '■';
 }
 
-function badgeForStatus(
-  status: StreamSessionRuntimeStatus,
-): StreamSessionStatusModel['badge'] {
+function badgeForStatus(status: StreamSessionRuntimeStatus): StreamSessionStatusModel['badge'] {
   if (status === 'needs-input') {
     return 'NEED';
   }

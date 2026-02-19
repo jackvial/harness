@@ -281,10 +281,7 @@ void test('runtime rail input composes navigation and pointer input with workspa
   assert.equal(workspace.mainPaneMode, 'conversation');
   assert.equal(workspace.leftNavSelection.kind, 'conversation');
   assert.equal(workspace.conversationTitleEditClickState?.conversationId, 'session-clicked');
-  assert.equal(
-    calls.filter((entry) => entry === 'markDirty').length,
-    previousMarkDirtyCount + 1,
-  );
+  assert.equal(calls.filter((entry) => entry === 'markDirty').length, previousMarkDirtyCount + 1);
   assert.equal(calls.includes('openRepositoryPromptForCreate'), true);
   assert.equal(calls.includes('openRepositoryPromptForEdit:repo-2'), true);
   assert.equal(calls.includes('releaseViewportPinForSelection'), true);
@@ -432,9 +429,7 @@ void test('runtime rail input preserves runtime workspace action method context'
   }
 
   await navigationOptions.workspaceActions.activateConversation('session-ctx');
-  await navigationOptions.workspaceActions.openOrCreateCritiqueConversationInDirectory(
-    'dir-ctx',
-  );
+  await navigationOptions.workspaceActions.openOrCreateCritiqueConversationInDirectory('dir-ctx');
   await navigationOptions.workspaceActions.toggleGatewayProfiler();
   await navigationOptions.workspaceActions.toggleGatewayStatusTimeline();
   await navigationOptions.workspaceActions.toggleGatewayRenderTrace('session-ctx');

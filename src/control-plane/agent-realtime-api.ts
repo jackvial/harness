@@ -542,9 +542,7 @@ function parseRuntimeStatus(value: unknown): StreamSessionRuntimeStatus | null {
   return null;
 }
 
-function parseRuntimeStatusModel(
-  value: unknown,
-): StreamSessionStatusModel | null | undefined {
+function parseRuntimeStatusModel(value: unknown): StreamSessionStatusModel | null | undefined {
   if (value === null) {
     return null;
   }
@@ -579,7 +577,10 @@ function parseRuntimeStatusModel(
     lastKnownWork === undefined ||
     lastKnownWorkAt === undefined ||
     phaseHint === undefined ||
-    (phaseHint !== null && phaseHint !== 'needs-action' && phaseHint !== 'working' && phaseHint !== 'idle') ||
+    (phaseHint !== null &&
+      phaseHint !== 'needs-action' &&
+      phaseHint !== 'working' &&
+      phaseHint !== 'idle') ||
     observedAt === null
   ) {
     return undefined;

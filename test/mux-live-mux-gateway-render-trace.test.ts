@@ -21,7 +21,10 @@ void test('gateway render trace resolves state paths for default and named sessi
 });
 
 void test('gateway render trace resolves harness command args with optional session and conversation scope', () => {
-  assert.deepEqual(resolveHarnessRenderTraceCommandArgs('start', null, null), ['render-trace', 'start']);
+  assert.deepEqual(resolveHarnessRenderTraceCommandArgs('start', null, null), [
+    'render-trace',
+    'start',
+  ]);
   assert.deepEqual(resolveHarnessRenderTraceCommandArgs('start', null, 'session-1'), [
     'render-trace',
     'start',
@@ -93,7 +96,10 @@ void test('gateway render trace toggles stop when active state file exists', asy
   });
 
   assert.equal(result.action, 'stop');
-  assert.equal(result.message, 'render trace stopped: /tmp/harness/.harness/render-traces/render-trace.log');
+  assert.equal(
+    result.message,
+    'render trace stopped: /tmp/harness/.harness/render-traces/render-trace.log',
+  );
 });
 
 void test('gateway render trace start fallback message is used when stdout has no usable lines', async () => {

@@ -63,7 +63,8 @@ export class StartupOrchestrator {
       startupSequencer: this.startupSequencer,
       startupSpanTracker: this.startupSpanTracker,
       getConversation: options.getConversation,
-      visibleGlyphCellCount: (conversation) => startupVisibility.visibleGlyphCellCount(conversation),
+      visibleGlyphCellCount: (conversation) =>
+        startupVisibility.visibleGlyphCellCount(conversation),
       recordPerfEvent: options.recordPerfEvent,
     });
     this.startupOutputTracker = new StartupOutputTracker({

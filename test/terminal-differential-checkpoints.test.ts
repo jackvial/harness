@@ -10,7 +10,9 @@ import {
 } from '../src/terminal/differential-checkpoints.ts';
 import { replayTerminalSteps } from '../src/terminal/snapshot-oracle.ts';
 
-function firstFrameHash(scenario: Pick<TerminalDifferentialCase, 'steps' | 'cols' | 'rows'>): string {
+function firstFrameHash(
+  scenario: Pick<TerminalDifferentialCase, 'steps' | 'cols' | 'rows'>,
+): string {
   return replayTerminalSteps(scenario.steps, scenario.cols, scenario.rows)[0]!.frameHash;
 }
 

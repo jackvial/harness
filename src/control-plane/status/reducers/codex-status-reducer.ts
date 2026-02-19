@@ -12,9 +12,9 @@ export class CodexStatusReducer extends BaseAgentStatusReducer {
     super();
   }
 
-  protected override projectFromTelemetry(telemetry: StreamTelemetrySummary):
-    | { text: string | null; phaseHint: 'needs-action' | 'working' | 'idle' | null }
-    | null {
+  protected override projectFromTelemetry(
+    telemetry: StreamTelemetrySummary,
+  ): { text: string | null; phaseHint: 'needs-action' | 'working' | 'idle' | null } | null {
     const eventName = normalize(telemetry.eventName);
     const summary = normalize(telemetry.summary);
     if (eventName === 'codex.user_prompt') {

@@ -165,7 +165,10 @@ void test('runs tool roundtrip against local anthropic-compatible server', async
   const finalText = await result.text;
 
   assert.equal(finalText, '5');
-  assert.equal(parts.some((part) => part.type === 'tool-result'), true);
+  assert.equal(
+    parts.some((part) => part.type === 'tool-result'),
+    true,
+  );
   assert.equal(requests.length, 2);
 
   const secondRequest = requests[1];

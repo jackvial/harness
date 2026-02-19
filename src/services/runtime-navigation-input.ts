@@ -47,6 +47,8 @@ interface RuntimeNavigationInputOptions {
   readonly getMainPaneMode: () => MainPaneMode;
   readonly getActiveConversationId: () => string | null;
   readonly getActiveDirectoryId: () => string | null;
+  readonly forwardInterruptAllToActiveConversation?: (input: Buffer) => boolean;
+  readonly interruptAllDoubleTapWindowMs?: number;
   readonly workspaceActions: RuntimeNavigationWorkspaceActions;
   readonly chordTimeoutMs: number;
   readonly collapseAllChordPrefix: Buffer;
@@ -89,7 +91,9 @@ export class RuntimeNavigationInput {
       dependencies.createGlobalShortcutInput ??
       ((globalShortcutOptions: GlobalShortcutInputOptions) =>
         new GlobalShortcutInput(globalShortcutOptions));
-    const selectLeftNavRepository = options.workspace.selectLeftNavRepository.bind(options.workspace);
+    const selectLeftNavRepository = options.workspace.selectLeftNavRepository.bind(
+      options.workspace,
+    );
 
     this.leftNavInput = createLeftNavInput({
       getLatestRailRows: () => options.workspace.latestRailViewRows,
@@ -130,7 +134,7 @@ export class RuntimeNavigationInput {
       nowMs,
     });
 
-    this.globalShortcutInput = createGlobalShortcutInput({
+    const globalShortcutOptions: GlobalShortcutInputOptions = {
       shortcutBindings: options.shortcutBindings,
       requestStop: options.requestStop,
       resolveDirectoryForAction: options.resolveDirectoryForAction,
@@ -170,7 +174,20 @@ export class RuntimeNavigationInput {
       cycleLeftNavSelection: (direction) => {
         this.leftNavInput.cycleSelection(direction);
       },
-    });
+      nowMs,
+      ...(options.forwardInterruptAllToActiveConversation === undefined
+        ? {}
+        : {
+            forwardInterruptAllToActiveConversation:
+              options.forwardInterruptAllToActiveConversation,
+          }),
+      ...(options.interruptAllDoubleTapWindowMs === undefined
+        ? {}
+        : {
+            interruptAllDoubleTapWindowMs: options.interruptAllDoubleTapWindowMs,
+          }),
+    };
+    this.globalShortcutInput = createGlobalShortcutInput(globalShortcutOptions);
   }
 
   cycleLeftNavSelection(direction: 'next' | 'previous'): boolean {

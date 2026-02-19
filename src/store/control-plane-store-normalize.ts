@@ -103,9 +103,7 @@ function normalizeRuntimeStatus(value: unknown): StreamSessionRuntimeStatus {
   throw new Error('expected runtime_status enum value');
 }
 
-function normalizeRuntimeStatusModel(
-  value: unknown,
-): StreamSessionStatusModel | null {
+function normalizeRuntimeStatusModel(value: unknown): StreamSessionStatusModel | null {
   if (value === null) {
     return null;
   }
@@ -208,9 +206,7 @@ export function normalizeStoredConversationRow(value: unknown): ControlPlaneConv
     createdAt: asString(row.created_at, 'created_at'),
     archivedAt: asStringOrNull(row.archived_at, 'archived_at'),
     runtimeStatus,
-    runtimeStatusModel: normalizeRuntimeStatusModel(
-      row.runtime_status_model_json,
-    ),
+    runtimeStatusModel: normalizeRuntimeStatusModel(row.runtime_status_model_json),
     runtimeLive: asBooleanFromInt(row.runtime_live, 'runtime_live'),
     runtimeAttentionReason,
     runtimeProcessId: asNumberOrNull(row.runtime_process_id, 'runtime_process_id'),

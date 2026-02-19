@@ -81,7 +81,8 @@ void test('gateway status timeline toggles stop when active state file exists', 
     runHarnessStatusTimelineCommand: async (input) => {
       calls.push({ action: input.action });
       return {
-        stdout: 'status timeline stopped: /tmp/harness/.harness/status-timelines/status-timeline.log\n',
+        stdout:
+          'status timeline stopped: /tmp/harness/.harness/status-timelines/status-timeline.log\n',
         stderr: '',
       };
     },

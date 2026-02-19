@@ -22,7 +22,13 @@ export function resolveRenderTraceStatePath(
   if (sessionName === null) {
     return resolve(invocationDirectory, '.harness', RENDER_TRACE_STATE_FILE_NAME);
   }
-  return resolve(invocationDirectory, '.harness', 'sessions', sessionName, RENDER_TRACE_STATE_FILE_NAME);
+  return resolve(
+    invocationDirectory,
+    '.harness',
+    'sessions',
+    sessionName,
+    RENDER_TRACE_STATE_FILE_NAME,
+  );
 }
 
 export function resolveDefaultRenderTraceOutputPath(
@@ -32,7 +38,12 @@ export function resolveDefaultRenderTraceOutputPath(
   if (sessionName === null) {
     return resolve(invocationDirectory, DEFAULT_RENDER_TRACE_ROOT_PATH, RENDER_TRACE_FILE_NAME);
   }
-  return resolve(invocationDirectory, DEFAULT_RENDER_TRACE_ROOT_PATH, sessionName, RENDER_TRACE_FILE_NAME);
+  return resolve(
+    invocationDirectory,
+    DEFAULT_RENDER_TRACE_ROOT_PATH,
+    sessionName,
+    RENDER_TRACE_FILE_NAME,
+  );
 }
 
 export function parseActiveRenderTraceState(raw: unknown): ActiveRenderTraceState | null {

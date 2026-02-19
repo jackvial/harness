@@ -111,11 +111,7 @@ async function runSmokeForModel(options: {
   });
 
   const [textDeltas, textOutput, textFinishReason] = await withTimeout(
-    Promise.all([
-      collectAsync(textResult.textStream),
-      textResult.text,
-      textResult.finishReason,
-    ]),
+    Promise.all([collectAsync(textResult.textStream), textResult.text, textResult.finishReason]),
     `text stream smoke (${options.modelId})`,
   );
 
@@ -231,10 +227,7 @@ async function main(): Promise<void> {
     throw new Error('ANTHROPIC_API_KEY was not found after loading secrets');
   }
 
-  const candidates =
-    args.model !== undefined
-      ? [args.model]
-      : [...DEFAULT_MODEL_CANDIDATES];
+  const candidates = args.model !== undefined ? [args.model] : [...DEFAULT_MODEL_CANDIDATES];
 
   const failures: string[] = [];
   for (const candidate of candidates) {

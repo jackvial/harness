@@ -7,12 +7,7 @@ export type StreamSessionListSort = 'attention-first' | 'started-desc' | 'starte
 export type StreamTelemetrySource = 'otlp-log' | 'otlp-metric' | 'otlp-trace' | 'history';
 export type StreamTelemetryStatusHint = 'running' | 'completed' | 'needs-input';
 export type StreamSessionControllerType = 'human' | 'agent' | 'automation';
-export type StreamSessionDisplayPhase =
-  | 'needs-action'
-  | 'starting'
-  | 'working'
-  | 'idle'
-  | 'exited';
+export type StreamSessionDisplayPhase = 'needs-action' | 'starting' | 'working' | 'idle' | 'exited';
 
 export interface StreamSessionController {
   controllerId: string;
@@ -1070,7 +1065,10 @@ function parseSessionStatusModel(value: unknown): StreamSessionStatusModel | nul
     (lastKnownWork === null && record['lastKnownWork'] !== null) ||
     (lastKnownWorkAt === null && record['lastKnownWorkAt'] !== null) ||
     (phaseHint === null && record['phaseHint'] !== null) ||
-    (phaseHint !== null && phaseHint !== 'needs-action' && phaseHint !== 'working' && phaseHint !== 'idle') ||
+    (phaseHint !== null &&
+      phaseHint !== 'needs-action' &&
+      phaseHint !== 'working' &&
+      phaseHint !== 'idle') ||
     observedAt === null
   ) {
     return undefined;

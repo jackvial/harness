@@ -73,7 +73,9 @@ void test('command menu handler covers dismiss toggle submit and mutation flows'
     },
     setMenu: (next: ReturnType<typeof createCommandMenuState> | null) => {
       menu = next;
-      calls.push(`setMenu:${next === null ? 'null' : `${next.query}:${String(next.selectedIndex)}`}`);
+      calls.push(
+        `setMenu:${next === null ? 'null' : `${next.query}:${String(next.selectedIndex)}`}`,
+      );
     },
     markDirty: () => {
       calls.push('markDirty');

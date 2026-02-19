@@ -34,19 +34,21 @@ function createWorkspace(): WorkspaceModel {
   });
 }
 
-function createHarness(overrides: {
-  readonly createTask?: (input: {
-    repositoryId: string;
-    title: string;
-    description: string;
-  }) => Promise<TaskRecord>;
-  readonly updateTask?: (input: {
-    taskId: string;
-    repositoryId: string;
-    title: string;
-    description: string;
-  }) => Promise<TaskRecord>;
-} = {}) {
+function createHarness(
+  overrides: {
+    readonly createTask?: (input: {
+      repositoryId: string;
+      title: string;
+      description: string;
+    }) => Promise<TaskRecord>;
+    readonly updateTask?: (input: {
+      taskId: string;
+      repositoryId: string;
+      title: string;
+      description: string;
+    }) => Promise<TaskRecord>;
+  } = {},
+) {
   const workspace = createWorkspace();
   const calls: string[] = [];
   const queuedOps: Array<() => Promise<void>> = [];

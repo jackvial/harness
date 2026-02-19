@@ -1228,9 +1228,7 @@ function parseAttentionList(): StreamCommand {
   };
 }
 
-function parseSessionIdCommand(
-  type: 'session.status' | 'session.interrupt' | 'session.remove',
-) {
+function parseSessionIdCommand(type: 'session.status' | 'session.interrupt' | 'session.remove') {
   return (record: CommandRecord): StreamCommand | null => {
     const sessionId = readString(record['sessionId']);
     if (sessionId === null) {

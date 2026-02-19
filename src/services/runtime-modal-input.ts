@@ -12,7 +12,9 @@ interface RuntimeModalInputWorkspaceActions {
 }
 
 interface RuntimeModalInputTaskEditorActions {
-  submitTaskEditorPayload(payload: Parameters<InputRouterOptions['submitTaskEditorPayload']>[0]): void;
+  submitTaskEditorPayload(
+    payload: Parameters<InputRouterOptions['submitTaskEditorPayload']>[0],
+  ): void;
 }
 
 interface RuntimeModalInputOptions {
@@ -39,18 +41,18 @@ interface RuntimeModalInputOptions {
 }
 
 interface RuntimeModalInputDependencies {
-  readonly createInputRouter?: (options: InputRouterOptions) => Pick<InputRouter, 'routeModalInput'>;
+  readonly createInputRouter?: (
+    options: InputRouterOptions,
+  ) => Pick<InputRouter, 'routeModalInput'>;
 }
 
 export class RuntimeModalInput {
   private readonly inputRouter: Pick<InputRouter, 'routeModalInput'>;
 
-  constructor(
-    options: RuntimeModalInputOptions,
-    dependencies: RuntimeModalInputDependencies = {},
-  ) {
+  constructor(options: RuntimeModalInputOptions, dependencies: RuntimeModalInputDependencies = {}) {
     const createInputRouter =
-      dependencies.createInputRouter ?? ((routerOptions: InputRouterOptions) => new InputRouter(routerOptions));
+      dependencies.createInputRouter ??
+      ((routerOptions: InputRouterOptions) => new InputRouter(routerOptions));
     this.inputRouter = createInputRouter({
       isModalDismissShortcut: options.isModalDismissShortcut,
       isCommandMenuToggleShortcut: options.isCommandMenuToggleShortcut,

@@ -1245,8 +1245,9 @@ void test('stream server supports session.list, session.status, and session.snap
     assert.equal(typeof snapshotRecord['frameHash'], 'string');
     assert.equal(Array.isArray(snapshotRecord['lines']), true);
 
-    const tailInput = Array.from({ length: 30 }, (_, index) =>
-      `line-${String(index + 1).padStart(2, '0')}`,
+    const tailInput = Array.from(
+      { length: 30 },
+      (_, index) => `line-${String(index + 1).padStart(2, '0')}`,
     ).join('\r\n');
     client.sendInput('session-list', Buffer.from(`\r\n${tailInput}`, 'utf8'));
     await delay(2);

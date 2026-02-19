@@ -108,7 +108,8 @@ export class RuntimeWorkspaceObservedEvents<TObservedEvent> {
         (preferredDirectoryId === null
           ? null
           : (ordered.find(
-              (sessionId) => this.options.conversationDirectoryId(sessionId) === preferredDirectoryId,
+              (sessionId) =>
+                this.options.conversationDirectoryId(sessionId) === preferredDirectoryId,
             ) ?? null)) ??
         ordered[0] ??
         null;
@@ -135,8 +136,11 @@ export class RuntimeWorkspaceObservedEvents<TObservedEvent> {
       removedConversationIdSet.has(activeConversationIdBefore)
     ) {
       this.options.setActiveConversationId(null);
-      const preferredDirectoryId = previousConversationDirectoryById.get(activeConversationIdBefore) ?? null;
-      if (!activateFallbackConversation(preferredDirectoryId, 'observed-active-conversation-removed')) {
+      const preferredDirectoryId =
+        previousConversationDirectoryById.get(activeConversationIdBefore) ?? null;
+      if (
+        !activateFallbackConversation(preferredDirectoryId, 'observed-active-conversation-removed')
+      ) {
         fallbackToDirectoryOrHome();
       }
       this.options.markDirty();
@@ -153,9 +157,13 @@ export class RuntimeWorkspaceObservedEvents<TObservedEvent> {
         this.options.markDirty();
         return;
       }
-      const preferredDirectoryId = previousConversationDirectoryById.get(leftNavConversationIdBefore) ?? null;
+      const preferredDirectoryId =
+        previousConversationDirectoryById.get(leftNavConversationIdBefore) ?? null;
       if (
-        !activateFallbackConversation(preferredDirectoryId, 'observed-selected-conversation-removed')
+        !activateFallbackConversation(
+          preferredDirectoryId,
+          'observed-selected-conversation-removed',
+        )
       ) {
         fallbackToDirectoryOrHome();
       }

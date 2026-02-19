@@ -30,7 +30,11 @@ void test('generateText aggregates text, usage, and finish reason', async () => 
       { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
       { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hello' } },
       { type: 'content_block_stop', index: 0 },
-      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { input_tokens: 2, output_tokens: 1 } },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { input_tokens: 2, output_tokens: 1 },
+      },
       { type: 'message_stop' },
     ]),
   );
@@ -56,9 +60,17 @@ void test('streamObject emits partial object snapshots and final object', async 
         },
       },
       { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
-      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"name":"Jane","count":2}' } },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: '{"name":"Jane","count":2}' },
+      },
       { type: 'content_block_stop', index: 0 },
-      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { input_tokens: 1, output_tokens: 2 } },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { input_tokens: 1, output_tokens: 2 },
+      },
       { type: 'message_stop' },
     ]),
   );
@@ -107,7 +119,11 @@ void test('streamObject throws when no JSON object is returned', async () => {
       { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
       { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'not json' } },
       { type: 'content_block_stop', index: 0 },
-      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { input_tokens: 1, output_tokens: 2 } },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { input_tokens: 1, output_tokens: 2 },
+      },
       { type: 'message_stop' },
     ]),
   );
@@ -135,7 +151,11 @@ void test('streamObject validate callback failure rejects final object', async (
       { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
       { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"count":1}' } },
       { type: 'content_block_stop', index: 0 },
-      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { input_tokens: 1, output_tokens: 2 } },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { input_tokens: 1, output_tokens: 2 },
+      },
       { type: 'message_stop' },
     ]),
   );

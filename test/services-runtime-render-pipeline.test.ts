@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import { computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
-import type { TaskFocusedPaneRepositoryRecord, TaskFocusedPaneTaskRecord } from '../src/mux/task-focused-pane.ts';
+import type {
+  TaskFocusedPaneRepositoryRecord,
+  TaskFocusedPaneTaskRecord,
+} from '../src/mux/task-focused-pane.ts';
 import type { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.ts';
 import { RuntimeRenderPipeline } from '../src/services/runtime-render-pipeline.ts';
 import type { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
@@ -63,7 +66,9 @@ void test('runtime render pipeline composes underlying render services and deleg
   });
   type RepoRecord = TaskFocusedPaneRepositoryRecord;
   type TaskRecord = TaskFocusedPaneTaskRecord;
-  type RightPaneOptions = ConstructorParameters<typeof RuntimeRightPaneRender<RepoRecord, TaskRecord>>[0];
+  type RightPaneOptions = ConstructorParameters<
+    typeof RuntimeRightPaneRender<RepoRecord, TaskRecord>
+  >[0];
   type LeftRailOptions = ConstructorParameters<
     typeof RuntimeLeftRailRender<
       TestDirectory,
@@ -193,7 +198,9 @@ void test('runtime render pipeline renders right pane and flushes when render st
   });
   type RepoRecord = TaskFocusedPaneRepositoryRecord;
   type TaskRecord = TaskFocusedPaneTaskRecord;
-  type RightPaneOptions = ConstructorParameters<typeof RuntimeRightPaneRender<RepoRecord, TaskRecord>>[0];
+  type RightPaneOptions = ConstructorParameters<
+    typeof RuntimeRightPaneRender<RepoRecord, TaskRecord>
+  >[0];
   type LeftRailOptions = ConstructorParameters<
     typeof RuntimeLeftRailRender<
       TestDirectory,

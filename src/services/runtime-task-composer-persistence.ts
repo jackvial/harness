@@ -62,7 +62,8 @@ export class RuntimeTaskComposerPersistenceService<
     this.setTimeoutFn =
       options.setTimeoutFn ??
       ((callback, ms) => setTimeout(callback, ms) as unknown as TTaskAutosaveTimer);
-    this.clearTimeoutFn = options.clearTimeoutFn ?? ((timer) => clearTimeout(timer as unknown as NodeJS.Timeout));
+    this.clearTimeoutFn =
+      options.clearTimeoutFn ?? ((timer) => clearTimeout(timer as unknown as NodeJS.Timeout));
   }
 
   taskComposerForTask(taskId: string): TTaskComposerBuffer | null {

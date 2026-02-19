@@ -23,9 +23,7 @@ interface RuntimeLayoutResizeSize {
 
 type RuntimeLayout = ReturnType<typeof computeDualPaneLayout>;
 
-interface RuntimeLayoutResizeOptions<
-  TConversation extends RuntimeLayoutResizeConversationRecord,
-> {
+interface RuntimeLayoutResizeOptions<TConversation extends RuntimeLayoutResizeConversationRecord> {
   readonly getSize: () => RuntimeLayoutResizeSize;
   readonly setSize: (nextSize: RuntimeLayoutResizeSize) => void;
   readonly getLayout: () => RuntimeLayout;
@@ -42,16 +40,11 @@ interface RuntimeLayoutResizeOptions<
   readonly resizeMinIntervalMs: number;
   readonly ptyResizeSettleMs: number;
   readonly nowMs?: () => number;
-  readonly setTimeoutFn?: (
-    callback: () => void,
-    delayMs: number,
-  ) => ReturnType<typeof setTimeout>;
+  readonly setTimeoutFn?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   readonly clearTimeoutFn?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 
-export class RuntimeLayoutResize<
-  TConversation extends RuntimeLayoutResizeConversationRecord,
-> {
+export class RuntimeLayoutResize<TConversation extends RuntimeLayoutResizeConversationRecord> {
   private resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingSize: RuntimeLayoutResizeSize | null = null;
   private lastResizeApplyAtMs = 0;
@@ -97,12 +90,9 @@ export class RuntimeLayoutResize<
     if (this.ptyResizeTimer !== null) {
       this.clearTimeoutFn(this.ptyResizeTimer);
     }
-    this.ptyResizeTimer = this.setTimeoutFn(
-      () => {
-        this.flushPendingPtyResize();
-      },
-      this.options.ptyResizeSettleMs,
-    );
+    this.ptyResizeTimer = this.setTimeoutFn(() => {
+      this.flushPendingPtyResize();
+    }, this.options.ptyResizeSettleMs);
   }
 
   applyLayout(nextSize: RuntimeLayoutResizeSize, forceImmediatePtyResize = false): void {
@@ -159,12 +149,9 @@ export class RuntimeLayoutResize<
       elapsedMs >= this.options.resizeMinIntervalMs
         ? 0
         : this.options.resizeMinIntervalMs - elapsedMs;
-    this.resizeTimer = this.setTimeoutFn(
-      () => {
-        this.flushPendingResize();
-      },
-      delayMs,
-    );
+    this.resizeTimer = this.setTimeoutFn(() => {
+      this.flushPendingResize();
+    }, delayMs);
   }
 
   applyPaneDividerAtCol(col: number): void {
@@ -230,12 +217,9 @@ export class RuntimeLayoutResize<
     const nowMs = this.nowMs();
     const elapsedMs = nowMs - this.lastResizeApplyAtMs;
     if (elapsedMs < this.options.resizeMinIntervalMs) {
-      this.resizeTimer = this.setTimeoutFn(
-        () => {
-          this.flushPendingResize();
-        },
-        this.options.resizeMinIntervalMs - elapsedMs,
-      );
+      this.resizeTimer = this.setTimeoutFn(() => {
+        this.flushPendingResize();
+      }, this.options.resizeMinIntervalMs - elapsedMs);
       return;
     }
 
@@ -244,12 +228,9 @@ export class RuntimeLayoutResize<
     this.lastResizeApplyAtMs = this.nowMs();
 
     if (this.pendingSize !== null && this.resizeTimer === null) {
-      this.resizeTimer = this.setTimeoutFn(
-        () => {
-          this.flushPendingResize();
-        },
-        this.options.resizeMinIntervalMs,
-      );
+      this.resizeTimer = this.setTimeoutFn(() => {
+        this.flushPendingResize();
+      }, this.options.resizeMinIntervalMs);
     }
   }
 }

@@ -118,10 +118,7 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
         calls.push(`focusTaskComposer:${taskId}`);
       },
       selectedTask: () => tasksById.get('task-a') ?? null,
-      orderedTaskRecords: () => [
-        tasksById.get('task-a')!,
-        tasksById.get('task-b')!,
-      ],
+      orderedTaskRecords: () => [tasksById.get('task-a')!, tasksById.get('task-b')!],
       queueControlPlaneOp: (task, label) => {
         calls.push(`queueControlPlaneOp:${label ?? ''}`);
         queuedOps.push(task());

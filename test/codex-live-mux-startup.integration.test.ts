@@ -353,6 +353,12 @@ function writeLeftMouseClick(
   session.write(`\u001b[<0;${String(safeCol)};${String(safeRow)}m`);
 }
 
+async function requestMuxShutdown(session: ReturnType<typeof startPtySession>): Promise<void> {
+  session.write('\u0003');
+  await delay(50);
+  session.write('\u0003');
+}
+
 function runGit(cwd: string, args: readonly string[]): void {
   execFileSync('git', [...args], {
     cwd,
@@ -740,7 +746,7 @@ void test(
       await waitForSnapshotLineContaining(interactive.oracle, 'shortcuts [+]', 12000);
     } finally {
       try {
-        interactive.session.write('\u0003');
+        await requestMuxShutdown(interactive.session);
         const exit = await interactive.waitForExit;
         assert.equal(exit.signal, null);
         assert.equal(exit.code, 0);
@@ -771,7 +777,7 @@ void test(
       await waitForSnapshotLineContaining(interactive.oracle, 'New Thread', 12000);
     } finally {
       try {
-        interactive.session.write('\u0003');
+        await requestMuxShutdown(interactive.session);
         const exit = await interactive.waitForExit;
         assert.equal(exit.signal, null);
         assert.equal(exit.code, 0);
@@ -854,7 +860,7 @@ void test(
       await waitForSnapshotLineContaining(interactive.oracle, 'split-pane-thr', 8000);
     } finally {
       try {
-        interactive.session.write('\u0003');
+        await requestMuxShutdown(interactive.session);
         const exit = await interactive.waitForExit;
         assert.equal(exit.signal, null);
         assert.equal(exit.code, 0);
@@ -945,7 +951,7 @@ void test(
       assert.equal(existsSync(defaultGatewayRecordPath), false);
     } finally {
       try {
-        interactive.session.write('\u0003');
+        await requestMuxShutdown(interactive.session);
         const exit = await interactive.waitForExit;
         assert.equal(exit.signal, null);
         assert.equal(exit.code, 0);

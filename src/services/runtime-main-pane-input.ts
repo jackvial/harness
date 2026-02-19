@@ -95,8 +95,7 @@ export class RuntimeMainPaneInput {
     const nowMs = options.nowMs ?? (() => Date.now());
     const createMainPanePointerInput =
       dependencies.createMainPanePointerInput ??
-      ((mainPaneOptions: MainPanePointerInputOptions) =>
-        new MainPanePointerInput(mainPaneOptions));
+      ((mainPaneOptions: MainPanePointerInputOptions) => new MainPanePointerInput(mainPaneOptions));
     const createPointerRoutingInput =
       dependencies.createPointerRoutingInput ??
       ((pointerOptions: PointerRoutingInputOptions) => new PointerRoutingInput(pointerOptions));
@@ -177,7 +176,8 @@ export class RuntimeMainPaneInput {
         options.workspace.homePaneDragState = next;
       },
       getMainPaneMode: () => options.workspace.mainPaneMode,
-      taskIdAtRow: (index) => options.taskPaneTaskIdAtRow(options.workspace.latestTaskPaneView, index),
+      taskIdAtRow: (index) =>
+        options.taskPaneTaskIdAtRow(options.workspace.latestTaskPaneView, index),
       repositoryIdAtRow: (index) =>
         options.taskPaneRepositoryIdAtRow(options.workspace.latestTaskPaneView, index),
       reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
@@ -187,10 +187,16 @@ export class RuntimeMainPaneInput {
         options.workspaceActions.reorderRepositoryByDrop(draggedRepositoryId, targetRepositoryId);
       },
       onProjectWheel: (delta) => {
-        options.workspace.projectPaneScrollTop = Math.max(0, options.workspace.projectPaneScrollTop + delta);
+        options.workspace.projectPaneScrollTop = Math.max(
+          0,
+          options.workspace.projectPaneScrollTop + delta,
+        );
       },
       onHomeWheel: (delta) => {
-        options.workspace.taskPaneScrollTop = Math.max(0, options.workspace.taskPaneScrollTop + delta);
+        options.workspace.taskPaneScrollTop = Math.max(
+          0,
+          options.workspace.taskPaneScrollTop + delta,
+        );
       },
       markDirty: options.markDirty,
     });

@@ -449,11 +449,7 @@ void test('archiveConversation stays in current project when archiving last thre
       calls.push('markDirty');
     },
   });
-  assert.deepEqual(calls, [
-    'setActiveConversationId:null',
-    'enterProjectPane:dir-a',
-    'markDirty',
-  ]);
+  assert.deepEqual(calls, ['setActiveConversationId:null', 'enterProjectPane:dir-a', 'markDirty']);
 });
 
 void test('archiveConversation falls back to project pane or dirty mark when no replacement conversation exists', async () => {
@@ -493,11 +489,7 @@ void test('archiveConversation falls back to project pane or dirty mark when no 
       calls.push('markDirty');
     },
   });
-  assert.deepEqual(calls, [
-    'setActiveConversationId',
-    'enterProjectPane:dir-a',
-    'markDirty',
-  ]);
+  assert.deepEqual(calls, ['setActiveConversationId', 'enterProjectPane:dir-a', 'markDirty']);
 
   calls.length = 0;
   await archiveConversation({

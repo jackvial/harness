@@ -1,7 +1,4 @@
-import type {
-  ConversationTitleEditState,
-  WorkspaceModel,
-} from '../domain/workspace.ts';
+import type { ConversationTitleEditState, WorkspaceModel } from '../domain/workspace.ts';
 
 interface ConversationTitleRecordLike {
   title: string;
@@ -29,9 +26,7 @@ export class RuntimeConversationTitleEditService<
   private readonly setDebounceTimer: (callback: () => void, ms: number) => NodeJS.Timeout;
   private readonly clearDebounceTimer: (timer: NodeJS.Timeout) => void;
 
-  constructor(
-    private readonly options: RuntimeConversationTitleEditServiceOptions<TConversation>,
-  ) {
+  constructor(private readonly options: RuntimeConversationTitleEditServiceOptions<TConversation>) {
     this.setDebounceTimer = options.setDebounceTimer ?? setTimeout;
     this.clearDebounceTimer = options.clearDebounceTimer ?? clearTimeout;
   }
@@ -103,10 +98,7 @@ export class RuntimeConversationTitleEditService<
     }
   }
 
-  private queuePersist(
-    edit: ConversationTitleEditState,
-    reason: 'debounced' | 'flush',
-  ): void {
+  private queuePersist(edit: ConversationTitleEditState, reason: 'debounced' | 'flush'): void {
     const titleToPersist = edit.value;
     if (titleToPersist === edit.lastSavedValue) {
       return;

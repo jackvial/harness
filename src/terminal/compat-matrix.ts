@@ -196,11 +196,18 @@ export const TERMINAL_COMPAT_MATRIX: readonly TerminalCompatEntry[] = [
     id: 'dec-mouse-focus-tracking',
     levelId: 'l2-dec-modes',
     feature: 'Mouse + focus tracking modes',
-    sequences: ['CSI ? 1000 h/l', 'CSI ? 1002 h/l', 'CSI ? 1003 h/l', 'CSI ? 1004 h/l', 'CSI ? 1006 h/l'],
+    sequences: [
+      'CSI ? 1000 h/l',
+      'CSI ? 1002 h/l',
+      'CSI ? 1003 h/l',
+      'CSI ? 1004 h/l',
+      'CSI ? 1006 h/l',
+    ],
     status: 'unsupported',
     priority: 'p0-codex-vim',
     ownerTests: [],
-    notes: 'Required climb item for complex TUI parity; currently not modeled as terminal mode state.',
+    notes:
+      'Required climb item for complex TUI parity; currently not modeled as terminal mode state.',
   },
   {
     id: 'cursor-visibility-style-control',
@@ -250,7 +257,8 @@ export const TERMINAL_COMPAT_MATRIX: readonly TerminalCompatEntry[] = [
     status: 'implemented',
     priority: 'p0-codex-vim',
     ownerTests: ['test/codex-live-session.test.ts', 'test/terminal-snapshot-oracle.test.ts'],
-    notes: 'Negotiation/query state is tracked in the reply engine and ignored by render-state parser paths.',
+    notes:
+      'Negotiation/query state is tracked in the reply engine and ignored by render-state parser paths.',
   },
   {
     id: 'unicode-wide-combining',
@@ -331,6 +339,7 @@ export const TERMINAL_COMPAT_MATRIX: readonly TerminalCompatEntry[] = [
     status: 'implemented',
     priority: 'p1-important',
     ownerTests: ['test/mux-input-shortcuts.test.ts', 'test/task-screen-keybindings.test.ts'],
-    notes: 'Ingress decode parity is implemented for shortcuts; terminal-side negotiation is separate.',
+    notes:
+      'Ingress decode parity is implemented for shortcuts; terminal-side negotiation is separate.',
   },
 ] as const;

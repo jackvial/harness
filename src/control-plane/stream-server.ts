@@ -1536,8 +1536,9 @@ export class ControlPlaneStreamServer {
       publishedThroughRuntime = true;
     }
 
-    const observedScope =
-      publishedThroughRuntime ? null : this.observedScopeForSessionId(resolvedSessionId);
+    const observedScope = publishedThroughRuntime
+      ? null
+      : this.observedScopeForSessionId(resolvedSessionId);
     if (observedScope !== null) {
       this.publishObservedEvent(observedScope, {
         type: 'session-key-event',

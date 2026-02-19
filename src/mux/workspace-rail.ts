@@ -139,7 +139,8 @@ function drawConversationRow(
   row: WorkspaceRailViewRow,
   theme: MuxWorkspaceRailTheme,
 ): void {
-  const rowStyle = row.kind === 'conversation-body' ? theme.conversationBodyStyle : theme.normalStyle;
+  const rowStyle =
+    row.kind === 'conversation-body' ? theme.conversationBodyStyle : theme.normalStyle;
   drawTreeRow(surface, rowIndex, row, theme, rowStyle, theme.activeRowStyle);
   if (row.kind !== 'conversation-title') {
     return;

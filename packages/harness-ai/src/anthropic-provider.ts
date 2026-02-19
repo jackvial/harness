@@ -1,8 +1,4 @@
-import type {
-  AnthropicProviderToolDefinition,
-  HarnessAnthropicModel,
-  JsonValue,
-} from './types.ts';
+import type { AnthropicProviderToolDefinition, HarnessAnthropicModel, JsonValue } from './types.ts';
 
 export interface CreateAnthropicOptions {
   readonly apiKey: string;

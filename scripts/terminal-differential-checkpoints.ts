@@ -123,7 +123,10 @@ function asCase(value: unknown): TerminalDifferentialCase | null {
 
   const steps = candidate.steps.map((step) => asStep(step));
   const checkpoints = candidate.checkpoints.map((checkpoint) => asCheckpoint(checkpoint));
-  if (steps.some((step) => step === null) || checkpoints.some((checkpoint) => checkpoint === null)) {
+  if (
+    steps.some((step) => step === null) ||
+    checkpoints.some((checkpoint) => checkpoint === null)
+  ) {
     return null;
   }
 

@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { streamText } from '../packages/harness-ai/src/stream-text.ts';
-import type { HarnessAnthropicModel, StreamTextPart, ToolSet } from '../packages/harness-ai/src/types.ts';
+import type {
+  HarnessAnthropicModel,
+  StreamTextPart,
+  ToolSet,
+} from '../packages/harness-ai/src/types.ts';
 import { collectStream, createAnthropicResponse, createByteStream } from './support/harness-ai.ts';
 
-function createQueuedModel(
-  responses: Array<Response | (() => Response | Promise<Response>)>,
-): {
+function createQueuedModel(responses: Array<Response | (() => Response | Promise<Response>)>): {
   readonly model: HarnessAnthropicModel;
   readonly requestBodies: Array<Record<string, unknown>>;
 } {
@@ -91,7 +93,10 @@ void test('streams simple text response', async () => {
     result.response,
   ]);
 
-  assert.equal(parts.some((part) => part.type === 'text-delta'), true);
+  assert.equal(
+    parts.some((part) => part.type === 'text-delta'),
+    true,
+  );
   assert.equal(text, 'Hello world');
   assert.equal(finishReason, 'stop');
   assert.deepEqual(usage, {
@@ -196,7 +201,10 @@ void test('executes local tools across roundtrips and continues after tool-calls
 
   assert.equal(text, '72F and sunny');
   assert.equal(parts.filter((part) => part.type === 'start-step').length, 2);
-  assert.equal(parts.some((part) => part.type === 'tool-result'), true);
+  assert.equal(
+    parts.some((part) => part.type === 'tool-result'),
+    true,
+  );
   assert.equal(requestBodies.length, 2);
 
   const secondBody = requestBodies[1];
@@ -300,9 +308,18 @@ void test('handles provider-executed web search/web fetch results and sources', 
   const result = streamText({ model, prompt: 'search', tools });
   const parts = await collectFullParts(result);
 
-  assert.equal(parts.some((part) => part.type === 'source'), true);
-  assert.equal(parts.some((part) => part.type === 'tool-result'), true);
-  assert.equal(parts.some((part) => part.type === 'tool-error'), true);
+  assert.equal(
+    parts.some((part) => part.type === 'source'),
+    true,
+  );
+  assert.equal(
+    parts.some((part) => part.type === 'tool-result'),
+    true,
+  );
+  assert.equal(
+    parts.some((part) => part.type === 'tool-error'),
+    true,
+  );
 });
 
 void test('handles malformed SSE lines and records error part', async () => {
@@ -323,8 +340,14 @@ void test('handles malformed SSE lines and records error part', async () => {
   const result = streamText({ model, prompt: 'x', includeRawChunks: true });
   const parts = await collectFullParts(result);
 
-  assert.equal(parts.some((part) => part.type === 'raw'), true);
-  assert.equal(parts.some((part) => part.type === 'error'), true);
+  assert.equal(
+    parts.some((part) => part.type === 'raw'),
+    true,
+  );
+  assert.equal(
+    parts.some((part) => part.type === 'error'),
+    true,
+  );
 });
 
 void test('emits abort and finish when signal is already aborted', async () => {
@@ -335,8 +358,14 @@ void test('emits abort and finish when signal is already aborted', async () => {
   const result = streamText({ model, prompt: 'x', abortSignal: abort.signal });
   const parts = await collectFullParts(result);
 
-  assert.equal(parts.some((part) => part.type === 'abort'), true);
-  assert.equal(parts.some((part) => part.type === 'finish'), true);
+  assert.equal(
+    parts.some((part) => part.type === 'abort'),
+    true,
+  );
+  assert.equal(
+    parts.some((part) => part.type === 'finish'),
+    true,
+  );
 });
 
 void test('emits maxToolRoundtrips guard error', async () => {
@@ -344,8 +373,14 @@ void test('emits maxToolRoundtrips guard error', async () => {
   const result = streamText({ model, prompt: 'x', maxToolRoundtrips: 0 });
   const parts = await collectFullParts(result);
 
-  assert.equal(parts.some((part) => part.type === 'error'), true);
-  assert.equal(parts.some((part) => part.type === 'finish' && part.finishReason === 'error'), true);
+  assert.equal(
+    parts.some((part) => part.type === 'error'),
+    true,
+  );
+  assert.equal(
+    parts.some((part) => part.type === 'finish' && part.finishReason === 'error'),
+    true,
+  );
 });
 
 void test('handles execute missing and execute failure branches', async () => {
@@ -447,7 +482,10 @@ void test('toUIMessageStream and toUIMessageStreamResponse work for stream resul
 
   const result = streamText({ model, prompt: 'x' });
   const uiChunks = await collectStream(result.toUIMessageStream());
-  assert.equal(uiChunks.some((chunk) => chunk.type === 'text-delta'), true);
+  assert.equal(
+    uiChunks.some((chunk) => chunk.type === 'text-delta'),
+    true,
+  );
 
   const response = result.toUIMessageStreamResponse();
   assert.equal(response.headers.get('x-vercel-ai-ui-message-stream'), 'v1');

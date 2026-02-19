@@ -103,8 +103,7 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const profile = firstShortcutText(bindings, 'mux.gateway.profile.toggle') || 'ctrl+shift+p';
   const statusTimeline =
     firstShortcutText(bindings, 'mux.gateway.status-timeline.toggle') || 'alt+r';
-  const renderTrace =
-    firstShortcutText(bindings, 'mux.gateway.render-trace.toggle') || 'ctrl+]';
+  const renderTrace = firstShortcutText(bindings, 'mux.gateway.render-trace.toggle') || 'ctrl+]';
   const switchHint = next === previous ? next : `${next}/${previous}`;
   const interruptHint =
     interruptConversation.length === 0 ? '' : `  ${interruptConversation} interrupt`;

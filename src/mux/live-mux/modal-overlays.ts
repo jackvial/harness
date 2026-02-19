@@ -104,7 +104,9 @@ export function buildCommandMenuModalOverlay(
       const prefix = index === selectedIndex ? '>' : ' ';
       const detail = match.action.detail?.trim() ?? '';
       bodyLines.push(
-        detail.length > 0 ? `${prefix} ${match.action.title} - ${detail}` : `${prefix} ${match.action.title}`,
+        detail.length > 0
+          ? `${prefix} ${match.action.title} - ${detail}`
+          : `${prefix} ${match.action.title}`,
       );
     }
   }

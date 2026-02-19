@@ -64,12 +64,11 @@ const createHarness = (input?: {
   readonly getActiveConversationId: () => string | null;
 } => {
   const calls: string[] = [];
-  let reduction: Reduction =
-    input?.reduction ?? {
-      changed: false,
-      removedConversationIds: [],
-      removedDirectoryIds: [],
-    };
+  let reduction: Reduction = input?.reduction ?? {
+    changed: false,
+    removedConversationIds: [],
+    removedDirectoryIds: [],
+  };
   let activeConversationId = input?.activeConversationId ?? null;
   let orderedConversationIds = input?.orderedConversationIds ?? [];
   const conversationDirectoryById = new Map<string, string | null>(

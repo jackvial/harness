@@ -236,7 +236,7 @@ Pass-through stream invariants:
 ## Mux Interaction Rules
 
 - Escape is forwarded to the active PTY session; mux does not reserve it as a quit key.
-- `ctrl+c` handling is single-stage: one press requests mux shutdown.
+- `ctrl+c` handling is two-stage: first press is forwarded to the selected thread when one is active; a second press within the double-tap window requests mux shutdown.
 - In canonical remote/gateway mode, mux exits without closing live sessions so work continues after client disconnect.
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
@@ -877,7 +877,6 @@ Subsystems where mature dependencies are acceptable because they are outside dir
 - Logging and diagnostics:
   - Use: a mature backend behind `log-core` (for example `pino`), never directly from feature code.
   - Rationale: keep one logging contract while using reliable non-hot-path plumbing.
-
 
 ## Verification Tenets
 

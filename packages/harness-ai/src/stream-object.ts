@@ -54,7 +54,11 @@ export function streamObject<T, TOOLS extends ToolSet>(
 
           assembledText += part.text;
           const maybeObject = parseJsonObjectFromText(assembledText);
-          if (maybeObject === undefined || typeof maybeObject !== 'object' || maybeObject === null) {
+          if (
+            maybeObject === undefined ||
+            typeof maybeObject !== 'object' ||
+            maybeObject === null
+          ) {
             return;
           }
 

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { anthropic, anthropicTools, createAnthropic } from '../packages/harness-ai/src/anthropic-provider.ts';
+import {
+  anthropic,
+  anthropicTools,
+  createAnthropic,
+} from '../packages/harness-ai/src/anthropic-provider.ts';
 
 void test('createAnthropic returns model factory with normalized base url', () => {
   const provider = createAnthropic({

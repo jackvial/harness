@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { mapAnthropicStopReason, parseAnthropicStreamChunk } from '../packages/harness-ai/src/anthropic-protocol.ts';
+import {
+  mapAnthropicStopReason,
+  parseAnthropicStreamChunk,
+} from '../packages/harness-ai/src/anthropic-protocol.ts';
 
 void test('parses message_start and message_delta chunks', () => {
   const messageStart = parseAnthropicStreamChunk({

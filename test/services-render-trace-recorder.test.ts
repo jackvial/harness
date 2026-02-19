@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'bun:test';
 import { RenderTraceRecorder } from '../src/services/render-trace-recorder.ts';
-import { RENDER_TRACE_MODE, RENDER_TRACE_STATE_VERSION } from '../src/mux/live-mux/render-trace-state.ts';
+import {
+  RENDER_TRACE_MODE,
+  RENDER_TRACE_STATE_VERSION,
+} from '../src/mux/live-mux/render-trace-state.ts';
 
 const LABELS = {
   repositoryId: 'repository-1',

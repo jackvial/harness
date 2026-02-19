@@ -69,7 +69,10 @@ export function resolveHarnessStatusTimelineCommandArgs(
   return ['--session', sessionName, 'status-timeline', action];
 }
 
-function summarizeStatusTimelineSuccess(action: GatewayStatusTimelineAction, stdout: string): string {
+function summarizeStatusTimelineSuccess(
+  action: GatewayStatusTimelineAction,
+  stdout: string,
+): string {
   if (action === 'start') {
     const timelinePath = lineValueForPrefix(stdout, 'status-timeline-target:');
     if (timelinePath !== null) {
@@ -141,7 +144,10 @@ async function runHarnessStatusTimelineCommand(
 export async function toggleGatewayStatusTimeline(
   options: ToggleGatewayStatusTimelineOptions,
 ): Promise<ToggleGatewayStatusTimelineResult> {
-  const statePath = resolveStatusTimelineStatePath(options.invocationDirectory, options.sessionName);
+  const statePath = resolveStatusTimelineStatePath(
+    options.invocationDirectory,
+    options.sessionName,
+  );
   const isRunning = (options.statusTimelineStateExists ?? existsSync)(statePath);
   const action: GatewayStatusTimelineAction = isRunning ? 'stop' : 'start';
   const harnessScriptPath = options.harnessScriptPath ?? DEFAULT_HARNESS_SCRIPT_PATH;

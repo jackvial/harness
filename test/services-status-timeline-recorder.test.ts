@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'bun:test';
 import { StatusTimelineRecorder } from '../src/services/status-timeline-recorder.ts';
-import { STATUS_TIMELINE_MODE, STATUS_TIMELINE_STATE_VERSION } from '../src/mux/live-mux/status-timeline-state.ts';
+import {
+  STATUS_TIMELINE_MODE,
+  STATUS_TIMELINE_STATE_VERSION,
+} from '../src/mux/live-mux/status-timeline-state.ts';
 
 const LABELS = {
   repositoryId: 'repository-1',

@@ -43,22 +43,23 @@ function normalizeConversationFixture(
             detailLower.includes('attention required') ||
             detailLower.includes('approval denied')
           ? 'needs-action'
-          : detailLower === 'active' || detailLower === 'working' || detailLower.startsWith('working:')
+          : detailLower === 'active' ||
+              detailLower === 'working' ||
+              detailLower.startsWith('working:')
             ? 'working'
             : detailLower === 'inactive' ||
                 detailLower.includes('turn complete') ||
                 detailLower.includes('turn completed')
               ? 'idle'
-            : status === 'running'
-              ? 'starting'
-              : 'idle';
+              : status === 'running'
+                ? 'starting'
+                : 'idle';
   const modelOptions: NonNullable<Parameters<typeof statusModelFor>[1]> = {
     attentionReason,
     phase,
     lastKnownWork,
     lastKnownWorkAt,
-    phaseHint:
-      phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
+    phaseHint: phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
   };
   if (lastKnownWork !== null || attentionReason !== null) {
     modelOptions.detailText = (lastKnownWork ?? attentionReason) as string;
@@ -2085,9 +2086,7 @@ void test('workspace rail conversation projection falls back to status label whe
   assert.equal(projected.detailText, 'inactive');
 });
 
-void test(
-  'workspace rail model renders fixed terminal and critique glyphs while suppressing status detail rows',
-  () => {
+void test('workspace rail model renders fixed terminal and critique glyphs while suppressing status detail rows', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -2151,10 +2150,12 @@ void test(
   );
 
   const terminalTitle = rows.find(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-terminal',
+    (row) =>
+      row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-terminal',
   );
   const critiqueTitle = rows.find(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-critique',
+    (row) =>
+      row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-critique',
   );
   assert.notEqual(terminalTitle, undefined);
   assert.notEqual(critiqueTitle, undefined);
@@ -2165,18 +2166,19 @@ void test(
 
   assert.equal(
     rows.some(
-      (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-terminal',
+      (row) =>
+        row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-terminal',
     ),
     false,
   );
   assert.equal(
     rows.some(
-      (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-critique',
+      (row) =>
+        row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-critique',
     ),
     false,
   );
-},
-);
+});
 
 void test('workspace rail projection maps runtime status when status model is null', () => {
   const baseConversation: StrictWorkspaceConversation = {

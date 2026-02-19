@@ -108,17 +108,11 @@ void test('snapshot oracle selectionText reads across absolute scrollback rows',
   oracle.ingest('line-1\r\nline-2\r\nline-3\r\nline-4');
 
   assert.equal(
-    oracle.selectionText(
-      { rowAbs: 0, col: 2 },
-      { rowAbs: 3, col: 3 },
-    ),
+    oracle.selectionText({ rowAbs: 0, col: 2 }, { rowAbs: 3, col: 3 }),
     'ne-1\nline-2\nline-3\nline',
   );
   assert.equal(
-    oracle.selectionText(
-      { rowAbs: 3, col: 3 },
-      { rowAbs: 0, col: 2 },
-    ),
+    oracle.selectionText({ rowAbs: 3, col: 3 }, { rowAbs: 0, col: 2 }),
     'ne-1\nline-2\nline-3\nline',
   );
 });

@@ -74,8 +74,7 @@ function createHarness() {
         calls.push(`archiveRepository:${repositoryId}`);
       },
     },
-    normalizeGitHubRemoteUrl: (value) =>
-      value.startsWith('https://github.com/') ? value : null,
+    normalizeGitHubRemoteUrl: (value) => (value.startsWith('https://github.com/') ? value : null),
     repositoryNameFromGitHubRemoteUrl: (value) => value.split('/').at(-1) ?? 'repo',
     createRepositoryId: () => 'repository-created',
     stopConversationTitleEdit: () => {
@@ -253,7 +252,10 @@ void test('runtime repository actions upsert validates URL and supports create/u
   );
 
   await harness.service.upsertRepositoryByRemoteUrl('https://github.com/org/repo-new');
-  assert.equal(harness.calls.includes('upsertRepository:repository-created:https://github.com/org/repo-new'), true);
+  assert.equal(
+    harness.calls.includes('upsertRepository:repository-created:https://github.com/org/repo-new'),
+    true,
+  );
   assert.equal(harness.repositories.has('repository-created'), true);
 
   harness.calls.length = 0;

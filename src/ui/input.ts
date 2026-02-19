@@ -1,6 +1,4 @@
-import {
-  handleCommandMenuInput as handleCommandMenuInputFrame,
-} from '../mux/live-mux/modal-command-menu-handler.ts';
+import { handleCommandMenuInput as handleCommandMenuInputFrame } from '../mux/live-mux/modal-command-menu-handler.ts';
 import {
   handleConversationTitleEditInput as handleConversationTitleEditInputFrame,
   handleNewThreadPromptInput as handleNewThreadPromptInputFrame,

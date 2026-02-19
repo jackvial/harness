@@ -65,7 +65,8 @@ export class RuntimeGitState<TRepositoryRecord extends RepositoryRecordShape> {
       observed,
       gitSummaryByDirectoryId: this.options.directoryManager.mutableGitSummaries(),
       loadingSummary: this.options.loadingSummary,
-      directoryRepositorySnapshotByDirectoryId: this.options.directoryRepositorySnapshotByDirectoryId,
+      directoryRepositorySnapshotByDirectoryId:
+        this.options.directoryRepositorySnapshotByDirectoryId,
       emptyRepositorySnapshot: this.options.emptyRepositorySnapshot,
       repositoryAssociationByDirectoryId: this.options.repositoryAssociationByDirectoryId,
       repositories: this.options.repositories,

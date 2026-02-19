@@ -128,10 +128,7 @@ import {
   selectionVisibleRows,
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
-import {
-  type GitRepositorySnapshot,
-  type GitSummary,
-} from '../src/mux/live-mux/git-state.ts';
+import { type GitRepositorySnapshot, type GitSummary } from '../src/mux/live-mux/git-state.ts';
 import { resolveDirectoryForAction as resolveDirectoryForActionFn } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
 import { openNewThreadPrompt as openNewThreadPromptFn } from '../src/mux/live-mux/actions-conversation.ts';
@@ -185,8 +182,14 @@ import { RuntimeWorkspaceActions } from '../src/services/runtime-workspace-actio
 import { WorkspaceObservedEvents } from '../src/services/workspace-observed-events.ts';
 import { RuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
 import { StartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
-import { StatusTimelineRecorder, type StatusTimelineLabels } from '../src/services/status-timeline-recorder.ts';
-import { RenderTraceRecorder, type RenderTraceLabels } from '../src/services/render-trace-recorder.ts';
+import {
+  StatusTimelineRecorder,
+  type StatusTimelineLabels,
+} from '../src/services/status-timeline-recorder.ts';
+import {
+  RenderTraceRecorder,
+  type RenderTraceLabels,
+} from '../src/services/render-trace-recorder.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { DebugFooterNotice } from '../src/ui/debug-footer-notice.ts';
@@ -230,6 +233,7 @@ const DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS = 250;
 const DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS = 250;
 const CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
 const HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
+const INTERRUPT_ALL_DOUBLE_TAP_WINDOW_MS = 350;
 const HOME_PANE_BACKGROUND_INTERVAL_MS = 80;
 const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
 const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
@@ -577,10 +581,8 @@ async function main(): Promise<number> {
     GitRepositorySnapshot
   >();
   const repositories = repositoryManager.mutableRepositories();
-  const repositoryAssociationByDirectoryId =
-    repositoryManager.mutableDirectoryAssociations();
-  const directoryRepositorySnapshotByDirectoryId =
-    repositoryManager.mutableDirectorySnapshots();
+  const repositoryAssociationByDirectoryId = repositoryManager.mutableDirectoryAssociations();
+  const directoryRepositorySnapshotByDirectoryId = repositoryManager.mutableDirectorySnapshots();
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversationManager = new ConversationManager();
@@ -604,7 +606,8 @@ async function main(): Promise<number> {
           : (conversationManager.get(input.conversationId) ?? null)
         : (conversationManager.get(input.sessionId) ?? null);
     const resolvedDirectoryId = input.directoryId ?? conversation?.directoryId ?? null;
-    const directory = resolvedDirectoryId === null ? null : directoryManager.getDirectory(resolvedDirectoryId);
+    const directory =
+      resolvedDirectoryId === null ? null : directoryManager.getDirectory(resolvedDirectoryId);
     const repositoryId =
       resolvedDirectoryId === null
         ? null
@@ -2198,7 +2201,11 @@ async function main(): Promise<number> {
   registerThreadStartAction('codex', 'Start Codex thread', ['codex', 'start codex']);
   registerThreadStartAction('claude', 'Start Claude thread', ['claude', 'start claude']);
   registerThreadStartAction('cursor', 'Start Cursor thread', ['cursor', 'cur', 'start cursor']);
-  registerThreadStartAction('terminal', 'Start Terminal thread', ['terminal', 'shell', 'start terminal']);
+  registerThreadStartAction('terminal', 'Start Terminal thread', [
+    'terminal',
+    'shell',
+    'start terminal',
+  ]);
   registerThreadStartAction('critique', 'Start Critique thread', ['critique', 'start critique']);
 
   commandMenuRegistry.registerAction({
@@ -2254,9 +2261,7 @@ async function main(): Promise<number> {
   });
 
   commandMenuRegistry.registerProvider('status-timeline.toggle', (context) => {
-    const title = context.statusTimelineRunning
-      ? 'Stop status logging'
-      : 'Start status logging';
+    const title = context.statusTimelineRunning ? 'Stop status logging' : 'Start status logging';
     const aliases = context.statusTimelineRunning
       ? ['stop status logging', 'stop status']
       : ['start status logging', 'start status'];
@@ -2656,6 +2661,25 @@ async function main(): Promise<number> {
     getMainPaneMode: () => workspace.mainPaneMode,
     getActiveConversationId: () => conversationManager.activeConversationId,
     getActiveDirectoryId: () => workspace.activeDirectoryId,
+    forwardInterruptAllToActiveConversation: (input) => {
+      const activeConversation = conversationManager.getActiveConversation();
+      if (activeConversation === null) {
+        return false;
+      }
+      if (
+        activeConversation.controller !== null &&
+        !conversationManager.isControlledByLocalHuman({
+          conversation: activeConversation,
+          controllerId: muxControllerId,
+        })
+      ) {
+        return false;
+      }
+      streamClient.sendInput(activeConversation.sessionId, input);
+      noteGitActivity(activeConversation.directoryId);
+      return true;
+    },
+    interruptAllDoubleTapWindowMs: INTERRUPT_ALL_DOUBLE_TAP_WINDOW_MS,
     chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
     collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
     releaseViewportPinForSelection,

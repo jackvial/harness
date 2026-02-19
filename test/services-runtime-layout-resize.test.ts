@@ -61,12 +61,18 @@ const createHarness = (input?: {
   const state = {
     size: input?.size ?? { cols: 120, rows: 40 },
     leftPaneColsOverride: null as number | null,
-    layout: computeDualPaneLayout((input?.size ?? { cols: 120, rows: 40 }).cols, (input?.size ?? {
-      cols: 120,
-      rows: 40,
-    }).rows, {
-      leftCols: null,
-    }),
+    layout: computeDualPaneLayout(
+      (input?.size ?? { cols: 120, rows: 40 }).cols,
+      (
+        input?.size ?? {
+          cols: 120,
+          rows: 40,
+        }
+      ).rows,
+      {
+        leftCols: null,
+      },
+    ),
   };
   const conversations = new Map<string, ConversationRecord>(
     (input?.conversations ?? []).map((conversation) => [conversation.sessionId, conversation]),
@@ -295,7 +301,10 @@ void test('runtime layout resize schedules follow-up resize when pending size ap
   harness.service.queueResize({ cols: 130, rows: 44 });
   assert.equal(harness.runNextTimer(), true);
   harness.service.clearPtyResizeTimer();
-  assert.equal(harness.timerRecords.some((timer) => !timer.cleared && timer.delayMs === 33), true);
+  assert.equal(
+    harness.timerRecords.some((timer) => !timer.cleared && timer.delayMs === 33),
+    true,
+  );
 
   harness.setNowMs(140);
   assert.equal(harness.runNextTimer(), true);

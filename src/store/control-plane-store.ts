@@ -1773,13 +1773,7 @@ export class SqliteControlPlaneStore {
           scope_id = ?
       `,
       )
-      .get(
-        input.tenantId,
-        input.userId,
-        input.workspaceId,
-        normalized.scope,
-        normalized.scopeKey,
-      );
+      .get(input.tenantId, input.userId, input.workspaceId, normalized.scope, normalized.scopeKey);
     if (row === undefined) {
       return null;
     }
@@ -2128,7 +2122,11 @@ export class SqliteControlPlaneStore {
     `);
     this.ensureColumnExists('tasks', 'linear_json', `linear_json TEXT NOT NULL DEFAULT '{}'`);
     this.ensureColumnExists('tasks', 'scope_kind', `scope_kind TEXT NOT NULL DEFAULT 'global'`);
-    this.ensureColumnExists('tasks', 'project_id', `project_id TEXT REFERENCES directories(directory_id)`);
+    this.ensureColumnExists(
+      'tasks',
+      'project_id',
+      `project_id TEXT REFERENCES directories(directory_id)`,
+    );
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_tasks_scope_kind
       ON tasks (tenant_id, user_id, workspace_id, scope_kind, repository_id, project_id, order_index);

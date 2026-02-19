@@ -264,10 +264,7 @@ export class CommandMenuRegistry<TContext> {
     };
   }
 
-  registerProvider(
-    providerId: string,
-    provider: CommandMenuActionProvider<TContext>,
-  ): () => void {
+  registerProvider(providerId: string, provider: CommandMenuActionProvider<TContext>): () => void {
     this.providers.set(providerId, provider);
     return () => {
       this.providers.delete(providerId);

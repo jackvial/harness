@@ -1,5 +1,12 @@
-import { collectReadableStream, consumeReadableStream, toAsyncIterableStream } from './async-iterable-stream.ts';
-import { postAnthropicMessagesStream, type AnthropicMessagesRequestBody } from './anthropic-client.ts';
+import {
+  collectReadableStream,
+  consumeReadableStream,
+  toAsyncIterableStream,
+} from './async-iterable-stream.ts';
+import {
+  postAnthropicMessagesStream,
+  type AnthropicMessagesRequestBody,
+} from './anthropic-client.ts';
 import {
   mapAnthropicStopReason,
   type AnthropicContentBlock,
@@ -136,9 +143,7 @@ function normalizeMessages(
   };
 }
 
-function toAnthropicMessageContent(
-  message: ModelMessage,
-): Array<Record<string, unknown>> {
+function toAnthropicMessageContent(message: ModelMessage): Array<Record<string, unknown>> {
   if (message.role === 'system') {
     return [{ type: 'text', text: message.content }];
   }
@@ -248,7 +253,9 @@ function normalizeToolDefinition(
   };
 }
 
-function buildTools<TOOLS extends ToolSet>(tools: TOOLS | undefined): {
+function buildTools<TOOLS extends ToolSet>(
+  tools: TOOLS | undefined,
+): {
   readonly requestTools: Array<Record<string, unknown>> | undefined;
   readonly nameMap: ToolNameMap;
   readonly toolMeta: Map<string, { readonly dynamic?: boolean; readonly title?: string }>;
@@ -320,7 +327,11 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function mapWebSearchResult(result: AnthropicContentBlock):
-  | { readonly ok: true; readonly output: unknown[]; readonly sources: Array<{ url: string; title?: string; pageAge?: string }> }
+  | {
+      readonly ok: true;
+      readonly output: unknown[];
+      readonly sources: Array<{ url: string; title?: string; pageAge?: string }>;
+    }
   | { readonly ok: false; readonly error: unknown } {
   if (result.type !== 'web_search_tool_result') {
     return {
@@ -335,7 +346,9 @@ function mapWebSearchResult(result: AnthropicContentBlock):
       url: entry.url,
       ...(entry.title !== undefined ? { title: entry.title } : {}),
       ...(entry.page_age !== undefined ? { pageAge: entry.page_age } : {}),
-      ...(entry.encrypted_content !== undefined ? { encryptedContent: entry.encrypted_content } : {}),
+      ...(entry.encrypted_content !== undefined
+        ? { encryptedContent: entry.encrypted_content }
+        : {}),
     }));
     return {
       ok: true,
@@ -357,7 +370,9 @@ function mapWebSearchResult(result: AnthropicContentBlock):
   };
 }
 
-function mapWebFetchResult(result: AnthropicContentBlock):
+function mapWebFetchResult(
+  result: AnthropicContentBlock,
+):
   | { readonly ok: true; readonly output: unknown }
   | { readonly ok: false; readonly error: unknown } {
   if (result.type !== 'web_fetch_tool_result') {
@@ -400,7 +415,11 @@ function mapWebFetchResult(result: AnthropicContentBlock):
   };
 }
 
-function parseToolInput(inputText: string): { readonly input: unknown; readonly invalid: boolean; readonly error?: string } {
+function parseToolInput(inputText: string): {
+  readonly input: unknown;
+  readonly invalid: boolean;
+  readonly error?: string;
+} {
   const parsed = safeJsonParse(inputText);
   if (parsed !== undefined) {
     return { input: parsed, invalid: false };
@@ -476,7 +495,10 @@ async function runSingleStep<TOOLS extends ToolSet>(
       }
 
       if (value.parseError !== undefined) {
-        options.emit({ type: 'error', error: new Error(`failed to parse anthropic event: ${value.parseError}`) });
+        options.emit({
+          type: 'error',
+          error: new Error(`failed to parse anthropic event: ${value.parseError}`),
+        });
         continue;
       }
 
@@ -780,7 +802,8 @@ async function runSingleStep<TOOLS extends ToolSet>(
         const message = errorRecord?.['message'];
         options.emit({
           type: 'error',
-          error: typeof message === 'string' ? new Error(message) : new Error('anthropic stream error'),
+          error:
+            typeof message === 'string' ? new Error(message) : new Error('anthropic stream error'),
         });
         finishReason = 'error';
         continue;
@@ -1137,7 +1160,11 @@ export function streamText<TOOLS extends ToolSet>(
 
           const stepResult = await runSingleStep(options.model, requestBody, stepRunOptions);
 
-          const localToolExecution = await executeToolCalls(stepResult.toolCalls, options.tools, emit);
+          const localToolExecution = await executeToolCalls(
+            stepResult.toolCalls,
+            options.tools,
+            emit,
+          );
 
           const stepUsage = stepResult.usage;
           totalUsage = addUsage(totalUsage, stepUsage);
@@ -1155,7 +1182,9 @@ export function streamText<TOOLS extends ToolSet>(
               : {}),
           });
 
-          const nonProviderCalls = stepResult.toolCalls.filter((call) => call.providerExecuted !== true);
+          const nonProviderCalls = stepResult.toolCalls.filter(
+            (call) => call.providerExecuted !== true,
+          );
           if (
             stepResult.finishReason === 'tool-calls' &&
             nonProviderCalls.length > 0 &&
@@ -1235,7 +1264,8 @@ export function streamText<TOOLS extends ToolSet>(
 
   const textDeferred = createDeferred<string>();
   const toolCallsDeferred = createDeferred<TypedToolCall<TOOLS>[]>();
-  const toolResultsDeferred = createDeferred<Array<TypedToolResult<TOOLS> | TypedToolError<TOOLS>>>();
+  const toolResultsDeferred =
+    createDeferred<Array<TypedToolResult<TOOLS> | TypedToolError<TOOLS>>>();
   const finishReasonDeferred = createDeferred<FinishReason>();
   const usageDeferred = createDeferred<LanguageModelUsage>();
   const responseDeferred = createDeferred<LanguageModelResponseMetadata>();

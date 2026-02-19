@@ -7,7 +7,12 @@ import {
   streamText as harnessStreamText,
 } from '../packages/harness-ai/src/index.ts';
 import { createAnthropic as createVercelAnthropic } from '@ai-sdk/anthropic';
-import { stepCountIs, streamObject as vercelStreamObject, streamText as vercelStreamText, tool } from 'ai';
+import {
+  stepCountIs,
+  streamObject as vercelStreamObject,
+  streamText as vercelStreamText,
+  tool,
+} from 'ai';
 import { z } from 'zod';
 
 interface ParsedArgs {
@@ -377,7 +382,10 @@ function compareResults(
     });
   }
 
-  if (harness.objectValue.status !== vercel.objectValue.status || harness.objectValue.value !== vercel.objectValue.value) {
+  if (
+    harness.objectValue.status !== vercel.objectValue.status ||
+    harness.objectValue.value !== vercel.objectValue.value
+  ) {
     diffs.push({
       field: 'objectValue',
       harness: harness.objectValue,
@@ -429,7 +437,9 @@ async function main(): Promise<void> {
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
   if (comparison.hardDiffs.length > 0) {
-    throw new Error(`harness-ai parity smoke failed with ${String(comparison.hardDiffs.length)} hard differences`);
+    throw new Error(
+      `harness-ai parity smoke failed with ${String(comparison.hardDiffs.length)} hard differences`,
+    );
   }
 }
 

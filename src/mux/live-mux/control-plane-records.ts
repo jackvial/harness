@@ -123,9 +123,7 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function parseRuntimeStatusModel(
-  value: unknown,
-): StreamSessionStatusModel | null | undefined {
+function parseRuntimeStatusModel(value: unknown): StreamSessionStatusModel | null | undefined {
   if (value === null) {
     return null;
   }
