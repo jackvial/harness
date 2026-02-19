@@ -1,9 +1,10 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureBunAvailable } from './bun-runtime-guard.js';
 
 const LEGACY_LOCKFILES = [
   'package-lock.json',
@@ -53,10 +54,20 @@ function maybePrintBunMigrationHint() {
 
 maybePrintBunMigrationHint();
 
+const bunCommand =
+  typeof process.env.HARNESS_BUN_COMMAND === 'string' &&
+  process.env.HARNESS_BUN_COMMAND.trim().length > 0
+    ? process.env.HARNESS_BUN_COMMAND.trim()
+    : 'bun';
+
+if (!ensureBunAvailable({ command: bunCommand })) {
+  process.exit(1);
+}
+
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = resolve(here, './harness.ts');
 const runtimeArgs = [scriptPath, ...process.argv.slice(2)];
-const child = spawn(process.execPath, runtimeArgs, {
+const child = spawn(bunCommand, runtimeArgs, {
   stdio: 'inherit',
 });
 

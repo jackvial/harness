@@ -24,7 +24,19 @@ Use it when you want to move faster than a single chat window: keep multiple thr
 - Rust toolchain
 - At least one installed agent CLI (`codex`, `claude`, `cursor`, or `critique`)
 
-### Install
+### Install (npm package)
+
+> Note: Harness requires Bun. It does not work with Node.js alone.
+
+```bash
+# Run directly with bunx (no install needed)
+bunx @jmoyers/harness@latest
+
+# Or install globally
+bun add -g --trust @jmoyers/harness
+```
+
+### Install (from source)
 
 ```bash
 bun install
