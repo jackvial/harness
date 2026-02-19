@@ -12,6 +12,10 @@ function normalizePath(path: string): string {
   return resolve(path);
 }
 
+function isWithinRoot(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
+}
+
 function hasExportModifier(node: ts.Node): boolean {
   return (ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Export) !== 0;
 }
@@ -88,15 +92,58 @@ function collectImportedNames(
   sourceFile: ts.SourceFile,
   importedNamesByFile: Map<string, Set<string>>,
   referencedSourceFiles: Set<string>,
+  sourceRoots: readonly string[],
 ): void {
   const fromFilePath = normalizePath(sourceFile.fileName);
 
+  const registerTargetPath = (targetPath: string): Set<string> => {
+    if (sourceRoots.some((sourceRoot) => isWithinRoot(targetPath, sourceRoot))) {
+      referencedSourceFiles.add(targetPath);
+    }
+
+    const names = importedNamesByFile.get(targetPath) ?? new Set<string>();
+    importedNamesByFile.set(targetPath, names);
+    return names;
+  };
+
   for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement)) {
+    if (ts.isImportDeclaration(statement)) {
+      if (!ts.isStringLiteral(statement.moduleSpecifier)) {
+        continue;
+      }
+
+      const targetPath = resolveLocalImportPath(fromFilePath, statement.moduleSpecifier.text);
+      if (targetPath === null) {
+        continue;
+      }
+
+      const names = registerTargetPath(targetPath);
+      const clause = statement.importClause;
+      if (clause === undefined) {
+        names.add('*');
+        continue;
+      }
+
+      if (clause.name !== undefined) {
+        names.add('default');
+      }
+
+      if (clause.namedBindings !== undefined) {
+        if (ts.isNamespaceImport(clause.namedBindings)) {
+          names.add('*');
+        } else {
+          for (const element of clause.namedBindings.elements) {
+            names.add(element.propertyName?.text ?? element.name.text);
+          }
+        }
+      }
       continue;
     }
 
-    if (!ts.isStringLiteral(statement.moduleSpecifier)) {
+    if (!ts.isExportDeclaration(statement)) {
+      continue;
+    }
+    if (statement.moduleSpecifier === undefined || !ts.isStringLiteral(statement.moduleSpecifier)) {
       continue;
     }
 
@@ -105,44 +152,28 @@ function collectImportedNames(
       continue;
     }
 
-    if (targetPath.includes(`${resolve(process.cwd(), 'src')}/`)) {
-      referencedSourceFiles.add(targetPath);
-    }
-
-    const names = importedNamesByFile.get(targetPath) ?? new Set<string>();
-    const clause = statement.importClause;
-    if (clause === undefined) {
+    const names = registerTargetPath(targetPath);
+    if (statement.exportClause === undefined) {
       names.add('*');
-      importedNamesByFile.set(targetPath, names);
       continue;
     }
-
-    if (clause.name !== undefined) {
-      names.add('default');
+    if (!ts.isNamedExports(statement.exportClause)) {
+      continue;
     }
-
-    if (clause.namedBindings !== undefined) {
-      if (ts.isNamespaceImport(clause.namedBindings)) {
-        names.add('*');
-      } else {
-        for (const element of clause.namedBindings.elements) {
-          names.add(element.propertyName?.text ?? element.name.text);
-        }
-      }
+    for (const element of statement.exportClause.elements) {
+      names.add(element.propertyName?.text ?? element.name.text);
     }
-
-    importedNamesByFile.set(targetPath, names);
   }
 }
 
 function main(): number {
   const root = process.cwd();
-  const srcRoot = resolve(root, 'src');
+  const sourceRoots = [resolve(root, 'src'), resolve(root, 'packages/harness-ai/src')];
   const testRoot = resolve(root, 'test');
   const scriptsRoot = resolve(root, 'scripts');
-  const srcFiles = ts.sys
-    .readDirectory(srcRoot, ['.ts'], undefined, ['**/*.ts'])
-    .map(normalizePath);
+  const srcFiles = sourceRoots.flatMap((sourceRoot) =>
+    ts.sys.readDirectory(sourceRoot, ['.ts'], undefined, ['**/*.ts']).map(normalizePath),
+  );
   const testFiles = ts.sys
     .readDirectory(testRoot, ['.ts'], undefined, ['**/*.ts'])
     .map(normalizePath);
@@ -158,8 +189,8 @@ function main(): number {
   for (const filePath of allFiles) {
     const sourceText = readFileSync(filePath, 'utf8');
     const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
-    collectImportedNames(sourceFile, importedNamesByFile, referencedSourceFiles);
-    if (filePath.startsWith(srcRoot)) {
+    collectImportedNames(sourceFile, importedNamesByFile, referencedSourceFiles, sourceRoots);
+    if (sourceRoots.some((sourceRoot) => isWithinRoot(filePath, sourceRoot))) {
       exportSymbols.push(...collectExportSymbols(sourceFile));
     }
   }

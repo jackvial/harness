@@ -199,7 +199,7 @@ function globPatternToRegExp(pattern: string): RegExp {
       expression += '[^/]';
       continue;
     }
-    if ('\\.[]{}()+-^$|'.includes(char)) {
+    if ('\\.[]{}()+^$|'.includes(char)) {
       expression += `\\${char}`;
       continue;
     }

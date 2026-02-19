@@ -41,22 +41,27 @@
     "loc:verify:enforce": "bun scripts/check-max-loc.ts --max-loc 2000 --enforce",
     "deadcode": "bun scripts/check-dead-code.ts",
     "coverage:check": "bun scripts/check-coverage.ts --lcov .harness/coverage-bun/lcov.info --config harness.coverage.jsonc",
-    "lint": "oxlint --deny-warnings --disable-unicorn-plugin -c .oxlintrc.json src test scripts",
-    "format": "oxfmt --config .oxfmtrc.json src test scripts",
-    "format:check": "oxfmt --check --config .oxfmtrc.json src test scripts",
+    "lint": "oxlint --deny-warnings --disable-unicorn-plugin -c .oxlintrc.json src test scripts packages/harness-ai/src",
+    "format": "oxfmt --config .oxfmtrc.json src test scripts packages/harness-ai/src",
+    "format:check": "oxfmt --check --config .oxfmtrc.json src test scripts packages/harness-ai/src",
     "typecheck": "tsc --noEmit",
     "test": "bun run build:ptyd && bun test",
     "test:integration:codex-status": "bun scripts/integration-codex-status-sequence.ts",
     "test:integration:codex-status:long": "bun scripts/integration-codex-status-sequence.ts --timeout-ms 180000 --prompt \"Write three short poems titled Dawn, Voltage, and Orbit. Before each poem, perform one repository inspection action and include one factual line from that action. Use at least three total tool actions and do not edit any files.\"",
+    "smoke:harness-ai": "bun scripts/harness-ai-smoke.ts",
+    "smoke:harness-ai:parity": "bun scripts/harness-ai-parity-smoke.mts",
     "test:coverage": "bun run build:ptyd && bun test --coverage --coverage-reporter=lcov --coverage-dir .harness/coverage-bun && bun run coverage:check",
     "verify": "bun run lint && bun run typecheck && bun run deadcode && bun run test:coverage",
     "verify:strict": "bun run verify && bun run loc:verify:enforce"
   },
   "devDependencies": {
+    "@ai-sdk/anthropic": "^3.0.45",
     "@types/node": "^22.17.0",
+    "ai": "^6.0.91",
     "oxfmt": "^0.33.0",
     "oxlint": "^1.48.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "zod": "^4.3.6"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.92",

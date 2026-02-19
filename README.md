@@ -20,6 +20,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Capture focused render diagnostics (unsupported control sequences + ANSI integrity failures) with a dedicated toggle and CLI commands.
 - Track terminal conformance with a versioned compatibility matrix (`src/terminal/compat-matrix.ts`) and parity scenes (`bun run terminal:parity`).
 - Open a command palette with `ctrl+p`/`cmd+p`, live-filter registered actions, and execute context-aware thread/project/runtime controls.
+- Build on a first-party AI library (`packages/harness-ai`) with Anthropic support and Vercel-style stream events for `streamText`, `generateText`, and `streamObject`.
 
 ## Demo
 
@@ -93,6 +94,16 @@ Key orchestration calls are available in the same client:
 - `client.projects.status(projectId)`
 - `client.projects.settings.get(projectId)` / `client.projects.settings.update(projectId, update)`
 - `client.automation.getPolicy(...)` / `client.automation.setPolicy(...)`
+
+## First-Party AI Package
+
+Harness now includes a Bun-native first-party AI package at `packages/harness-ai` for Anthropic-driven generation with stream-first semantics.
+
+- `streamText`: Vercel-style event stream with tool-call streaming and tool-result roundtrips.
+- `generateText`: aggregated text + usage + finish metadata over the same pipeline.
+- `streamObject`: JSON-object streaming built on top of `streamText`.
+- UI stream helpers: SSE framing compatible with `x-vercel-ai-ui-message-stream: v1`.
+- Test coverage: unit, integration, and end-to-end coverage is enforced through the same project quality gates.
 
 ## Configuration
 

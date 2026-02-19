@@ -145,6 +145,27 @@ Ownership rules:
 
 This boundary model keeps behavior equivalent while making the system testable, replaceable, and automation-safe.
 
+## First-Party AI Library Package
+
+Harness ships a first-party AI package at `packages/harness-ai` to keep latency-sensitive model orchestration and provider bugfixes under direct control.
+
+Current scope:
+
+- Anthropic-first provider surface (`createAnthropic`, provider tool helpers).
+- Stream-first generation primitives (`streamText`, `generateText`, `streamObject`).
+- Vercel-style event envelopes and UI message SSE serialization (`x-vercel-ai-ui-message-stream: v1`).
+- Streaming tool lifecycle support:
+  - tool input start/delta/end
+  - tool call emission
+  - local tool execution + streamed tool results/errors
+  - provider-executed tool result mapping (including Anthropic web search/web fetch tool results)
+
+Design intent:
+
+- Keep the package dependency-minimal and first-party for hot-path reliability.
+- Preserve event-shape parity where practical while allowing focused, controlled divergence when provider behavior requires it.
+- Validate behavior through Bun unit, integration, and end-to-end tests under 100% coverage gates.
+
 ## Control Plane Stream Surface
 
 Required command categories:
