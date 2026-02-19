@@ -1342,6 +1342,7 @@ export class TerminalSnapshotOracle {
 
   private applyCsi(rawParams: string, finalByte: string): void {
     const privateMode = rawParams.startsWith('?');
+    const privateKeyboardMode = rawParams.startsWith('>');
     const params = (privateMode ? rawParams.slice(1) : rawParams).split(';').map((part) => {
       if (part.length === 0) {
         return NaN;
@@ -1367,6 +1368,10 @@ export class TerminalSnapshotOracle {
       if (Number.isFinite(value)) {
         this.applyCursorStyleParam(value);
       }
+      return;
+    }
+
+    if (privateKeyboardMode && (finalByte === 'm' || finalByte === 'u')) {
       return;
     }
 
@@ -1475,9 +1480,14 @@ export class TerminalSnapshotOracle {
       this.savedCursor = { row: this.cursor.row, col: this.cursor.col };
       return;
     }
-    if (finalByte === 'u' && this.savedCursor !== null) {
-      this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
-      this.pendingWrap = false;
+    if (finalByte === 'u') {
+      if (rawParams.length > 0 && rawParams !== '0') {
+        return;
+      }
+      if (this.savedCursor !== null) {
+        this.cursor = { row: this.savedCursor.row, col: this.savedCursor.col };
+        this.pendingWrap = false;
+      }
     }
   }
 

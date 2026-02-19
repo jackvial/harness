@@ -25,7 +25,7 @@ void test('render trace analysis treats known CSI and ESC controls as supported'
 void test('render trace analysis treats supported query payload variants as safe', () => {
   const issues = findRenderTraceControlIssues(
     Buffer.from(
-      '\u001b[c\u001b[0c\u001b[>c\u001b[>0c\u001b[5n\u001b[>0q\u001b[?1;2$p\u001b[?u\u001b[0 q',
+      '\u001b[c\u001b[0c\u001b[>c\u001b[>0c\u001b[5n\u001b[>0q\u001b[?1;2$p\u001b[?u\u001b[>4;?m\u001b[0 q',
       'utf8',
     ),
   );

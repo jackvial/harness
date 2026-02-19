@@ -217,6 +217,8 @@ class TerminalQueryResponder {
   private oscPayload = '';
   private csiPayload = '';
   private dcsPayload = '';
+  private modifyOtherKeysLevel = 0;
+  private kittyKeyboardFlags = 0;
   private readonly palette: TerminalPalette;
   private readonly readQueryState: () => TerminalQueryState;
   private readonly writeReply: (reply: string) => void;
@@ -379,6 +381,12 @@ class TerminalQueryResponder {
     };
     let handled = false;
 
+    const modifyOtherKeysQueryMatch = payload.match(/^>4;\?m$/u);
+    if (!handled && modifyOtherKeysQueryMatch !== null) {
+      this.writeReply(`\u001b[>4;${String(this.modifyOtherKeysLevel)}m`);
+      handled = true;
+    }
+
     if (payload === 'c' || payload === '0c') {
       this.writeReply(DEFAULT_DA1_REPLY);
       handled = true;
@@ -422,8 +430,12 @@ class TerminalQueryResponder {
     }
 
     if (!handled && payload === '?u') {
-      this.writeReply('\u001b[?0u');
+      this.writeReply(`\u001b[?${String(this.kittyKeyboardFlags)}u`);
       handled = true;
+    }
+
+    if (!handled) {
+      this.observeCsiCommand(payload);
     }
     this.recordQueryObservation('csi', payload, handled);
   }
@@ -431,6 +443,33 @@ class TerminalQueryResponder {
   private observeDcsQuery(payload: string): void {
     const trimmedPayload = payload.trim();
     this.recordQueryObservation('dcs', trimmedPayload, false);
+  }
+
+  private observeCsiCommand(payload: string): void {
+    const kittyKeyboardMatch = payload.match(/^>(\d+)u$/u);
+    if (kittyKeyboardMatch !== null) {
+      const nextFlags = Number.parseInt(kittyKeyboardMatch[1]!, 10);
+      if (Number.isFinite(nextFlags)) {
+        this.kittyKeyboardFlags = Math.max(0, nextFlags);
+      }
+      return;
+    }
+
+    const modifyOtherKeysMatch = payload.match(/^>4(?:;(\d+))?m$/u);
+    if (modifyOtherKeysMatch !== null) {
+      const rawLevel = modifyOtherKeysMatch[1];
+      if (rawLevel === undefined) {
+        this.modifyOtherKeysLevel = 0;
+        return;
+      }
+
+      const parsedLevel = Number.parseInt(rawLevel, 10);
+      if (!Number.isFinite(parsedLevel)) {
+        return;
+      }
+
+      this.modifyOtherKeysLevel = Math.max(0, Math.min(2, parsedLevel));
+    }
   }
 
   private recordQueryObservation(
@@ -462,6 +501,9 @@ class TerminalQueryResponder {
       return true;
     }
     if (/^>0q$/.test(payload)) {
+      return true;
+    }
+    if (/^>4;\?m$/.test(payload)) {
       return true;
     }
     if (/^\?[0-9;]*\$p$/.test(payload)) {

@@ -533,6 +533,36 @@ void test('snapshot oracle tolerates restore sequences without prior saved curso
   assert.equal(frame.cursor.row, 0);
 });
 
+void test('snapshot oracle ignores private keyboard CSI modes in render-state paths', () => {
+  const oracle = new TerminalSnapshotOracle(8, 3);
+  oracle.ingest('\u001b[31mX');
+  oracle.ingest('\u001b[>4;2m');
+  oracle.ingest('Y');
+
+  let frame = oracle.snapshot();
+  assert.deepEqual(frame.richLines[0]!.cells[0]!.style.fg, { kind: 'indexed', index: 1 });
+  assert.equal(frame.richLines[0]!.cells[0]!.style.dim, false);
+  assert.deepEqual(frame.richLines[0]!.cells[1]!.style.fg, { kind: 'indexed', index: 1 });
+  assert.equal(frame.richLines[0]!.cells[1]!.style.dim, false);
+
+  oracle.ingest('\u001b[s');
+  oracle.ingest('\u001b[2;2H');
+  frame = oracle.snapshot();
+  assert.equal(frame.cursor.row, 1);
+  assert.equal(frame.cursor.col, 1);
+
+  oracle.ingest('\u001b[?u');
+  oracle.ingest('\u001b[>7u');
+  frame = oracle.snapshot();
+  assert.equal(frame.cursor.row, 1);
+  assert.equal(frame.cursor.col, 1);
+
+  oracle.ingest('\u001b[u');
+  frame = oracle.snapshot();
+  assert.equal(frame.cursor.row, 0);
+  assert.equal(frame.cursor.col, 2);
+});
+
 void test('snapshot oracle applies pending-wrap semantics before next printable glyph', () => {
   const oracle = new TerminalSnapshotOracle(5, 3);
   oracle.ingest('abcde');

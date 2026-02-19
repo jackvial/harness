@@ -517,6 +517,7 @@ Required artifacts (code + tests, not separate authority docs):
 - `compat-matrix`:
   - per-sequence support status: `implemented`, `passthrough`, `unsupported`
   - explicit owner test for every `implemented` entry.
+  - canonical artifact: `src/terminal/compat-matrix.ts` (locked by `test/terminal-compat-matrix.test.ts`).
 
 Control Plane terminal API requirements:
 
@@ -561,6 +562,27 @@ Failure policy:
 
 - Any mismatch in snapshot hash, unsupported required sequence, or reply drift blocks milestone completion.
 - Unknown sequence growth is tracked and triaged; it cannot be silently dropped.
+
+Recorded climb checklist (checkpoint: February 19, 2026):
+
+- Canonical checklist data lives in `src/terminal/compat-matrix.ts`; status claims must stay test-locked in `test/terminal-compat-matrix.test.ts`.
+- L0 `Grammar + Core Controls`: complete.
+- L1 `Screen State Model`: complete.
+- L2 `DEC TUI Modes`: in-progress.
+- L3 `Query + Reply Engine`: in-progress.
+- L4 `Unicode Fidelity`: in-progress.
+- L5 `External + Differential Conformance`: planned.
+- L6 `Modern Extensions`: planned.
+
+Current P0 Codex/Vim blockers from the matrix:
+
+1. `dec-mouse-focus-tracking` (`?1000/?1002/?1003/?1004/?1006`) is unsupported.
+2. `differential-terminal-checkpoints` (direct terminal vs harness checkpoints) is unsupported.
+
+Immediate climb order:
+
+1. Implement DEC mouse/focus mode state tracking and parity scenes for TUI mouse workflows.
+2. Add automated direct-terminal differential checkpoints for Codex/Vim corpora as a blocking gate.
 
 ## Git and Editor Integration
 
@@ -856,10 +878,14 @@ Subsystems where mature dependencies are acceptable because they are outside dir
 - https://github.com/amacneil/vibetunnel
 - https://ecma-international.org/publications-and-standards/standards/ecma-48/
 - https://www.invisible-island.net/xterm/ctlseqs/ctlseqs.html
+- https://vt100.net/docs/vt220-rm/chapter4.html
 - https://www.invisible-island.net/vttest/
+- https://man7.org/linux/man-pages/man5/terminfo.5.html
 - https://vimhelp.org/term.txt.html
 - https://neo.vimhelp.org/term.txt.html
 - https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+- https://iterm2.com/feature-reporting/Hyperlinks_in_Terminal_Emulators.html
+- https://contour-terminal.org/vt-extensions/synchronized-output/
 - https://unicode.org/reports/tr11/
 - https://unicode.org/reports/tr29/
 - https://github.com/microsoft/node-pty

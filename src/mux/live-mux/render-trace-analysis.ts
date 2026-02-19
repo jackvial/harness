@@ -65,6 +65,9 @@ function isLikelyCsiQueryPayload(payload: string): boolean {
   if (/^>0q$/u.test(payload)) {
     return true;
   }
+  if (/^>4;\?m$/u.test(payload)) {
+    return true;
+  }
   if (/^\?[0-9;]*\$p$/u.test(payload)) {
     return true;
   }

@@ -1,0 +1,29 @@
+[
+  {
+    "id": "bootstrap-core-wrap-resize",
+    "cols": 8,
+    "rows": 3,
+    "steps": [
+      { "kind": "output", "chunk": "abc" },
+      { "kind": "output", "chunk": "\nxyz" },
+      { "kind": "resize", "cols": 6, "rows": 2 }
+    ],
+    "checkpoints": [
+      {
+        "id": "after-first-output",
+        "stepIndex": 0,
+        "directFrameHash": "7348c0e491a97ce2b24f3a58c43e49578b09ecb719cf8b1fb8d3461f4aa1e0be"
+      },
+      {
+        "id": "after-second-output",
+        "stepIndex": 1,
+        "directFrameHash": "ee4e5bf3498ac30c44f112b4fc9369bd7e9aee2cd1cd2f24c763239e3a0a5d4e"
+      },
+      {
+        "id": "after-resize",
+        "stepIndex": 2,
+        "directFrameHash": "da16115bd4bfe1794b38e98a8305c1bec8ea9b2098f727c2b94c72806e41f166"
+      }
+    ]
+  }
+]

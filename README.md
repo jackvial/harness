@@ -18,6 +18,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Get gateway-canonical thread status icons/text for structured agent threads, plus fixed one-cell title glyphs for `terminal`/`critique` threads (single server projection, no client-side status interpretation).
 - Capture interleaved status debugging timelines (incoming status sources + outgoing status line/notice outputs) with a toggle and CLI commands.
 - Capture focused render diagnostics (unsupported control sequences + ANSI integrity failures) with a dedicated toggle and CLI commands.
+- Track terminal conformance with a versioned compatibility matrix (`src/terminal/compat-matrix.ts`) and parity scenes (`bun run terminal:parity`).
 - Open a command palette with `ctrl+p`/`cmd+p`, live-filter registered actions, and execute context-aware thread/project/runtime controls.
 
 ## Demo
@@ -137,6 +138,8 @@ harness status-timeline start
 harness status-timeline stop
 harness render-trace start
 harness render-trace stop
+bun run terminal:parity
+bun run terminal:differential
 ```
 
 Run the core quality gate:
@@ -149,6 +152,7 @@ bun run verify
 
 - `design.md` for architecture and system design principles.
 - `agents.md` for execution and quality rules.
+- `src/terminal/compat-matrix.ts` + `test/terminal-compat-matrix.test.ts` for the recorded VT compatibility climb status and blockers.
 
 ## License
 

@@ -749,6 +749,28 @@ void test('codex live session query replies use cursor state at the exact query 
   session.close();
 });
 
+void test('codex live session tracks keyboard negotiation and reports negotiated query replies', () => {
+  const broker = new FakeBroker();
+  const session = startCodexLiveSession(
+    {},
+    {
+      startBroker: () => broker,
+    },
+  );
+
+  broker.emitData(1, Buffer.from('\u001b[>4;2m\u001b[>7u\u001b[?u\u001b[>4;?m', 'utf8'));
+  broker.emitData(2, Buffer.from('\u001b[>4m\u001b[>0u\u001b[?u\u001b[>4;?m', 'utf8'));
+  broker.emitData(3, Buffer.from('\u001b[>4;99m\u001b[>4;?m', 'utf8'));
+  broker.emitData(4, Buffer.from('\u001b[>-1u\u001b[?u', 'utf8'));
+
+  assert.deepEqual(
+    broker.writes.map((entry) => String(entry)),
+    ['\u001b[?7u', '\u001b[>4;2m', '\u001b[?0u', '\u001b[>4;0m', '\u001b[>4;2m', '\u001b[?0u'],
+  );
+
+  session.close();
+});
+
 void test('codex live session replies to OSC terminal color queries', () => {
   const broker = new FakeBroker();
   const perfPath = join(tmpdir(), `harness-query-perf-${Date.now().toString(36)}.jsonl`);
