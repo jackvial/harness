@@ -6,6 +6,7 @@ import {
 } from '../mux/dual-pane-core.ts';
 import { normalizeMuxKeyboardInputForPty as normalizeMuxKeyboardInputForPtyFrame } from '../mux/input-shortcuts.ts';
 import { routeInputTokensForConversation as routeInputTokensForConversationFrame } from '../mux/live-mux/input-forwarding.ts';
+import { hasShiftModifier } from '../mux/live-mux/selection.ts';
 import type { ConversationState } from '../mux/live-mux/conversation-state.ts';
 import type { InputTokenRouter } from './input-token-router.ts';
 
@@ -60,7 +61,7 @@ export class ConversationInputForwarder {
 
     const layout = this.options.getLayout();
     const inputConversation = this.options.getActiveConversation();
-    const { routedTokens } = this.options.inputTokenRouter.routeTokens({
+    const { routedTokens, snapshotForInput } = this.options.inputTokenRouter.routeTokens({
       tokens: parsed.tokens,
       layout,
       conversation: inputConversation,
@@ -74,6 +75,15 @@ export class ConversationInputForwarder {
       normalizeMuxKeyboardInputForPty: this.normalizeMuxKeyboardInputForPty,
       classifyPaneAt: (col, row) => this.classifyPaneAt(layout, col, row),
       wheelDeltaRowsFromCode,
+      hasShiftModifier,
+      layout: {
+        paneRows: layout.paneRows,
+        rightCols: layout.rightCols,
+        rightStartCol: layout.rightStartCol,
+      },
+      snapshotForInput,
+      appMouseTrackingEnabled:
+        inputConversation === null ? false : inputConversation.oracle.isMouseTrackingEnabled(),
     });
 
     if (mainPaneScrollRows !== 0 && inputConversation !== null) {

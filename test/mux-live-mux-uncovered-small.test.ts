@@ -578,6 +578,7 @@ void test('routeInputTokensForConversation forwards keyboard input and accumulat
           col: 15,
           row: 3,
           code: 64,
+          final: 'M',
         },
       },
       {
@@ -586,6 +587,7 @@ void test('routeInputTokensForConversation forwards keyboard input and accumulat
           col: 2,
           row: 3,
           code: 64,
+          final: 'M',
         },
       },
       {
@@ -594,6 +596,7 @@ void test('routeInputTokensForConversation forwards keyboard input and accumulat
           col: 15,
           row: 3,
           code: 0,
+          final: 'M',
         },
       },
     ],
@@ -602,6 +605,21 @@ void test('routeInputTokensForConversation forwards keyboard input and accumulat
       Buffer.from(input.toString('utf8').toUpperCase(), 'utf8'),
     classifyPaneAt: (col) => (col >= 10 ? 'right' : 'left'),
     wheelDeltaRowsFromCode: (code) => (code === 64 ? 2 : null),
+    hasShiftModifier: (code) => (code & 0b0000_0100) !== 0,
+    layout: {
+      paneRows: 24,
+      rightCols: 70,
+      rightStartCol: 10,
+    },
+    snapshotForInput: {
+      activeScreen: 'primary',
+      viewport: {
+        top: 0,
+        totalRows: 24,
+        followOutput: true,
+      },
+    },
+    appMouseTrackingEnabled: false,
   });
   assert.equal(routedConversation.mainPaneScrollRows, 2);
   assert.deepEqual(
@@ -621,6 +639,7 @@ void test('routeInputTokensForConversation forwards keyboard input and accumulat
           col: 15,
           row: 3,
           code: 64,
+          final: 'M',
         },
       },
     ],
@@ -628,9 +647,201 @@ void test('routeInputTokensForConversation forwards keyboard input and accumulat
     normalizeMuxKeyboardInputForPty: (input) => input,
     classifyPaneAt: () => 'right',
     wheelDeltaRowsFromCode: () => 1,
+    hasShiftModifier: () => false,
+    layout: {
+      paneRows: 24,
+      rightCols: 70,
+      rightStartCol: 10,
+    },
+    snapshotForInput: null,
+    appMouseTrackingEnabled: false,
   });
   assert.equal(routedProject.mainPaneScrollRows, 0);
   assert.equal(routedProject.forwardToSession.length, 0);
+});
+
+void test('routeInputTokensForConversation forwards right-pane mouse input when app mouse mode is active', () => {
+  const routed = routeInputTokensForConversation({
+    tokens: [
+      {
+        kind: 'mouse',
+        event: {
+          col: 12,
+          row: 5,
+          code: 0,
+          final: 'M',
+        },
+      },
+      {
+        kind: 'mouse',
+        event: {
+          col: 17,
+          row: 6,
+          code: 64,
+          final: 'M',
+        },
+      },
+    ],
+    mainPaneMode: 'conversation',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+    classifyPaneAt: () => 'right',
+    wheelDeltaRowsFromCode: (code) => (code === 64 ? 2 : null),
+    hasShiftModifier: () => false,
+    layout: {
+      paneRows: 20,
+      rightCols: 40,
+      rightStartCol: 10,
+    },
+    snapshotForInput: {
+      activeScreen: 'alternate',
+      viewport: {
+        top: 0,
+        totalRows: 20,
+        followOutput: true,
+      },
+    },
+    appMouseTrackingEnabled: true,
+  });
+  assert.equal(routed.mainPaneScrollRows, 0);
+  assert.deepEqual(
+    routed.forwardToSession.map((chunk) => chunk.toString('utf8')),
+    ['\u001b[<0;3;5M', '\u001b[<64;8;6M'],
+  );
+});
+
+void test('routeInputTokensForConversation keeps local scrollback controls when forced-local or viewport is pinned', () => {
+  const shifted = routeInputTokensForConversation({
+    tokens: [
+      {
+        kind: 'mouse',
+        event: {
+          col: 17,
+          row: 6,
+          code: 68,
+          final: 'M',
+        },
+      },
+    ],
+    mainPaneMode: 'conversation',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+    classifyPaneAt: () => 'right',
+    wheelDeltaRowsFromCode: (code) => (code === 68 ? 2 : null),
+    hasShiftModifier: (code) => (code & 0b0000_0100) !== 0,
+    layout: {
+      paneRows: 20,
+      rightCols: 40,
+      rightStartCol: 10,
+    },
+    snapshotForInput: {
+      activeScreen: 'alternate',
+      viewport: {
+        top: 0,
+        totalRows: 20,
+        followOutput: true,
+      },
+    },
+    appMouseTrackingEnabled: true,
+  });
+  assert.equal(shifted.mainPaneScrollRows, 2);
+  assert.equal(shifted.forwardToSession.length, 0);
+
+  const pinnedScrollback = routeInputTokensForConversation({
+    tokens: [
+      {
+        kind: 'mouse',
+        event: {
+          col: 17,
+          row: 6,
+          code: 64,
+          final: 'M',
+        },
+      },
+    ],
+    mainPaneMode: 'conversation',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+    classifyPaneAt: () => 'right',
+    wheelDeltaRowsFromCode: (code) => (code === 64 ? 2 : null),
+    hasShiftModifier: () => false,
+    layout: {
+      paneRows: 20,
+      rightCols: 40,
+      rightStartCol: 10,
+    },
+    snapshotForInput: {
+      activeScreen: 'alternate',
+      viewport: {
+        top: 0,
+        totalRows: 20,
+        followOutput: false,
+      },
+    },
+    appMouseTrackingEnabled: true,
+  });
+  assert.equal(pinnedScrollback.mainPaneScrollRows, 2);
+  assert.equal(pinnedScrollback.forwardToSession.length, 0);
+
+  const noSnapshot = routeInputTokensForConversation({
+    tokens: [
+      {
+        kind: 'mouse',
+        event: {
+          col: 17,
+          row: 6,
+          code: 64,
+          final: 'M',
+        },
+      },
+    ],
+    mainPaneMode: 'conversation',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+    classifyPaneAt: () => 'right',
+    wheelDeltaRowsFromCode: (code) => (code === 64 ? 2 : null),
+    hasShiftModifier: () => false,
+    layout: {
+      paneRows: 20,
+      rightCols: 40,
+      rightStartCol: 10,
+    },
+    snapshotForInput: null,
+    appMouseTrackingEnabled: true,
+  });
+  assert.equal(noSnapshot.mainPaneScrollRows, 2);
+  assert.equal(noSnapshot.forwardToSession.length, 0);
+
+  const primaryScreen = routeInputTokensForConversation({
+    tokens: [
+      {
+        kind: 'mouse',
+        event: {
+          col: 17,
+          row: 6,
+          code: 64,
+          final: 'M',
+        },
+      },
+    ],
+    mainPaneMode: 'conversation',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+    classifyPaneAt: () => 'right',
+    wheelDeltaRowsFromCode: (code) => (code === 64 ? 2 : null),
+    hasShiftModifier: () => false,
+    layout: {
+      paneRows: 20,
+      rightCols: 40,
+      rightStartCol: 10,
+    },
+    snapshotForInput: {
+      activeScreen: 'primary',
+      viewport: {
+        top: 0,
+        totalRows: 20,
+        followOutput: true,
+      },
+    },
+    appMouseTrackingEnabled: true,
+  });
+  assert.equal(primaryScreen.mainPaneScrollRows, 2);
+  assert.equal(primaryScreen.forwardToSession.length, 0);
 });
 
 void test('dismissModalOnOutsideClick handles no-escape, null-overlay, and pointer-press routing', () => {

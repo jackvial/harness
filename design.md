@@ -480,6 +480,16 @@ Protocol scope required for Codex and Vim parity:
   - dynamic color query/set (`OSC 10/11/12` and palette query/set families)
 - UTF-8 correctness with grapheme-aware cell accounting and configurable width policy.
 
+Mouse ownership policy (current runtime behavior):
+
+- Right-pane mouse passthrough to PTY is enabled only when all are true:
+  - main pane is `conversation`
+  - terminal state is on alternate screen
+  - PTY has enabled DEC mouse tracking (`?1000/?1002/?1003`)
+  - viewport is in follow-output mode (not user scrollback)
+- `Shift` is a force-local override: even when passthrough is eligible, mouse input stays local for mux scrollback/selection interactions.
+- When passthrough is disabled, right-pane wheel input remains local scrollback (never dual-routed).
+
 Terminal reply engine requirements:
 
 - Support query/response sequences required by Codex and Vim startup/runtime probes.

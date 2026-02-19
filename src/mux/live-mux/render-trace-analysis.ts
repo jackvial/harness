@@ -23,7 +23,21 @@ const SUPPORTED_CSI_FINALS = new Set([
   's',
   'u',
 ]);
-const SUPPORTED_PRIVATE_MODE_PARAMS = new Set([6, 25, 2004, 1047, 1048, 1049]);
+const SUPPORTED_PRIVATE_MODE_PARAMS = new Set([
+  6,
+  25,
+  1000,
+  1002,
+  1003,
+  1004,
+  1005,
+  1006,
+  1015,
+  2004,
+  1047,
+  1048,
+  1049,
+]);
 
 type RenderTraceControlIssueKind =
   | 'unsupported-esc'

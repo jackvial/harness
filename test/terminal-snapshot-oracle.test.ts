@@ -665,6 +665,35 @@ void test('snapshot oracle tracks bracketed paste mode through DEC private mode 
   assert.equal(frame.modes.bracketedPaste, false);
 });
 
+void test('snapshot oracle tracks DEC mouse reporting mode toggles through reset', () => {
+  const oracle = new TerminalSnapshotOracle(8, 2);
+  assert.equal(oracle.isMouseTrackingEnabled(), false);
+
+  oracle.ingest('\u001b[?1000h');
+  assert.equal(oracle.isMouseTrackingEnabled(), true);
+
+  oracle.ingest('\u001b[?1000l');
+  assert.equal(oracle.isMouseTrackingEnabled(), false);
+
+  oracle.ingest('\u001b[?1002h');
+  assert.equal(oracle.isMouseTrackingEnabled(), true);
+
+  oracle.ingest('\u001b[?1003h');
+  assert.equal(oracle.isMouseTrackingEnabled(), true);
+
+  oracle.ingest('\u001b[?1002l');
+  assert.equal(oracle.isMouseTrackingEnabled(), true);
+
+  oracle.ingest('\u001b[?1003l');
+  assert.equal(oracle.isMouseTrackingEnabled(), false);
+
+  oracle.ingest('\u001b[?1000h');
+  assert.equal(oracle.isMouseTrackingEnabled(), true);
+
+  oracle.ingest('\u001bc');
+  assert.equal(oracle.isMouseTrackingEnabled(), false);
+});
+
 void test('snapshot oracle clears pending-wrap state when resized off right margin', () => {
   const oracle = new TerminalSnapshotOracle(5, 2);
   oracle.ingest('abcde');

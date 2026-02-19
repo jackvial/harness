@@ -157,6 +157,7 @@ void test('input token router delegates staged mouse routing and preserves passt
 
   const conversation = {
     oracle: {
+      isMouseTrackingEnabled: () => false,
       scrollViewport: (delta: number) => {
         wheelDelta = delta;
       },
@@ -214,6 +215,65 @@ void test('input token router delegates staged mouse routing and preserves passt
     },
     tokenFinal,
   ]);
+});
+
+void test('input token router bypasses local right-pane handlers when app mouse passthrough is active', () => {
+  const layout = computeDualPaneLayout(100, 24);
+  const rightCol = layout.rightStartCol + 4;
+  const frame = createFrame('passthrough');
+  frame.activeScreen = 'alternate';
+  frame.viewport.followOutput = true;
+  const calls: string[] = [];
+
+  const router = new InputTokenRouter({
+    getMainPaneMode: () => 'conversation',
+    pointerRoutingInput: {
+      handlePaneDividerDrag: () => false,
+      handleHomePaneDragRelease: () => false,
+      handleSeparatorPointerPress: () => false,
+      handleMainPaneWheel: () => {
+        calls.push('wheel-consumed');
+        return true;
+      },
+      handleHomePaneDragMove: () => false,
+    },
+    mainPanePointerInput: {
+      handleProjectPanePointerClick: () => false,
+      handleHomePanePointerClick: () => false,
+    },
+    leftRailPointerInput: {
+      handlePointerClick: () => false,
+    },
+    conversationSelectionInput: {
+      clearSelectionOnTextToken: () => false,
+      handleMouseSelection: () => {
+        calls.push('selection-consumed');
+        return true;
+      },
+    },
+  });
+
+  const wheelToken = mouseToken(64, rightCol, 2);
+  const clickToken = mouseToken(0, rightCol, 3);
+  const shiftedWheelToken = mouseToken(68, rightCol, 4);
+  const result = router.routeTokens({
+    tokens: [wheelToken, clickToken, shiftedWheelToken],
+    layout,
+    conversation: {
+      oracle: {
+        isMouseTrackingEnabled: () => true,
+        scrollViewport: () => {
+          calls.push('scroll');
+        },
+        snapshotWithoutHash: () => frame,
+      },
+    },
+    snapshotForInput: frame,
+  });
+
+  assert.deepEqual(calls, ['wheel-consumed']);
+  assert.deepEqual(result.routedTokens, [wheelToken, clickToken]);
+  assert.equal(result.snapshotForInput, frame);
 });
 
 void test('input token router supports dependency overrides and null-conversation wheel path', () => {

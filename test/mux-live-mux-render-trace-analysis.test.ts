@@ -32,6 +32,16 @@ void test('render trace analysis treats supported query payload variants as safe
   assert.deepEqual(issues, []);
 });
 
+void test('render trace analysis treats mouse and focus private-mode toggles as safe', () => {
+  const issues = findRenderTraceControlIssues(
+    Buffer.from(
+      '\u001b[?1000h\u001b[?1002h\u001b[?1003h\u001b[?1004h\u001b[?1006h\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1006l',
+      'utf8',
+    ),
+  );
+  assert.deepEqual(issues, []);
+});
+
 void test('render trace analysis surfaces unsupported CSI, ESC, and DCS sequences', () => {
   const issues = findRenderTraceControlIssues(
     Buffer.from('a\u001b[?1045ha\u001b=\u001bP$qm\u001b\\', 'utf8'),

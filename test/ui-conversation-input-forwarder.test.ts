@@ -51,6 +51,7 @@ function createConversation(controller: string | null): ConversationState {
         lines: ['x'],
         richLines: [],
       }),
+      isMouseTrackingEnabled: () => false,
       clearViewportPin: () => {},
       pinViewport: () => {},
       scrollViewport: (delta: number) => {

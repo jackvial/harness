@@ -1033,6 +1033,9 @@ export class TerminalSnapshotOracle {
   private cursorVisible = true;
   private cursorStyle: TerminalCursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
   private bracketedPasteMode = false;
+  private decMouseX10Mode = false;
+  private decMouseButtonEventMode = false;
+  private decMouseAnyEventMode = false;
   private style: TerminalCellStyle = defaultCellStyle();
   private originMode = false;
   private pendingWrap = false;
@@ -1115,6 +1118,10 @@ export class TerminalSnapshotOracle {
       this.bracketedPasteMode,
       false,
     );
+  }
+
+  isMouseTrackingEnabled(): boolean {
+    return this.decMouseX10Mode || this.decMouseButtonEventMode || this.decMouseAnyEventMode;
   }
 
   bufferTail(tailLines?: number): TerminalBufferTail {
@@ -1504,6 +1511,18 @@ export class TerminalSnapshotOracle {
         this.bracketedPasteMode = enabled;
         continue;
       }
+      if (value === 1000) {
+        this.decMouseX10Mode = enabled;
+        continue;
+      }
+      if (value === 1002) {
+        this.decMouseButtonEventMode = enabled;
+        continue;
+      }
+      if (value === 1003) {
+        this.decMouseAnyEventMode = enabled;
+        continue;
+      }
 
       if (value === 1047) {
         this.activeScreen = enabled ? 'alternate' : 'primary';
@@ -1609,6 +1628,9 @@ export class TerminalSnapshotOracle {
     this.cursorVisible = true;
     this.cursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
     this.bracketedPasteMode = false;
+    this.decMouseX10Mode = false;
+    this.decMouseButtonEventMode = false;
+    this.decMouseAnyEventMode = false;
     this.style = style;
     this.originMode = false;
     this.pendingWrap = false;
