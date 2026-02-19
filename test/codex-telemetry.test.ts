@@ -675,6 +675,13 @@ void test('parseOtlpLifecycleLogEvents keeps lifecycle/high-signal records and d
                   attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }],
                   body: { stringValue: 'needs-input now' },
                 },
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'custom.turn-state' } },
+                    { key: 'status', value: { stringValue: 'user_interrupted' } },
+                  ],
+                  body: { stringValue: 'interrupt detected' },
+                },
               ],
             },
           ],
@@ -684,12 +691,14 @@ void test('parseOtlpLifecycleLogEvents keeps lifecycle/high-signal records and d
     '2026-02-15T00:00:00.000Z',
   );
 
-  assert.equal(events.length, 2);
+  assert.equal(events.length, 3);
   assert.equal(events[0]?.eventName, 'codex.user_prompt');
   assert.equal(events[0]?.providerThreadId, 'thread-life-log');
   assert.equal(events[0]?.statusHint, 'running');
   assert.equal(events[1]?.eventName, 'custom.event');
   assert.equal(events[1]?.statusHint, 'needs-input');
+  assert.equal(events[2]?.eventName, 'custom.turn-state');
+  assert.equal(events[2]?.statusHint, 'completed');
 });
 
 void test('parseOtlpLifecycleLogEvents computes fallback summaries for dropped non-lifecycle events', () => {

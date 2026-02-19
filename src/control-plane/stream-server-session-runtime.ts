@@ -305,14 +305,28 @@ export function notifyKeyEventFromPayload(
 ): StreamSessionKeyEventRecord | null {
   if (agentType === 'codex') {
     const notifyPayloadType = readTrimmedString(payload['type']);
-    if (notifyPayloadType !== 'agent-turn-complete') {
+    if (notifyPayloadType === null) {
       return null;
     }
+    const notifyTypeToken = normalizeEventToken(notifyPayloadType);
+    const completedNotify =
+      notifyTypeToken === 'agentturncomplete' ||
+      notifyTypeToken.includes('interrupt') ||
+      notifyTypeToken.includes('abort') ||
+      notifyTypeToken.includes('cancel') ||
+      notifyTypeToken.includes('incomplete');
+    if (!completedNotify) {
+      return null;
+    }
+    const summary =
+      notifyTypeToken === 'agentturncomplete'
+        ? 'turn complete (notify)'
+        : `turn complete (${notifyPayloadType})`;
     return {
       source: 'otlp-metric',
       eventName: 'codex.turn.e2e_duration_ms',
       severity: null,
-      summary: 'turn complete (notify)',
+      summary,
       observedAt,
       statusHint: 'completed',
     };

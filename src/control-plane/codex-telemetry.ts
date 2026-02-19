@@ -321,6 +321,23 @@ const NEEDS_INPUT_HINT_TOKENS = [
   'approval_required',
 ] as const;
 
+const COMPLETED_HINT_TOKENS = [
+  'interrupted',
+  'interrupt',
+  'aborted',
+  'abort',
+  'cancelled',
+  'canceled',
+  'cancel',
+  'response.interrupted',
+  'response.aborted',
+  'response.cancelled',
+  'response.canceled',
+  'response.incomplete',
+  'turn_aborted',
+  'turn-aborted',
+] as const;
+
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
   'codex.turn.e2e_duration_ms',
@@ -342,6 +359,36 @@ function statusFromOutcomeText(value: string | null): CodexStatusHint | null {
   }
   if (includesAnySubstring(normalized, NEEDS_INPUT_HINT_TOKENS)) {
     return 'needs-input';
+  }
+  return null;
+}
+
+function statusFromStructuredOutcome(value: string | null): CodexStatusHint | null {
+  const normalized = value?.toLowerCase().trim() ?? '';
+  if (normalized.length === 0) {
+    return null;
+  }
+  if (includesAnySubstring(normalized, NEEDS_INPUT_HINT_TOKENS)) {
+    return 'needs-input';
+  }
+  if (includesAnySubstring(normalized, COMPLETED_HINT_TOKENS)) {
+    return 'completed';
+  }
+  return null;
+}
+
+function completedHintFromEventName(value: string | null): CodexStatusHint | null {
+  const normalized = value?.toLowerCase().trim() ?? '';
+  if (!normalized.startsWith('codex.')) {
+    return null;
+  }
+  if (
+    normalized.includes('interrupt') ||
+    normalized.includes('abort') ||
+    normalized.includes('cancel') ||
+    normalized.includes('incomplete')
+  ) {
+    return 'completed';
   }
   return null;
 }
@@ -459,7 +506,7 @@ function deriveStatusHint(
 
   const payloadAttributes = asRecord(payload['attributes']) ?? {};
   const payloadBody = payload['body'];
-  const outcomeHint = statusFromOutcomeText(
+  const outcomeHint = statusFromStructuredOutcome(
     pickFieldText(payloadAttributes, payloadBody, [
       'status',
       'result',
@@ -481,7 +528,7 @@ function deriveStatusHint(
       return fromSummary;
     }
   }
-  return null;
+  return completedHintFromEventName(eventName);
 }
 
 function buildLogSummary(
@@ -958,23 +1005,26 @@ function lifecycleStatusHintFromAttributes(
   if (normalizedEventName === 'codex.turn.e2e_duration_ms') {
     return 'completed';
   }
-  const statusToken =
-    pickAttributeText(attributes, [
-      'status',
-      'result',
-      'outcome',
-      'decision',
-      'kind',
-      'event.kind',
-      'event_type',
-      'event.type',
-      'type',
-    ]) ?? bodyText;
-  const statusHint = statusFromOutcomeText(statusToken);
+  const statusToken = pickAttributeText(attributes, [
+    'status',
+    'result',
+    'outcome',
+    'decision',
+    'kind',
+    'event.kind',
+    'event_type',
+    'event.type',
+    'type',
+  ]);
+  const statusHint = statusFromStructuredOutcome(statusToken);
   if (statusHint !== null) {
     return statusHint;
   }
-  return statusFromOutcomeText(eventName);
+  const bodyHint = statusFromOutcomeText(bodyText);
+  if (bodyHint !== null) {
+    return bodyHint;
+  }
+  return completedHintFromEventName(eventName) ?? statusFromOutcomeText(eventName);
 }
 
 function shouldRetainLifecycleEvent(

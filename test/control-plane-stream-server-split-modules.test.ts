@@ -416,6 +416,38 @@ void test('split module coverage: session runtime notify mapping covers fallback
     FIXED_TS,
   );
   assert.equal(cursorFallbackSummary?.summary, null);
+
+  const codexCompletedNotify = notifyKeyEventFromPayload(
+    'codex',
+    {
+      type: 'agent-turn-complete',
+    },
+    FIXED_TS,
+  );
+  assert.equal(codexCompletedNotify?.statusHint, 'completed');
+  assert.equal(codexCompletedNotify?.summary, 'turn complete (notify)');
+
+  const codexInterruptedNotify = notifyKeyEventFromPayload(
+    'codex',
+    {
+      type: 'turn_aborted',
+      reason: 'interrupted',
+    },
+    FIXED_TS,
+  );
+  assert.equal(codexInterruptedNotify?.statusHint, 'completed');
+  assert.equal(codexInterruptedNotify?.summary, 'turn complete (turn_aborted)');
+
+  assert.equal(
+    notifyKeyEventFromPayload(
+      'codex',
+      {
+        type: 'agent-turn-progress',
+      },
+      FIXED_TS,
+    ),
+    null,
+  );
 });
 
 void test('split module coverage: unmapped notify payload emits explicit key event record', () => {
