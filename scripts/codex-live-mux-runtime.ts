@@ -2614,9 +2614,9 @@ async function main(): Promise<number> {
       },
       {
         id: 'thread.start.critique',
-        title: 'Start Critique thread',
-        aliases: ['critique', 'start critique'],
-        keywords: ['start', 'thread', 'critique', 'new'],
+        title: 'Start Critique thread (diff)',
+        aliases: ['critique', 'start critique', 'critique diff'],
+        keywords: ['start', 'thread', 'critique', 'diff', 'new'],
         detail: 'current project',
         run: () => {
           startThreadFromCommandMenu(directoryId, 'critique');

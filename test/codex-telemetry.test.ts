@@ -876,6 +876,11 @@ void test('parseOtlpLifecycleLogEvents covers text-value and summary fallback br
                   attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }],
                   body: { stringValue: 'needs-input now' },
                 },
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.turn.incomplete' } },
+                  ],
+                },
               ],
             },
           ],
@@ -885,13 +890,15 @@ void test('parseOtlpLifecycleLogEvents covers text-value and summary fallback br
     '2026-02-15T00:00:00.000Z',
   );
 
-  assert.equal(events.length, 5);
+  assert.equal(events.length, 6);
   assert.equal(events[0]?.summary, 'turn complete');
   assert.equal(events[1]?.summary, 'conversation started (gpt-5)');
   assert.equal(events[2]?.summary, 'conversation started');
   assert.equal(events[3]?.summary, 'stream needs-input');
   assert.equal(events[4]?.statusHint, 'needs-input');
   assert.equal(events[4]?.summary, 'needs-input');
+  assert.equal(events[5]?.eventName, 'codex.turn.incomplete');
+  assert.equal(events[5]?.statusHint, 'completed');
 });
 
 void test('parseOtlpLifecycleMetricEvents handles missing points and invalid root shapes', () => {

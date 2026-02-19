@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import {
@@ -771,9 +771,27 @@ void test(
   'codex-live-mux opens thread-scoped command menu when clicking left-rail [+ thread] button',
   async () => {
     const workspace = createWorkspace();
+    const binDirectory = join(workspace, '.test-bin');
+    mkdirSync(binDirectory, { recursive: true });
+    const critiqueCommandName = process.platform === 'win32' ? 'critique.cmd' : 'critique';
+    const critiqueCommandPath = join(binDirectory, critiqueCommandName);
+    writeFileSync(
+      critiqueCommandPath,
+      process.platform === 'win32' ? '@echo off\r\nexit /b 0\r\n' : '#!/bin/sh\nexit 0\n',
+      'utf8',
+    );
+    if (process.platform !== 'win32') {
+      chmodSync(critiqueCommandPath, 0o755);
+    }
+    const existingPath = process.env.PATH ?? '';
+    const mergedPath =
+      existingPath.length > 0 ? `${binDirectory}${delimiter}${existingPath}` : binDirectory;
     const interactive = startInteractiveMuxSession(workspace, {
       cols: 100,
       rows: 30,
+      extraEnv: {
+        PATH: mergedPath,
+      },
     });
 
     try {
@@ -785,6 +803,11 @@ void test(
       writeLeftMouseClick(interactive.session, threadButtonCell.col, threadButtonCell.row);
       await waitForSnapshotLineContaining(interactive.oracle, 'Command Menu', 12000);
       await waitForSnapshotLineContaining(interactive.oracle, 'search: _', 12000);
+      await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'Start Critique thread (diff)',
+        12000,
+      );
     } finally {
       try {
         await requestMuxShutdown(interactive.session);
