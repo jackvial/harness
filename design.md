@@ -252,6 +252,8 @@ Pass-through stream invariants:
 - Command menu action execution still uses existing control-plane-backed runtime actions; no privileged side path is introduced.
 - Core shipped actions include:
   - start thread by agent type (`codex`, `claude`, `cursor`, `terminal`, `critique`)
+  - run Critique AI review for staged changes (`critique review --staged`) from command menu
+  - run Critique AI review against base branch (`critique review <base> HEAD`) from command menu
   - close active thread
   - go to project
   - open GitHub for the active-project repository
@@ -281,6 +283,7 @@ Pass-through stream invariants:
 - `new thread` preserves thread-project affinity when a thread row is selected; in project view it uses the selected project.
 - Projects may remain thread-empty; mux does not auto-seed a thread on startup/project-add/fallback and instead exposes explicit `new thread` entry points.
 - Creating a thread uses command-menu actions (`codex`, `claude`, `cursor`, `terminal`, `critique`); terminal threads launch a plain interactive shell over the same PTY/control-plane path, while critique threads default to `critique --watch`.
+- Critique AI review command-menu actions execute in a new terminal thread and prefer `--agent claude` when available, falling back to `--agent opencode` when installed.
 - Clicking the active thread title row enters inline title-edit mode; edits update locally immediately and persist through debounced `conversation.update` control-plane commands.
 - The pane separator is draggable; divider moves recompute layout and PTY resize through the normal mux resize path.
 - The mux status row is performance-focused: live FPS and throughput (`KB/s`) plus render/output/event-loop timing stats.

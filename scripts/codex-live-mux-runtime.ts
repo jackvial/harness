@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -95,7 +95,7 @@ import {
   repositoryNameFromGitHubRemoteUrl,
   shouldShowGitHubPrActions,
 } from '../src/mux/live-mux/git-parsing.ts';
-import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
+import { readProcessUsageSample, runGitCommand } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
 import { firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn } from '../src/mux/live-mux/repository-folding.ts';
 import {
@@ -154,6 +154,11 @@ import {
   findRenderTraceControlIssues,
   renderTraceChunkPreview,
 } from '../src/mux/live-mux/render-trace-analysis.ts';
+import {
+  buildCritiqueReviewCommand,
+  resolveCritiqueReviewAgent,
+  resolveCritiqueReviewBaseBranch,
+} from '../src/mux/live-mux/critique-review.ts';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import { ConversationManager, type ConversationSeed } from '../src/domain/conversations.ts';
 import { RepositoryManager } from '../src/domain/repositories.ts';
@@ -372,6 +377,27 @@ function openUrlInBrowser(url: string): boolean {
       stdio: 'ignore',
     });
     child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function commandExistsOnPath(command: string): boolean {
+  const normalized = command.trim();
+  if (normalized.length === 0) {
+    return false;
+  }
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('where', [normalized], {
+        stdio: 'ignore',
+      });
+      return true;
+    }
+    execFileSync('sh', ['-lc', `command -v ${normalized} >/dev/null 2>&1`], {
+      stdio: 'ignore',
+    });
     return true;
   } catch {
     return false;
@@ -2550,21 +2576,105 @@ async function main(): Promise<number> {
     installCommand: string,
   ): void => {
     queueControlPlaneOp(async () => {
-      const priorSessionIds = new Set(conversationManager.orderedIds());
-      await runtimeWorkspaceActions.createAndActivateConversationInDirectory(
-        directoryId,
-        'terminal',
-      );
-      const terminalSessionId =
-        conversationManager.orderedIds().find((sessionId) => !priorSessionIds.has(sessionId)) ??
-        conversationManager.activeConversationId;
-      if (terminalSessionId === null) {
-        throw new Error('failed to locate terminal session for install command');
-      }
-      await controlPlaneService.respondToSession(terminalSessionId, `${installCommand}\n`);
+      await runCommandInNewTerminalThread(directoryId, installCommand);
       commandMenuAgentTools.refresh();
     }, `command-menu-install-agent-tool:${agentType}`);
   };
+
+  const runCommandInNewTerminalThread = async (
+    directoryId: string,
+    commandText: string,
+  ): Promise<void> => {
+    const priorSessionIds = new Set(conversationManager.orderedIds());
+    await runtimeWorkspaceActions.createAndActivateConversationInDirectory(directoryId, 'terminal');
+    const terminalSessionId =
+      conversationManager.orderedIds().find((sessionId) => !priorSessionIds.has(sessionId)) ??
+      conversationManager.activeConversationId;
+    if (terminalSessionId === null) {
+      throw new Error('failed to locate terminal session for command');
+    }
+    await controlPlaneService.respondToSession(terminalSessionId, `${commandText}\n`);
+  };
+
+  const resolveCritiqueReviewAgentFromEnvironment = (): 'claude' | 'opencode' | null => {
+    const claudeAvailable =
+      commandMenuAgentTools.statusForAgent('claude')?.available === true ||
+      commandExistsOnPath('claude');
+    const opencodeAvailable = commandExistsOnPath('opencode');
+    return resolveCritiqueReviewAgent({
+      claudeAvailable,
+      opencodeAvailable,
+    });
+  };
+
+  const resolveCritiqueReviewBaseBranchForDirectory = async (
+    directoryId: string,
+  ): Promise<string> => {
+    const directory = directoryManager.getDirectory(directoryId);
+    if (directory === undefined || directory === null) {
+      return 'main';
+    }
+    return await resolveCritiqueReviewBaseBranch(directory.path, runGitCommand);
+  };
+
+  const runCritiqueReviewFromCommandMenu = (
+    directoryId: string,
+    mode: 'staged' | 'base-branch',
+  ): void => {
+    queueControlPlaneOp(async () => {
+      const agent = resolveCritiqueReviewAgentFromEnvironment();
+      if (mode === 'staged') {
+        const commandText = buildCritiqueReviewCommand({
+          mode: 'staged',
+          agent,
+        });
+        await runCommandInNewTerminalThread(directoryId, commandText);
+        setCommandNotice(`running critique staged review (${agent ?? 'default'})`);
+        return;
+      }
+      const baseBranch = await resolveCritiqueReviewBaseBranchForDirectory(directoryId);
+      const commandText = buildCritiqueReviewCommand({
+        mode: 'base-branch',
+        baseBranch,
+        agent,
+      });
+      await runCommandInNewTerminalThread(directoryId, commandText);
+      setCommandNotice(`running critique review vs ${baseBranch} (${agent ?? 'default'})`);
+    }, `command-menu-critique-review:${mode}`);
+  };
+
+  commandMenuRegistry.registerProvider('critique.review', (context) => {
+    const directoryId = context.activeDirectoryId;
+    if (directoryId === null) {
+      return [];
+    }
+    const critiqueStatus = commandMenuAgentTools.statusForAgent('critique');
+    if (critiqueStatus !== null && !critiqueStatus.available) {
+      return [];
+    }
+    return [
+      {
+        id: 'critique.review.staged',
+        title: 'Critique AI Review: Staged Changes',
+        aliases: ['critique staged review', 'review staged diff', 'ai review staged'],
+        keywords: ['critique', 'review', 'staged', 'diff', 'ai'],
+        detail: 'runs critique review --staged',
+        run: () => {
+          runCritiqueReviewFromCommandMenu(directoryId, 'staged');
+        },
+      },
+      {
+        id: 'critique.review.base-branch',
+        title: 'Critique AI Review: Current Branch vs Base',
+        aliases: ['critique base review', 'review against base branch', 'ai review base'],
+        keywords: ['critique', 'review', 'base', 'branch', 'diff', 'ai'],
+        detail: 'runs critique review <base> HEAD',
+        run: () => {
+          runCritiqueReviewFromCommandMenu(directoryId, 'base-branch');
+        },
+      },
+    ];
+  });
 
   commandMenuRegistry.registerProvider('thread.start', (context) => {
     const directoryId = context.activeDirectoryId;
