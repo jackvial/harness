@@ -48,7 +48,7 @@ function runInstallScript(
   };
 }
 
-test('install.sh dry-run detects existing Bun/Rust/Harness and skips install', () => {
+test('install.sh dry-run refreshes Harness package even when Harness is already installed', () => {
   const dirPath = mkdtempSync(join(tmpdir(), 'harness-install-script-'));
   try {
     createStubCommand(
@@ -71,7 +71,8 @@ exit 0
     assert.match(result.stdout, /Bun 1\.3\.9 already installed\./u);
     assert.match(result.stdout, /Rust toolchain already installed\./u);
     assert.match(result.stdout, /Harness is already installed/u);
-    assert.doesNotMatch(result.stdout, /bun add -g --trust/u);
+    assert.match(result.stdout, /Harness is already installed .*refreshing to latest package\./u);
+    assert.match(result.stdout, /\[dry-run\] bun add -g --trust @jmoyers\/harness@latest/u);
   } finally {
     rmSync(dirPath, { recursive: true, force: true });
   }

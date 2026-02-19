@@ -17,12 +17,12 @@ usage: install.sh [--dry-run] [--skip-harness-install] [--force-harness-install]
 Bootstraps a machine for Harness by ensuring:
 - Bun (>= 1.3.9)
 - Rust toolchain (cargo + rustc)
-- optional global Harness install (`bun add -g --trust @jmoyers/harness@latest`)
+- global Harness install/upgrade (`bun add -g --trust @jmoyers/harness@latest`)
 
 Flags:
   --dry-run                Print actions without executing them.
   --skip-harness-install   Only install prerequisites (Bun + Rust).
-  --force-harness-install  Reinstall/upgrade Harness even if already present.
+  --force-harness-install  Preserve compatibility; behaves the same as default install/upgrade.
   --package <pkg>          Override package spec (default: @jmoyers/harness@latest).
   --help                   Show this help text.
 EOF
@@ -283,9 +283,14 @@ install_harness() {
     return
   fi
 
-  if command_exists harness && [[ "$FORCE_HARNESS_INSTALL" != "true" ]]; then
-    log "Harness is already installed at $(command -v harness); skipping package install."
-    return
+  if command_exists harness; then
+    if [[ "$FORCE_HARNESS_INSTALL" == "true" ]]; then
+      log "Harness is already installed at $(command -v harness); forcing install/upgrade."
+    else
+      log "Harness is already installed at $(command -v harness); refreshing to latest package."
+    fi
+  else
+    log "Harness command not found; installing ${HARNESS_PACKAGE} globally with Bun."
   fi
 
   log "Installing ${HARNESS_PACKAGE} globally with Bun."

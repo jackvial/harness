@@ -83,6 +83,7 @@ const DEFAULT_SESSION_ROOT_PATH = 'sessions';
 const PROFILE_STATE_FILE_NAME = 'active-profile.json';
 const PROFILE_CLIENT_FILE_NAME = 'client.cpuprofile';
 const PROFILE_GATEWAY_FILE_NAME = 'gateway.cpuprofile';
+const DEFAULT_HARNESS_UPDATE_PACKAGE = '@jmoyers/harness@latest';
 const PROFILE_STATE_VERSION = 2;
 const PROFILE_LIVE_INSPECT_MODE = 'live-inspector';
 const SESSION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
@@ -793,6 +794,60 @@ function parseGatewayCommand(argv: readonly string[]): ParsedGatewayCommand {
   throw new Error(`unknown gateway subcommand: ${subcommand}`);
 }
 
+function resolveHarnessUpdatePackageSpec(env: NodeJS.ProcessEnv): string {
+  const configured = env.HARNESS_UPDATE_PACKAGE;
+  if (typeof configured !== 'string') {
+    return DEFAULT_HARNESS_UPDATE_PACKAGE;
+  }
+  const trimmed = configured.trim();
+  return trimmed.length > 0 ? trimmed : DEFAULT_HARNESS_UPDATE_PACKAGE;
+}
+
+function formatExecErrorOutput(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value instanceof Buffer) {
+    return value.toString('utf8');
+  }
+  return '';
+}
+
+function runHarnessUpdateCommand(invocationDirectory: string, env: NodeJS.ProcessEnv): number {
+  const packageSpec = resolveHarnessUpdatePackageSpec(env);
+  process.stdout.write(`updating Harness package: ${packageSpec}\n`);
+  try {
+    const stdout = execFileSync('bun', ['add', '-g', '--trust', packageSpec], {
+      cwd: invocationDirectory,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (stdout.length > 0) {
+      process.stdout.write(stdout);
+    }
+    process.stdout.write(`harness update complete: ${packageSpec}\n`);
+    return 0;
+  } catch (error: unknown) {
+    const typed = error as NodeJS.ErrnoException & {
+      readonly stdout?: unknown;
+      readonly stderr?: unknown;
+      readonly status?: number | null;
+    };
+    const stdout = formatExecErrorOutput(typed.stdout);
+    const stderr = formatExecErrorOutput(typed.stderr);
+    if (stdout.length > 0) {
+      process.stdout.write(stdout);
+    }
+    if (stderr.length > 0) {
+      process.stderr.write(stderr);
+    }
+    const statusText =
+      typeof typed.status === 'number' ? `exit=${String(typed.status)}` : 'exit=unknown';
+    throw new Error(`harness update command failed (${statusText})`);
+  }
+}
+
 function printUsage(): void {
   process.stdout.write(
     [
@@ -814,6 +869,8 @@ function printUsage(): void {
       '  harness [--session <name>] render-trace start [--output-path <path>] [--conversation-id <id>]',
       '  harness [--session <name>] render-trace stop',
       '  harness [--session <name>] render-trace [--output-path <path>] [--conversation-id <id>]',
+      '  harness update',
+      '  harness upgrade',
       '  harness cursor-hooks install [--hooks-file <path>]',
       '  harness cursor-hooks uninstall [--hooks-file <path>]',
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
@@ -2497,6 +2554,13 @@ async function main(): Promise<number> {
       argv.slice(1),
       parsedGlobals.sessionName,
     );
+  }
+
+  if (argv.length > 0 && (argv[0] === 'update' || argv[0] === 'upgrade')) {
+    if (argv.length > 1) {
+      throw new Error(`unknown ${argv[0]} option: ${argv[1]}`);
+    }
+    return runHarnessUpdateCommand(invocationDirectory, process.env);
   }
 
   if (argv.length > 0 && argv[0] === 'cursor-hooks') {

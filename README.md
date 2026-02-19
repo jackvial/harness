@@ -40,6 +40,10 @@ bunx @jmoyers/harness@latest
 
 # Or install globally
 bun add -g --trust @jmoyers/harness
+
+# Upgrade an existing global install
+harness update
+# alias: harness upgrade
 ```
 
 ### Install (from source)
