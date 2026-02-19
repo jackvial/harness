@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseGatewayRecordText } from '../src/cli/gateway-record.ts';
 import { resolveHarnessConfigPath } from '../src/config/config-core.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 
 interface RunHarnessResult {
   code: number;
@@ -27,6 +28,12 @@ function createWorkspace(): string {
 
 function workspaceXdgConfigHome(workspace: string): string {
   return join(workspace, '.harness-xdg');
+}
+
+function workspaceRuntimeRoot(workspace: string): string {
+  return resolveHarnessWorkspaceDirectory(workspace, {
+    XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
+  });
 }
 
 function writeWorkspaceHarnessConfig(workspace: string, config: unknown): string {
@@ -158,10 +165,19 @@ void test('harness profile live-attach integration writes gateway cpuprofile wit
   const workspace = createWorkspace();
   const sessionName = 'profile-live-attach-int-a';
   const [gatewayPort, gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(3);
-  const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
-  const defaultRecordPath = join(workspace, '.harness/gateway.json');
-  const profileStatePath = join(workspace, `.harness/sessions/${sessionName}/active-profile.json`);
-  const gatewayProfilePath = join(workspace, `.harness/profiles/${sessionName}/gateway.cpuprofile`);
+  const sessionRecordPath = join(
+    workspaceRuntimeRoot(workspace),
+    `sessions/${sessionName}/gateway.json`,
+  );
+  const defaultRecordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
+  const profileStatePath = join(
+    workspaceRuntimeRoot(workspace),
+    `sessions/${sessionName}/active-profile.json`,
+  );
+  const gatewayProfilePath = join(
+    workspaceRuntimeRoot(workspace),
+    `profiles/${sessionName}/gateway.cpuprofile`,
+  );
   writeWorkspaceHarnessConfig(workspace, {
     debug: {
       inspect: {

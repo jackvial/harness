@@ -9,23 +9,28 @@ import {
   STATUS_TIMELINE_MODE,
   STATUS_TIMELINE_STATE_VERSION,
 } from '../src/mux/live-mux/status-timeline-state.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 
 void test('status timeline state path and output path resolution are stable', () => {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: '/tmp/xdg-home',
+  };
+  const runtimeRoot = resolveHarnessWorkspaceDirectory('/tmp/harness', env);
   assert.equal(
-    resolveStatusTimelineStatePath('/tmp/harness', null),
-    '/tmp/harness/.harness/active-status-timeline.json',
+    resolveStatusTimelineStatePath('/tmp/harness', null, env),
+    `${runtimeRoot}/active-status-timeline.json`,
   );
   assert.equal(
-    resolveStatusTimelineStatePath('/tmp/harness', 'session-a'),
-    '/tmp/harness/.harness/sessions/session-a/active-status-timeline.json',
+    resolveStatusTimelineStatePath('/tmp/harness', 'session-a', env),
+    `${runtimeRoot}/sessions/session-a/active-status-timeline.json`,
   );
   assert.equal(
-    resolveDefaultStatusTimelineOutputPath('/tmp/harness', null),
-    `/tmp/harness/${DEFAULT_STATUS_TIMELINE_ROOT_PATH}/${STATUS_TIMELINE_FILE_NAME}`,
+    resolveDefaultStatusTimelineOutputPath('/tmp/harness', null, env),
+    `${runtimeRoot}/${DEFAULT_STATUS_TIMELINE_ROOT_PATH}/${STATUS_TIMELINE_FILE_NAME}`,
   );
   assert.equal(
-    resolveDefaultStatusTimelineOutputPath('/tmp/harness', 'session-a'),
-    `/tmp/harness/${DEFAULT_STATUS_TIMELINE_ROOT_PATH}/session-a/${STATUS_TIMELINE_FILE_NAME}`,
+    resolveDefaultStatusTimelineOutputPath('/tmp/harness', 'session-a', env),
+    `${runtimeRoot}/${DEFAULT_STATUS_TIMELINE_ROOT_PATH}/session-a/${STATUS_TIMELINE_FILE_NAME}`,
   );
 });
 

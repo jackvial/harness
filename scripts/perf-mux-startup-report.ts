@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
 
 type PerfAttrValue = boolean | number | string;
 type PerfAttrs = Record<string, PerfAttrValue>;
@@ -94,6 +94,8 @@ function parsePerfRecord(line: string): PerfRecord | null {
 }
 
 function parseArgs(argv: readonly string[]): string {
+  const invocationDirectory =
+    process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
   let filePath = '.harness/perf-startup.jsonl';
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx]!;
@@ -106,7 +108,7 @@ function parseArgs(argv: readonly string[]): string {
       idx += 1;
     }
   }
-  return resolve(process.cwd(), filePath);
+  return resolveHarnessRuntimePath(invocationDirectory, filePath, process.env);
 }
 
 function firstEvent(

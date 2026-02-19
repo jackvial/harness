@@ -8,15 +8,20 @@ import {
   resolveProfileStatePath,
   toggleGatewayProfiler,
 } from '../src/mux/live-mux/gateway-profiler.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 
 void test('gateway profiler resolves profile-state paths for default and named sessions', () => {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: '/tmp/xdg-home',
+  };
+  const runtimeRoot = resolveHarnessWorkspaceDirectory('/tmp/harness', env);
   assert.equal(
-    resolveProfileStatePath('/tmp/harness', null),
-    '/tmp/harness/.harness/active-profile.json',
+    resolveProfileStatePath('/tmp/harness', null, env),
+    `${runtimeRoot}/active-profile.json`,
   );
   assert.equal(
-    resolveProfileStatePath('/tmp/harness', 'perf-a'),
-    '/tmp/harness/.harness/sessions/perf-a/active-profile.json',
+    resolveProfileStatePath('/tmp/harness', 'perf-a', env),
+    `${runtimeRoot}/sessions/perf-a/active-profile.json`,
   );
 });
 

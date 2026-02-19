@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import { loadHarnessConfig } from '../src/config/config-core.ts';
+import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
+import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   configurePerfCore,
@@ -40,11 +42,14 @@ function configureProcessPerf(invocationDirectory: string): void {
   const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
   const configEnabled = loadedConfig.config.debug.enabled && loadedConfig.config.debug.perf.enabled;
   const perfEnabled = parseBooleanEnv(process.env.HARNESS_PERF_ENABLED, configEnabled);
-  const configuredPath = resolve(invocationDirectory, loadedConfig.config.debug.perf.filePath);
+  const configuredPath = resolveHarnessRuntimePath(
+    invocationDirectory,
+    loadedConfig.config.debug.perf.filePath,
+  );
   const envPath = process.env.HARNESS_PERF_FILE_PATH;
   const perfFilePath =
     typeof envPath === 'string' && envPath.trim().length > 0
-      ? resolve(invocationDirectory, envPath)
+      ? resolveHarnessRuntimePath(invocationDirectory, envPath)
       : configuredPath;
 
   configurePerfCore({
@@ -59,12 +64,14 @@ function configureProcessPerf(invocationDirectory: string): void {
   });
 }
 
-function parseArgs(argv: string[]): DaemonOptions {
+function parseArgs(argv: string[], invocationDirectory: string): DaemonOptions {
   const defaultHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? '127.0.0.1';
   const defaultPortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? '7777';
   const defaultAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
-  const defaultStateDbPath =
-    process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane-fixture.sqlite';
+  const defaultStateDbPath = resolveHarnessRuntimePath(
+    invocationDirectory,
+    process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane-fixture.sqlite',
+  );
   const defaultFixtureCommand = process.env.HARNESS_FIXTURE_COMMAND ?? '/bin/sh';
 
   let host = defaultHost;
@@ -147,6 +154,7 @@ function parseArgs(argv: string[]): DaemonOptions {
 
 async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory();
+  migrateLegacyHarnessLayout(invocationDirectory, process.env);
   loadHarnessSecrets({ cwd: invocationDirectory });
   configureProcessPerf(invocationDirectory);
   const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
@@ -163,7 +171,7 @@ async function main(): Promise<number> {
   recordPerfEvent('daemon-fixture.startup.begin', {
     process: 'daemon-fixture',
   });
-  const options = parseArgs(process.argv.slice(2));
+  const options = parseArgs(process.argv.slice(2), invocationDirectory);
 
   const listenSpan = startPerfSpan('daemon-fixture.startup.listen', {
     process: 'daemon-fixture',

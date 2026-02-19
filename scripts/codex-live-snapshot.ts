@@ -1,6 +1,8 @@
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import type { NormalizedEventEnvelope } from '../src/events/normalized-events.ts';
 import { TerminalSnapshotOracle, renderSnapshotText } from '../src/terminal/snapshot-oracle.ts';
+import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
+import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
 
 interface SnapshotOptions {
   conversationId: string;
@@ -29,10 +31,15 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
 }
 
 function parseArgs(argv: string[]): SnapshotOptions {
+  const invocationDirectory =
+    process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
   const envConversationId = process.env.HARNESS_CONVERSATION_ID;
   const envTenantId = process.env.HARNESS_TENANT_ID ?? 'tenant-local';
   const envUserId = process.env.HARNESS_USER_ID ?? 'user-local';
-  const envDbPath = process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite';
+  const envDbPath = resolveHarnessRuntimePath(
+    invocationDirectory,
+    process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite',
+  );
 
   let conversationId = envConversationId;
   let tenantId = envTenantId;
@@ -182,6 +189,9 @@ function printFrame(
 }
 
 async function main(): Promise<number> {
+  const invocationDirectory =
+    process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+  migrateLegacyHarnessLayout(invocationDirectory, process.env);
   const options = parseArgs(process.argv.slice(2));
   const store = new SqliteEventStore(options.dbPath);
   const oracle = new TerminalSnapshotOracle(options.cols, options.rows);

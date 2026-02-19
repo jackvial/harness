@@ -1,9 +1,10 @@
 import { resolve } from 'node:path';
+import { resolveHarnessWorkspaceDirectory } from '../../config/harness-paths.ts';
 
 const RENDER_TRACE_STATE_FILE_NAME = 'active-render-trace.json';
 export const RENDER_TRACE_STATE_VERSION = 1;
 export const RENDER_TRACE_MODE = 'live-mux-render-trace';
-export const DEFAULT_RENDER_TRACE_ROOT_PATH = '.harness/render-traces';
+export const DEFAULT_RENDER_TRACE_ROOT_PATH = 'render-traces';
 export const RENDER_TRACE_FILE_NAME = 'render-trace.log';
 
 export interface ActiveRenderTraceState {
@@ -18,28 +19,26 @@ export interface ActiveRenderTraceState {
 export function resolveRenderTraceStatePath(
   invocationDirectory: string,
   sessionName: string | null,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
+  const workspaceDirectory = resolveHarnessWorkspaceDirectory(invocationDirectory, env);
   if (sessionName === null) {
-    return resolve(invocationDirectory, '.harness', RENDER_TRACE_STATE_FILE_NAME);
+    return resolve(workspaceDirectory, RENDER_TRACE_STATE_FILE_NAME);
   }
-  return resolve(
-    invocationDirectory,
-    '.harness',
-    'sessions',
-    sessionName,
-    RENDER_TRACE_STATE_FILE_NAME,
-  );
+  return resolve(workspaceDirectory, 'sessions', sessionName, RENDER_TRACE_STATE_FILE_NAME);
 }
 
 export function resolveDefaultRenderTraceOutputPath(
   invocationDirectory: string,
   sessionName: string | null,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
+  const workspaceDirectory = resolveHarnessWorkspaceDirectory(invocationDirectory, env);
   if (sessionName === null) {
-    return resolve(invocationDirectory, DEFAULT_RENDER_TRACE_ROOT_PATH, RENDER_TRACE_FILE_NAME);
+    return resolve(workspaceDirectory, DEFAULT_RENDER_TRACE_ROOT_PATH, RENDER_TRACE_FILE_NAME);
   }
   return resolve(
-    invocationDirectory,
+    workspaceDirectory,
     DEFAULT_RENDER_TRACE_ROOT_PATH,
     sessionName,
     RENDER_TRACE_FILE_NAME,

@@ -8,15 +8,20 @@ import {
   toggleGatewayRenderTrace,
 } from '../src/mux/live-mux/gateway-render-trace.ts';
 import { resolveRenderTraceStatePath } from '../src/mux/live-mux/render-trace-state.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 
 void test('gateway render trace resolves state paths for default and named sessions', () => {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: '/tmp/xdg-home',
+  };
+  const runtimeRoot = resolveHarnessWorkspaceDirectory('/tmp/harness', env);
   assert.equal(
-    resolveRenderTraceStatePath('/tmp/harness', null),
-    '/tmp/harness/.harness/active-render-trace.json',
+    resolveRenderTraceStatePath('/tmp/harness', null, env),
+    `${runtimeRoot}/active-render-trace.json`,
   );
   assert.equal(
-    resolveRenderTraceStatePath('/tmp/harness', 'perf-a'),
-    '/tmp/harness/.harness/sessions/perf-a/active-render-trace.json',
+    resolveRenderTraceStatePath('/tmp/harness', 'perf-a', env),
+    `${runtimeRoot}/sessions/perf-a/active-render-trace.json`,
   );
 });
 
@@ -59,7 +64,7 @@ void test('gateway render trace toggles start and forwards conversation filter',
       });
       return {
         stdout:
-          'render trace started\nrender-trace-target: /tmp/harness/.harness/render-traces/perf-a/render-trace.log\nrender-trace-conversation-id: session-1\n',
+          'render trace started\nrender-trace-target: /tmp/harness/.harness-xdg/harness/workspaces/harness-e64e8bc467cc/render-traces/perf-a/render-trace.log\nrender-trace-conversation-id: session-1\n',
         stderr: '',
       };
     },
@@ -68,7 +73,7 @@ void test('gateway render trace toggles start and forwards conversation filter',
   assert.equal(result.action, 'start');
   assert.equal(
     result.message,
-    'render: trace=/tmp/harness/.harness/render-traces/perf-a/render-trace.log conversation=session-1',
+    'render: trace=/tmp/harness/.harness-xdg/harness/workspaces/harness-e64e8bc467cc/render-traces/perf-a/render-trace.log conversation=session-1',
   );
   assert.deepEqual(calls, [
     {
@@ -89,7 +94,8 @@ void test('gateway render trace toggles stop when active state file exists', asy
       assert.equal(input.action, 'stop');
       assert.equal(input.conversationId, 'session-1');
       return {
-        stdout: 'render trace stopped: /tmp/harness/.harness/render-traces/render-trace.log\n',
+        stdout:
+          'render trace stopped: /tmp/harness/.harness-xdg/harness/workspaces/harness-e64e8bc467cc/render-traces/render-trace.log\n',
         stderr: '',
       };
     },
@@ -98,7 +104,7 @@ void test('gateway render trace toggles stop when active state file exists', asy
   assert.equal(result.action, 'stop');
   assert.equal(
     result.message,
-    'render trace stopped: /tmp/harness/.harness/render-traces/render-trace.log',
+    'render trace stopped: /tmp/harness/.harness-xdg/harness/workspaces/harness-e64e8bc467cc/render-traces/render-trace.log',
   );
 });
 

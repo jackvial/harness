@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { resolveHarnessRuntimePath } from '../config/harness-paths.ts';
 
 export const GATEWAY_RECORD_VERSION = 1;
 export const DEFAULT_GATEWAY_HOST = '127.0.0.1';
@@ -60,12 +60,18 @@ export function resolveInvocationDirectory(env: NodeJS.ProcessEnv, cwd: string):
   return env.HARNESS_INVOKE_CWD ?? env.INIT_CWD ?? cwd;
 }
 
-export function resolveGatewayRecordPath(workspaceRoot: string): string {
-  return resolve(workspaceRoot, DEFAULT_GATEWAY_RECORD_PATH);
+export function resolveGatewayRecordPath(
+  workspaceRoot: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolveHarnessRuntimePath(workspaceRoot, DEFAULT_GATEWAY_RECORD_PATH, env);
 }
 
-export function resolveGatewayLogPath(workspaceRoot: string): string {
-  return resolve(workspaceRoot, DEFAULT_GATEWAY_LOG_PATH);
+export function resolveGatewayLogPath(
+  workspaceRoot: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolveHarnessRuntimePath(workspaceRoot, DEFAULT_GATEWAY_LOG_PATH, env);
 }
 
 export function normalizeGatewayHost(

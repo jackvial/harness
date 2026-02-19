@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
 
 interface SelectorEntry {
   readonly version: number;
@@ -12,6 +12,8 @@ interface SelectorEntry {
 }
 
 function parseArgs(argv: readonly string[]): { filePath: string } {
+  const invocationDirectory =
+    process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
   let filePath = '.harness/perf-startup.jsonl';
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -27,7 +29,7 @@ function parseArgs(argv: readonly string[]): { filePath: string } {
     throw new Error(`unknown argument: ${arg}`);
   }
   return {
-    filePath: resolve(process.cwd(), filePath),
+    filePath: resolveHarnessRuntimePath(invocationDirectory, filePath, process.env),
   };
 }
 

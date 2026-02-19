@@ -19,7 +19,7 @@ void test('parseMuxArgs resolves defaults and positional codex args', () => {
   });
 
   assert.deepEqual(parsed.codexArgs, ['--ask', 'something']);
-  assert.equal(parsed.storePath, '.harness/events.sqlite');
+  assert.equal(parsed.storePath, '/tmp/work/.harness/events.sqlite');
   assert.equal(parsed.initialConversationId, 'conversation-id-1');
   assert.equal(parsed.scope.turnId, 'turn-id-1');
   assert.equal(parsed.scope.workspaceId, 'workspace-1');
@@ -57,7 +57,7 @@ void test('parseMuxArgs reads control-plane flags and maps --record to .harness/
   assert.equal(parsed.controlPlaneHost, '127.0.0.1');
   assert.equal(parsed.controlPlanePort, 7777);
   assert.equal(parsed.controlPlaneAuthToken, 'secret');
-  assert.equal(parsed.storePath, 'custom-events.sqlite');
+  assert.equal(parsed.storePath, '/tmp/work/custom-events.sqlite');
   assert.equal(parsed.initialConversationId, 'conversation-fixed');
   assert.equal(parsed.scope.turnId, 'turn-fixed');
   assert.equal(

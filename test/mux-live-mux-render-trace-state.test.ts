@@ -9,23 +9,28 @@ import {
   resolveDefaultRenderTraceOutputPath,
   resolveRenderTraceStatePath,
 } from '../src/mux/live-mux/render-trace-state.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 
 void test('render trace state path and output path resolution are stable', () => {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: '/tmp/xdg-home',
+  };
+  const runtimeRoot = resolveHarnessWorkspaceDirectory('/tmp/harness', env);
   assert.equal(
-    resolveRenderTraceStatePath('/tmp/harness', null),
-    '/tmp/harness/.harness/active-render-trace.json',
+    resolveRenderTraceStatePath('/tmp/harness', null, env),
+    `${runtimeRoot}/active-render-trace.json`,
   );
   assert.equal(
-    resolveRenderTraceStatePath('/tmp/harness', 'session-a'),
-    '/tmp/harness/.harness/sessions/session-a/active-render-trace.json',
+    resolveRenderTraceStatePath('/tmp/harness', 'session-a', env),
+    `${runtimeRoot}/sessions/session-a/active-render-trace.json`,
   );
   assert.equal(
-    resolveDefaultRenderTraceOutputPath('/tmp/harness', null),
-    `/tmp/harness/${DEFAULT_RENDER_TRACE_ROOT_PATH}/${RENDER_TRACE_FILE_NAME}`,
+    resolveDefaultRenderTraceOutputPath('/tmp/harness', null, env),
+    `${runtimeRoot}/${DEFAULT_RENDER_TRACE_ROOT_PATH}/${RENDER_TRACE_FILE_NAME}`,
   );
   assert.equal(
-    resolveDefaultRenderTraceOutputPath('/tmp/harness', 'session-a'),
-    `/tmp/harness/${DEFAULT_RENDER_TRACE_ROOT_PATH}/session-a/${RENDER_TRACE_FILE_NAME}`,
+    resolveDefaultRenderTraceOutputPath('/tmp/harness', 'session-a', env),
+    `${runtimeRoot}/${DEFAULT_RENDER_TRACE_ROOT_PATH}/session-a/${RENDER_TRACE_FILE_NAME}`,
   );
 });
 

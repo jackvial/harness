@@ -16,7 +16,11 @@ import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseGatewayRecordText } from '../src/cli/gateway-record.ts';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
-import { resolveHarnessConfigPath } from '../src/config/config-core.ts';
+import {
+  resolveHarnessConfigPath,
+  resolveHarnessConfigDirectory,
+} from '../src/config/config-core.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 
 interface RunHarnessResult {
   code: number;
@@ -36,6 +40,20 @@ function createWorkspace(): string {
 
 function workspaceXdgConfigHome(workspace: string): string {
   return join(workspace, '.harness-xdg');
+}
+
+function workspaceRuntimeRoot(workspace: string): string {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
+  };
+  return resolveHarnessWorkspaceDirectory(workspace, env);
+}
+
+function workspaceConfigRoot(workspace: string): string {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
+  };
+  return resolveHarnessConfigDirectory(workspace, env);
 }
 
 function writeWorkspaceHarnessConfig(workspace: string, config: unknown): string {
@@ -369,6 +387,42 @@ void test('harness gateway status reports stopped when no record exists', async 
   }
 });
 
+void test('harness auto-migrates legacy local .harness record path to global runtime root on first run', async () => {
+  const workspace = createWorkspace();
+  const legacyRoot = join(workspace, '.harness');
+  const legacyRecordPath = join(legacyRoot, 'gateway.json');
+  const runtimeRecordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
+  mkdirSync(legacyRoot, { recursive: true });
+  writeFileSync(
+    legacyRecordPath,
+    JSON.stringify(
+      {
+        version: 1,
+        pid: process.pid,
+        host: '127.0.0.1',
+        port: 6553,
+        authToken: null,
+        stateDbPath: join(legacyRoot, 'control-plane.sqlite'),
+        startedAt: new Date().toISOString(),
+        workspaceRoot: workspace,
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  try {
+    const result = await runHarness(workspace, ['gateway', 'status']);
+    assert.equal(existsSync(runtimeRecordPath), true);
+    assert.equal(result.stdout.includes(`[migration] local .harness migrated`), true);
+    assert.equal(result.stdout.includes(`record: ${runtimeRecordPath}`), true);
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force']).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness rejects invalid session names', async () => {
   const workspace = createWorkspace();
   try {
@@ -482,7 +536,7 @@ void test('harness animate requires explicit bounds in non-tty mode', async () =
 
 void test('harness animate renders bounded frames without starting gateway', async () => {
   const workspace = createWorkspace();
-  const recordPath = join(workspace, '.harness/gateway.json');
+  const recordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
   try {
     const result = await runHarness(workspace, [
       'animate',
@@ -515,7 +569,7 @@ void test('harness animate default color output uses muted palette', async () =>
 void test('harness gateway start/status/call/stop manages daemon lifecycle', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
-  const recordPath = join(workspace, '.harness/gateway.json');
+  const recordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
   const env = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
   };
@@ -604,9 +658,9 @@ void test('harness gateway call github.pr-create reaches command validation befo
 void test('harness default client auto-starts detached gateway and leaves it running on client exit', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
-  const muxArgsPath = join(workspace, '.harness/mux-args.json');
+  const muxArgsPath = join(workspaceRuntimeRoot(workspace), 'mux-args.json');
   const muxStubPath = join(workspace, 'mux-stub.js');
-  const recordPath = join(workspace, '.harness/gateway.json');
+  const recordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
   writeFileSync(
     muxStubPath,
     [
@@ -649,7 +703,7 @@ void test('harness default client auto-starts detached gateway and leaves it run
 void test('harness gateway run applies inspect runtime args from harness config', async () => {
   const workspace = createWorkspace();
   const daemonStubPath = join(workspace, 'daemon-inspect-stub.js');
-  const daemonExecArgvPath = join(workspace, '.harness/daemon-exec-argv.json');
+  const daemonExecArgvPath = join(workspaceRuntimeRoot(workspace), 'daemon-exec-argv.json');
   const [gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(2);
   writeWorkspaceHarnessConfig(workspace, {
     debug: {
@@ -696,7 +750,7 @@ void test('harness default client applies inspect runtime args to mux process fr
   const workspace = createWorkspace();
   const port = await reservePort();
   const muxStubPath = join(workspace, 'mux-inspect-stub.js');
-  const muxExecArgvPath = join(workspace, '.harness/mux-exec-argv.json');
+  const muxExecArgvPath = join(workspaceRuntimeRoot(workspace), 'mux-exec-argv.json');
   const [gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(2);
   writeWorkspaceHarnessConfig(workspace, {
     debug: {
@@ -738,14 +792,14 @@ void test('harness default client applies inspect runtime args to mux process fr
   }
 });
 
-void test('harness default client loads .harness/secrets.env and forwards ANTHROPIC_API_KEY to mux process', async () => {
+void test('harness default client loads global secrets.env and forwards ANTHROPIC_API_KEY to mux process', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
   const muxStubPath = join(workspace, 'mux-secrets-stub.js');
-  const observedKeyPath = join(workspace, '.harness/observed-anthropic-key.txt');
-  mkdirSync(join(workspace, '.harness'), { recursive: true });
+  const observedKeyPath = join(workspaceRuntimeRoot(workspace), 'observed-anthropic-key.txt');
+  mkdirSync(workspaceConfigRoot(workspace), { recursive: true });
   writeFileSync(
-    join(workspace, '.harness/secrets.env'),
+    join(workspaceConfigRoot(workspace), 'secrets.env'),
     'ANTHROPIC_API_KEY=from-secrets-file',
     'utf8',
   );
@@ -781,9 +835,12 @@ void test('harness profile writes client and gateway CPU profiles in isolated se
   const workspace = createWorkspace();
   const sessionName = 'profile-session-a';
   const muxStubPath = join(workspace, 'mux-profile-stub.js');
-  const defaultRecordPath = join(workspace, '.harness/gateway.json');
-  const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
-  const profileDir = join(workspace, `.harness/profiles/${sessionName}`);
+  const defaultRecordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
+  const sessionRecordPath = join(
+    workspaceRuntimeRoot(workspace),
+    `sessions/${sessionName}/gateway.json`,
+  );
+  const profileDir = join(workspaceRuntimeRoot(workspace), `profiles/${sessionName}`);
   const clientProfilePath = join(profileDir, 'client.cpuprofile');
   const gatewayProfilePath = join(profileDir, 'gateway.cpuprofile');
   writeFileSync(muxStubPath, ["const noop = '';", 'void noop;'].join('\n'), 'utf8');
@@ -815,12 +872,21 @@ void test('harness profile writes client and gateway CPU profiles in isolated se
   }
 });
 
-void test('harness profile start/stop writes gateway CPU profile to .harness/profiles for the target session', async () => {
+void test('harness profile start/stop writes gateway CPU profile to global profiles path for the target session', async () => {
   const workspace = createWorkspace();
   const sessionName = 'profile-start-stop-a';
-  const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
-  const profileStatePath = join(workspace, `.harness/sessions/${sessionName}/active-profile.json`);
-  const gatewayProfilePath = join(workspace, `.harness/profiles/${sessionName}/gateway.cpuprofile`);
+  const sessionRecordPath = join(
+    workspaceRuntimeRoot(workspace),
+    `sessions/${sessionName}/gateway.json`,
+  );
+  const profileStatePath = join(
+    workspaceRuntimeRoot(workspace),
+    `sessions/${sessionName}/active-profile.json`,
+  );
+  const gatewayProfilePath = join(
+    workspaceRuntimeRoot(workspace),
+    `profiles/${sessionName}/gateway.cpuprofile`,
+  );
   const [gatewayPort, gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(3);
   writeWorkspaceHarnessConfig(workspace, {
     debug: {
@@ -948,12 +1014,12 @@ void test('harness status-timeline start/stop writes and clears active state for
   const workspace = createWorkspace();
   const sessionName = 'status-timeline-start-stop-a';
   const statusTimelineStatePath = join(
-    workspace,
-    `.harness/sessions/${sessionName}/active-status-timeline.json`,
+    workspaceRuntimeRoot(workspace),
+    `sessions/${sessionName}/active-status-timeline.json`,
   );
   const statusTimelineOutputPath = join(
-    workspace,
-    `.harness/status-timelines/${sessionName}/status-timeline.log`,
+    workspaceRuntimeRoot(workspace),
+    `status-timelines/${sessionName}/status-timeline.log`,
   );
   try {
     const startResult = await runHarness(workspace, ['--session', sessionName, 'status-timeline']);
@@ -1077,12 +1143,12 @@ void test('harness render-trace start/stop writes and clears active state for th
   const workspace = createWorkspace();
   const sessionName = 'render-trace-start-stop-a';
   const renderTraceStatePath = join(
-    workspace,
-    `.harness/sessions/${sessionName}/active-render-trace.json`,
+    workspaceRuntimeRoot(workspace),
+    `sessions/${sessionName}/active-render-trace.json`,
   );
   const renderTraceOutputPath = join(
-    workspace,
-    `.harness/render-traces/${sessionName}/render-trace.log`,
+    workspaceRuntimeRoot(workspace),
+    `render-traces/${sessionName}/render-trace.log`,
   );
   try {
     const startResult = await runHarness(workspace, [
@@ -1201,8 +1267,11 @@ void test(
     const env = {
       HARNESS_CONTROL_PLANE_PORT: String(port),
     };
-    const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
-    const defaultRecordPath = join(workspace, '.harness/gateway.json');
+    const sessionRecordPath = join(
+      workspaceRuntimeRoot(workspace),
+      `sessions/${sessionName}/gateway.json`,
+    );
+    const defaultRecordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
 
     let client: Awaited<ReturnType<typeof connectControlPlaneStreamClient>> | null = null;
     try {
@@ -1342,7 +1411,7 @@ void test(
 void test('harness gateway stop cleans up orphan sqlite processes for the workspace db', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
-  const dbPath = join(workspace, '.harness/control-plane.sqlite');
+  const dbPath = join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite');
   const env = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
   };
@@ -1377,7 +1446,7 @@ void test('harness gateway stop cleans up orphan sqlite processes for the worksp
 
 void test('harness gateway stop --force cleans up orphan gateway daemon processes for the workspace db', async () => {
   const workspace = createWorkspace();
-  const dbPath = join(workspace, '.harness/control-plane.sqlite');
+  const dbPath = join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite');
   const daemonScriptPath = join(workspace, 'control-plane-daemon.js');
   writeFileSync(
     daemonScriptPath,
@@ -1410,7 +1479,7 @@ void test('harness gateway stop --force cleans up orphan gateway daemon processe
 void test('harness gateway stop --force cleans up orphan gateway daemon processes by workspace script path', async () => {
   const workspace = createWorkspace();
   const daemonScriptPath = join(workspace, 'control-plane-daemon.js');
-  const nonDefaultDbPath = join(workspace, '.harness/custom-gateway.sqlite');
+  const nonDefaultDbPath = join(workspaceRuntimeRoot(workspace), 'custom-gateway.sqlite');
   writeFileSync(
     daemonScriptPath,
     ['process.on("SIGTERM", () => process.exit(0));', 'setInterval(() => {}, 1000);'].join('\n'),

@@ -8,15 +8,20 @@ import {
   toggleGatewayStatusTimeline,
 } from '../src/mux/live-mux/gateway-status-timeline.ts';
 import { resolveStatusTimelineStatePath } from '../src/mux/live-mux/status-timeline-state.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 
 void test('gateway status timeline resolves state paths for default and named sessions', () => {
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: '/tmp/xdg-home',
+  };
+  const runtimeRoot = resolveHarnessWorkspaceDirectory('/tmp/harness', env);
   assert.equal(
-    resolveStatusTimelineStatePath('/tmp/harness', null),
-    '/tmp/harness/.harness/active-status-timeline.json',
+    resolveStatusTimelineStatePath('/tmp/harness', null, env),
+    `${runtimeRoot}/active-status-timeline.json`,
   );
   assert.equal(
-    resolveStatusTimelineStatePath('/tmp/harness', 'perf-a'),
-    '/tmp/harness/.harness/sessions/perf-a/active-status-timeline.json',
+    resolveStatusTimelineStatePath('/tmp/harness', 'perf-a', env),
+    `${runtimeRoot}/sessions/perf-a/active-status-timeline.json`,
   );
 });
 
@@ -52,7 +57,7 @@ void test('gateway status timeline toggles start when no active state file exist
       });
       return {
         stdout:
-          'status timeline started\nstatus-timeline-target: /tmp/harness/.harness/status-timelines/perf-a/status-timeline.log\n',
+          'status timeline started\nstatus-timeline-target: /tmp/harness/.harness-xdg/harness/workspaces/harness-e64e8bc467cc/status-timelines/perf-a/status-timeline.log\n',
         stderr: '',
       };
     },
@@ -61,7 +66,7 @@ void test('gateway status timeline toggles start when no active state file exist
   assert.equal(result.action, 'start');
   assert.equal(
     result.message,
-    'status: timeline=/tmp/harness/.harness/status-timelines/perf-a/status-timeline.log',
+    'status: timeline=/tmp/harness/.harness-xdg/harness/workspaces/harness-e64e8bc467cc/status-timelines/perf-a/status-timeline.log',
   );
   assert.deepEqual(calls, [
     {
@@ -82,7 +87,7 @@ void test('gateway status timeline toggles stop when active state file exists', 
       calls.push({ action: input.action });
       return {
         stdout:
-          'status timeline stopped: /tmp/harness/.harness/status-timelines/status-timeline.log\n',
+          'status timeline stopped: /tmp/harness/.harness-xdg/harness/workspaces/harness-e64e8bc467cc/status-timelines/status-timeline.log\n',
         stderr: '',
       };
     },
@@ -91,7 +96,7 @@ void test('gateway status timeline toggles stop when active state file exists', 
   assert.equal(result.action, 'stop');
   assert.equal(
     result.message,
-    'status timeline stopped: /tmp/harness/.harness/status-timelines/status-timeline.log',
+    'status timeline stopped: /tmp/harness/.harness-xdg/harness/workspaces/harness-e64e8bc467cc/status-timelines/status-timeline.log',
   );
   assert.deepEqual(calls, [{ action: 'stop' }]);
 });

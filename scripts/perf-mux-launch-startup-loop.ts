@@ -2,6 +2,7 @@ import process from 'node:process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
 import { startPtySession } from '../src/pty/pty_host.ts';
 
 interface ParsedArgs {
@@ -331,16 +332,18 @@ function formatMs(value: number | null): string {
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
+  const invocationDirectory =
+    process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
   const launchScriptPath = resolve(process.cwd(), 'scripts/codex-live-mux-launch.ts');
   const runs: RunMetrics[] = [];
 
   for (let run = 1; run <= args.iterations; run += 1) {
     const direct = await measureFirstOutput('codex', args.codexArgs, args.timeoutMs);
 
-    const perfPath = resolve(
-      process.cwd(),
-      '.harness',
-      `perf-mux-launch-startup-${randomUUID()}-${String(run)}.jsonl`,
+    const perfPath = resolveHarnessRuntimePath(
+      invocationDirectory,
+      `.harness/perf-mux-launch-startup-${randomUUID()}-${String(run)}.jsonl`,
+      process.env,
     );
     mkdirSync(dirname(perfPath), { recursive: true });
     rmSync(perfPath, { force: true });

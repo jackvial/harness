@@ -1,9 +1,10 @@
 import { resolve } from 'node:path';
+import { resolveHarnessWorkspaceDirectory } from '../../config/harness-paths.ts';
 
 const STATUS_TIMELINE_STATE_FILE_NAME = 'active-status-timeline.json';
 export const STATUS_TIMELINE_STATE_VERSION = 1;
 export const STATUS_TIMELINE_MODE = 'live-mux-status-timeline';
-export const DEFAULT_STATUS_TIMELINE_ROOT_PATH = '.harness/status-timelines';
+export const DEFAULT_STATUS_TIMELINE_ROOT_PATH = 'status-timelines';
 export const STATUS_TIMELINE_FILE_NAME = 'status-timeline.log';
 
 export interface ActiveStatusTimelineState {
@@ -17,36 +18,25 @@ export interface ActiveStatusTimelineState {
 export function resolveStatusTimelineStatePath(
   invocationDirectory: string,
   sessionName: string | null,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
+  const workspaceDirectory = resolveHarnessWorkspaceDirectory(invocationDirectory, env);
   if (sessionName === null) {
-    return resolve(invocationDirectory, '.harness', STATUS_TIMELINE_STATE_FILE_NAME);
+    return resolve(workspaceDirectory, STATUS_TIMELINE_STATE_FILE_NAME);
   }
-  return resolve(
-    invocationDirectory,
-    '.harness',
-    'sessions',
-    sessionName,
-    STATUS_TIMELINE_STATE_FILE_NAME,
-  );
+  return resolve(workspaceDirectory, 'sessions', sessionName, STATUS_TIMELINE_STATE_FILE_NAME);
 }
 
 export function resolveDefaultStatusTimelineOutputPath(
   invocationDirectory: string,
   sessionName: string | null,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
+  const workspaceDirectory = resolveHarnessWorkspaceDirectory(invocationDirectory, env);
   if (sessionName === null) {
-    return resolve(
-      invocationDirectory,
-      DEFAULT_STATUS_TIMELINE_ROOT_PATH,
-      STATUS_TIMELINE_FILE_NAME,
-    );
+    return resolve(workspaceDirectory, 'status-timelines', STATUS_TIMELINE_FILE_NAME);
   }
-  return resolve(
-    invocationDirectory,
-    DEFAULT_STATUS_TIMELINE_ROOT_PATH,
-    sessionName,
-    STATUS_TIMELINE_FILE_NAME,
-  );
+  return resolve(workspaceDirectory, 'status-timelines', sessionName, STATUS_TIMELINE_FILE_NAME);
 }
 
 export function parseActiveStatusTimelineState(raw: unknown): ActiveStatusTimelineState | null {

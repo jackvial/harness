@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
@@ -23,6 +23,8 @@ import {
   updateHarnessMuxUiConfig,
   type HarnessMuxThemeConfig,
 } from '../src/config/config-core.ts';
+import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
+import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
@@ -383,6 +385,7 @@ async function main(): Promise<number> {
 
   const invocationDirectory =
     process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+  migrateLegacyHarnessLayout(invocationDirectory, process.env);
   loadHarnessSecrets({ cwd: invocationDirectory });
   const options = parseMuxArgs(process.argv.slice(2));
   const loadedConfig = loadHarnessConfig({
@@ -393,7 +396,7 @@ async function main(): Promise<number> {
     process.env.HARNESS_PERF_ENABLED,
     debugConfig.enabled && debugConfig.perf.enabled,
   );
-  const perfFilePath = resolve(
+  const perfFilePath = resolveHarnessRuntimePath(
     options.invocationDirectory,
     process.env.HARNESS_PERF_FILE_PATH ?? debugConfig.perf.filePath,
   );
@@ -603,7 +606,7 @@ async function main(): Promise<number> {
   const controlPlaneClient = await openCodexControlPlaneClient(controlPlaneMode, {
     startEmbeddedServer: async () =>
       await startControlPlaneStreamServer({
-        stateStorePath: resolve(
+        stateStorePath: resolveHarnessRuntimePath(
           options.invocationDirectory,
           process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite',
         ),

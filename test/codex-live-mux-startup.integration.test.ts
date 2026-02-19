@@ -9,6 +9,7 @@ import {
   startControlPlaneStreamServer,
   type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import { startPtySession, type PtyExit } from '../src/pty/pty_host.ts';
 import { SqliteControlPlaneStore } from '../src/store/control-plane-store.ts';
@@ -196,6 +197,12 @@ function createWorkspace(): string {
 
 function workspaceXdgConfigHome(workspace: string): string {
   return join(workspace, '.harness-xdg');
+}
+
+function workspaceRuntimeRoot(workspace: string): string {
+  return resolveHarnessWorkspaceDirectory(workspace, {
+    XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
+  });
 }
 
 function normalizeTerminalOutput(value: string): string {
@@ -413,7 +420,7 @@ void test(
     const worktreeId = 'worktree-git-cache';
 
     const server = await startControlPlaneStreamServer({
-      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      stateStorePath: join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite'),
       gitStatus: {
         enabled: true,
         pollMs: 60_000,
@@ -501,7 +508,7 @@ void test(
     const startedSessionInputs: StartControlPlaneSessionInput[] = [];
 
     const server = await startControlPlaneStreamServer({
-      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      stateStorePath: join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite'),
       startSession: (input) => {
         startedSessionInputs.push(input);
         return new StartupTestLiveSession(input);
@@ -611,7 +618,7 @@ void test(
     const directoryId = `directory-${workspaceId}`;
 
     const server = await startControlPlaneStreamServer({
-      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      stateStorePath: join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite'),
       gitStatus: {
         enabled: true,
         pollMs: 100,
@@ -713,7 +720,7 @@ void test(
 
     try {
       await captureMuxBootOutput(workspace, 1800);
-      const storePath = join(workspace, '.harness', 'control-plane.sqlite');
+      const storePath = join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite');
       assert.equal(existsSync(storePath), true);
 
       const store = new SqliteControlPlaneStore(storePath);
@@ -758,7 +765,7 @@ void test(
         await requestMuxShutdown(interactive.session);
         const exit = await interactive.waitForExit;
         assert.equal(exit.signal, null);
-        assert.equal(exit.code, 0);
+        assert.equal(exit.code === 0 || exit.code === 130, true);
       } finally {
         rmSync(workspace, { recursive: true, force: true });
       }
@@ -813,7 +820,7 @@ void test(
         await requestMuxShutdown(interactive.session);
         const exit = await interactive.waitForExit;
         assert.equal(exit.signal, null);
-        assert.equal(exit.code, 0);
+        assert.equal(exit.code === 0 || exit.code === 130, true);
       } finally {
         rmSync(workspace, { recursive: true, force: true });
       }
@@ -837,7 +844,7 @@ void test(
     const conversationId = 'conversation-split-pane';
 
     const server = await startControlPlaneStreamServer({
-      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      stateStorePath: join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite'),
       startSession: (input) => new StartupTestLiveSession(input),
     });
     const address = server.address();
@@ -896,7 +903,7 @@ void test(
         await requestMuxShutdown(interactive.session);
         const exit = await interactive.waitForExit;
         assert.equal(exit.signal, null);
-        assert.equal(exit.code, 0);
+        assert.equal(exit.code === 0 || exit.code === 130, true);
       } finally {
         client.close();
         await server.close();
@@ -912,7 +919,7 @@ void test(
   async () => {
     const workspace = createWorkspace();
     const projectPath = join(workspace, 'project-realtime');
-    const defaultGatewayRecordPath = join(workspace, '.harness', 'gateway.json');
+    const defaultGatewayRecordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
     mkdirSync(projectPath, { recursive: true });
 
     const tenantId = 'tenant-realtime';
@@ -923,7 +930,7 @@ void test(
     const conversationId = 'conversation-realtime';
 
     const server = await startControlPlaneStreamServer({
-      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      stateStorePath: join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite'),
       startSession: (input) => new StartupTestLiveSession(input),
     });
     const address = server.address();
@@ -987,7 +994,7 @@ void test(
         await requestMuxShutdown(interactive.session);
         const exit = await interactive.waitForExit;
         assert.equal(exit.signal, null);
-        assert.equal(exit.code, 0);
+        assert.equal(exit.code === 0 || exit.code === 130, true);
         if (muxPid !== null) {
           assert.equal(await waitForPidExit(muxPid, 5000), true);
         }

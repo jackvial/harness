@@ -1,6 +1,8 @@
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
+import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
+import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import {
@@ -73,11 +75,15 @@ function mapToNormalizedEvent(
 async function main(): Promise<number> {
   const invocationDirectory =
     process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+  migrateLegacyHarnessLayout(invocationDirectory, process.env);
   loadHarnessSecrets({ cwd: invocationDirectory });
   const interactive = process.stdin.isTTY && process.stdout.isTTY;
   const extraArgs = process.argv.slice(2);
 
-  const storePath = process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite';
+  const storePath = resolveHarnessRuntimePath(
+    invocationDirectory,
+    process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite',
+  );
   const conversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
   const turnId = process.env.HARNESS_TURN_ID ?? `turn-${randomUUID()}`;
 

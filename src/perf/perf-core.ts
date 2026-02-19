@@ -1,5 +1,6 @@
 import { closeSync, mkdirSync, openSync, writeSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { resolveHarnessRuntimePath } from '../config/harness-paths.ts';
 
 type PerfAttrValue = boolean | number | string;
 type PerfAttrs = Readonly<Record<string, PerfAttrValue>>;
@@ -60,6 +61,12 @@ const state: {
   sampleRates: DEFAULT_EVENT_SAMPLE_RATES,
   sampleCounters: new Map(),
 };
+
+function resolvePerfFilePath(pathValue: string): string {
+  const invocationDirectory =
+    process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+  return resolveHarnessRuntimePath(invocationDirectory, pathValue, process.env);
+}
 
 function ensureWriter(): void {
   if (!state.enabled || state.fd !== null) {
@@ -249,7 +256,7 @@ const NOOP_PERF_SPAN: PerfSpan = {
 };
 
 export function configurePerfCore(config: PerfCoreConfig): void {
-  const nextFilePath = config.filePath ?? state.filePath;
+  const nextFilePath = resolvePerfFilePath(config.filePath ?? state.filePath);
   const pathChanged = resolve(nextFilePath) !== resolve(state.filePath);
 
   if (pathChanged || (!config.enabled && state.enabled)) {

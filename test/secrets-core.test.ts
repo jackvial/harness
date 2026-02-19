@@ -68,12 +68,15 @@ void test('parseHarnessSecretsText rejects unterminated and trailing quoted payl
 
 void test('resolveHarnessSecretsPath defaults to .harness/secrets.env and supports explicit override', () => {
   const cwd = '/tmp/harness';
-  assert.equal(resolveHarnessSecretsPath(cwd), resolve(cwd, HARNESS_SECRETS_FILE_PATH));
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: '/tmp/xdg-home',
+  };
+  assert.equal(resolveHarnessSecretsPath(cwd, undefined, env), '/tmp/xdg-home/harness/secrets.env');
   assert.equal(
-    resolveHarnessSecretsPath(cwd, '.config/custom.env'),
+    resolveHarnessSecretsPath(cwd, '.config/custom.env', env),
     resolve(cwd, '.config/custom.env'),
   );
-  assert.equal(resolveHarnessSecretsPath(cwd, '   '), resolve(cwd, HARNESS_SECRETS_FILE_PATH));
+  assert.equal(resolveHarnessSecretsPath(cwd, '   ', env), '/tmp/xdg-home/harness/secrets.env');
 });
 
 void test('loadHarnessSecrets returns unloaded result when file is missing', () => {

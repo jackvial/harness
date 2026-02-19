@@ -18,6 +18,7 @@ import {
   serializeGatewayRecord,
   type GatewayRecord,
 } from '../src/cli/gateway-record.ts';
+import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 
 void test('gateway record parsing accepts valid records with auth token', () => {
   const parsed = parseGatewayRecordText(
@@ -195,8 +196,12 @@ void test('invocation directory and gateway paths resolve deterministically', ()
     '/tmp/invoke',
   );
 
-  assert.equal(resolveGatewayRecordPath('/tmp/workspace'), '/tmp/workspace/.harness/gateway.json');
-  assert.equal(resolveGatewayLogPath('/tmp/workspace'), '/tmp/workspace/.harness/gateway.log');
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: '/tmp/xdg',
+  };
+  const runtimeRoot = resolveHarnessWorkspaceDirectory('/tmp/workspace', env);
+  assert.equal(resolveGatewayRecordPath('/tmp/workspace', env), `${runtimeRoot}/gateway.json`);
+  assert.equal(resolveGatewayLogPath('/tmp/workspace', env), `${runtimeRoot}/gateway.log`);
   assert.equal(DEFAULT_GATEWAY_RECORD_PATH, '.harness/gateway.json');
   assert.equal(DEFAULT_GATEWAY_LOG_PATH, '.harness/gateway.log');
 });

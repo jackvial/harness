@@ -50,6 +50,8 @@ This project has two core documents:
 - Instrumentation is permanent, controlled by one global boolean, and must support near-no-op disabled mode.
 - One config abstraction (`config-core`) and one canonical config file (`harness.config.jsonc`) govern runtime behavior.
 - Config path resolution is user-global: prefer `$XDG_CONFIG_HOME/harness/harness.config.jsonc`, otherwise `~/.harness/harness.config.jsonc`.
+- Runtime artifact path resolution is user-global and workspace-scoped: prefer `$XDG_CONFIG_HOME/harness/workspaces/<workspace-slug>/...`, otherwise `~/.harness/workspaces/<workspace-slug>/...`.
+- First run must migrate legacy local workspace artifacts from `<workspace>/.harness` into the user-global workspace-scoped runtime path without overwriting an existing global `harness.config.jsonc`.
 - First-run config bootstrapping must copy the checked-in template (`src/config/harness.config.template.jsonc`).
 - `harness.config.jsonc` must include a top-level `configVersion`; config changes require explicit migration handling for older versions.
 - Runtime feature/perf toggles are config-first (`harness.config.jsonc`); environment variables are only for process bootstrap plumbing, not the primary behavior surface.

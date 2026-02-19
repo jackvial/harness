@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { resolveHarnessConfigDirectory } from './config-core.ts';
 
 export const HARNESS_SECRETS_FILE_PATH = '.harness/secrets.env';
 
@@ -143,17 +144,21 @@ export function parseHarnessSecretsText(text: string): Readonly<Record<string, s
   return entries;
 }
 
-export function resolveHarnessSecretsPath(cwd: string, filePath?: string): string {
+export function resolveHarnessSecretsPath(
+  cwd: string,
+  filePath?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
   if (typeof filePath === 'string' && filePath.trim().length > 0) {
     return resolve(cwd, filePath);
   }
-  return resolve(cwd, HARNESS_SECRETS_FILE_PATH);
+  return resolve(resolveHarnessConfigDirectory(cwd, env), 'secrets.env');
 }
 
 export function loadHarnessSecrets(options: LoadHarnessSecretsOptions = {}): LoadedHarnessSecrets {
   const cwd = options.cwd ?? process.cwd();
-  const filePath = resolveHarnessSecretsPath(cwd, options.filePath);
   const env = options.env ?? process.env;
+  const filePath = resolveHarnessSecretsPath(cwd, options.filePath, env);
   const overrideExisting = options.overrideExisting ?? false;
   if (!existsSync(filePath)) {
     return {

@@ -5,6 +5,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -33,6 +34,11 @@ import {
   type GatewayRecord,
 } from '../src/cli/gateway-record.ts';
 import { loadHarnessConfig } from '../src/config/config-core.ts';
+import {
+  resolveHarnessRuntimePath,
+  resolveHarnessWorkspaceDirectory,
+} from '../src/config/harness-paths.ts';
+import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   buildCursorManagedHookRelayCommand,
@@ -72,8 +78,8 @@ const DEFAULT_GATEWAY_START_RETRY_WINDOW_MS = 6000;
 const DEFAULT_GATEWAY_START_RETRY_DELAY_MS = 40;
 const DEFAULT_GATEWAY_STOP_TIMEOUT_MS = 5000;
 const DEFAULT_GATEWAY_STOP_POLL_MS = 50;
-const DEFAULT_PROFILE_ROOT_PATH = '.harness/profiles';
-const DEFAULT_SESSION_ROOT_PATH = '.harness/sessions';
+const DEFAULT_PROFILE_ROOT_PATH = 'profiles';
+const DEFAULT_SESSION_ROOT_PATH = 'sessions';
 const PROFILE_STATE_FILE_NAME = 'active-profile.json';
 const PROFILE_CLIENT_FILE_NAME = 'client.cpuprofile';
 const PROFILE_GATEWAY_FILE_NAME = 'gateway.cpuprofile';
@@ -316,35 +322,50 @@ function resolveSessionPaths(
   invocationDirectory: string,
   sessionName: string | null,
 ): SessionPaths {
-  const statusTimelineStatePath = resolveStatusTimelineStatePath(invocationDirectory, sessionName);
+  const workspaceDirectory = resolveHarnessWorkspaceDirectory(invocationDirectory, process.env);
+  const statusTimelineStatePath = resolveStatusTimelineStatePath(
+    invocationDirectory,
+    sessionName,
+    process.env,
+  );
   const defaultStatusTimelineOutputPath = resolveDefaultStatusTimelineOutputPath(
     invocationDirectory,
     sessionName,
+    process.env,
   );
-  const renderTraceStatePath = resolveRenderTraceStatePath(invocationDirectory, sessionName);
+  const renderTraceStatePath = resolveRenderTraceStatePath(
+    invocationDirectory,
+    sessionName,
+    process.env,
+  );
   const defaultRenderTraceOutputPath = resolveDefaultRenderTraceOutputPath(
     invocationDirectory,
     sessionName,
+    process.env,
   );
   if (sessionName === null) {
     return {
-      recordPath: resolveGatewayRecordPath(invocationDirectory),
-      logPath: resolveGatewayLogPath(invocationDirectory),
-      defaultStateDbPath: resolve(invocationDirectory, DEFAULT_GATEWAY_DB_PATH),
-      profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH),
-      profileStatePath: resolve(invocationDirectory, '.harness', PROFILE_STATE_FILE_NAME),
+      recordPath: resolveGatewayRecordPath(invocationDirectory, process.env),
+      logPath: resolveGatewayLogPath(invocationDirectory, process.env),
+      defaultStateDbPath: resolveHarnessRuntimePath(
+        invocationDirectory,
+        DEFAULT_GATEWAY_DB_PATH,
+        process.env,
+      ),
+      profileDir: resolve(workspaceDirectory, DEFAULT_PROFILE_ROOT_PATH),
+      profileStatePath: resolve(workspaceDirectory, PROFILE_STATE_FILE_NAME),
       statusTimelineStatePath,
       defaultStatusTimelineOutputPath,
       renderTraceStatePath,
       defaultRenderTraceOutputPath,
     };
   }
-  const sessionRoot = resolve(invocationDirectory, DEFAULT_SESSION_ROOT_PATH, sessionName);
+  const sessionRoot = resolve(workspaceDirectory, DEFAULT_SESSION_ROOT_PATH, sessionName);
   return {
     recordPath: resolve(sessionRoot, 'gateway.json'),
     logPath: resolve(sessionRoot, 'gateway.log'),
     defaultStateDbPath: resolve(sessionRoot, 'control-plane.sqlite'),
-    profileDir: resolve(invocationDirectory, DEFAULT_PROFILE_ROOT_PATH, sessionName),
+    profileDir: resolve(workspaceDirectory, DEFAULT_PROFILE_ROOT_PATH, sessionName),
     profileStatePath: resolve(sessionRoot, PROFILE_STATE_FILE_NAME),
     statusTimelineStatePath,
     defaultStatusTimelineOutputPath,
@@ -830,9 +851,24 @@ function readGatewayRecord(recordPath: string): GatewayRecord | null {
   }
 }
 
+function writeTextFileAtomically(filePath: string, text: string): void {
+  mkdirSync(dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${randomUUID()}`;
+  try {
+    writeFileSync(tempPath, text, 'utf8');
+    renameSync(tempPath, filePath);
+  } catch (error: unknown) {
+    try {
+      unlinkSync(tempPath);
+    } catch {
+      // Best-effort cleanup only.
+    }
+    throw error;
+  }
+}
+
 function writeGatewayRecord(recordPath: string, record: GatewayRecord): void {
-  mkdirSync(dirname(recordPath), { recursive: true });
-  writeFileSync(recordPath, serializeGatewayRecord(record), 'utf8');
+  writeTextFileAtomically(recordPath, serializeGatewayRecord(record));
 }
 
 function removeGatewayRecord(recordPath: string): void {
@@ -916,8 +952,7 @@ function readActiveProfileState(profileStatePath: string): ActiveProfileState | 
 }
 
 function writeActiveProfileState(profileStatePath: string, state: ActiveProfileState): void {
-  mkdirSync(dirname(profileStatePath), { recursive: true });
-  writeFileSync(profileStatePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  writeTextFileAtomically(profileStatePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function removeActiveProfileState(profileStatePath: string): void {
@@ -947,8 +982,7 @@ function readActiveStatusTimelineState(statePath: string): ActiveStatusTimelineS
 }
 
 function writeActiveStatusTimelineState(statePath: string, state: ActiveStatusTimelineState): void {
-  mkdirSync(dirname(statePath), { recursive: true });
-  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  writeTextFileAtomically(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function removeActiveStatusTimelineState(statePath: string): void {
@@ -979,8 +1013,7 @@ function readActiveRenderTraceState(statePath: string): ActiveRenderTraceState |
 }
 
 function writeActiveRenderTraceState(statePath: string, state: ActiveRenderTraceState): void {
-  mkdirSync(dirname(statePath), { recursive: true });
-  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  writeTextFileAtomically(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function removeActiveRenderTraceState(statePath: string): void {
@@ -1312,7 +1345,7 @@ function resolveGatewaySettings(
     overrides.stateDbPath ?? record?.stateDbPath ?? env.HARNESS_CONTROL_PLANE_DB_PATH,
     defaultStateDbPath,
   );
-  const stateDbPath = resolve(invocationDirectory, stateDbPathRaw);
+  const stateDbPath = resolveHarnessRuntimePath(invocationDirectory, stateDbPathRaw, env);
 
   const envToken =
     typeof env.HARNESS_CONTROL_PLANE_AUTH_TOKEN === 'string' &&
@@ -2392,6 +2425,12 @@ async function runCursorHooksCommandEntry(
 
 async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory(process.env, process.cwd());
+  const migration = migrateLegacyHarnessLayout(invocationDirectory, process.env);
+  if (migration.migrated) {
+    process.stdout.write(
+      `[migration] local .harness migrated to global runtime layout (${String(migration.migratedEntries)} entries, configCopied=${String(migration.configCopied)}, secretsCopied=${String(migration.secretsCopied)})\n`,
+    );
+  }
   loadHarnessSecrets({ cwd: invocationDirectory });
   const runtimeOptions = resolveInspectRuntimeOptions(invocationDirectory);
   const daemonScriptPath = resolveScriptPath(

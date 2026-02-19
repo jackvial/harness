@@ -718,12 +718,15 @@ Design constraints:
 - Config location is user-global with XDG precedence:
   - `$XDG_CONFIG_HOME/harness/harness.config.jsonc` when `XDG_CONFIG_HOME` is set
   - `~/.harness/harness.config.jsonc` otherwise
+- Runtime artifact location is user-global and workspace-scoped:
+  - `$XDG_CONFIG_HOME/harness/workspaces/<workspace-slug>/...` when `XDG_CONFIG_HOME` is set
+  - `~/.harness/workspaces/<workspace-slug>/...` otherwise
 - Config payloads are explicitly versioned with top-level `configVersion`.
 - JSON-with-comments format (JSONC) is required to allow inline documentation and annotation.
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.
 - No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
 - Runtime behavior toggles are config-first; environment variables are reserved for bootstrap/transport wiring and test harness injection, not the primary control surface.
-- Bootstrap secrets may be loaded from `.harness/secrets.env` (dotenv-style `KEY=VALUE`) into process env before startup; explicitly exported environment variables remain authoritative over file-provided values.
+- Bootstrap secrets may be loaded from user-global `secrets.env` alongside `harness.config.jsonc` (dotenv-style `KEY=VALUE`) into process env before startup; explicitly exported environment variables remain authoritative over file-provided values.
 - GitHub sync policy is config-governed under `github.*`:
   - `enabled` defaults to `true`
   - `apiBaseUrl`, `tokenEnvVar`, `pollMs`, `maxConcurrency`, `branchStrategy`, and optional `viewerLogin` are normalized by `config-core`
@@ -741,6 +744,7 @@ Design constraints:
   - invalid custom files or unknown presets must fall back deterministically to a safe preset while keeping mux startup healthy
 - Config lifecycle:
   - on first run, bootstrap config by copying the checked-in template (`src/config/harness.config.template.jsonc`)
+  - when upgrading from legacy local workspace state (`<workspace>/.harness`), copy runtime artifacts into the user-global workspace-scoped runtime path on first run without overwriting an existing global config file
   - parse -> validate -> publish immutable runtime snapshot
   - unversioned legacy files migrate forward to the current `configVersion`
   - unknown future `configVersion` values must fail closed and preserve startup health via last-known-good fallback

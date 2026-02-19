@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { basename, join, resolve } from 'node:path';
+import { basename, join } from 'node:path';
 import type { EventScope } from '../../events/normalized-events.ts';
+import { resolveHarnessRuntimePath } from '../../config/harness-paths.ts';
 
 const DEFAULT_RECORDING_FPS = 30;
 const RECORDINGS_DIR_RELATIVE_PATH = '.harness/recordings';
@@ -112,7 +113,11 @@ export function parseMuxArgs(argv: string[], options: ParseMuxArgsOptions = {}):
   let recordingPath: string | null = null;
   let recordingGifOutputPath: string | null = null;
   if (recordEnabled) {
-    const recordingsDirectoryPath = resolve(invocationDirectory, RECORDINGS_DIR_RELATIVE_PATH);
+    const recordingsDirectoryPath = resolveHarnessRuntimePath(
+      invocationDirectory,
+      RECORDINGS_DIR_RELATIVE_PATH,
+      env,
+    );
     const nowToken = sanitizeFileToken(nowIso().replaceAll(':', '-').replaceAll('.', '-'));
     const randomToken = sanitizeFileToken(randomId());
     const stem = `${nowToken}-${randomToken}`;
@@ -125,7 +130,11 @@ export function parseMuxArgs(argv: string[], options: ParseMuxArgsOptions = {}):
 
   return {
     codexArgs,
-    storePath: env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite',
+    storePath: resolveHarnessRuntimePath(
+      invocationDirectory,
+      env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite',
+      env,
+    ),
     initialConversationId,
     invocationDirectory,
     controlPlaneHost,

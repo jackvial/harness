@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveHarnessWorkspaceDirectory } from '../../config/harness-paths.ts';
 
 type GatewayProfilerAction = 'start' | 'stop';
 
@@ -47,11 +48,13 @@ function firstNonEmptyLine(text: string): string | null {
 export function resolveProfileStatePath(
   invocationDirectory: string,
   sessionName: string | null,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
+  const workspaceDirectory = resolveHarnessWorkspaceDirectory(invocationDirectory, env);
   if (sessionName === null) {
-    return resolve(invocationDirectory, '.harness', 'active-profile.json');
+    return resolve(workspaceDirectory, 'active-profile.json');
   }
-  return resolve(invocationDirectory, '.harness', 'sessions', sessionName, 'active-profile.json');
+  return resolve(workspaceDirectory, 'sessions', sessionName, 'active-profile.json');
 }
 
 export function resolveHarnessProfileCommandArgs(
