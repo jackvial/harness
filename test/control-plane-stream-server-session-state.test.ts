@@ -527,6 +527,45 @@ void test('stream server blocks non-controller mutations until takeover claim su
   }
 });
 
+void test('stream server reports agent tool availability and configured install commands', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    agentInstall: {
+      codex: {
+        command: 'brew install codex-cli',
+      },
+      critique: {
+        command: null,
+      },
+    },
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+
+  try {
+    const result = await client.sendCommand({
+      type: 'agent.tools.status',
+      agentTypes: ['codex', 'critique', 'unknown'],
+    });
+    const tools = result['tools'] as readonly Record<string, unknown>[];
+    assert.equal(tools.length, 2);
+    const codex = tools.find((tool) => tool['agentType'] === 'codex');
+    const critique = tools.find((tool) => tool['agentType'] === 'critique');
+    assert.notEqual(codex, undefined);
+    assert.notEqual(critique, undefined);
+    assert.equal(typeof codex?.['available'], 'boolean');
+    assert.equal(typeof critique?.['available'], 'boolean');
+    assert.equal(codex?.['installCommand'], 'brew install codex-cli');
+    assert.equal(critique?.['installCommand'], null);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('stream server assertConnectionCanMutateSession tolerates stale null-controller branch', async () => {
   const server = new ControlPlaneStreamServer({
     startSession: (input) => new FakeLiveSession(input),

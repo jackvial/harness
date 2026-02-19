@@ -20,6 +20,7 @@ const HARNESS_CONFIG_TEMPLATE_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   HARNESS_CONFIG_TEMPLATE_FILE_NAME,
 );
+const DEFAULT_CRITIQUE_INSTALL_PACKAGE = 'critique@latest';
 
 const HARNESS_LIFECYCLE_EVENT_TYPES = [
   'thread.created',
@@ -123,10 +124,15 @@ interface HarnessCodexLaunchConfig {
   readonly directoryModes: Readonly<Record<string, HarnessCodexLaunchMode>>;
 }
 
+interface HarnessAgentInstallConfig {
+  readonly command: string | null;
+}
+
 interface HarnessCodexConfig {
   readonly telemetry: HarnessCodexTelemetryConfig;
   readonly history: HarnessCodexHistoryConfig;
   readonly launch: HarnessCodexLaunchConfig;
+  readonly install: HarnessAgentInstallConfig;
 }
 
 type HarnessClaudeLaunchMode = 'yolo' | 'standard';
@@ -138,6 +144,7 @@ interface HarnessClaudeLaunchConfig {
 
 interface HarnessClaudeConfig {
   readonly launch: HarnessClaudeLaunchConfig;
+  readonly install: HarnessAgentInstallConfig;
 }
 
 type HarnessCursorLaunchMode = 'yolo' | 'standard';
@@ -149,20 +156,16 @@ interface HarnessCursorLaunchConfig {
 
 interface HarnessCursorConfig {
   readonly launch: HarnessCursorLaunchConfig;
+  readonly install: HarnessAgentInstallConfig;
 }
 
 interface HarnessCritiqueLaunchConfig {
   readonly defaultArgs: readonly string[];
 }
 
-interface HarnessCritiqueInstallConfig {
-  readonly autoInstall: boolean;
-  readonly package: string;
-}
-
 interface HarnessCritiqueConfig {
   readonly launch: HarnessCritiqueLaunchConfig;
-  readonly install: HarnessCritiqueInstallConfig;
+  readonly install: HarnessAgentInstallConfig;
 }
 
 interface HarnessLifecycleProviderConfig {
@@ -280,11 +283,17 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       defaultMode: 'yolo',
       directoryModes: {},
     },
+    install: {
+      command: null,
+    },
   },
   claude: {
     launch: {
       defaultMode: 'yolo',
       directoryModes: {},
+    },
+    install: {
+      command: null,
     },
   },
   cursor: {
@@ -292,14 +301,16 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       defaultMode: 'yolo',
       directoryModes: {},
     },
+    install: {
+      command: null,
+    },
   },
   critique: {
     launch: {
       defaultArgs: ['--watch'],
     },
     install: {
-      autoInstall: true,
-      package: 'critique@latest',
+      command: 'bunx critique@latest',
     },
   },
   hooks: {
@@ -866,6 +877,7 @@ function normalizeCodexConfig(input: unknown): HarnessCodexConfig {
     telemetry: normalizeCodexTelemetryConfig(record['telemetry']),
     history: normalizeCodexHistoryConfig(record['history']),
     launch: normalizeCodexLaunchConfig(record['launch']),
+    install: normalizeAgentInstallConfig(record['install'], DEFAULT_HARNESS_CONFIG.codex.install),
   };
 }
 
@@ -922,6 +934,7 @@ function normalizeClaudeConfig(input: unknown): HarnessClaudeConfig {
   }
   return {
     launch: normalizeClaudeLaunchConfig(record['launch']),
+    install: normalizeAgentInstallConfig(record['install'], DEFAULT_HARNESS_CONFIG.claude.install),
   };
 }
 
@@ -978,6 +991,7 @@ function normalizeCursorConfig(input: unknown): HarnessCursorConfig {
   }
   return {
     launch: normalizeCursorLaunchConfig(record['launch']),
+    install: normalizeAgentInstallConfig(record['install'], DEFAULT_HARNESS_CONFIG.cursor.install),
   };
 }
 
@@ -989,6 +1003,58 @@ function normalizeStringArray(input: unknown, fallback: readonly string[]): read
     .flatMap((value) => (typeof value === 'string' ? [value.trim()] : []))
     .filter((value) => value.length > 0);
   return normalized.length === 0 ? fallback : normalized;
+}
+
+function normalizeInstallCommand(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+function normalizeAgentInstallConfig(
+  input: unknown,
+  fallback: HarnessAgentInstallConfig,
+  options?: {
+    readonly allowLegacyCritiquePackage?: boolean;
+  },
+): HarnessAgentInstallConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return fallback;
+  }
+  const command = normalizeInstallCommand(record['command']);
+  if (command !== undefined) {
+    return {
+      command,
+    };
+  }
+  if (options?.allowLegacyCritiquePackage === true) {
+    const packageRaw = record['package'];
+    const packageName =
+      typeof packageRaw === 'string' && packageRaw.trim().length > 0
+        ? packageRaw.trim()
+        : DEFAULT_CRITIQUE_INSTALL_PACKAGE;
+    const autoInstallRaw = record['autoInstall'];
+    if (typeof autoInstallRaw === 'boolean') {
+      return {
+        command: autoInstallRaw ? `bunx ${packageName}` : null,
+      };
+    }
+    if (typeof packageRaw === 'string') {
+      return {
+        command: `bunx ${packageName}`,
+      };
+    }
+  }
+  return fallback;
 }
 
 function normalizeCritiqueLaunchConfig(input: unknown): HarnessCritiqueLaunchConfig {
@@ -1004,24 +1070,6 @@ function normalizeCritiqueLaunchConfig(input: unknown): HarnessCritiqueLaunchCon
   };
 }
 
-function normalizeCritiqueInstallConfig(input: unknown): HarnessCritiqueInstallConfig {
-  const record = asRecord(input);
-  if (record === null) {
-    return DEFAULT_HARNESS_CONFIG.critique.install;
-  }
-  const packageName =
-    typeof record['package'] === 'string' && record['package'].trim().length > 0
-      ? record['package'].trim()
-      : DEFAULT_HARNESS_CONFIG.critique.install.package;
-  return {
-    autoInstall:
-      typeof record['autoInstall'] === 'boolean'
-        ? record['autoInstall']
-        : DEFAULT_HARNESS_CONFIG.critique.install.autoInstall,
-    package: packageName,
-  };
-}
-
 function normalizeCritiqueConfig(input: unknown): HarnessCritiqueConfig {
   const record = asRecord(input);
   if (record === null) {
@@ -1029,7 +1077,13 @@ function normalizeCritiqueConfig(input: unknown): HarnessCritiqueConfig {
   }
   return {
     launch: normalizeCritiqueLaunchConfig(record['launch']),
-    install: normalizeCritiqueInstallConfig(record['install']),
+    install: normalizeAgentInstallConfig(
+      record['install'],
+      DEFAULT_HARNESS_CONFIG.critique.install,
+      {
+        allowLegacyCritiquePackage: true,
+      },
+    ),
   };
 }
 

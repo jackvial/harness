@@ -614,7 +614,7 @@ void test('stream server auto-starts persisted conversations during gateway star
   }
 });
 
-void test('stream server starts critique sessions through bunx when auto-install is enabled', async () => {
+void test('stream server starts critique sessions directly even when install command is configured', async () => {
   const created: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     startSession: (input) => {
@@ -626,9 +626,10 @@ void test('stream server starts critique sessions through bunx when auto-install
       launch: {
         defaultArgs: ['--watch'],
       },
-      install: {
-        autoInstall: true,
-        package: 'critique@latest',
+    },
+    agentInstall: {
+      critique: {
+        command: 'bunx critique@latest',
       },
     },
   });
@@ -666,22 +667,22 @@ void test('stream server starts critique sessions through bunx when auto-install
       worktreeId: 'worktree-critique',
     });
     assert.equal(created.length, 1);
-    assert.equal(created[0]?.input.command, 'bunx');
-    assert.deepEqual(created[0]?.input.args, ['critique@latest', '--watch']);
+    assert.equal(created[0]?.input.command, 'critique');
+    assert.deepEqual(created[0]?.input.args, ['--watch']);
     assert.deepEqual(created[0]?.input.baseArgs, []);
 
     const status = await client.sendCommand({
       type: 'session.status',
       sessionId: 'conversation-critique',
     });
-    assert.equal(status['launchCommand'], 'bunx critique@latest --watch');
+    assert.equal(status['launchCommand'], 'critique --watch');
   } finally {
     client.close();
     await server.close();
   }
 });
 
-void test('stream server starts critique sessions directly when auto-install is disabled', async () => {
+void test('stream server starts critique sessions directly when launch args are configured', async () => {
   const created: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     startSession: (input) => {
@@ -692,10 +693,6 @@ void test('stream server starts critique sessions directly when auto-install is 
     critique: {
       launch: {
         defaultArgs: ['--watch'],
-      },
-      install: {
-        autoInstall: false,
-        package: 'critique@latest',
       },
     },
   });

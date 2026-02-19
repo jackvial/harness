@@ -349,6 +349,14 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c1aa',
+      command: {
+        type: 'agent.tools.status',
+        agentTypes: ['codex', 'critique'],
+      },
+    },
+    {
+      kind: 'command',
       commandId: 'c1b',
       command: {
         type: 'session.status',

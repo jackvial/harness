@@ -148,6 +148,7 @@ void test('runtime input router composes modal rail and main-pane routing surfac
   };
   assert.equal(runtimeInputRouter.routeModalInput(Buffer.from('a')), true);
   workspace.commandMenu = {
+    scope: 'all',
     query: 'cur',
     selectedIndex: 0,
   };

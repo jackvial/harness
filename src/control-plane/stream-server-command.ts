@@ -451,6 +451,12 @@ interface ExecuteCommandContext {
   requireSession(sessionId: string): SessionState;
   requireLiveSession(sessionId: string): SessionState & { session: LiveSessionLike };
   sessionSummaryRecord(state: SessionState): Record<string, unknown>;
+  resolveAgentToolStatus(agentTypes?: readonly string[]): ReadonlyArray<{
+    agentType: string;
+    launchCommand: string;
+    available: boolean;
+    installCommand: string | null;
+  }>;
   snapshotRecordFromFrame(frame: TerminalSnapshotFrame): Record<string, unknown>;
   toPublicSessionController(
     controller: SessionControllerState | null,
@@ -2284,6 +2290,12 @@ export async function executeStreamServerCommand(
         [...ctx.sessions.values()].filter((state) => state.status === 'needs-input'),
         'attention-first',
       ),
+    };
+  }
+
+  if (command.type === 'agent.tools.status') {
+    return {
+      tools: ctx.resolveAgentToolStatus(command.agentTypes),
     };
   }
 

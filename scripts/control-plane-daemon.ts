@@ -171,6 +171,12 @@ async function main(): Promise<number> {
       directoryModes: codexLaunchDirectoryModes,
     },
     critique: loadedConfig.config.critique,
+    agentInstall: {
+      codex: loadedConfig.config.codex.install,
+      claude: loadedConfig.config.claude.install,
+      cursor: loadedConfig.config.cursor.install,
+      critique: loadedConfig.config.critique.install,
+    },
     cursorLaunch: {
       defaultMode: loadedConfig.config.cursor.launch.defaultMode,
       directoryModes: cursorLaunchDirectoryModes,

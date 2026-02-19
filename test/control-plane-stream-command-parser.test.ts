@@ -1325,3 +1325,47 @@ void test('parseStreamCommand parses session.snapshot tailLines and rejects malf
     null,
   );
 });
+
+void test('parseStreamCommand parses agent.tools.status and rejects malformed agentTypes', () => {
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'agent.tools.status',
+    }),
+    {
+      type: 'agent.tools.status',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'agent.tools.status',
+      agentTypes: ['codex', ' critique ', ''],
+    }),
+    {
+      type: 'agent.tools.status',
+      agentTypes: ['codex', 'critique'],
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'agent.tools.status',
+      agentTypes: [],
+    }),
+    {
+      type: 'agent.tools.status',
+    },
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'agent.tools.status',
+      agentTypes: ['codex', 1],
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'agent.tools.status',
+      agentTypes: 'codex',
+    }),
+    null,
+  );
+});

@@ -240,6 +240,7 @@ Pass-through stream invariants:
 - In canonical remote/gateway mode, mux exits without closing live sessions so work continues after client disconnect.
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
+- Left-rail `[+ thread]` opens a thread-scoped command-menu variant (same matcher/autocomplete path) instead of a dedicated chooser modal.
 - Gateway profiling moved to `ctrl+shift+p` so command menu invocation and profiling controls do not collide.
 
 ### Command Menu Model
@@ -276,7 +277,7 @@ Pass-through stream invariants:
 - Project rows in the left rail are selectable; selecting a project switches the right pane into a project view and scopes project actions to that explicit selection.
 - `new thread` preserves thread-project affinity when a thread row is selected; in project view it uses the selected project.
 - Projects may remain thread-empty; mux does not auto-seed a thread on startup/project-add/fallback and instead exposes explicit `new thread` entry points.
-- Creating a thread uses a modal agent-type chooser (`codex`, `claude`, `cursor`, `terminal`, or `critique`); terminal threads launch a plain interactive shell over the same PTY/control-plane path, while critique threads default to `critique --watch` (with optional bunx auto-install launch mode).
+- Creating a thread uses command-menu actions (`codex`, `claude`, `cursor`, `terminal`, `critique`); terminal threads launch a plain interactive shell over the same PTY/control-plane path, while critique threads default to `critique --watch`.
 - Clicking the active thread title row enters inline title-edit mode; edits update locally immediately and persist through debounced `conversation.update` control-plane commands.
 - The pane separator is draggable; divider moves recompute layout and PTY resize through the normal mux resize path.
 - The mux status row is performance-focused: live FPS and throughput (`KB/s`) plus render/output/event-loop timing stats.
@@ -727,6 +728,9 @@ Design constraints:
   - `codex.launch`, `claude.launch`, and `cursor.launch`
   - each supports `defaultMode` (`yolo` or `standard`) as the fallback for all directories
   - each supports `directoryModes` for per-directory overrides keyed by workspace path
+- Tool install commands are config-governed under each provider section:
+  - `codex.install.command`, `claude.install.command`, `cursor.install.command`, `critique.install.command`
+  - values are shell command strings (or `null`) surfaced by `agent.tools.status` and used by thread-scoped install actions
 - Mux theme policy is config-governed under `mux.ui.theme`:
   - `preset` selects a built-in OpenCode-compatible theme pack
   - `mode` selects `dark` or `light` variant resolution

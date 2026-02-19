@@ -714,6 +714,9 @@ void test('parseHarnessConfigText parses codex telemetry and history settings', 
         './sandbox': 'standard',
       },
     },
+    install: {
+      command: null,
+    },
   });
 });
 
@@ -829,10 +832,13 @@ void test('parseHarnessConfigText parses claude launch settings', () => {
         './sandbox': 'standard',
       },
     },
+    install: {
+      command: null,
+    },
   });
 });
 
-void test('parseHarnessConfigText parses critique launch/install settings', () => {
+void test('parseHarnessConfigText parses critique launch/install command settings', () => {
   const parsed = parseHarnessConfigText(`
     {
       "critique": {
@@ -840,8 +846,7 @@ void test('parseHarnessConfigText parses critique launch/install settings', () =
           "defaultArgs": ["--watch", "--help"]
         },
         "install": {
-          "autoInstall": false,
-          "package": " critique@next "
+          "command": " bunx critique@next "
         }
       }
     }
@@ -851,10 +856,23 @@ void test('parseHarnessConfigText parses critique launch/install settings', () =
       defaultArgs: ['--watch', '--help'],
     },
     install: {
-      autoInstall: false,
-      package: 'critique@next',
+      command: 'bunx critique@next',
     },
   });
+});
+
+void test('parseHarnessConfigText preserves legacy critique install autoInstall/package settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "critique": {
+        "install": {
+          "autoInstall": true,
+          "package": " critique@next "
+        }
+      }
+    }
+  `);
+  assert.equal(parsed.critique.install.command, 'bunx critique@next');
 });
 
 void test('parseHarnessConfigText falls back for invalid critique settings', () => {
@@ -872,6 +890,21 @@ void test('parseHarnessConfigText falls back for invalid critique settings', () 
     }
   `);
   assert.deepEqual(parsed.critique, DEFAULT_HARNESS_CONFIG.critique);
+});
+
+void test('parseHarnessConfigText falls back when critique install command is non-string and legacy fields are invalid', () => {
+  const parsed = parseHarnessConfigText(`
+      {
+        "critique": {
+          "install": {
+            "command": 42,
+            "autoInstall": "yes",
+            "package": true
+          }
+        }
+      }
+    `);
+  assert.deepEqual(parsed.critique.install, DEFAULT_HARNESS_CONFIG.critique.install);
 });
 
 void test('parseHarnessConfigText critique fallback handles non-object launch/install and non-array defaultArgs', () => {
@@ -921,6 +954,9 @@ void test('parseHarnessConfigText falls back for invalid claude settings', () =>
       directoryModes: {
         './safe': 'standard',
       },
+    },
+    install: {
+      command: null,
     },
   });
 
@@ -975,6 +1011,9 @@ void test('parseHarnessConfigText parses cursor launch settings', () => {
         './sandbox': 'standard',
       },
     },
+    install: {
+      command: null,
+    },
   });
 });
 
@@ -999,6 +1038,9 @@ void test('parseHarnessConfigText falls back for invalid cursor settings', () =>
       directoryModes: {
         './safe': 'standard',
       },
+    },
+    install: {
+      command: null,
     },
   });
 
@@ -1029,6 +1071,31 @@ void test('parseHarnessConfigText falls back for invalid cursor settings', () =>
     }
   `);
   assert.deepEqual(parsedWithNullLaunch.cursor.launch, DEFAULT_HARNESS_CONFIG.cursor.launch);
+});
+
+void test('parseHarnessConfigText parses codex/claude/cursor install command settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "codex": {
+        "install": {
+          "command": "bunx @openai/codex@latest"
+        }
+      },
+      "claude": {
+        "install": {
+          "command": "bunx @anthropic-ai/claude-code@latest"
+        }
+      },
+      "cursor": {
+        "install": {
+          "command": null
+        }
+      }
+    }
+  `);
+  assert.equal(parsed.codex.install.command, 'bunx @openai/codex@latest');
+  assert.equal(parsed.claude.install.command, 'bunx @anthropic-ai/claude-code@latest');
+  assert.equal(parsed.cursor.install.command, null);
 });
 
 void test('parseHarnessConfigText parses lifecycle hook connectors and event filters', () => {

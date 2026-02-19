@@ -5,10 +5,11 @@ import {
   type Server as HttpServer,
   type ServerResponse,
 } from 'node:http';
+import { accessSync, constants as fsConstants, statSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type CodexLiveEvent, type LiveSessionNotifyMode } from '../codex/live-session.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
@@ -173,14 +174,21 @@ interface CritiqueLaunchConfig {
   readonly defaultArgs: readonly string[];
 }
 
-interface CritiqueInstallConfig {
-  readonly autoInstall: boolean;
-  readonly package: string;
+type AgentToolType = 'codex' | 'claude' | 'cursor' | 'critique';
+
+interface AgentInstallCommandConfig {
+  readonly command: string | null;
+}
+
+interface AgentInstallConfig {
+  readonly codex: AgentInstallCommandConfig;
+  readonly claude: AgentInstallCommandConfig;
+  readonly cursor: AgentInstallCommandConfig;
+  readonly critique: AgentInstallCommandConfig;
 }
 
 interface CritiqueConfig {
   readonly launch: CritiqueLaunchConfig;
-  readonly install: CritiqueInstallConfig;
 }
 
 interface CursorLaunchConfig {
@@ -265,6 +273,7 @@ interface StartControlPlaneStreamServerOptions {
   codexHistory?: CodexHistoryIngestConfig;
   codexLaunch?: CodexLaunchConfig;
   critique?: CritiqueConfig;
+  agentInstall?: Partial<Record<AgentToolType, AgentInstallCommandConfig>>;
   cursorLaunch?: CursorLaunchConfig;
   cursorHooks?: Partial<CursorHooksConfig>;
   gitStatus?: GitStatusMonitorConfig;
@@ -414,7 +423,13 @@ const DEFAULT_CLAUDE_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/codex-notify-relay.ts', import.meta.url),
 );
 const DEFAULT_CRITIQUE_DEFAULT_ARGS = ['--watch'] as const;
-const DEFAULT_CRITIQUE_PACKAGE = 'critique@latest';
+const SUPPORTED_AGENT_TOOL_TYPES = ['codex', 'claude', 'cursor', 'critique'] as const;
+const DEFAULT_AGENT_INSTALL_COMMANDS: Readonly<Record<AgentToolType, string | null>> = {
+  codex: null,
+  claude: null,
+  cursor: null,
+  critique: 'bunx critique@latest',
+};
 const DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/cursor-hook-relay.ts', import.meta.url),
 );
@@ -559,19 +574,57 @@ function normalizeCritiqueConfig(input: CritiqueConfig | undefined): CritiqueCon
     normalizedDefaultArgs === undefined || normalizedDefaultArgs.length === 0
       ? [...DEFAULT_CRITIQUE_DEFAULT_ARGS]
       : normalizedDefaultArgs;
-  const packageNameRaw = input?.install.package;
-  const packageName =
-    typeof packageNameRaw === 'string' && packageNameRaw.trim().length > 0
-      ? packageNameRaw.trim()
-      : DEFAULT_CRITIQUE_PACKAGE;
   return {
     launch: {
       defaultArgs,
     },
-    install: {
-      autoInstall: input?.install.autoInstall ?? true,
-      package: packageName,
-    },
+  };
+}
+
+function normalizeInstallCommand(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+function normalizeAgentToolType(value: string): AgentToolType | null {
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === 'codex' ||
+    normalized === 'claude' ||
+    normalized === 'cursor' ||
+    normalized === 'critique'
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeAgentInstallConfig(
+  input: Partial<Record<AgentToolType, AgentInstallCommandConfig>> | undefined,
+): AgentInstallConfig {
+  const normalized = (agentType: AgentToolType): AgentInstallCommandConfig => ({
+    command: (() => {
+      const parsedCommand = normalizeInstallCommand(input?.[agentType]?.command);
+      if (parsedCommand === undefined) {
+        return DEFAULT_AGENT_INSTALL_COMMANDS[agentType];
+      }
+      return parsedCommand;
+    })(),
+  });
+  return {
+    codex: normalized('codex'),
+    claude: normalized('claude'),
+    cursor: normalized('cursor'),
+    critique: normalized('critique'),
   };
 }
 
@@ -845,6 +898,7 @@ const streamServerInternals = {
   runWithConcurrencyLimit,
   gitSummaryEqual,
   gitRepositorySnapshotEqual,
+  commandExists,
   normalizeGitHubIntegrationConfig,
   parseGitHubOwnerRepoFromRemote,
   resolveTrackedBranchName,
@@ -904,6 +958,62 @@ export function resolveTerminalCommandForEnvironment(
   return platform === 'win32' ? 'cmd.exe' : 'sh';
 }
 
+function looksLikePathCommand(command: string): boolean {
+  return command.includes('/') || command.includes('\\');
+}
+
+function canExecuteFile(pathname: string): boolean {
+  try {
+    const stats = statSync(pathname);
+    if (!stats.isFile()) {
+      return false;
+    }
+    accessSync(pathname, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function commandExists(
+  command: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): boolean {
+  const normalized = command.trim();
+  if (normalized.length === 0) {
+    return false;
+  }
+  if (looksLikePathCommand(normalized) || isAbsolute(normalized)) {
+    return canExecuteFile(normalized);
+  }
+  const pathValue = env.PATH ?? '';
+  const searchPaths = pathValue
+    .split(delimiter)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  if (searchPaths.length === 0) {
+    return false;
+  }
+  const windowsExtensions =
+    platform === 'win32'
+      ? (env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM')
+          .split(';')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+      : [''];
+  const extensions = platform === 'win32' ? ['', ...windowsExtensions] : windowsExtensions;
+  for (const searchPath of searchPaths) {
+    for (const extension of extensions) {
+      const candidate = join(searchPath, `${normalized}${extension}`);
+      if (canExecuteFile(candidate)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export class ControlPlaneStreamServer {
   private readonly host: string;
   private readonly port: number;
@@ -918,6 +1028,7 @@ export class ControlPlaneStreamServer {
   private readonly codexHistory: CodexHistoryIngestConfig;
   private readonly codexLaunch: CodexLaunchConfig;
   private readonly critique: CritiqueConfig;
+  private readonly agentInstall: AgentInstallConfig;
   private readonly cursorLaunch: CursorLaunchConfig;
   private readonly cursorHooks: CursorHooksConfig;
   private readonly gitStatusMonitor: GitStatusMonitorConfig;
@@ -997,6 +1108,7 @@ export class ControlPlaneStreamServer {
     this.codexHistory = normalizeCodexHistoryConfig(options.codexHistory);
     this.codexLaunch = normalizeCodexLaunchConfig(options.codexLaunch);
     this.critique = normalizeCritiqueConfig(options.critique);
+    this.agentInstall = normalizeAgentInstallConfig(options.agentInstall);
     this.cursorLaunch = normalizeCursorLaunchConfig(options.cursorLaunch);
     this.cursorHooks = normalizeCursorHooksConfig(options.cursorHooks);
     this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
@@ -1437,6 +1549,34 @@ export class ControlPlaneStreamServer {
     };
   }
 
+  resolveAgentToolStatus(agentTypes?: readonly string[]): ReadonlyArray<{
+    agentType: string;
+    launchCommand: string;
+    available: boolean;
+    installCommand: string | null;
+  }> {
+    const requested = agentTypes ?? SUPPORTED_AGENT_TOOL_TYPES;
+    const normalized: AgentToolType[] = [];
+    for (const rawType of requested) {
+      const parsedType = normalizeAgentToolType(rawType);
+      if (parsedType === null || normalized.includes(parsedType)) {
+        continue;
+      }
+      normalized.push(parsedType);
+    }
+    const effectiveTypes = normalized.length > 0 ? normalized : [...SUPPORTED_AGENT_TOOL_TYPES];
+    return effectiveTypes.map((agentType) => {
+      const launchProfile = this.launchProfileForAgent(agentType);
+      const launchCommand = launchProfile.command ?? 'codex';
+      return {
+        agentType,
+        launchCommand,
+        available: commandExists(launchCommand, process.env, process.platform),
+        installCommand: this.agentInstall[agentType].command,
+      };
+    });
+  }
+
   private autoStartPersistedConversationsOnStartup(): void {
     const conversations = this.stateStore.listConversations();
     let started = 0;
@@ -1510,10 +1650,6 @@ export class ControlPlaneStreamServer {
       ...(claudeHookLaunchConfig?.args ?? []),
       ...baseSessionArgs,
     ];
-    if (agentType === 'critique' && this.critique.install.autoInstall) {
-      launchCommandName = 'bunx';
-      launchArgs = [this.critique.install.package, ...launchArgs];
-    }
     const launchCommand = formatLaunchCommand(launchCommandName, launchArgs);
     const startInput: StartControlPlaneSessionInput = {
       args: launchArgs,

@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'bun:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
@@ -52,6 +55,62 @@ void test('resolveTerminalCommandForEnvironment prefers shell then ComSpec then 
     ),
     'sh',
   );
+});
+
+void test('stream server helper internals cover commandExists PATH and PATHEXT normalization', () => {
+  const binDir = mkdtempSync(join(tmpdir(), 'harness-win-command-exists-'));
+  const commandPath = join(binDir, 'codex.CMD');
+  writeFileSync(commandPath, '@echo off\r\nexit /b 0\r\n', 'utf8');
+  chmodSync(commandPath, 0o755);
+  try {
+    assert.equal(
+      streamServerTestInternals.commandExists(
+        'codex',
+        {
+          PATH: `${binDir}${process.platform === 'win32' ? ';' : ':'}/tmp/does-not-exist`,
+          PATHEXT: ' .CMD ; .EXE ',
+        },
+        'win32',
+      ),
+      true,
+    );
+    assert.equal(
+      streamServerTestInternals.commandExists(
+        'codex',
+        {
+          PATH: '/tmp/does-not-exist',
+          PATHEXT: '.CMD;.EXE',
+        },
+        'win32',
+      ),
+      false,
+    );
+  } finally {
+    rmSync(binDir, { recursive: true, force: true });
+  }
+});
+
+void test('stream server default constructor callback fields execute without explicit option overrides', async () => {
+  const server = new ControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    githubExecFile: (_file, _args, _options, callback) => {
+      callback(new Error('gh unavailable for test fallback'), '', '');
+    },
+  });
+  const internals = server as unknown as {
+    githubTokenResolver: () => Promise<string | null>;
+    readGitDirectorySnapshot: (cwd: string) => Promise<unknown>;
+  };
+  try {
+    const token = await internals.githubTokenResolver();
+    assert.equal(token, null);
+
+    const snapshot = await internals.readGitDirectorySnapshot(process.cwd());
+    assert.equal(typeof snapshot, 'object');
+    assert.notEqual(snapshot, null);
+  } finally {
+    await server.close();
+  }
 });
 
 void test('stream server helper internals cover concurrency and git snapshot equality', async () => {

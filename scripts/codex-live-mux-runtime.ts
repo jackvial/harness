@@ -23,7 +23,6 @@ import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../src/mux/
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
 import {
-  createNewThreadPromptState,
   normalizeThreadAgentType,
   resolveNewThreadPromptAgentByRow,
 } from '../src/mux/new-thread-prompt.ts';
@@ -133,7 +132,6 @@ import {
 import { type GitRepositorySnapshot, type GitSummary } from '../src/mux/live-mux/git-state.ts';
 import { resolveDirectoryForAction as resolveDirectoryForActionFn } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
-import { openNewThreadPrompt as openNewThreadPromptFn } from '../src/mux/live-mux/actions-conversation.ts';
 import {
   resolveProfileStatePath,
   toggleGatewayProfiler as toggleGatewayProfilerFn,
@@ -180,6 +178,10 @@ import { RuntimeTaskPane } from '../src/services/runtime-task-pane.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
+import {
+  RuntimeCommandMenuAgentTools,
+  type InstallableAgentType,
+} from '../src/services/runtime-command-menu-agent-tools.ts';
 import { RuntimeWorkspaceActions } from '../src/services/runtime-workspace-actions.ts';
 import { WorkspaceObservedEvents } from '../src/services/workspace-observed-events.ts';
 import { RuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
@@ -560,6 +562,12 @@ async function main(): Promise<number> {
         codexTelemetry: loadedConfig.config.codex.telemetry,
         codexHistory: loadedConfig.config.codex.history,
         critique: loadedConfig.config.critique,
+        agentInstall: {
+          codex: loadedConfig.config.codex.install,
+          claude: loadedConfig.config.claude.install,
+          cursor: loadedConfig.config.cursor.install,
+          critique: loadedConfig.config.critique.install,
+        },
         gitStatus: {
           enabled: loadedConfig.config.mux.git.enabled,
           pollMs: loadedConfig.config.mux.git.idlePollMs,
@@ -1292,9 +1300,16 @@ async function main(): Promise<number> {
   });
   const commandMenuRegistry = new CommandMenuRegistry<RuntimeCommandMenuContext>();
   let commandMenuGitHubProjectPrState: CommandMenuGitHubProjectPrState | null = null;
+  let commandMenuScopedDirectoryId: string | null = null;
   const commandMenuContext = (): RuntimeCommandMenuContext => {
     const activeConversation = conversationManager.getActiveConversation();
-    const activeDirectoryId = resolveDirectoryForAction();
+    const scopedDirectoryId =
+      workspace.commandMenu?.scope === 'thread-start' &&
+      commandMenuScopedDirectoryId !== null &&
+      directoryManager.hasDirectory(commandMenuScopedDirectoryId)
+        ? commandMenuScopedDirectoryId
+        : null;
+    const activeDirectoryId = scopedDirectoryId ?? resolveDirectoryForAction();
     const activeDirectoryRepositorySnapshot =
       activeDirectoryId === null
         ? null
@@ -1331,8 +1346,19 @@ async function main(): Promise<number> {
       githubProjectPrLoading: githubProjectPrState?.loading ?? false,
     };
   };
+  const resolveVisibleCommandMenuActions = (
+    context: RuntimeCommandMenuContext,
+  ): readonly RegisteredCommandMenuAction<RuntimeCommandMenuContext>[] => {
+    const actions = commandMenuRegistry.resolveActions(context);
+    if (workspace.commandMenu?.scope !== 'thread-start') {
+      return actions;
+    }
+    return actions.filter(
+      (action) => action.id.startsWith('thread.start.') || action.id.startsWith('thread.install.'),
+    );
+  };
   const resolveCommandMenuActions = (): readonly CommandMenuActionDescriptor[] => {
-    return commandMenuRegistry.resolveActions(commandMenuContext()).map((action) => ({
+    return resolveVisibleCommandMenuActions(commandMenuContext()).map((action) => ({
       id: action.id,
       title: action.title,
       ...(action.aliases === undefined
@@ -1355,7 +1381,7 @@ async function main(): Promise<number> {
   const executeCommandMenuAction = (actionId: string): void => {
     const context = commandMenuContext();
     const action =
-      commandMenuRegistry.resolveActions(context).find((candidate) => candidate.id === actionId) ??
+      resolveVisibleCommandMenuActions(context).find((candidate) => candidate.id === actionId) ??
       null;
     if (action === null) {
       return;
@@ -1460,6 +1486,12 @@ async function main(): Promise<number> {
   ): void => {
     controlPlaneOps.enqueueBackground(task, label);
   };
+  const commandMenuAgentTools = new RuntimeCommandMenuAgentTools({
+    sendCommand: async (command) => await streamClient.sendCommand(command),
+    queueControlPlaneOp,
+    getCommandMenu: () => workspace.commandMenu,
+    markDirty,
+  });
   const setCommandNotice = (message: string): void => {
     workspace.taskPaneNotice = message;
     debugFooterNotice.set(message);
@@ -2061,28 +2093,24 @@ async function main(): Promise<number> {
   };
 
   const openNewThreadPrompt = (directoryId: string): void => {
-    openNewThreadPromptFn({
-      directoryId,
-      directoriesHas: (nextDirectoryId) => directoryManager.hasDirectory(nextDirectoryId),
-      clearAddDirectoryPrompt: () => {
-        workspace.addDirectoryPrompt = null;
-      },
-      clearRepositoryPrompt: () => {
-        workspace.repositoryPrompt = null;
-      },
-      hasConversationTitleEdit: workspace.conversationTitleEdit !== null,
-      stopConversationTitleEdit: () => {
-        stopConversationTitleEdit(true);
-      },
-      clearConversationTitleEditClickState: () => {
-        workspace.conversationTitleEditClickState = null;
-      },
-      createNewThreadPromptState,
-      setNewThreadPrompt: (prompt) => {
-        workspace.newThreadPrompt = prompt;
-      },
-      markDirty,
+    if (!directoryManager.hasDirectory(directoryId)) {
+      return;
+    }
+    workspace.newThreadPrompt = null;
+    workspace.addDirectoryPrompt = null;
+    workspace.taskEditorPrompt = null;
+    workspace.repositoryPrompt = null;
+    if (workspace.conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
+    }
+    workspace.conversationTitleEditClickState = null;
+    commandMenuGitHubProjectPrState = null;
+    commandMenuScopedDirectoryId = directoryId;
+    workspace.commandMenu = createCommandMenuState({
+      scope: 'thread-start',
     });
+    commandMenuAgentTools.refresh();
+    markDirty();
   };
 
   const runtimeRepositoryActions = new RuntimeRepositoryActions<ControlPlaneRepositoryRecord>({
@@ -2297,6 +2325,7 @@ async function main(): Promise<number> {
     if (workspace.commandMenu !== null) {
       workspace.commandMenu = null;
       commandMenuGitHubProjectPrState = null;
+      commandMenuScopedDirectoryId = null;
       markDirty();
       return;
     }
@@ -2307,7 +2336,11 @@ async function main(): Promise<number> {
     if (workspace.conversationTitleEdit !== null) {
       stopConversationTitleEdit(true);
     }
-    workspace.commandMenu = createCommandMenuState();
+    commandMenuScopedDirectoryId = null;
+    workspace.commandMenu = createCommandMenuState({
+      scope: 'all',
+    });
+    commandMenuAgentTools.refresh();
     const directoryId = resolveDirectoryForAction();
     if (directoryId === null) {
       commandMenuGitHubProjectPrState = null;
@@ -2317,42 +2350,149 @@ async function main(): Promise<number> {
     markDirty();
   };
 
-  const registerThreadStartAction = (
+  const startThreadFromCommandMenu = (
+    directoryId: string,
     agentType: ReturnType<typeof normalizeThreadAgentType>,
-    title: string,
-    aliases: readonly string[],
   ): void => {
-    commandMenuRegistry.registerAction({
-      id: `thread.start.${agentType}`,
-      title,
-      aliases,
-      keywords: ['start', 'thread', agentType, 'new'],
-      detail: 'current project',
-      when: (context) => context.activeDirectoryId !== null,
-      run: async (context) => {
-        const directoryId = context.activeDirectoryId;
-        if (directoryId === null) {
-          return;
-        }
-        queueControlPlaneOp(async () => {
-          await runtimeWorkspaceActions.createAndActivateConversationInDirectory(
-            directoryId,
-            agentType,
-          );
-        }, `command-menu-start-thread:${agentType}`);
-      },
-    });
+    queueControlPlaneOp(async () => {
+      await runtimeWorkspaceActions.createAndActivateConversationInDirectory(
+        directoryId,
+        agentType,
+      );
+    }, `command-menu-start-thread:${agentType}`);
   };
 
-  registerThreadStartAction('codex', 'Start Codex thread', ['codex', 'start codex']);
-  registerThreadStartAction('claude', 'Start Claude thread', ['claude', 'start claude']);
-  registerThreadStartAction('cursor', 'Start Cursor thread', ['cursor', 'cur', 'start cursor']);
-  registerThreadStartAction('terminal', 'Start Terminal thread', [
-    'terminal',
-    'shell',
-    'start terminal',
-  ]);
-  registerThreadStartAction('critique', 'Start Critique thread', ['critique', 'start critique']);
+  const installAgentToolFromCommandMenu = (
+    directoryId: string,
+    agentType: InstallableAgentType,
+    installCommand: string,
+  ): void => {
+    queueControlPlaneOp(async () => {
+      const priorSessionIds = new Set(conversationManager.orderedIds());
+      await runtimeWorkspaceActions.createAndActivateConversationInDirectory(
+        directoryId,
+        'terminal',
+      );
+      const terminalSessionId =
+        conversationManager.orderedIds().find((sessionId) => !priorSessionIds.has(sessionId)) ??
+        conversationManager.activeConversationId;
+      if (terminalSessionId === null) {
+        throw new Error('failed to locate terminal session for install command');
+      }
+      await controlPlaneService.respondToSession(terminalSessionId, `${installCommand}\n`);
+      commandMenuAgentTools.refresh();
+    }, `command-menu-install-agent-tool:${agentType}`);
+  };
+
+  commandMenuRegistry.registerProvider('thread.start', (context) => {
+    const directoryId = context.activeDirectoryId;
+    if (directoryId === null) {
+      return [];
+    }
+    const actions: RegisteredCommandMenuAction<RuntimeCommandMenuContext>[] = [
+      {
+        id: 'thread.start.codex',
+        title: 'Start Codex thread',
+        aliases: ['codex', 'start codex'],
+        keywords: ['start', 'thread', 'codex', 'new'],
+        detail: 'current project',
+        run: () => {
+          startThreadFromCommandMenu(directoryId, 'codex');
+        },
+      },
+      {
+        id: 'thread.start.claude',
+        title: 'Start Claude thread',
+        aliases: ['claude', 'start claude'],
+        keywords: ['start', 'thread', 'claude', 'new'],
+        detail: 'current project',
+        run: () => {
+          startThreadFromCommandMenu(directoryId, 'claude');
+        },
+      },
+      {
+        id: 'thread.start.cursor',
+        title: 'Start Cursor thread',
+        aliases: ['cursor', 'cur', 'start cursor'],
+        keywords: ['start', 'thread', 'cursor', 'new'],
+        detail: 'current project',
+        run: () => {
+          startThreadFromCommandMenu(directoryId, 'cursor');
+        },
+      },
+      {
+        id: 'thread.start.terminal',
+        title: 'Start Terminal thread',
+        aliases: ['terminal', 'shell', 'start terminal'],
+        keywords: ['start', 'thread', 'terminal', 'shell', 'new'],
+        detail: 'current project',
+        run: () => {
+          startThreadFromCommandMenu(directoryId, 'terminal');
+        },
+      },
+      {
+        id: 'thread.start.critique',
+        title: 'Start Critique thread',
+        aliases: ['critique', 'start critique'],
+        keywords: ['start', 'thread', 'critique', 'new'],
+        detail: 'current project',
+        run: () => {
+          startThreadFromCommandMenu(directoryId, 'critique');
+        },
+      },
+    ];
+    const installableByAgent: Readonly<
+      Record<InstallableAgentType, { startId: string; installId: string; installTitle: string }>
+    > = {
+      codex: {
+        startId: 'thread.start.codex',
+        installId: 'thread.install.codex',
+        installTitle: 'Install Codex CLI',
+      },
+      claude: {
+        startId: 'thread.start.claude',
+        installId: 'thread.install.claude',
+        installTitle: 'Install Claude CLI',
+      },
+      cursor: {
+        startId: 'thread.start.cursor',
+        installId: 'thread.install.cursor',
+        installTitle: 'Install Cursor CLI',
+      },
+      critique: {
+        startId: 'thread.start.critique',
+        installId: 'thread.install.critique',
+        installTitle: 'Install Critique CLI',
+      },
+    };
+    const adjusted: RegisteredCommandMenuAction<RuntimeCommandMenuContext>[] = [];
+    for (const action of actions) {
+      adjusted.push(action);
+    }
+    for (const agentType of ['codex', 'claude', 'cursor', 'critique'] as const) {
+      const status = commandMenuAgentTools.statusForAgent(agentType);
+      if (status === null || status.available || status.installCommand === null) {
+        continue;
+      }
+      const installCommand = status.installCommand;
+      const mapping = installableByAgent[agentType];
+      const startIndex = adjusted.findIndex((action) => action.id === mapping.startId);
+      if (startIndex < 0) {
+        continue;
+      }
+      adjusted.splice(startIndex, 1, {
+        id: mapping.installId,
+        title: mapping.installTitle,
+        aliases: [`install ${agentType}`, `${agentType} install`, `setup ${agentType}`],
+        keywords: ['install', 'thread', agentType, 'setup'],
+        detail: installCommand,
+        run: () => {
+          installAgentToolFromCommandMenu(directoryId, agentType, installCommand);
+        },
+      });
+    }
+    return adjusted;
+  });
 
   commandMenuRegistry.registerAction({
     id: 'thread.close.active',

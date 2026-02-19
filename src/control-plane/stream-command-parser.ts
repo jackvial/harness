@@ -1386,6 +1386,28 @@ function parseAttentionList(): StreamCommand {
   };
 }
 
+function parseAgentToolsStatus(record: CommandRecord): StreamCommand | null {
+  const agentTypesRaw = record['agentTypes'];
+  if (agentTypesRaw === undefined) {
+    return {
+      type: 'agent.tools.status',
+    };
+  }
+  if (!Array.isArray(agentTypesRaw) || !agentTypesRaw.every((value) => typeof value === 'string')) {
+    return null;
+  }
+  const agentTypes = agentTypesRaw.map((value) => value.trim()).filter((value) => value.length > 0);
+  if (agentTypes.length === 0) {
+    return {
+      type: 'agent.tools.status',
+    };
+  }
+  return {
+    type: 'agent.tools.status',
+    agentTypes,
+  };
+}
+
 function parseSessionIdCommand(type: 'session.status' | 'session.interrupt' | 'session.remove') {
   return (record: CommandRecord): StreamCommand | null => {
     const sessionId = readString(record['sessionId']);
@@ -1638,6 +1660,7 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'stream.unsubscribe': parseStreamUnsubscribe,
   'session.list': parseSessionList,
   'attention.list': () => parseAttentionList(),
+  'agent.tools.status': parseAgentToolsStatus,
   'session.status': parseSessionIdCommand('session.status'),
   'session.snapshot': parseSessionSnapshot,
   'session.respond': parseSessionRespond,

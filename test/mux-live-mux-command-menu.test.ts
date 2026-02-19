@@ -11,16 +11,24 @@ import {
 
 void test('command menu state helpers initialize and clamp selection', () => {
   assert.deepEqual(createCommandMenuState(), {
+    scope: 'all',
     query: '',
     selectedIndex: 0,
   });
-  assert.deepEqual(clampCommandMenuState({ query: 'abc', selectedIndex: 4 }, 0), {
+  assert.deepEqual(clampCommandMenuState({ scope: 'all', query: 'abc', selectedIndex: 4 }, 0), {
+    scope: 'all',
     query: 'abc',
     selectedIndex: 0,
   });
-  assert.deepEqual(clampCommandMenuState({ query: 'abc', selectedIndex: 4 }, 2), {
+  assert.deepEqual(clampCommandMenuState({ scope: 'all', query: 'abc', selectedIndex: 4 }, 2), {
+    scope: 'all',
     query: 'abc',
     selectedIndex: 1,
+  });
+  assert.deepEqual(createCommandMenuState({ scope: 'thread-start', query: 'start' }), {
+    scope: 'thread-start',
+    query: 'start',
+    selectedIndex: 0,
   });
 });
 
@@ -62,6 +70,7 @@ void test('command menu input reducer covers typing navigation and submit branch
   const typed = reduceCommandMenuInput(start, Buffer.from('cur', 'utf8'), 3);
   assert.deepEqual(typed, {
     nextState: {
+      scope: 'all',
       query: 'cur',
       selectedIndex: 0,
     },
@@ -70,6 +79,7 @@ void test('command menu input reducer covers typing navigation and submit branch
 
   const backspaced = reduceCommandMenuInput(
     {
+      scope: 'all',
       query: 'cur',
       selectedIndex: 1,
     },
@@ -78,6 +88,7 @@ void test('command menu input reducer covers typing navigation and submit branch
   );
   assert.deepEqual(backspaced, {
     nextState: {
+      scope: 'all',
       query: 'cu',
       selectedIndex: 0,
     },
@@ -86,6 +97,7 @@ void test('command menu input reducer covers typing navigation and submit branch
 
   const downArrow = reduceCommandMenuInput(
     {
+      scope: 'all',
       query: 'cu',
       selectedIndex: 0,
     },
@@ -96,6 +108,7 @@ void test('command menu input reducer covers typing navigation and submit branch
 
   const upArrow = reduceCommandMenuInput(
     {
+      scope: 'all',
       query: 'cu',
       selectedIndex: 0,
     },
@@ -106,6 +119,7 @@ void test('command menu input reducer covers typing navigation and submit branch
 
   const ctrlN = reduceCommandMenuInput(
     {
+      scope: 'all',
       query: 'cu',
       selectedIndex: 1,
     },
@@ -116,6 +130,7 @@ void test('command menu input reducer covers typing navigation and submit branch
 
   const ctrlP = reduceCommandMenuInput(
     {
+      scope: 'all',
       query: 'cu',
       selectedIndex: 1,
     },
@@ -126,6 +141,7 @@ void test('command menu input reducer covers typing navigation and submit branch
 
   const submitted = reduceCommandMenuInput(
     {
+      scope: 'all',
       query: 'cu',
       selectedIndex: 0,
     },

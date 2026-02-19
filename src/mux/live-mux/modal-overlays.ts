@@ -118,7 +118,7 @@ export function buildCommandMenuModalOverlay(
     height: modalSize.height,
     anchor: 'center',
     marginRows: 1,
-    title: 'Command Menu',
+    title: menu.scope === 'thread-start' ? 'New Thread' : 'Command Menu',
     bodyLines,
     footer: 'enter run  esc',
     theme,

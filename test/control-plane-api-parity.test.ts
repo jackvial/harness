@@ -32,18 +32,20 @@ function readServerCommandTypes(): string[] {
     readSource('src/control-plane/stream-server-command.ts'),
   ];
   return sortedUnique(
-    sources.flatMap((source) => matchAllGroups(source, /command\.type === '([a-z]+\.[a-z-]+)'/g)),
+    sources.flatMap((source) =>
+      matchAllGroups(source, /command\.type === '([a-z]+(?:\.[a-z-]+)+)'/g),
+    ),
   );
 }
 
 function readTuiCommandTypes(): string[] {
   const source = readSource('scripts/codex-live-mux.ts');
-  return sortedUnique(matchAllGroups(source, /type:\s*'([a-z]+\.[a-z-]+)'/g));
+  return sortedUnique(matchAllGroups(source, /type:\s*'([a-z]+(?:\.[a-z-]+)+)'/g));
 }
 
 function readAgentHelperCommandTypes(): string[] {
   const source = readSource('src/control-plane/agent-realtime-api.ts');
-  const allCommandLike = sortedUnique(matchAllGroups(source, /type:\s*'([a-z]+\.[a-z-]+)'/g));
+  const allCommandLike = sortedUnique(matchAllGroups(source, /type:\s*'([a-z]+(?:\.[a-z-]+)+)'/g));
   return allCommandLike.filter((type) => parserCommandTypeSet.has(type));
 }
 

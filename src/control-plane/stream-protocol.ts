@@ -383,6 +383,11 @@ interface AttentionListCommand {
   type: 'attention.list';
 }
 
+interface AgentToolsStatusCommand {
+  type: 'agent.tools.status';
+  agentTypes?: string[];
+}
+
 interface SessionStatusCommand {
   type: 'session.status';
   sessionId: string;
@@ -509,6 +514,7 @@ export type StreamCommand =
   | StreamUnsubscribeCommand
   | SessionListCommand
   | AttentionListCommand
+  | AgentToolsStatusCommand
   | SessionStatusCommand
   | SessionSnapshotCommand
   | SessionRespondCommand

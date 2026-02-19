@@ -1,6 +1,9 @@
 export const COMMAND_MENU_MAX_RESULTS = 8;
 
+type CommandMenuScope = 'all' | 'thread-start';
+
 export interface CommandMenuState {
+  readonly scope: CommandMenuScope;
   readonly query: string;
   readonly selectedIndex: number;
 }
@@ -152,9 +155,14 @@ function isDownArrowSequence(text: string): boolean {
   return isCsiArrowSequence(text, 'B') || text === '\u001bOB';
 }
 
-export function createCommandMenuState(): CommandMenuState {
+export function createCommandMenuState(options?: {
+  readonly scope?: CommandMenuScope;
+  readonly query?: string;
+}): CommandMenuState {
+  const query = options?.query ?? '';
   return {
-    query: '',
+    scope: options?.scope ?? 'all',
+    query,
     selectedIndex: 0,
   };
 }
@@ -187,6 +195,7 @@ export function reduceCommandMenuInput(
   if (isUpArrowSequence(text)) {
     return {
       nextState: {
+        scope: state.scope,
         query: state.query,
         selectedIndex: moveSelectionByDelta(state.selectedIndex, visibleResultCount, -1),
       },
@@ -196,6 +205,7 @@ export function reduceCommandMenuInput(
   if (isDownArrowSequence(text)) {
     return {
       nextState: {
+        scope: state.scope,
         query: state.query,
         selectedIndex: moveSelectionByDelta(state.selectedIndex, visibleResultCount, 1),
       },
@@ -234,6 +244,7 @@ export function reduceCommandMenuInput(
 
   return {
     nextState: {
+      scope: state.scope,
       query,
       selectedIndex: clampSelectedIndex(selectedIndex, visibleResultCount),
     },
@@ -246,6 +257,7 @@ export function clampCommandMenuState(
   visibleResultCount: number,
 ): CommandMenuState {
   return {
+    scope: state.scope,
     query: state.query,
     selectedIndex: clampSelectedIndex(state.selectedIndex, visibleResultCount),
   };

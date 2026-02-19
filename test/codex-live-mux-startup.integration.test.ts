@@ -765,7 +765,7 @@ void test(
 );
 
 void test(
-  'codex-live-mux opens new-thread modal when clicking left-rail [+ thread] button',
+  'codex-live-mux opens thread-scoped command menu when clicking left-rail [+ thread] button',
   async () => {
     const workspace = createWorkspace();
     const interactive = startInteractiveMuxSession(workspace, {
@@ -781,6 +781,7 @@ void test(
       );
       writeLeftMouseClick(interactive.session, threadButtonCell.col, threadButtonCell.row);
       await waitForSnapshotLineContaining(interactive.oracle, 'New Thread', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'search: _', 12000);
     } finally {
       try {
         await requestMuxShutdown(interactive.session);
