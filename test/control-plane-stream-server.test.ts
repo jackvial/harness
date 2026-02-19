@@ -28,10 +28,7 @@ void test('stream server executeCommand guards unsupported command types', async
     startSession: (input) => new FakeLiveSession(input),
   });
   const internal = server as unknown as {
-    executeCommand: (
-      connection: unknown,
-      command: unknown,
-    ) => Promise<Record<string, unknown>>;
+    executeCommand: (connection: unknown, command: unknown) => Promise<Record<string, unknown>>;
   };
 
   try {

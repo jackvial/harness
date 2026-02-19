@@ -19,7 +19,8 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Capture interleaved status debugging timelines (incoming status sources + outgoing status line/notice outputs) with a toggle and CLI commands.
 - Capture focused render diagnostics (unsupported control sequences + ANSI integrity failures) with a dedicated toggle and CLI commands.
 - Open a command palette with `ctrl+p`/`cmd+p`, live-filter registered actions, and execute context-aware thread/project/runtime controls.
-- Open or create a GitHub pull request for the currently tracked project branch directly from the command palette.
+- Open the active project's GitHub repository from the command palette.
+- Open or create a GitHub pull request for the currently tracked non-default project branch directly from the command palette.
 
 ## Demo
 
@@ -69,7 +70,8 @@ Harness includes first-class `critique` threads:
 
 When GitHub auth is available (`GITHUB_TOKEN` or an authenticated `gh` CLI), Harness can:
 
-- Detect the tracked branch for the active project and show `Open PR` (if an open PR exists) or `Create PR` in the command palette.
+- Show `Open GitHub for This Repo` for active projects with a detected GitHub remote.
+- Detect the tracked branch for the active project and show `Open PR` (if an open PR exists) or `Create PR` only when the tracked branch is not the repository default branch.
 - Continuously sync open PR CI/check status into the control-plane store for realtime clients.
 - If auth is unavailable, PR actions fail quietly and show a lightweight hint instead of surfacing hard errors.
 

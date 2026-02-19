@@ -681,9 +681,7 @@ function normalizeGitHubIntegrationConfig(
   };
 }
 
-function parseGitHubOwnerRepoFromRemote(
-  remoteUrl: string,
-): { owner: string; repo: string } | null {
+function parseGitHubOwnerRepoFromRemote(remoteUrl: string): { owner: string; repo: string } | null {
   const trimmed = remoteUrl.trim();
   if (trimmed.length === 0) {
     return null;
@@ -719,7 +717,9 @@ function resolveTrackedBranchName(input: {
   return input.pinnedBranch ?? input.currentBranch;
 }
 
-function summarizeGitHubCiRollup(jobs: readonly GitHubRemotePrJob[]): 'pending' | 'success' | 'failure' | 'cancelled' | 'neutral' | 'none' {
+function summarizeGitHubCiRollup(
+  jobs: readonly GitHubRemotePrJob[],
+): 'pending' | 'success' | 'failure' | 'cancelled' | 'neutral' | 'none' {
   if (jobs.length === 0) {
     return 'none';
   }
@@ -734,7 +734,11 @@ function summarizeGitHubCiRollup(jobs: readonly GitHubRemotePrJob[]): 'pending' 
       hasPending = true;
       continue;
     }
-    if (conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'action_required') {
+    if (
+      conclusion === 'failure' ||
+      conclusion === 'timed_out' ||
+      conclusion === 'action_required'
+    ) {
       hasFailure = true;
       continue;
     }
@@ -998,7 +1002,8 @@ export class ControlPlaneStreamServer {
     this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
     this.github = normalizeGitHubIntegrationConfig(options.github);
     this.githubExecFile = options.githubExecFile ?? execFile;
-    this.githubTokenResolver = options.githubTokenResolver ?? (async () => await this.readGhAuthToken());
+    this.githubTokenResolver =
+      options.githubTokenResolver ?? (async () => await this.readGhAuthToken());
     this.githubFetch = options.githubFetch ?? fetch;
     this.githubApi = {
       openPullRequestForBranch: async (input) => await this.openGitHubPullRequestForBranch(input),
@@ -2261,11 +2266,7 @@ export class ControlPlaneStreamServer {
     const headRef = headRecord['ref'];
     const headSha = headRecord['sha'];
     const baseRef = baseRecord['ref'];
-    if (
-      typeof headRef !== 'string' ||
-      typeof headSha !== 'string' ||
-      typeof baseRef !== 'string'
-    ) {
+    if (typeof headRef !== 'string' || typeof headSha !== 'string' || typeof baseRef !== 'string') {
       return null;
     }
     let authorLogin: string | null = null;
@@ -2387,7 +2388,9 @@ export class ControlPlaneStreamServer {
         }
       }
     }
-    const statusPayload = await this.githubJsonRequest(`/repos/${owner}/${repo}/commits/${sha}/status`);
+    const statusPayload = await this.githubJsonRequest(
+      `/repos/${owner}/${repo}/commits/${sha}/status`,
+    );
     const statusJobs: GitHubRemotePrJob[] = [];
     if (
       typeof statusPayload === 'object' &&

@@ -175,11 +175,7 @@ void test('stream server github request/parser internals normalize api payloads'
       base: string;
       draft: boolean;
     }) => Promise<Record<string, unknown>>;
-    listGitHubPrJobsForCommit: (input: {
-      owner: string;
-      repo: string;
-      headSha: string;
-    }) => Promise<
+    listGitHubPrJobsForCommit: (input: { owner: string; repo: string; headSha: string }) => Promise<
       readonly {
         provider: string;
         externalId: string;
@@ -585,7 +581,10 @@ void test('stream server github polling selects tracked branch targets and dedup
       targets.push(`${input.repository.repositoryId}:${input.branchName}`);
     };
     await internals.pollGitHub();
-    assert.deepEqual(targets.sort(), ['repository-github-poll-1:feature/one', 'repository-github-poll-2:release/1.0']);
+    assert.deepEqual(targets.sort(), [
+      'repository-github-poll-1:feature/one',
+      'repository-github-poll-2:release/1.0',
+    ]);
 
     internals.githubPollInFlight = true;
     await internals.pollGitHub();
@@ -657,11 +656,7 @@ void test('stream server github sync updates PR state jobs and sync-status error
       createdAt: string;
       closedAt: string | null;
     } | null>;
-    listGitHubPrJobsForCommit: (input: {
-      owner: string;
-      repo: string;
-      headSha: string;
-    }) => Promise<
+    listGitHubPrJobsForCommit: (input: { owner: string; repo: string; headSha: string }) => Promise<
       readonly {
         provider: 'check-run' | 'status-context';
         externalId: string;
@@ -673,10 +668,7 @@ void test('stream server github sync updates PR state jobs and sync-status error
         completedAt: string | null;
       }[]
     >;
-    publishObservedEvent: (
-      scope: Record<string, unknown>,
-      event: Record<string, unknown>,
-    ) => void;
+    publishObservedEvent: (scope: Record<string, unknown>, event: Record<string, unknown>) => void;
   };
 
   try {

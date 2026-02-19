@@ -82,6 +82,22 @@ export function repositoryNameFromGitHubRemoteUrl(remoteUrl: string): string {
   return name;
 }
 
+export function shouldShowGitHubPrActions(input: {
+  trackedBranch: string | null;
+  defaultBranch: string | null;
+}): boolean {
+  const trackedBranch = input.trackedBranch?.trim() ?? '';
+  if (trackedBranch.length === 0 || trackedBranch === '(detached)') {
+    return false;
+  }
+  const normalizedTrackedBranch = trackedBranch.toLowerCase();
+  const normalizedDefaultBranch = input.defaultBranch?.trim().toLowerCase() ?? '';
+  if (normalizedDefaultBranch.length > 0) {
+    return normalizedTrackedBranch !== normalizedDefaultBranch;
+  }
+  return normalizedTrackedBranch !== 'main';
+}
+
 export function parseCommitCount(output: string): number | null {
   const trimmed = output.trim();
   if (trimmed.length === 0) {

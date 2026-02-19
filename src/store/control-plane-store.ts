@@ -1973,11 +1973,7 @@ export class SqliteControlPlaneStore {
         .get(input.repositoryId, input.number) as { pr_record_id: string } | undefined;
       const now = new Date().toISOString();
       const closedAt =
-        input.state === 'closed'
-          ? input.closedAt === undefined
-            ? now
-            : input.closedAt
-          : null;
+        input.state === 'closed' ? (input.closedAt === undefined ? now : input.closedAt) : null;
       const ciRollup = input.ciRollup ?? 'none';
       if (existing === undefined) {
         this.db

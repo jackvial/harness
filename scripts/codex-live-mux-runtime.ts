@@ -85,6 +85,7 @@ import {
 import {
   normalizeGitHubRemoteUrl,
   repositoryNameFromGitHubRemoteUrl,
+  shouldShowGitHubPrActions,
 } from '../src/mux/live-mux/git-parsing.ts';
 import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
@@ -220,6 +221,8 @@ interface RuntimeCommandMenuContext {
   readonly leftNavSelectionKind: WorkspaceModel['leftNavSelection']['kind'];
   readonly profileRunning: boolean;
   readonly statusTimelineRunning: boolean;
+  readonly githubRepositoryUrl: string | null;
+  readonly githubDefaultBranch: string | null;
   readonly githubTrackedBranch: string | null;
   readonly githubOpenPrUrl: string | null;
   readonly githubProjectPrLoading: boolean;
@@ -1293,6 +1296,10 @@ async function main(): Promise<number> {
   const commandMenuContext = (): RuntimeCommandMenuContext => {
     const activeConversation = conversationManager.getActiveConversation();
     const activeDirectoryId = resolveDirectoryForAction();
+    const activeDirectoryRepositorySnapshot =
+      activeDirectoryId === null
+        ? null
+        : (directoryRepositorySnapshotByDirectoryId.get(activeDirectoryId) ?? null);
     const githubProjectPrState =
       activeDirectoryId !== null &&
       commandMenuGitHubProjectPrState !== null &&
@@ -1318,6 +1325,8 @@ async function main(): Promise<number> {
       statusTimelineRunning: existsSync(
         resolveStatusTimelineStatePath(options.invocationDirectory, muxSessionName),
       ),
+      githubRepositoryUrl: activeDirectoryRepositorySnapshot?.normalizedRemoteUrl ?? null,
+      githubDefaultBranch: activeDirectoryRepositorySnapshot?.defaultBranch ?? null,
       githubTrackedBranch: githubProjectPrState?.branchName ?? null,
       githubOpenPrUrl: githubProjectPrState?.openPrUrl ?? null,
       githubProjectPrLoading: githubProjectPrState?.loading ?? false,
@@ -2378,9 +2387,40 @@ async function main(): Promise<number> {
     );
   });
 
+  commandMenuRegistry.registerProvider('github.repo.open', (context) => {
+    const repositoryUrl = context.githubRepositoryUrl;
+    if (repositoryUrl === null) {
+      return [];
+    }
+    return [
+      {
+        id: 'github.repo.open',
+        title: 'Open GitHub for This Repo',
+        aliases: ['open github for this repo', 'open github repo', 'open repository on github'],
+        keywords: ['github', 'repository', 'repo', 'open'],
+        detail: repositoryUrl,
+        run: () => {
+          const opened = openUrlInBrowser(repositoryUrl);
+          setCommandNotice(
+            opened
+              ? 'opened github repository in browser'
+              : `open github repository: ${repositoryUrl}`,
+          );
+        },
+      },
+    ];
+  });
+
   commandMenuRegistry.registerProvider('github.project-pr', (context) => {
     const directoryId = context.activeDirectoryId;
     if (directoryId === null || context.githubProjectPrLoading) {
+      return [];
+    }
+    const showPrActions = shouldShowGitHubPrActions({
+      trackedBranch: context.githubTrackedBranch,
+      defaultBranch: context.githubDefaultBranch,
+    });
+    if (!showPrActions) {
       return [];
     }
     if (context.githubOpenPrUrl !== null) {

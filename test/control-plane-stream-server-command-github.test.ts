@@ -42,7 +42,10 @@ void test('stream server command github helper internals cover owner/branch/roll
       repo: 'harness',
     },
   );
-  assert.equal(streamServerCommandTestInternals.parseGitHubOwnerRepo('https://gitlab.com/acme/harness'), null);
+  assert.equal(
+    streamServerCommandTestInternals.parseGitHubOwnerRepo('https://gitlab.com/acme/harness'),
+    null,
+  );
   assert.equal(streamServerCommandTestInternals.parseGitHubOwnerRepo('   '), null);
 
   assert.deepEqual(

@@ -251,7 +251,8 @@ Pass-through stream invariants:
   - start thread by agent type (`codex`, `claude`, `cursor`, `terminal`, `critique`)
   - close active thread
   - go to project
-  - open/create GitHub PR for the tracked active-project branch (open when present, create when absent)
+  - open GitHub for the active-project repository
+  - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent)
   - start/stop profiler
   - start/stop status logging
   - quit

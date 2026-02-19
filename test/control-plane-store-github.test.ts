@@ -340,9 +340,9 @@ void test('control-plane store github rollback guards cover impossible null bran
     const originalGetGitHubPullRequest = store.getGitHubPullRequest.bind(store);
     (
       store as unknown as {
-        getGitHubPullRequest(prRecordId: string): ReturnType<
-          SqliteControlPlaneStore['getGitHubPullRequest']
-        >;
+        getGitHubPullRequest(
+          prRecordId: string,
+        ): ReturnType<SqliteControlPlaneStore['getGitHubPullRequest']>;
       }
     ).getGitHubPullRequest = () => null;
     assert.throws(
@@ -371,16 +371,18 @@ void test('control-plane store github rollback guards cover impossible null bran
     );
     (
       store as unknown as {
-        getGitHubPullRequest(prRecordId: string): ReturnType<
-          SqliteControlPlaneStore['getGitHubPullRequest']
-        >;
+        getGitHubPullRequest(
+          prRecordId: string,
+        ): ReturnType<SqliteControlPlaneStore['getGitHubPullRequest']>;
       }
     ).getGitHubPullRequest = originalGetGitHubPullRequest;
 
     const originalGetGitHubSyncState = store.getGitHubSyncState.bind(store);
     (
       store as unknown as {
-        getGitHubSyncState(stateId: string): ReturnType<SqliteControlPlaneStore['getGitHubSyncState']>;
+        getGitHubSyncState(
+          stateId: string,
+        ): ReturnType<SqliteControlPlaneStore['getGitHubSyncState']>;
       }
     ).getGitHubSyncState = () => null;
     assert.throws(
@@ -402,7 +404,9 @@ void test('control-plane store github rollback guards cover impossible null bran
     );
     (
       store as unknown as {
-        getGitHubSyncState(stateId: string): ReturnType<SqliteControlPlaneStore['getGitHubSyncState']>;
+        getGitHubSyncState(
+          stateId: string,
+        ): ReturnType<SqliteControlPlaneStore['getGitHubSyncState']>;
       }
     ).getGitHubSyncState = originalGetGitHubSyncState;
   } finally {

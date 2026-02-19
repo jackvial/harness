@@ -7,6 +7,7 @@ import {
   parseGitShortstatCounts,
   parseLastCommitLine,
   repositoryNameFromGitHubRemoteUrl,
+  shouldShowGitHubPrActions,
 } from '../src/mux/live-mux/git-parsing.ts';
 
 void test('parseGitBranchFromStatusHeader handles detached and branch states', () => {
@@ -78,6 +79,58 @@ void test('repositoryNameFromGitHubRemoteUrl returns parsed repository when avai
   assert.equal(repositoryNameFromGitHubRemoteUrl('https://github.com/acme/harness.git'), 'harness');
   assert.equal(repositoryNameFromGitHubRemoteUrl('https://github.com/acme/harness/'), 'harness');
   assert.equal(repositoryNameFromGitHubRemoteUrl('not-a-github-remote'), 'not-a-github-remote');
+});
+
+void test('shouldShowGitHubPrActions requires a non-default branch', () => {
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: null,
+      defaultBranch: 'main',
+    }),
+    false,
+  );
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: '(detached)',
+      defaultBranch: 'main',
+    }),
+    false,
+  );
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: 'main',
+      defaultBranch: 'main',
+    }),
+    false,
+  );
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: 'release',
+      defaultBranch: 'release',
+    }),
+    false,
+  );
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: 'feature/menu',
+      defaultBranch: 'main',
+    }),
+    true,
+  );
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: 'main',
+      defaultBranch: null,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: 'feature/main-fix',
+      defaultBranch: null,
+    }),
+    true,
+  );
 });
 
 void test('parseCommitCount validates output', () => {

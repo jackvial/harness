@@ -164,7 +164,10 @@ void test('stream server helper internals cover concurrency and git snapshot equ
         repo: 'harness',
       },
     );
-    assert.equal(streamServerTestInternals.parseGitHubOwnerRepoFromRemote('https://gitlab.com/x/y'), null);
+    assert.equal(
+      streamServerTestInternals.parseGitHubOwnerRepoFromRemote('https://gitlab.com/x/y'),
+      null,
+    );
     assert.equal(streamServerTestInternals.parseGitHubOwnerRepoFromRemote('   '), null);
 
     assert.equal(

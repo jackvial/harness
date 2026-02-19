@@ -381,11 +381,7 @@ interface ExecuteCommandContext {
     viewerLogin: string | null;
   };
   readonly githubApi: {
-    openPullRequestForBranch(input: {
-      owner: string;
-      repo: string;
-      headBranch: string;
-    }): Promise<{
+    openPullRequestForBranch(input: { owner: string; repo: string; headBranch: string }): Promise<{
       number: number;
       title: string;
       url: string;
@@ -535,9 +531,7 @@ function bufferTailFromSnapshotRecord(
   return bufferTailFromVisibleLines(lines, totalRows, tailLines);
 }
 
-function parseGitHubOwnerRepo(
-  remoteUrl: string,
-): { owner: string; repo: string } | null {
+function parseGitHubOwnerRepo(remoteUrl: string): { owner: string; repo: string } | null {
   const trimmed = remoteUrl.trim();
   if (trimmed.length === 0) {
     return null;
@@ -610,7 +604,11 @@ function ciRollupFromJobs(
       hasPending = true;
       continue;
     }
-    if (conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'action_required') {
+    if (
+      conclusion === 'failure' ||
+      conclusion === 'timed_out' ||
+      conclusion === 'action_required'
+    ) {
       hasFailure = true;
       continue;
     }
@@ -1147,8 +1145,7 @@ export async function executeStreamServerCommand(
       repositoryId: resolved.repository?.repositoryId ?? null,
       branchName: resolved.trackedBranch,
       branchSource: resolved.trackedBranchSource,
-      repository:
-        resolved.repository === null ? null : ctx.repositoryRecord(resolved.repository),
+      repository: resolved.repository === null ? null : ctx.repositoryRecord(resolved.repository),
       pr,
     };
   }

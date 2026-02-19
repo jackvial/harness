@@ -672,9 +672,7 @@ export function normalizeAutomationPolicyRow(value: unknown): ControlPlaneAutoma
   };
 }
 
-export function normalizeGitHubPullRequestRow(
-  value: unknown,
-): ControlPlaneGitHubPullRequestRecord {
+export function normalizeGitHubPullRequestRow(value: unknown): ControlPlaneGitHubPullRequestRecord {
   const row = asRecord(value);
   return {
     prRecordId: asString(row.pr_record_id, 'pr_record_id'),
@@ -702,9 +700,7 @@ export function normalizeGitHubPullRequestRow(
   };
 }
 
-function normalizeGitHubPrJobProvider(
-  value: unknown,
-): ControlPlaneGitHubPrJobRecord['provider'] {
+function normalizeGitHubPrJobProvider(value: unknown): ControlPlaneGitHubPrJobRecord['provider'] {
   const provider = asString(value, 'provider');
   if (provider === 'check-run' || provider === 'status-context') {
     return provider;
