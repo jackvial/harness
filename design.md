@@ -357,6 +357,7 @@ The daemon computes derived status from both classes without dropping provider-l
 
 - Hooks are config-governed in `harness.config.jsonc` under `hooks.lifecycle.*`.
 - A normalized lifecycle envelope is produced from stream-observed events (`conversation-*`, `session-status`, `session-event`, `session-key-event`) with provider tagging (`codex`, `claude`, `cursor`, `control-plane`, `unknown`).
+- Prompt capture is emitted as a first-class observed event (`session-prompt-event`) alongside status/telemetry events. Prompt extraction is adapter-specific (`codex`, `claude`, `cursor`) and preserves source/confidence metadata for downstream automation.
 - Provider filters are first-class (`hooks.lifecycle.providers.*`) so operators can enable/disable lifecycle dispatch per provider family without changing runtime code.
 - Hook dispatch runs asynchronously behind an internal queue so control-plane command/PTY hot paths are not blocked by connector IO.
 - Connector model is pluggable and currently includes:
@@ -406,6 +407,7 @@ High-signal classification rules:
 - Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms`, explicit `session.interrupt` / `pty.signal interrupt`, Claude hook `claude.stop`, Claude notification abort/cancel/interrupt token variants, and Cursor hooks `cursor.stop` / `cursor.sessionend` (including aborted/cancelled terminal states normalized to completed).
 - Attention signal: explicit `needs-input`/approval-required values from structured payload fields only (severity/error-like and summary-text fallbacks are intentionally disabled).
 - Notify signal transport: provider hook records are surfaced as `session-event notify` on the same stream (for example Codex payload type `agent-turn-complete` and Claude hook payloads).
+- Prompt signal transport: provider prompt-start hooks and Codex telemetry/history prompt events are normalized into `session-prompt-event` with source (`hook-notify`/`otlp-log`/`history`) and per-session dedupe keys to preserve mid-conversation prompt ordering without duplicate bursts.
 - Status-neutral noise: tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
 
 Invariant:

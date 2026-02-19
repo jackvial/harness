@@ -54,6 +54,7 @@ interface AgentEventTypeMap {
   'session.status': Extract<StreamObservedEvent, { type: 'session-status' }>;
   'session.event': Extract<StreamObservedEvent, { type: 'session-event' }>;
   'session.telemetry': Extract<StreamObservedEvent, { type: 'session-key-event' }>;
+  'session.prompt': Extract<StreamObservedEvent, { type: 'session-prompt-event' }>;
   'session.control': Extract<StreamObservedEvent, { type: 'session-control' }>;
   'session.output': Extract<StreamObservedEvent, { type: 'session-output' }>;
 }
@@ -1154,6 +1155,9 @@ function mapObservedEventType(observed: StreamObservedEvent): AgentRealtimeEvent
   }
   if (observed.type === 'session-key-event') {
     return 'session.telemetry';
+  }
+  if (observed.type === 'session-prompt-event') {
+    return 'session.prompt';
   }
   if (observed.type === 'session-control') {
     return 'session.control';

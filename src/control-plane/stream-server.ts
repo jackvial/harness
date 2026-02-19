@@ -18,6 +18,7 @@ import {
   encodeStreamEnvelope,
   type StreamObservedEvent,
   type StreamSessionKeyEventRecord,
+  type StreamSessionPromptRecord,
   type StreamSessionController,
   type StreamSessionListSort,
   type StreamSessionRuntimeStatus,
@@ -83,6 +84,7 @@ import {
 } from './stream-server-session-runtime.ts';
 import { closeOwnedStateStore as closeOwnedStreamServerStateStore } from './stream-server-state-store.ts';
 import { SessionStatusEngine } from './status/session-status-engine.ts';
+import { SessionPromptEngine } from './prompt/session-prompt-engine.ts';
 import {
   eventIncludesRepositoryId as filterEventIncludesRepositoryId,
   eventIncludesTaskId as filterEventIncludesTaskId,
@@ -413,6 +415,8 @@ const DEFAULT_GITHUB_POLL_MS = 15_000;
 const HISTORY_POLL_JITTER_RATIO = 0.35;
 const SESSION_DIAGNOSTICS_BUCKET_MS = 10_000;
 const SESSION_DIAGNOSTICS_BUCKET_COUNT = 6;
+const PROMPT_EVENT_DEDUPE_TTL_MS = 5 * 60 * 1000;
+const MAX_PROMPT_EVENT_DEDUPE_ENTRIES = 4096;
 const DEFAULT_BOOTSTRAP_SESSION_COLS = 80;
 const DEFAULT_BOOTSTRAP_SESSION_ROWS = 24;
 const DEFAULT_TENANT_ID = 'tenant-local';
@@ -1054,6 +1058,8 @@ export class ControlPlaneStreamServer {
   };
   private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
   private readonly statusEngine = new SessionStatusEngine();
+  private readonly promptEngine = new SessionPromptEngine();
+  private readonly promptEventDedupeByKey = new Map<string, number>();
   private readonly server: Server;
   private readonly telemetryServer: HttpServer | null;
   private telemetryAddress: AddressInfo | null = null;
@@ -1943,6 +1949,31 @@ export class ControlPlaneStreamServer {
         event.observedAt,
       );
     }
+    if (inserted && resolvedSessionId !== null) {
+      const promptEvent = this.promptEngine.extractFromTelemetry({
+        agentType: 'codex',
+        source: event.source,
+        eventName: event.eventName,
+        summary: event.summary,
+        payload: event.payload,
+        observedAt: event.observedAt,
+      });
+      if (promptEvent !== null) {
+        const liveState = this.sessions.get(resolvedSessionId);
+        if (liveState !== undefined) {
+          this.publishSessionPromptObservedEvent(liveState, promptEvent);
+        } else {
+          const observedScope = this.observedScopeForSessionId(resolvedSessionId);
+          if (observedScope !== null) {
+            this.publishSessionPromptObservedEventForScope(
+              resolvedSessionId,
+              observedScope,
+              promptEvent,
+            );
+          }
+        }
+      }
+    }
     if (!inserted || resolvedSessionId === null) {
       return;
     }
@@ -2674,6 +2705,75 @@ export class ControlPlaneStreamServer {
     });
   }
 
+  private promptEventSecondBucket(observedAt: string): string {
+    const normalized = observedAt.trim();
+    if (normalized.length >= 19) {
+      return normalized.slice(0, 19);
+    }
+    return normalized;
+  }
+
+  private shouldPublishPromptEvent(sessionId: string, prompt: StreamSessionPromptRecord): boolean {
+    const bucket = this.promptEventSecondBucket(prompt.observedAt);
+    const dedupeKey = `${sessionId}:${prompt.hash}:${prompt.providerEventName ?? ''}:${bucket}`;
+    if (this.promptEventDedupeByKey.has(dedupeKey)) {
+      return false;
+    }
+    const nowMs = Date.now();
+    this.promptEventDedupeByKey.set(dedupeKey, nowMs);
+    if (this.promptEventDedupeByKey.size > MAX_PROMPT_EVENT_DEDUPE_ENTRIES) {
+      for (const [key, observedMs] of this.promptEventDedupeByKey) {
+        if (nowMs - observedMs > PROMPT_EVENT_DEDUPE_TTL_MS) {
+          this.promptEventDedupeByKey.delete(key);
+        }
+      }
+      if (this.promptEventDedupeByKey.size > MAX_PROMPT_EVENT_DEDUPE_ENTRIES) {
+        let dropCount = this.promptEventDedupeByKey.size - MAX_PROMPT_EVENT_DEDUPE_ENTRIES;
+        for (const key of this.promptEventDedupeByKey.keys()) {
+          this.promptEventDedupeByKey.delete(key);
+          dropCount -= 1;
+          if (dropCount <= 0) {
+            break;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  private publishSessionPromptObservedEventForScope(
+    sessionId: string,
+    scope: StreamObservedScope,
+    prompt: StreamSessionPromptRecord,
+  ): void {
+    if (!this.shouldPublishPromptEvent(sessionId, prompt)) {
+      return;
+    }
+    this.publishObservedEvent(scope, {
+      type: 'session-prompt-event',
+      sessionId,
+      prompt: {
+        text: prompt.text,
+        hash: prompt.hash,
+        confidence: prompt.confidence,
+        captureSource: prompt.captureSource,
+        providerEventName: prompt.providerEventName,
+        providerPayloadKeys: [...prompt.providerPayloadKeys],
+        observedAt: prompt.observedAt,
+      },
+      ts: new Date().toISOString(),
+      directoryId: scope.directoryId,
+      conversationId: scope.conversationId,
+    });
+  }
+
+  private publishSessionPromptObservedEvent(
+    state: SessionState,
+    prompt: StreamSessionPromptRecord,
+  ): void {
+    this.publishSessionPromptObservedEventForScope(state.id, this.sessionScope(state), prompt);
+  }
+
   private setSessionStatus(
     state: SessionState,
     status: StreamSessionRuntimeStatus,
@@ -3210,6 +3310,9 @@ export class ControlPlaneStreamServer {
       return event.sessionId;
     }
     if (event.type === 'session-key-event') {
+      return event.sessionId;
+    }
+    if (event.type === 'session-prompt-event') {
       return event.sessionId;
     }
     if (event.type === 'session-control') {

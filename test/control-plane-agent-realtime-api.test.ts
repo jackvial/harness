@@ -807,6 +807,22 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       conversationId: 'conversation-1',
     },
     {
+      type: 'session-prompt-event',
+      sessionId: 'conversation-1',
+      prompt: {
+        text: 'debug session prompt capture parity',
+        hash: 'prompt-hash',
+        confidence: 'high',
+        captureSource: 'hook-notify',
+        providerEventName: 'cursor.beforesubmitprompt',
+        providerPayloadKeys: ['event', 'prompt'],
+        observedAt: timestamp,
+      },
+      ts: timestamp,
+      directoryId: null,
+      conversationId: 'conversation-1',
+    },
+    {
       type: 'session-control',
       sessionId: 'conversation-1',
       action: 'claimed',
@@ -858,6 +874,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     'session.status',
     'session.event',
     'session.telemetry',
+    'session.prompt',
     'session.control',
     'session.output',
   ]);

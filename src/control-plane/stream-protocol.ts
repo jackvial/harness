@@ -6,6 +6,8 @@ export type StreamSessionRuntimeStatus = 'running' | 'needs-input' | 'completed'
 export type StreamSessionListSort = 'attention-first' | 'started-desc' | 'started-asc';
 export type StreamTelemetrySource = 'otlp-log' | 'otlp-metric' | 'otlp-trace' | 'history';
 export type StreamTelemetryStatusHint = 'running' | 'completed' | 'needs-input';
+export type StreamPromptCaptureSource = 'otlp-log' | 'hook-notify' | 'history';
+export type StreamPromptConfidence = 'high' | 'medium' | 'low';
 export type StreamSessionControllerType = 'human' | 'agent' | 'automation';
 export type StreamSessionDisplayPhase = 'needs-action' | 'starting' | 'working' | 'idle' | 'exited';
 
@@ -44,6 +46,16 @@ export interface StreamSessionKeyEventRecord {
   summary: string | null;
   observedAt: string;
   statusHint: StreamTelemetryStatusHint | null;
+}
+
+export interface StreamSessionPromptRecord {
+  text: string | null;
+  hash: string;
+  confidence: StreamPromptConfidence;
+  captureSource: StreamPromptCaptureSource;
+  providerEventName: string | null;
+  providerPayloadKeys: string[];
+  observedAt: string;
 }
 
 interface DirectoryUpsertCommand {
@@ -709,6 +721,14 @@ export type StreamObservedEvent =
       conversationId: string | null;
     }
   | {
+      type: 'session-prompt-event';
+      sessionId: string;
+      prompt: StreamSessionPromptRecord;
+      ts: string;
+      directoryId: string | null;
+      conversationId: string | null;
+    }
+  | {
       type: 'session-control';
       sessionId: string;
       action: 'claimed' | 'released' | 'taken-over';
@@ -1057,6 +1077,20 @@ function parseTelemetryStatusHint(value: unknown): StreamTelemetryStatusHint | n
   return undefined;
 }
 
+function parsePromptCaptureSource(value: unknown): StreamPromptCaptureSource | null {
+  if (value === 'otlp-log' || value === 'hook-notify' || value === 'history') {
+    return value;
+  }
+  return null;
+}
+
+function parsePromptConfidence(value: unknown): StreamPromptConfidence | null {
+  if (value === 'high' || value === 'medium' || value === 'low') {
+    return value;
+  }
+  return null;
+}
+
 function parseTelemetrySummary(value: unknown): StreamTelemetrySummary | null | undefined {
   if (value === undefined) {
     return undefined;
@@ -1186,6 +1220,50 @@ function parseSessionKeyEventRecord(value: unknown): StreamSessionKeyEventRecord
     summary,
     observedAt,
     statusHint,
+  };
+}
+
+function parseSessionPromptRecord(value: unknown): StreamSessionPromptRecord | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const text = record['text'] === null ? null : readString(record['text']);
+  const hash = readString(record['hash']);
+  const confidence = parsePromptConfidence(record['confidence']);
+  const captureSource = parsePromptCaptureSource(record['captureSource']);
+  const providerEventName =
+    record['providerEventName'] === null ? null : readString(record['providerEventName']);
+  const providerPayloadKeysValue = record['providerPayloadKeys'];
+  const observedAt = readString(record['observedAt']);
+  if (
+    (text === null && record['text'] !== null) ||
+    hash === null ||
+    hash.trim().length === 0 ||
+    confidence === null ||
+    captureSource === null ||
+    (providerEventName === null && record['providerEventName'] !== null) ||
+    !Array.isArray(providerPayloadKeysValue) ||
+    observedAt === null
+  ) {
+    return null;
+  }
+  const providerPayloadKeys: string[] = [];
+  for (const entry of providerPayloadKeysValue) {
+    const key = readString(entry);
+    if (key === null) {
+      return null;
+    }
+    providerPayloadKeys.push(key);
+  }
+  return {
+    text: record['text'] === null ? null : text,
+    hash,
+    confidence,
+    captureSource,
+    providerEventName: record['providerEventName'] === null ? null : providerEventName,
+    providerPayloadKeys,
+    observedAt,
   };
 }
 
@@ -1603,6 +1681,31 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       type,
       sessionId,
       keyEvent,
+      ts,
+      directoryId: record['directoryId'] === null ? null : directoryId,
+      conversationId: record['conversationId'] === null ? null : conversationId,
+    };
+  }
+
+  if (type === 'session-prompt-event') {
+    const sessionId = readString(record['sessionId']);
+    const prompt = parseSessionPromptRecord(record['prompt']);
+    const ts = readString(record['ts']);
+    const directoryId = readString(record['directoryId']);
+    const conversationId = readString(record['conversationId']);
+    if (
+      sessionId === null ||
+      prompt === null ||
+      ts === null ||
+      (record['directoryId'] !== null && directoryId === null) ||
+      (record['conversationId'] !== null && conversationId === null)
+    ) {
+      return null;
+    }
+    return {
+      type,
+      sessionId,
+      prompt,
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
       conversationId: record['conversationId'] === null ? null : conversationId,

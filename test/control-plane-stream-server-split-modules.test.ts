@@ -450,6 +450,96 @@ void test('split module coverage: session runtime notify mapping covers fallback
   );
 });
 
+void test('split module coverage: session runtime emits prompt events from notify payloads', () => {
+  const promptEvents: Array<{
+    providerEventName: string | null;
+    text: string | null;
+    captureSource: string;
+    confidence: string;
+  }> = [];
+  const state = {
+    id: 'session-prompt',
+    directoryId: 'directory-1',
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+    agentType: 'claude',
+    adapterState: {},
+    eventSubscriberConnectionIds: new Set<string>(),
+    status: 'running' as const,
+    statusModel: statusModelFor('running'),
+    attentionReason: null,
+    lastEventAt: null,
+    lastExit: null,
+    exitedAt: null,
+    latestTelemetry: null,
+    session: {
+      write: () => {},
+      resize: () => {},
+      processId: () => 123,
+    },
+  };
+  const ctx: Parameters<typeof handleSessionEvent>[0] = {
+    sessions: new Map([[state.id, state]]),
+    connectionCanMutateSession: () => true,
+    destroySession: () => {},
+    deactivateSession: () => {},
+    sendToConnection: () => {},
+    sessionScope: (session) => ({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      workspaceId: session.workspaceId,
+      directoryId: session.directoryId,
+      conversationId: session.id,
+    }),
+    publishObservedEvent: () => {},
+    publishSessionKeyObservedEvent: () => {},
+    publishSessionPromptObservedEvent: (_session, prompt) => {
+      promptEvents.push({
+        providerEventName: prompt.providerEventName,
+        text: prompt.text,
+        captureSource: prompt.captureSource,
+        confidence: prompt.confidence,
+      });
+    },
+    refreshSessionStatusModel: () => {},
+    toPublicSessionController: (controller) => controller,
+    stateStore: {
+      updateConversationAdapterState: () => {},
+      updateConversationRuntime: () => {},
+    },
+  };
+
+  handleSessionEvent(ctx, state.id, {
+    type: 'notify',
+    record: {
+      ts: FIXED_TS,
+      payload: {
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'capture this prompt',
+      },
+    },
+  });
+
+  handleSessionEvent(ctx, state.id, {
+    type: 'notify',
+    record: {
+      ts: FIXED_TS,
+      payload: {
+        hook_event_name: 'PreToolUse',
+      },
+    },
+  });
+
+  assert.equal(promptEvents.length, 1);
+  assert.deepEqual(promptEvents[0], {
+    providerEventName: 'claude.userpromptsubmit',
+    text: 'capture this prompt',
+    captureSource: 'hook-notify',
+    confidence: 'high',
+  });
+});
+
 void test('split module coverage: unmapped notify payload emits explicit key event record', () => {
   const unmappedCursor = unmappedNotifyKeyEventFromPayload(
     'cursor',
@@ -515,6 +605,7 @@ void test('split module coverage: session runtime handles notify key events with
     }),
     publishObservedEvent: () => {},
     publishSessionKeyObservedEvent: () => {},
+    publishSessionPromptObservedEvent: () => {},
     refreshSessionStatusModel: () => {},
     toPublicSessionController: (controller) => controller,
     stateStore: {
@@ -592,6 +683,7 @@ void test('split module coverage: applySessionKeyEvent centralizes status hint h
         statusHint: keyEvent.statusHint,
       });
     },
+    publishSessionPromptObservedEvent: () => {},
     refreshSessionStatusModel: () => {},
     toPublicSessionController: (controller) => controller,
     stateStore: {

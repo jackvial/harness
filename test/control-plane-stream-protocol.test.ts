@@ -1361,6 +1361,27 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 12.48,
+      event: {
+        type: 'session-prompt-event',
+        sessionId: 's1',
+        prompt: {
+          text: 'add regression coverage for prompt capture',
+          hash: 'abc123',
+          confidence: 'high',
+          captureSource: 'hook-notify',
+          providerEventName: 'claude.userpromptsubmit',
+          providerPayloadKeys: ['hook_event_name', 'prompt'],
+          observedAt: new Date(0).toISOString(),
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+      },
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 13,
       event: {
         type: 'session-output',

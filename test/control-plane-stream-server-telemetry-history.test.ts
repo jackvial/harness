@@ -721,6 +721,21 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
       'needs-input',
       'codex.turn.e2e_duration_ms',
     ]);
+    const observedPromptEvents = observedTelemetry.filter(
+      (envelope) =>
+        envelope.kind === 'stream.event' &&
+        envelope.subscriptionId === telemetrySubscriptionId &&
+        envelope.event.type === 'session-prompt-event',
+    );
+    assert.equal(observedPromptEvents.length, 1);
+    const observedPrompt =
+      observedPromptEvents[0]?.kind === 'stream.event' &&
+      observedPromptEvents[0].event.type === 'session-prompt-event'
+        ? observedPromptEvents[0].event.prompt
+        : null;
+    assert.notEqual(observedPrompt, null);
+    assert.equal(observedPrompt?.providerEventName, 'codex.user_prompt');
+    assert.equal(observedPrompt?.text, 'prompt accepted');
   } finally {
     client.close();
     await server.close();
@@ -1262,6 +1277,7 @@ void test('stream server maps claude hook notify events into status/key events a
         ts: '2026-02-16T00:00:00.000Z',
         payload: {
           hook_event_name: 'UserPromptSubmit',
+          prompt: 'improve prompt capture parity',
           session_id: 'claude-session-123',
         },
       },
@@ -1382,6 +1398,16 @@ void test('stream server maps claude hook notify events into status/key events a
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
+          envelope.event.type === 'session-prompt-event' &&
+          envelope.event.prompt.providerEventName === 'claude.userpromptsubmit' &&
+          envelope.event.prompt.text === 'improve prompt capture parity',
+      ),
+      true,
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
           envelope.event.type === 'session-key-event' &&
           envelope.event.keyEvent.eventName === 'claude.userpromptsubmit',
       ),
@@ -1482,6 +1508,7 @@ void test('stream server maps cursor hook notify events and treats aborted stop 
         ts: '2026-02-16T00:00:00.000Z',
         payload: {
           event: 'beforeSubmitPrompt',
+          prompt: 'build cursor prompt parity',
           conversation_id: 'cursor-session-123',
         },
       },
@@ -1496,6 +1523,31 @@ void test('stream server maps cursor hook notify events and treats aborted stop 
       (runningStatus['telemetry'] as Record<string, unknown>)['eventName'],
       'cursor.beforesubmitprompt',
     );
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:00.500Z',
+        payload: {
+          event: 'beforeSubmitPrompt',
+          prompt: 'build cursor prompt parity follow-up',
+          conversation_id: 'cursor-session-123',
+        },
+      },
+    });
+    await delay(10);
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:00.700Z',
+        payload: {
+          event: 'beforeSubmitPrompt',
+          prompt: 'build cursor prompt parity follow-up',
+          conversation_id: 'cursor-session-123',
+        },
+      },
+    });
+    await delay(10);
 
     created[0]!.emitEvent({
       type: 'notify',
@@ -1531,6 +1583,33 @@ void test('stream server maps cursor hook notify events and treats aborted stop 
     assert.equal(cursorState['resumeSessionId'], 'cursor-session-123');
     assert.equal(typeof cursorState['lastObservedAt'], 'string');
 
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.event.type === 'session-prompt-event' &&
+          envelope.event.prompt.providerEventName === 'cursor.beforesubmitprompt' &&
+          envelope.event.prompt.text === 'build cursor prompt parity',
+      ),
+      true,
+    );
+    const cursorPromptEvents = observed.filter(
+      (envelope) =>
+        envelope.kind === 'stream.event' &&
+        envelope.event.type === 'session-prompt-event' &&
+        envelope.event.sessionId === 'conversation-cursor-status',
+    );
+    const cursorPromptTexts = cursorPromptEvents
+      .map((envelope) =>
+        envelope.kind === 'stream.event' && envelope.event.type === 'session-prompt-event'
+          ? envelope.event.prompt.text
+          : null,
+      )
+      .filter((value): value is string => typeof value === 'string');
+    assert.deepEqual(cursorPromptTexts, [
+      'build cursor prompt parity',
+      'build cursor prompt parity follow-up',
+    ]);
     assert.equal(
       observed.some(
         (envelope) =>

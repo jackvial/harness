@@ -5,10 +5,12 @@ import type {
   StreamSessionController,
   StreamSessionEvent,
   StreamSessionKeyEventRecord,
+  StreamSessionPromptRecord,
   StreamSessionRuntimeStatus,
   StreamSessionStatusModel,
   StreamSignal,
 } from './stream-protocol.ts';
+import { SessionPromptEngine } from './prompt/session-prompt-engine.ts';
 
 const CLAUDE_NEEDS_INPUT_NOTIFICATION_TYPES = new Set([
   'permissionrequest',
@@ -22,6 +24,7 @@ const CLAUDE_RUNNING_NOTIFICATION_TYPES = new Set([
   'approvalapproved',
   'approvalgranted',
 ]);
+const sessionPromptEngine = new SessionPromptEngine();
 
 interface RuntimeSession {
   id: string;
@@ -82,6 +85,10 @@ interface StreamRuntimeContext {
   publishSessionKeyObservedEvent(
     state: RuntimeSession,
     keyEvent: StreamSessionKeyEventRecord,
+  ): void;
+  publishSessionPromptObservedEvent(
+    state: RuntimeSession,
+    prompt: StreamSessionPromptRecord,
   ): void;
   refreshSessionStatusModel(state: RuntimeSession, observedAt: string): void;
   toPublicSessionController(
@@ -557,6 +564,14 @@ export function handleSessionEvent(
       ctx.stateStore.updateConversationAdapterState(sessionState.id, mergedAdapterState);
     }
     if (mapped.type === 'notify') {
+      const promptEvent = sessionPromptEngine.extractFromNotify({
+        agentType: sessionState.agentType,
+        payload: mapped.record.payload,
+        observedAt,
+      });
+      if (promptEvent !== null) {
+        ctx.publishSessionPromptObservedEvent(sessionState, promptEvent);
+      }
       const keyEvent =
         notifyKeyEventFromPayload(sessionState.agentType, mapped.record.payload, observedAt) ??
         unmappedNotifyKeyEventFromPayload(
