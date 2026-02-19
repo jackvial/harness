@@ -242,6 +242,7 @@ Pass-through stream invariants:
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
 - Left-rail `[+ thread]` opens a thread-scoped command-menu variant (same matcher/autocomplete path) instead of a dedicated chooser modal.
 - Command-menu `Set a Theme` opens a second autocomplete theme picker; moving selection previews theme changes live, and dismiss restores the pre-picker theme unless confirmed. Confirming with `enter` commits and persists the selected theme.
+- Mux startup is Home-first: initial render enters Home pane even when persisted conversations exist.
 - Gateway profiling moved to `ctrl+shift+p` so command menu invocation and profiling controls do not collide.
 
 ### Command Menu Model

@@ -84,11 +84,6 @@ export class StartupStateHydrationService<
     await this.hydrateDirectoryGitStatus();
     await this.options.subscribeTaskPlanningEvents(afterCursor);
     this.options.ensureActiveConversationId();
-    const activeConversationId = this.options.activeConversationId();
-    if (activeConversationId !== null) {
-      this.options.selectLeftNavConversation(activeConversationId);
-      return;
-    }
     this.options.enterHomePane();
   }
 }

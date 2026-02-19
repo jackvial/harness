@@ -14,7 +14,7 @@ interface DirectoryGitStatusRecord {
   readonly repository: RepositoryRecord | null;
 }
 
-void test('startup state hydration service hydrates startup state and prefers active conversation selection', async () => {
+void test('startup state hydration service hydrates startup state and enters home pane even when active conversation exists', async () => {
   const calls: string[] = [];
   const repositories = new Map<string, RepositoryRecord>();
   const gitSummaries = new Map<string, string>();
@@ -122,8 +122,9 @@ void test('startup state hydration service hydrates startup state and prefers ac
     'syncRepositoryAssociations',
     'subscribeTaskPlanningEvents:42',
     'ensureActiveConversationId',
-    'selectLeftNavConversation:session-active',
+    'enterHomePane',
   ]);
+  assert.equal(calls.includes('selectLeftNavConversation:session-active'), false);
 });
 
 void test('startup state hydration service falls back to home pane when no active conversation exists', async () => {
