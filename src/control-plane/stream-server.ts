@@ -1229,9 +1229,17 @@ export class ControlPlaneStreamServer {
       startInput.notifyFilePath = claudeHookLaunchConfig.notifyFilePath;
     }
     if (cursorHookLaunchConfig !== null) {
+      const mergedEnv: Record<string, string> = {};
+      const baseEnv = command.env ?? process.env;
+      for (const [key, value] of Object.entries(baseEnv)) {
+        if (typeof value !== 'string') {
+          continue;
+        }
+        mergedEnv[key] = value;
+      }
       startInput.notifyFilePath = cursorHookLaunchConfig.notifyFilePath;
       startInput.env = {
-        ...(command.env ?? {}),
+        ...mergedEnv,
         ...cursorHookLaunchConfig.env,
       };
     }

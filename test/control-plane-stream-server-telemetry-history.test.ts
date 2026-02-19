@@ -1112,6 +1112,8 @@ void test('stream server launches cursor sessions with external notify file env 
     const env = launchedInput.env ?? {};
     assert.equal(env[CURSOR_HOOK_NOTIFY_FILE_ENV], launchedInput.notifyFilePath);
     assert.equal(env[CURSOR_HOOK_SESSION_ID_ENV], 'conversation-cursor');
+    assert.equal(typeof env['PATH'], 'string');
+    assert.equal((env['PATH'] as string).length > 0, true);
   } finally {
     client.close();
     await server.close();
