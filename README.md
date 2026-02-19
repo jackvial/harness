@@ -49,6 +49,20 @@ bun install
 bun link
 ```
 
+### Uninstall
+
+```bash
+# Remove global Harness package
+bun remove --global @jmoyers/harness
+
+# Optional: remove workspace runtime artifacts (keeps harness.config.jsonc)
+if [ -n "${XDG_CONFIG_HOME:-}" ]; then
+  rm -rf "$XDG_CONFIG_HOME/harness/workspaces"
+else
+  rm -rf "$HOME/.harness/workspaces"
+fi
+```
+
 ### Run
 
 ```bash
