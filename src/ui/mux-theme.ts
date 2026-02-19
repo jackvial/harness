@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { HarnessMuxThemeConfig } from '../config/config-core.ts';
 import type { UiColor, UiStyle } from './surface.ts';
 import type { UiModalTheme } from './kit.ts';
+import { BUILTIN_MUX_THEME_PRESETS } from './mux-theme-presets.ts';
 
 type OpenCodeThemeMode = 'dark' | 'light';
 
@@ -66,7 +67,6 @@ interface ResolveConfiguredMuxThemeOptions {
   readonly readFile?: (path: string) => string;
 }
 
-const OPENCODE_SCHEMA_URL = 'https://opencode.ai/theme.json';
 const FALLBACK_HEX = {
   text: '#d0d7de',
   textMuted: '#a4adb8',
@@ -81,110 +81,9 @@ const FALLBACK_HEX = {
   backgroundElement: '#2a313a',
 };
 
-const BUILTIN_OPENCODE_PRESETS: Readonly<Record<string, OpenCodeThemeDocument>> = {
-  github: {
-    $schema: OPENCODE_SCHEMA_URL,
-    theme: {
-      primary: { dark: '#79c0ff', light: '#0550ae' },
-      success: { dark: '#3fb950', light: '#1a7f37' },
-      error: { dark: '#f85149', light: '#cf222e' },
-      warning: { dark: '#e3b341', light: '#9a6700' },
-      info: { dark: '#d29922', light: '#bc4c00' },
-      text: { dark: '#e6edf3', light: '#24292f' },
-      textMuted: { dark: '#8b949e', light: '#57606a' },
-      conceal: { dark: '#484f58', light: '#8c959f' },
-      background: { dark: '#0d1117', light: '#ffffff' },
-      backgroundPanel: { dark: '#161b22', light: '#f6f8fa' },
-      backgroundElement: { dark: '#21262d', light: '#d0d7de' },
-      syntaxFunction: { dark: '#d2a8ff', light: '#8250df' },
-    },
-  },
-  'github-light': {
-    $schema: OPENCODE_SCHEMA_URL,
-    theme: {
-      primary: '#0550ae',
-      success: '#1a7f37',
-      error: '#cf222e',
-      warning: '#9a6700',
-      info: '#bc4c00',
-      text: '#24292f',
-      textMuted: '#57606a',
-      conceal: '#8c959f',
-      background: '#ffffff',
-      backgroundPanel: '#f6f8fa',
-      backgroundElement: '#d0d7de',
-      syntaxFunction: '#8250df',
-    },
-  },
-  tokyonight: {
-    $schema: OPENCODE_SCHEMA_URL,
-    theme: {
-      primary: '#7aa2f7',
-      success: '#9ece6a',
-      error: '#f7768e',
-      warning: '#e0af68',
-      info: '#7dcfff',
-      text: '#c0caf5',
-      textMuted: '#9aa5ce',
-      conceal: '#5f6a94',
-      background: '#1a1b26',
-      backgroundPanel: '#1f2335',
-      backgroundElement: '#2a2f46',
-      syntaxFunction: '#bb9af7',
-    },
-  },
-  dracula: {
-    $schema: OPENCODE_SCHEMA_URL,
-    theme: {
-      primary: '#bd93f9',
-      success: '#50fa7b',
-      error: '#ff5555',
-      warning: '#f1fa8c',
-      info: '#8be9fd',
-      text: '#f8f8f2',
-      textMuted: '#b8b8c6',
-      conceal: '#6272a4',
-      background: '#282a36',
-      backgroundPanel: '#303341',
-      backgroundElement: '#3a3d4d',
-      syntaxFunction: '#ff79c6',
-    },
-  },
-  nord: {
-    $schema: OPENCODE_SCHEMA_URL,
-    theme: {
-      primary: '#81a1c1',
-      success: '#a3be8c',
-      error: '#bf616a',
-      warning: '#ebcb8b',
-      info: '#88c0d0',
-      text: '#d8dee9',
-      textMuted: '#aeb8c9',
-      conceal: '#6d7d95',
-      background: '#2e3440',
-      backgroundPanel: '#3b4252',
-      backgroundElement: '#434c5e',
-      syntaxFunction: '#b48ead',
-    },
-  },
-  gruvbox: {
-    $schema: OPENCODE_SCHEMA_URL,
-    theme: {
-      primary: '#83a598',
-      success: '#b8bb26',
-      error: '#fb4934',
-      warning: '#fabd2f',
-      info: '#8ec07c',
-      text: '#ebdbb2',
-      textMuted: '#bdae93',
-      conceal: '#7c6f64',
-      background: '#282828',
-      backgroundPanel: '#3c3836',
-      backgroundElement: '#504945',
-      syntaxFunction: '#d3869b',
-    },
-  },
-};
+const BUILTIN_OPENCODE_PRESETS = BUILTIN_MUX_THEME_PRESETS as Readonly<
+  Record<string, OpenCodeThemeDocument>
+>;
 
 const LEGACY_MUX_THEME: ActiveMuxTheme = {
   name: 'legacy-default',

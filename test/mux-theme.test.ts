@@ -26,6 +26,8 @@ void test('muxThemePresetNames returns sorted preset names', () => {
   const names = muxThemePresetNames();
   const sorted = [...names].sort();
   assert.deepEqual(names, sorted);
+  assert.equal(names.includes('aura'), true);
+  assert.equal(names.includes('carbonfox'), true);
   assert.equal(names.includes('github'), true);
   assert.equal(names.includes('tokyonight'), true);
 });

@@ -1,6 +1,6 @@
 export const COMMAND_MENU_MAX_RESULTS = 8;
 
-type CommandMenuScope = 'all' | 'thread-start';
+type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
 
 export interface CommandMenuState {
   readonly scope: CommandMenuScope;

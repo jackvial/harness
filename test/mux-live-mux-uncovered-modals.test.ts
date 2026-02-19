@@ -1028,6 +1028,34 @@ void test('modal overlay builders return null for missing state and build overla
     theme,
   );
   assert.notEqual(commandMenuOverlay, null);
+  const themeCommandMenuOverlay = buildCommandMenuModalOverlay(
+    80,
+    24,
+    createCommandMenuState({
+      scope: 'theme-select',
+    }),
+    [
+      {
+        id: 'theme.set.github',
+        title: 'github',
+      },
+    ],
+    theme,
+  );
+  assert.notEqual(themeCommandMenuOverlay, null);
+  const themeOverlayRows = themeCommandMenuOverlay?.rows ?? [];
+  assert.equal(
+    themeOverlayRows.some((row) => row.includes('Choose Theme')),
+    true,
+  );
+  assert.equal(
+    themeOverlayRows.some((row) => row.includes('enter apply')),
+    true,
+  );
+  assert.equal(
+    themeOverlayRows.some((row) => row.includes('type to filter themes')),
+    true,
+  );
 
   assert.equal(buildNewThreadModalOverlay(80, 24, null, theme), null);
   const newThreadOverlay = buildNewThreadModalOverlay(

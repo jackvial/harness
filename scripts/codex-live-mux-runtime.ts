@@ -17,7 +17,12 @@ import { SqliteEventStore } from '../src/store/event-store.ts';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import { computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
-import { loadHarnessConfig, updateHarnessMuxUiConfig } from '../src/config/config-core.ts';
+import {
+  loadHarnessConfig,
+  updateHarnessConfig,
+  updateHarnessMuxUiConfig,
+  type HarnessMuxThemeConfig,
+} from '../src/config/config-core.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
@@ -27,8 +32,10 @@ import {
   resolveNewThreadPromptAgentByRow,
 } from '../src/mux/new-thread-prompt.ts';
 import {
+  COMMAND_MENU_MAX_RESULTS,
   CommandMenuRegistry,
   createCommandMenuState,
+  resolveCommandMenuMatches,
   type CommandMenuActionDescriptor,
   type RegisteredCommandMenuAction,
 } from '../src/mux/live-mux/command-menu.ts';
@@ -201,7 +208,12 @@ import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
-import { resolveConfiguredMuxTheme, setActiveMuxTheme } from '../src/ui/mux-theme.ts';
+import {
+  getActiveMuxTheme,
+  muxThemePresetNames,
+  resolveConfiguredMuxTheme,
+  setActiveMuxTheme,
+} from '../src/ui/mux-theme.ts';
 
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
@@ -237,6 +249,12 @@ interface CommandMenuGitHubProjectPrState {
   readonly loading: boolean;
 }
 
+interface ThemePickerSessionState {
+  readonly initialThemeConfig: HarnessMuxThemeConfig | null;
+  committed: boolean;
+  previewActionId: string | null;
+}
+
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
 const DEFAULT_STARTUP_SETTLE_QUIET_MS = 300;
@@ -254,6 +272,8 @@ const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
 const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
 const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
+const THEME_PICKER_SCOPE = 'theme-select';
+const THEME_ACTION_ID_PREFIX = 'theme.set.';
 const GIT_SUMMARY_LOADING: GitSummary = {
   branch: '(loading)',
   changedFiles: 0,
@@ -433,14 +453,24 @@ async function main(): Promise<number> {
     rows: size.rows,
   });
   const configuredMuxUi = loadedConfig.config.mux.ui;
-  const resolvedMuxTheme = resolveConfiguredMuxTheme({
-    config: configuredMuxUi.theme,
-    cwd: options.invocationDirectory,
-  });
-  if (resolvedMuxTheme.error !== null) {
-    process.stderr.write(`[theme] ${resolvedMuxTheme.error}; using preset fallback\n`);
-  }
-  setActiveMuxTheme(resolvedMuxTheme.theme);
+  let runtimeThemeConfig: HarnessMuxThemeConfig | null = configuredMuxUi.theme;
+  const resolveAndApplyRuntimeTheme = (
+    nextThemeConfig: HarnessMuxThemeConfig | null,
+    writeErrorToStderr = false,
+  ) => {
+    const resolved = resolveConfiguredMuxTheme({
+      config: nextThemeConfig,
+      cwd: options.invocationDirectory,
+    });
+    if (resolved.error !== null && writeErrorToStderr) {
+      process.stderr.write(`[theme] ${resolved.error}; using preset fallback\n`);
+    }
+    setActiveMuxTheme(resolved.theme);
+    runtimeThemeConfig = nextThemeConfig;
+    return resolved;
+  };
+  const resolvedMuxTheme = resolveAndApplyRuntimeTheme(runtimeThemeConfig, true);
+  let currentModalTheme = resolvedMuxTheme.theme.modalTheme;
   const configuredMuxGit = loadedConfig.config.mux.git;
   const configuredCodexLaunch = loadedConfig.config.codex.launch;
   const configuredCritique = loadedConfig.config.critique;
@@ -1328,6 +1358,7 @@ async function main(): Promise<number> {
   const commandMenuRegistry = new CommandMenuRegistry<RuntimeCommandMenuContext>();
   let commandMenuGitHubProjectPrState: CommandMenuGitHubProjectPrState | null = null;
   let commandMenuScopedDirectoryId: string | null = null;
+  let themePickerSession: ThemePickerSessionState | null = null;
   const commandMenuContext = (): RuntimeCommandMenuContext => {
     const activeConversation = conversationManager.getActiveConversation();
     const scopedDirectoryId =
@@ -1377,12 +1408,16 @@ async function main(): Promise<number> {
     context: RuntimeCommandMenuContext,
   ): readonly RegisteredCommandMenuAction<RuntimeCommandMenuContext>[] => {
     const actions = commandMenuRegistry.resolveActions(context);
-    if (workspace.commandMenu?.scope !== 'thread-start') {
-      return actions;
+    if (workspace.commandMenu?.scope === 'thread-start') {
+      return actions.filter(
+        (action) =>
+          action.id.startsWith('thread.start.') || action.id.startsWith('thread.install.'),
+      );
     }
-    return actions.filter(
-      (action) => action.id.startsWith('thread.start.') || action.id.startsWith('thread.install.'),
-    );
+    if (workspace.commandMenu?.scope === THEME_PICKER_SCOPE) {
+      return actions.filter((action) => action.id.startsWith(THEME_ACTION_ID_PREFIX));
+    }
+    return actions;
   };
   const resolveCommandMenuActions = (): readonly CommandMenuActionDescriptor[] => {
     return resolveVisibleCommandMenuActions(commandMenuContext()).map((action) => ({
@@ -1420,17 +1455,19 @@ async function main(): Promise<number> {
       markDirty();
     });
   };
-  const modalManager = new ModalManager({
-    theme: resolvedMuxTheme.theme.modalTheme,
-    resolveRepositoryName: (repositoryId) => repositories.get(repositoryId)?.name ?? null,
-    getCommandMenu: () => workspace.commandMenu,
-    resolveCommandMenuActions,
-    getNewThreadPrompt: () => workspace.newThreadPrompt,
-    getAddDirectoryPrompt: () => workspace.addDirectoryPrompt,
-    getTaskEditorPrompt: () => workspace.taskEditorPrompt,
-    getRepositoryPrompt: () => workspace.repositoryPrompt,
-    getConversationTitleEdit: () => workspace.conversationTitleEdit,
-  });
+  const createModalManager = (): ModalManager =>
+    new ModalManager({
+      theme: currentModalTheme,
+      resolveRepositoryName: (repositoryId) => repositories.get(repositoryId)?.name ?? null,
+      getCommandMenu: () => workspace.commandMenu,
+      resolveCommandMenuActions,
+      getNewThreadPrompt: () => workspace.newThreadPrompt,
+      getAddDirectoryPrompt: () => workspace.addDirectoryPrompt,
+      getTaskEditorPrompt: () => workspace.taskEditorPrompt,
+      getRepositoryPrompt: () => workspace.repositoryPrompt,
+      getConversationTitleEdit: () => workspace.conversationTitleEdit,
+    });
+  let modalManager = createModalManager();
   let homePaneBackgroundTimer: ReturnType<typeof setInterval> | null = null;
   const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
@@ -1523,6 +1560,124 @@ async function main(): Promise<number> {
     workspace.taskPaneNotice = message;
     debugFooterNotice.set(message);
     markDirty();
+  };
+  const buildPresetThemeConfig = (preset: string): HarnessMuxThemeConfig => {
+    return {
+      preset,
+      mode: runtimeThemeConfig?.mode ?? 'dark',
+      customThemePath: null,
+    };
+  };
+  const applyThemeConfig = (nextThemeConfig: HarnessMuxThemeConfig | null): void => {
+    const resolved = resolveAndApplyRuntimeTheme(nextThemeConfig);
+    currentModalTheme = resolved.theme.modalTheme;
+    modalManager = createModalManager();
+  };
+  const persistThemeConfig = (nextThemeConfig: HarnessMuxThemeConfig): string | null => {
+    if (loadedConfig.error !== null) {
+      return 'config currently using last-known-good due to parse error';
+    }
+    try {
+      const updated = updateHarnessConfig({
+        filePath: loadedConfig.filePath,
+        update: (current) => {
+          return {
+            ...current,
+            mux: {
+              ...current.mux,
+              ui: {
+                ...current.mux.ui,
+                theme: nextThemeConfig,
+              },
+            },
+          };
+        },
+      });
+      runtimeThemeConfig = updated.mux.ui.theme;
+      return null;
+    } catch (error: unknown) {
+      return formatErrorMessage(error);
+    }
+  };
+  const applyThemePreset = (preset: string, persist: boolean): void => {
+    const nextThemeConfig = buildPresetThemeConfig(preset);
+    applyThemeConfig(nextThemeConfig);
+    if (!persist) {
+      markDirty();
+      return;
+    }
+    const persistError = persistThemeConfig(nextThemeConfig);
+    if (persistError === null) {
+      setCommandNotice(`theme set to ${preset}`);
+      return;
+    }
+    setCommandNotice(`theme set to ${preset} (not persisted: ${persistError})`);
+  };
+  const themePresetFromActionId = (actionId: string | null): string | null => {
+    if (actionId === null || !actionId.startsWith(THEME_ACTION_ID_PREFIX)) {
+      return null;
+    }
+    const preset = actionId.slice(THEME_ACTION_ID_PREFIX.length).trim();
+    return preset.length > 0 ? preset : null;
+  };
+  const selectedCommandMenuActionId = (): string | null => {
+    const menu = workspace.commandMenu;
+    if (menu === null) {
+      return null;
+    }
+    const matches = resolveCommandMenuMatches(
+      resolveCommandMenuActions(),
+      menu.query,
+      COMMAND_MENU_MAX_RESULTS,
+    );
+    if (matches.length === 0) {
+      return null;
+    }
+    const selectedIndex = Math.max(0, Math.min(matches.length - 1, menu.selectedIndex));
+    return matches[selectedIndex]?.action.id ?? null;
+  };
+  const startThemePickerSession = (): void => {
+    const initialThemeConfig =
+      runtimeThemeConfig === null
+        ? null
+        : {
+            preset: runtimeThemeConfig.preset,
+            mode: runtimeThemeConfig.mode,
+            customThemePath: runtimeThemeConfig.customThemePath,
+          };
+    themePickerSession = {
+      initialThemeConfig,
+      committed: false,
+      previewActionId: null,
+    };
+    commandMenuScopedDirectoryId = null;
+    commandMenuGitHubProjectPrState = null;
+    workspace.commandMenu = createCommandMenuState({
+      scope: THEME_PICKER_SCOPE,
+    });
+    markDirty();
+  };
+  const syncThemePickerPreview = (): void => {
+    if (themePickerSession === null) {
+      return;
+    }
+    if (workspace.commandMenu?.scope !== THEME_PICKER_SCOPE) {
+      if (!themePickerSession.committed) {
+        applyThemeConfig(themePickerSession.initialThemeConfig);
+      }
+      themePickerSession = null;
+      return;
+    }
+    const selectedActionId = selectedCommandMenuActionId();
+    if (selectedActionId === themePickerSession.previewActionId) {
+      return;
+    }
+    themePickerSession.previewActionId = selectedActionId;
+    const preset = themePresetFromActionId(selectedActionId);
+    if (preset === null) {
+      return;
+    }
+    applyThemePreset(preset, false);
   };
   const githubAuthHintNotice =
     'GitHub PR actions become available after auth (`gh auth login` or `GITHUB_TOKEN`).';
@@ -2538,6 +2693,39 @@ async function main(): Promise<number> {
     },
   });
 
+  commandMenuRegistry.registerAction({
+    id: 'theme.choose',
+    title: 'Choose Theme',
+    aliases: ['theme', 'change theme', 'set theme'],
+    keywords: ['theme', 'appearance', 'colors'],
+    run: () => {
+      startThemePickerSession();
+    },
+  });
+
+  commandMenuRegistry.registerProvider('theme.set', () => {
+    const selectedThemeName = getActiveMuxTheme().name;
+    return muxThemePresetNames().map(
+      (preset): RegisteredCommandMenuAction<RuntimeCommandMenuContext> => ({
+        id: `${THEME_ACTION_ID_PREFIX}${preset}`,
+        title: preset,
+        aliases: [preset, `theme ${preset}`],
+        keywords: ['theme', 'preset', preset],
+        ...(selectedThemeName === preset
+          ? {
+              detail: 'current',
+            }
+          : {}),
+        run: () => {
+          if (themePickerSession !== null) {
+            themePickerSession.committed = true;
+          }
+          applyThemePreset(preset, true);
+        },
+      }),
+    );
+  });
+
   commandMenuRegistry.registerProvider('project.open', () => {
     return [...directoryRecords.values()].map(
       (directory): RegisteredCommandMenuAction<RuntimeCommandMenuContext> => ({
@@ -2912,6 +3100,7 @@ async function main(): Promise<number> {
   });
 
   const render = (): void => {
+    syncThemePickerPreview();
     runtimeRenderPipeline.render({
       shuttingDown,
       layout,

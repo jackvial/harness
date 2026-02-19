@@ -6,12 +6,8 @@ import { join } from 'node:path';
 // @ts-expect-error runtime script is JavaScript-only by design
 import * as bunRuntimeGuard from '../scripts/bun-runtime-guard.js';
 
-const {
-  BUN_INSTALL_DOCS_URL,
-  ensureBunAvailable,
-  formatBunRequiredMessage,
-  isBunAvailable,
-} = bunRuntimeGuard;
+const { BUN_INSTALL_DOCS_URL, ensureBunAvailable, formatBunRequiredMessage, isBunAvailable } =
+  bunRuntimeGuard;
 
 interface FakeStderr {
   text: string;
@@ -21,11 +17,7 @@ interface FakeStderr {
 function createExecutableCommand(exitCode: number): { dirPath: string; commandPath: string } {
   const dirPath = mkdtempSync(join(tmpdir(), 'harness-bun-guard-'));
   const commandPath = join(dirPath, 'bun');
-  writeFileSync(
-    commandPath,
-    ['#!/bin/sh', `exit ${String(exitCode)}`].join('\n'),
-    'utf8',
-  );
+  writeFileSync(commandPath, ['#!/bin/sh', `exit ${String(exitCode)}`].join('\n'), 'utf8');
   chmodSync(commandPath, 0o755);
   return { dirPath, commandPath };
 }

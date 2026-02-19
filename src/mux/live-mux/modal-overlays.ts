@@ -87,6 +87,7 @@ export function buildCommandMenuModalOverlay(
   if (menu === null) {
     return null;
   }
+  const isThemePicker = menu.scope === 'theme-select';
   const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
     preferredHeight: 18,
     minWidth: 48,
@@ -95,7 +96,7 @@ export function buildCommandMenuModalOverlay(
   const matches = resolveCommandMenuMatches(actions, menu.query, COMMAND_MENU_MAX_RESULTS);
   const selectedIndex =
     matches.length === 0 ? 0 : Math.max(0, Math.min(matches.length - 1, menu.selectedIndex));
-  const bodyLines: string[] = [`search: ${menu.query}_`, ''];
+  const bodyLines: string[] = [`${isThemePicker ? 'theme' : 'search'}: ${menu.query}_`, ''];
   if (matches.length === 0) {
     bodyLines.push('no actions match');
   } else {
@@ -110,7 +111,9 @@ export function buildCommandMenuModalOverlay(
       );
     }
   }
-  bodyLines.push('', 'type to filter');
+  bodyLines.push('', isThemePicker ? 'type to filter themes' : 'type to filter');
+  const title =
+    menu.scope === 'thread-start' ? 'New Thread' : isThemePicker ? 'Choose Theme' : 'Command Menu';
   return buildUiModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
@@ -118,9 +121,9 @@ export function buildCommandMenuModalOverlay(
     height: modalSize.height,
     anchor: 'center',
     marginRows: 1,
-    title: 'Command Menu',
+    title,
     bodyLines,
-    footer: 'enter run  esc',
+    footer: isThemePicker ? 'enter apply  esc cancel' : 'enter run  esc',
     theme,
   });
 }
