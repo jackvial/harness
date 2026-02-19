@@ -7,20 +7,12 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 ## What You Can Do
 
 - Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
-- Keep native CLI ergonomics while working from one keyboard-first workspace.
+- Keep native CLI ergonomics in one keyboard-first workspace.
 - Jump between threads in milliseconds, with 400+ FPS rendering under local workloads.
-- Use `critique` threads for very fast diff/review loops, with native terminal access when you need to drop to commands.
-- Keep long-running threads alive in the detached gateway so reconnects do not kill work.
-- Add automation last through the typed realtime API (`projects`, `threads`, `repositories`, `tasks`, subscriptions).
-- Plan work as scoped tasks (`project`, `repository`, `global`) and pull only `ready` tasks.
-- Gate automation globally/per-repository/per-project (enable/disable + freeze), with optional project branch pinning and project-local task focus mode.
-- See project/thread lifecycle updates from other connected clients in real time (no client restart rehydration loop).
-- Get gateway-canonical thread status icons/text for structured agent threads, plus fixed one-cell title glyphs for `terminal`/`critique` threads (single server projection, no client-side status interpretation).
-- Capture interleaved status debugging timelines (incoming status sources + outgoing status line/notice outputs) with a toggle and CLI commands.
-- Capture focused render diagnostics (unsupported control sequences + ANSI integrity failures) with a dedicated toggle and CLI commands.
-- Track terminal conformance with a versioned compatibility matrix (`src/terminal/compat-matrix.ts`) and parity scenes (`bun run terminal:parity`).
-- Open a command palette with `ctrl+p`/`cmd+p`, live-filter registered actions, and execute context-aware thread/project/runtime controls.
-- Build on a first-party AI library (`packages/harness-ai`) with Anthropic support and Vercel-style stream events for `streamText`, `generateText`, and `streamObject`.
+- Use `critique` threads for fast diff/review loops with direct terminal access.
+- Keep long-running threads alive in a detached gateway so reconnects do not kill work.
+- Plan and pull scoped tasks (`project`, `repository`, `global`) from one place.
+- Automate through a typed realtime API when you want orchestration.
 
 ## Demo
 
@@ -58,52 +50,11 @@ Harness includes first-class `critique` threads:
 - Runs with `--watch` by default.
 - Auto-install path enabled by default via `bunx critique@latest` when `critique` is not installed.
 - `mux.conversation.critique.open-or-create` is bound to `ctrl+g` by default.
-- Command palette is bound to `ctrl+p` and `cmd+p` by default.
-- Gateway profiler toggle is bound to `ctrl+shift+p` by default.
 
 `ctrl+g` behavior is project-aware:
 
 - If a critique thread exists for the current project, it selects it.
 - If not, it creates and opens one in the main pane.
-
-`session.interrupt` is also surfaced as a mux keybinding action (`mux.conversation.interrupt`) so teams can bind a dedicated in-client thread interrupt shortcut without overloading quit semantics.
-
-## API for Automation
-
-Harness exposes a typed realtime client for orchestrators, policy agents, and dashboards:
-
-```ts
-import { connectHarnessAgentRealtimeClient } from './src/control-plane/agent-realtime-api.ts';
-
-const client = await connectHarnessAgentRealtimeClient({
-  host: '127.0.0.1',
-  port: 7777,
-  subscription: { includeOutput: false },
-});
-
-client.on('session.status', ({ observed }) => {
-  console.log(observed.sessionId, observed.status);
-});
-
-await client.close();
-```
-
-Key orchestration calls are available in the same client:
-
-- `client.tasks.pull(...)`
-- `client.projects.status(projectId)`
-- `client.projects.settings.get(projectId)` / `client.projects.settings.update(projectId, update)`
-- `client.automation.getPolicy(...)` / `client.automation.setPolicy(...)`
-
-## First-Party AI Package
-
-Harness now includes a Bun-native first-party AI package at `packages/harness-ai` for Anthropic-driven generation with stream-first semantics.
-
-- `streamText`: Vercel-style event stream with tool-call streaming and tool-result roundtrips.
-- `generateText`: aggregated text + usage + finish metadata over the same pipeline.
-- `streamObject`: JSON-object streaming built on top of `streamText`.
-- UI stream helpers: SSE framing compatible with `x-vercel-ai-ui-message-stream: v1`.
-- Test coverage: unit, integration, and end-to-end coverage is enforced through the same project quality gates.
 
 ## Configuration
 
@@ -139,47 +90,10 @@ Example (critique defaults + hotkey override + OpenCode theme selection):
 
 `mux.ui.theme.customThemePath` can point to any local JSON file that follows the OpenCode theme schema (`https://opencode.ai/theme.json`).
 
-## Operational Commands
-
-```bash
-harness gateway status
-harness gateway start
-harness gateway stop
-harness status-timeline start
-harness status-timeline stop
-harness render-trace start
-harness render-trace stop
-bun run terminal:parity
-bun run terminal:differential
-```
-
-Run the core quality gate:
-
-```bash
-bun run verify
-```
-
-## GitHub Releases
-
-Harness uses SemVer git tags (`vX.Y.Z`) as the release source of truth.
-
-Create a release:
-
-```bash
-bun run release
-```
-
-`bun run release` runs `bun run verify`, checks out `main`, fast-forwards from `origin/main`, creates an annotated tag from `package.json` version (for example `v0.1.0`), and pushes that tag.
-
-Pushing a SemVer tag triggers `.github/workflows/release.yml`, which runs `bun run verify` again in CI and then creates a GitHub Release with generated notes.
-
-The same tag also triggers `.github/workflows/npm-publish.yml`, which publishes `@jmoyers/harness` to npm after `bun run verify` and a tag/version parity check. Configure repository secret `NPM_TOKEN` before enabling npm releases.
-
 ## Documentation
 
 - `design.md` for architecture and system design principles.
 - `agents.md` for execution and quality rules.
-- `src/terminal/compat-matrix.ts` + `test/terminal-compat-matrix.test.ts` for the recorded VT compatibility climb status and blockers.
 
 ## License
 

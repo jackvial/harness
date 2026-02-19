@@ -8,6 +8,8 @@ This project has two core documents:
 - Keep `design.md` and `agents.md` continuously aligned with reality.
 - Keep `README.md` continuously aligned with reality.
 - `README.md` must stay conceptually compelling and progress-oriented: clearly communicate why the project matters and what has been verifiably achieved.
+- `README.md` is market/customer/user-facing: keep it short, relevant, and focused on user value, workflows, and outcomes.
+- Do not add maintainer/internal content to `README.md` (release mechanics, CI wiring, coverage gates, deep implementation details); keep that in `design.md`/`agents.md` or other internal docs.
 - Update `design.md` whenever architecture, principles, or major behavior changes.
 - Prefer principles and system design over implementation trivia.
 - Do not create competing “source of truth” docs for core architecture/rules.
