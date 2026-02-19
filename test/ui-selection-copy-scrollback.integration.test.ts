@@ -89,6 +89,7 @@ void test('selection/copy integration includes offscreen rows after drag + scrol
 
   const conversation = {
     oracle: {
+      isMouseTrackingEnabled: () => false,
       scrollViewport: (delta: number) => {
         oracle.scrollViewport(delta);
       },

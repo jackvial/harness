@@ -1,9 +1,28 @@
 {
-  "name": "harness",
+  "name": "@jmoyers/harness",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "packageManager": "bun@1.3.9",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "scripts/build-ptyd.sh",
+    "scripts/control-plane-daemon.ts",
+    "scripts/cursor-hook-relay.ts",
+    "scripts/harness-animate.ts",
+    "scripts/harness-bin.js",
+    "scripts/harness-core.ts",
+    "scripts/harness-inspector.ts",
+    "scripts/harness.ts",
+    "native/ptyd/Cargo.lock",
+    "native/ptyd/Cargo.toml",
+    "native/ptyd/src",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "harness": "scripts/harness-bin.js"
   },
@@ -41,6 +60,7 @@
     "loc:verify:enforce": "bun scripts/check-max-loc.ts --max-loc 2000 --enforce",
     "deadcode": "bun scripts/check-dead-code.ts",
     "coverage:check": "bun scripts/check-coverage.ts --lcov .harness/coverage-bun/lcov.info --config harness.coverage.jsonc",
+    "release": "bun scripts/release.ts",
     "lint": "oxlint --deny-warnings --disable-unicorn-plugin -c .oxlintrc.json src test scripts packages/harness-ai/src",
     "format": "oxfmt --config .oxfmtrc.json src test scripts packages/harness-ai/src",
     "format:check": "oxfmt --check --config .oxfmtrc.json src test scripts packages/harness-ai/src",

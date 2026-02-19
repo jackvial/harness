@@ -266,6 +266,7 @@ void test('input token router bypasses local right-pane handlers when app mouse 
           calls.push('scroll');
         },
         snapshotWithoutHash: () => frame,
+        selectionText: () => '',
       },
     },
     snapshotForInput: frame,

@@ -1,0 +1,216 @@
+import assert from 'node:assert/strict';
+import { test } from 'bun:test';
+import { __releaseInternals } from '../scripts/release.ts';
+
+interface MockRuntime {
+  readonly cwdValue: string;
+  readonly fileText: string;
+  readonly captures: Map<string, string>;
+  readonly captureCalls: string[];
+  readonly runCalls: string[];
+  readonly stdoutLines: string[];
+}
+
+function createRuntime(
+  overrides: Partial<Pick<MockRuntime, 'cwdValue' | 'fileText' | 'captures'>> = {},
+) {
+  const runtimeState: MockRuntime = {
+    cwdValue: overrides.cwdValue ?? '/tmp/harness',
+    fileText: overrides.fileText ?? JSON.stringify({ version: '0.1.0' }),
+    captures: overrides.captures ?? new Map<string, string>(),
+    captureCalls: [],
+    runCalls: [],
+    stdoutLines: [],
+  };
+  const runtime = {
+    cwd: () => runtimeState.cwdValue,
+    readTextFile: (_path: string) => runtimeState.fileText,
+    capture: (command: string, args: readonly string[]) => {
+      const key = [command, ...args].join('\u0000');
+      runtimeState.captureCalls.push(key);
+      return runtimeState.captures.get(key) ?? '';
+    },
+    run: (command: string, args: readonly string[]) => {
+      runtimeState.runCalls.push([command, ...args].join('\u0000'));
+    },
+    stdout: (text: string) => {
+      runtimeState.stdoutLines.push(text);
+    },
+  };
+  return { runtime, runtimeState };
+}
+
+void test('release script arg parsing handles defaults and flags', () => {
+  assert.deepEqual(__releaseInternals.parseArgs([]), {
+    version: null,
+    skipVerify: false,
+    branch: 'main',
+    remote: 'origin',
+    allowDirty: false,
+  });
+  assert.deepEqual(
+    __releaseInternals.parseArgs([
+      '--version',
+      '1.2.3',
+      '--skip-verify',
+      '--branch',
+      'release',
+      '--remote',
+      'upstream',
+      '--allow-dirty',
+    ]),
+    {
+      version: '1.2.3',
+      skipVerify: true,
+      branch: 'release',
+      remote: 'upstream',
+      allowDirty: true,
+    },
+  );
+  assert.equal(__releaseInternals.parseArgs(['--help']), null);
+  assert.throws(() => __releaseInternals.parseArgs(['--version']), /missing value for --version/u);
+  assert.throws(() => __releaseInternals.parseArgs(['--wat']), /unknown argument/u);
+});
+
+void test('release script normalizes semver tags and rejects invalid versions', () => {
+  assert.equal(__releaseInternals.normalizeSemverTag('1.2.3'), 'v1.2.3');
+  assert.equal(__releaseInternals.normalizeSemverTag('v1.2.3'), 'v1.2.3');
+  assert.equal(__releaseInternals.normalizeSemverTag('1.2.3-beta.1'), 'v1.2.3-beta.1');
+  assert.throws(() => __releaseInternals.normalizeSemverTag(''), /cannot be empty/u);
+  assert.throws(
+    () => __releaseInternals.normalizeSemverTag('feature-branch'),
+    /invalid semver version/u,
+  );
+});
+
+void test('release script resolves tag from package version or explicit override', () => {
+  const { runtime } = createRuntime({
+    fileText: JSON.stringify({ version: '2.3.4' }),
+  });
+  assert.equal(
+    __releaseInternals.resolveReleaseTag(
+      {
+        version: null,
+        skipVerify: false,
+        branch: 'main',
+        remote: 'origin',
+        allowDirty: false,
+      },
+      runtime,
+    ),
+    'v2.3.4',
+  );
+  assert.equal(
+    __releaseInternals.resolveReleaseTag(
+      {
+        version: 'v3.4.5',
+        skipVerify: false,
+        branch: 'main',
+        remote: 'origin',
+        allowDirty: false,
+      },
+      runtime,
+    ),
+    'v3.4.5',
+  );
+});
+
+void test('release script requires a clean working tree by default', () => {
+  const key = ['git', 'status', '--porcelain'].join('\u0000');
+  const { runtime } = createRuntime({
+    captures: new Map<string, string>([[key, ' M README.md\n']]),
+  });
+  assert.throws(
+    () => __releaseInternals.requireCleanWorkingTree(runtime),
+    /working tree is not clean/u,
+  );
+});
+
+void test('release script guards against duplicate local and remote tags', () => {
+  const localKey = ['git', 'tag', '--list', 'v0.1.0'].join('\u0000');
+  const remoteKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.1.0'].join('\u0000');
+
+  const localRuntime = createRuntime({
+    captures: new Map<string, string>([[localKey, 'v0.1.0\n']]),
+  }).runtime;
+  assert.throws(
+    () => __releaseInternals.ensureTagDoesNotExist('v0.1.0', 'origin', localRuntime),
+    /already exists locally/u,
+  );
+
+  const remoteRuntime = createRuntime({
+    captures: new Map<string, string>([
+      [localKey, ''],
+      [remoteKey, 'abc123\trefs/tags/v0.1.0\n'],
+    ]),
+  }).runtime;
+  assert.throws(
+    () => __releaseInternals.ensureTagDoesNotExist('v0.1.0', 'origin', remoteRuntime),
+    /already exists on origin/u,
+  );
+});
+
+void test('release script executes verify checkout pull tag push sequence', () => {
+  const statusKey = ['git', 'status', '--porcelain'].join('\u0000');
+  const localTagKey = ['git', 'tag', '--list', 'v0.1.0'].join('\u0000');
+  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.1.0'].join('\u0000');
+  const { runtime, runtimeState } = createRuntime({
+    captures: new Map<string, string>([
+      [statusKey, ''],
+      [localTagKey, ''],
+      [remoteTagKey, ''],
+    ]),
+  });
+
+  const tag = __releaseInternals.executeRelease(
+    {
+      version: null,
+      skipVerify: false,
+      branch: 'main',
+      remote: 'origin',
+      allowDirty: false,
+    },
+    runtime,
+  );
+
+  assert.equal(tag, 'v0.1.0');
+  assert.deepEqual(runtimeState.runCalls, [
+    ['bun', 'run', 'verify'].join('\u0000'),
+    ['git', 'checkout', 'main'].join('\u0000'),
+    ['git', 'pull', '--ff-only', 'origin', 'main'].join('\u0000'),
+    ['git', 'tag', '-a', 'v0.1.0', '-m', 'v0.1.0'].join('\u0000'),
+    ['git', 'push', 'origin', 'v0.1.0'].join('\u0000'),
+  ]);
+});
+
+void test('release script skip-verify omits quality gate execution', () => {
+  const statusKey = ['git', 'status', '--porcelain'].join('\u0000');
+  const localTagKey = ['git', 'tag', '--list', 'v0.2.0'].join('\u0000');
+  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.2.0'].join('\u0000');
+  const { runtime, runtimeState } = createRuntime({
+    fileText: JSON.stringify({ version: '0.2.0' }),
+    captures: new Map<string, string>([
+      [statusKey, ''],
+      [localTagKey, ''],
+      [remoteTagKey, ''],
+    ]),
+  });
+
+  __releaseInternals.executeRelease(
+    {
+      version: null,
+      skipVerify: true,
+      branch: 'main',
+      remote: 'origin',
+      allowDirty: false,
+    },
+    runtime,
+  );
+
+  assert.deepEqual(runtimeState.runCalls, [
+    ['git', 'checkout', 'main'].join('\u0000'),
+    ['git', 'pull', '--ff-only', 'origin', 'main'].join('\u0000'),
+    ['git', 'tag', '-a', 'v0.2.0', '-m', 'v0.2.0'].join('\u0000'),
+    ['git', 'push', 'origin', 'v0.2.0'].join('\u0000'),
+  ]);
+});

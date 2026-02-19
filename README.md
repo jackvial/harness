@@ -159,6 +159,22 @@ Run the core quality gate:
 bun run verify
 ```
 
+## GitHub Releases
+
+Harness uses SemVer git tags (`vX.Y.Z`) as the release source of truth.
+
+Create a release:
+
+```bash
+bun run release
+```
+
+`bun run release` runs `bun run verify`, checks out `main`, fast-forwards from `origin/main`, creates an annotated tag from `package.json` version (for example `v0.1.0`), and pushes that tag.
+
+Pushing a SemVer tag triggers `.github/workflows/release.yml`, which runs `bun run verify` again in CI and then creates a GitHub Release with generated notes.
+
+The same tag also triggers `.github/workflows/npm-publish.yml`, which publishes `@jmoyers/harness` to npm after `bun run verify` and a tag/version parity check. Configure repository secret `NPM_TOKEN` before enabling npm releases.
+
 ## Documentation
 
 - `design.md` for architecture and system design principles.
