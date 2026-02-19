@@ -342,7 +342,8 @@ async function main(): Promise<void> {
   });
 
   const runStartAtMs = Date.now();
-  const remainingTimeoutMs = (): number => Math.max(300, options.timeoutMs - (Date.now() - runStartAtMs));
+  const remainingTimeoutMs = (): number =>
+    Math.max(300, options.timeoutMs - (Date.now() - runStartAtMs));
 
   async function waitForSessionToSettle(sessionId: string): Promise<void> {
     await waitForCondition(`session settle: ${sessionId}`, remainingTimeoutMs(), async () => {
@@ -411,10 +412,10 @@ async function main(): Promise<void> {
       process.stdout.write(
         `running ${config.agentType} turn 1 (model=${
           config.agentType === 'codex'
-            ? options.codexModel ?? 'default'
+            ? (options.codexModel ?? 'default')
             : config.agentType === 'claude'
-              ? options.claudeModel ?? 'default'
-              : options.cursorModel ?? 'default'
+              ? (options.claudeModel ?? 'default')
+              : (options.cursorModel ?? 'default')
         })\n`,
       );
 
@@ -427,15 +428,12 @@ async function main(): Promise<void> {
         }),
       );
 
-      await waitForCondition(
-        `${config.agentType} prompt 1`,
-        remainingTimeoutMs(),
-        () =>
-          promptTextsForSession(
-            observedEnvelopes,
-            config.conversationId,
-            config.expectedProviderEventName,
-          ).includes(config.prompt1),
+      await waitForCondition(`${config.agentType} prompt 1`, remainingTimeoutMs(), () =>
+        promptTextsForSession(
+          observedEnvelopes,
+          config.conversationId,
+          config.expectedProviderEventName,
+        ).includes(config.prompt1),
       );
 
       process.stdout.write(`running ${config.agentType} turn 2 (resume/continue)\n`);
@@ -449,15 +447,12 @@ async function main(): Promise<void> {
         }),
       );
 
-      await waitForCondition(
-        `${config.agentType} prompt 2`,
-        remainingTimeoutMs(),
-        () =>
-          promptTextsForSession(
-            observedEnvelopes,
-            config.conversationId,
-            config.expectedProviderEventName,
-          ).includes(config.prompt2),
+      await waitForCondition(`${config.agentType} prompt 2`, remainingTimeoutMs(), () =>
+        promptTextsForSession(
+          observedEnvelopes,
+          config.conversationId,
+          config.expectedProviderEventName,
+        ).includes(config.prompt2),
       );
 
       const texts = promptTextsForSession(

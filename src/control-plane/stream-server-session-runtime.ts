@@ -86,10 +86,7 @@ interface StreamRuntimeContext {
     state: RuntimeSession,
     keyEvent: StreamSessionKeyEventRecord,
   ): void;
-  publishSessionPromptObservedEvent(
-    state: RuntimeSession,
-    prompt: StreamSessionPromptRecord,
-  ): void;
+  publishSessionPromptObservedEvent(state: RuntimeSession, prompt: StreamSessionPromptRecord): void;
   refreshSessionStatusModel(state: RuntimeSession, observedAt: string): void;
   toPublicSessionController(
     controller: StreamSessionController | null,

@@ -1,6 +1,14 @@
 import type { StreamSessionPromptRecord } from '../../stream-protocol.ts';
-import type { AgentPromptExtractor, PromptFromNotifyInput, PromptFromTelemetryInput } from '../agent-prompt-extractor.ts';
-import { createPromptRecord, findPromptText, readTrimmedString } from '../agent-prompt-extractor.ts';
+import type {
+  AgentPromptExtractor,
+  PromptFromNotifyInput,
+  PromptFromTelemetryInput,
+} from '../agent-prompt-extractor.ts';
+import {
+  createPromptRecord,
+  findPromptText,
+  readTrimmedString,
+} from '../agent-prompt-extractor.ts';
 
 function fromNotify(_input: PromptFromNotifyInput): StreamSessionPromptRecord | null {
   return null;

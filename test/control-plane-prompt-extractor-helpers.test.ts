@@ -58,7 +58,12 @@ void test('prompt extractor helper findPromptText handles root strings and array
 void test('prompt extractor helper createPromptRecord hashes mixed payload shapes deterministically', () => {
   const deepPayload = {
     prompt: null,
-    values: [1, true, null, { nested: { depth1: { depth2: { depth3: { depth4: { depth5: 5 } } } } } }],
+    values: [
+      1,
+      true,
+      null,
+      { nested: { depth1: { depth2: { depth3: { depth4: { depth5: 5 } } } } } },
+    ],
     odd: BigInt(9),
   } as unknown as Record<string, unknown>;
   const first = createPromptRecord({

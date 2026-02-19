@@ -150,7 +150,9 @@ async function forwardToAgent(command: string, args: readonly string[]): Promise
     });
 
     child.once('error', (error: Error) => {
-      process.stderr.write(`cursor-prompt-wrapper: failed to launch ${command}: ${error.message}\n`);
+      process.stderr.write(
+        `cursor-prompt-wrapper: failed to launch ${command}: ${error.message}\n`,
+      );
       resolve(127);
     });
 

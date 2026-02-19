@@ -61,7 +61,10 @@ function stableSerialize(value: unknown, depth = 0): string {
     return String(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.slice(0, 24).map((entry) => stableSerialize(entry, depth + 1)).join(',')}]`;
+    return `[${value
+      .slice(0, 24)
+      .map((entry) => stableSerialize(entry, depth + 1))
+      .join(',')}]`;
   }
   const record = asRecord(value);
   if (record === null) {

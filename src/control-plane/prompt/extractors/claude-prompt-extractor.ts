@@ -1,5 +1,9 @@
 import type { StreamSessionPromptRecord } from '../../stream-protocol.ts';
-import type { AgentPromptExtractor, PromptFromNotifyInput, PromptFromTelemetryInput } from '../agent-prompt-extractor.ts';
+import type {
+  AgentPromptExtractor,
+  PromptFromNotifyInput,
+  PromptFromTelemetryInput,
+} from '../agent-prompt-extractor.ts';
 import {
   createPromptRecord,
   findPromptText,
