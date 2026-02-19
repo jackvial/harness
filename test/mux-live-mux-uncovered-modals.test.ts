@@ -1074,7 +1074,7 @@ void test('modal overlay builders return null for missing state and build overla
   const pagedRows = pagedCommandMenuOverlay?.rows ?? [];
   assert.equal(
     pagedRows.some((row) => row.includes('results 9-12 of 12')),
-    true,
+    false,
   );
 
   assert.equal(buildNewThreadModalOverlay(80, 24, null, theme), null);

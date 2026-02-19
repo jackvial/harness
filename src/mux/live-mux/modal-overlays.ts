@@ -102,13 +102,6 @@ export function buildCommandMenuModalOverlay(
       : Math.floor(selectedIndex / COMMAND_MENU_MAX_RESULTS) * COMMAND_MENU_MAX_RESULTS;
   const visibleMatches = matches.slice(pageStart, pageStart + COMMAND_MENU_MAX_RESULTS);
   const bodyLines: string[] = [`${isThemePicker ? 'theme' : 'search'}: ${menu.query}_`, ''];
-  if (matches.length > COMMAND_MENU_MAX_RESULTS) {
-    const pageEnd = pageStart + visibleMatches.length;
-    bodyLines.push(
-      `results ${String(pageStart + 1)}-${String(pageEnd)} of ${String(matches.length)}`,
-      '',
-    );
-  }
   if (matches.length === 0) {
     bodyLines.push('no actions match');
   } else {

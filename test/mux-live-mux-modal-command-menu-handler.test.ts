@@ -270,12 +270,12 @@ void test('command menu handler mouse click resolves paged rows for thread-start
   const executed: string[] = [];
 
   const handled = handleCommandMenuInput({
-    input: Buffer.from('\u001b[<0;8;9M', 'utf8'),
+    input: Buffer.from('\u001b[<0;8;7M', 'utf8'),
     menu,
     isQuitShortcut: () => false,
     isToggleShortcut: () => false,
     dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) =>
-      onInsidePointerPress?.(8, 9) === true,
+      onInsidePointerPress?.(8, 7) === true,
     buildCommandMenuModalOverlay: () => ({ top: 1 }),
     resolveActions: () => actions,
     executeAction: (actionId: string) => {

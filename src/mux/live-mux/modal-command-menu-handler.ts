@@ -26,7 +26,6 @@ interface HandleCommandMenuInputOptions {
 
 const COMMAND_MENU_BODY_ROW_OFFSET = 2;
 const COMMAND_MENU_ACTION_ROW_START = 2;
-const COMMAND_MENU_PAGE_HEADER_ROWS = 2;
 
 function resolveCommandMenuActionIdByRow(
   menu: CommandMenuState,
@@ -41,9 +40,7 @@ function resolveCommandMenuActionIdByRow(
   const selectedIndex = clampCommandMenuState(menu, matches.length).selectedIndex;
   const pageStart = Math.floor(selectedIndex / COMMAND_MENU_MAX_RESULTS) * COMMAND_MENU_MAX_RESULTS;
   const visibleMatches = matches.slice(pageStart, pageStart + COMMAND_MENU_MAX_RESULTS);
-  const actionStartBodyLine =
-    COMMAND_MENU_ACTION_ROW_START +
-    (matches.length > COMMAND_MENU_MAX_RESULTS ? COMMAND_MENU_PAGE_HEADER_ROWS : 0);
+  const actionStartBodyLine = COMMAND_MENU_ACTION_ROW_START;
   const clickedBodyLine = rowOneBased - 1 - (overlayTopRowZeroBased + COMMAND_MENU_BODY_ROW_OFFSET);
   if (clickedBodyLine < actionStartBodyLine) {
     return null;
